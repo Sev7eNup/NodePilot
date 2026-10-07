@@ -36,6 +36,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<NodePilot.Ai.Agents.AgentRuntime>();
         services.AddScoped<Agents.AgentActivityRunner>();
         services.AddScoped<Agents.AgentRunJournal>();
+        services.AddScoped<Agents.AgentRunDatabase>();
         services.AddScoped<Agents.AgentToolHost>();
         services.AddScoped<Agents.AgentExternalReadPolicy>();
         services.AddScoped<Agents.AgentTargetFactory>();

@@ -34,12 +34,16 @@ test(`team history connects assignments, questions, evidence and full support ex
   });
   add('run_started', null, 'Started');
   add('run_context', null, { members: [{ id: 'lead', role: 'Coordinator at run time', function: 'supervisor' }, { id: 'reader', role: 'Log researcher', function: 'reviewer' }] });
-  add('tool_started', 'lead', { memberId: 'reader', task: 'Read the failing endpoint', reason: 'Distinguish service failure from policy failure' }, 'delegate');
+  add('member_started', 'reader', { delegationId: 'd1', from: 'lead', batchId: 'batch1', batchSize: 2, task: 'Read the failing endpoint', reason: 'Distinguish service failure from policy failure' });
   add('tool_started', 'reader', { script: 'Get-Service' }, 'powershell');
   add('tool_completed', 'reader', 'Evidence from application.log:12 <script>untrusted</script>', 'powershell');
-  add('tool_completed', 'lead', { status: 'needs_input', content: 'Which time window?', objectionKind: 'evidence' }, 'delegate');
-  add('tool_started', 'lead', { memberId: 'reader', task: 'Use the last hour', reason: 'Resolve the requested time scope' }, 'delegate');
-  add('tool_completed', 'lead', { status: 'completed', content: 'Cause verified in application.log:12' }, 'delegate');
+  add('member_started', 'other', { delegationId: 'd2', from: 'lead', batchId: 'batch1', batchSize: 2, task: 'Read policy', reason: 'Independent counterpart' });
+  add('tool_started', 'other', {}, 'files_read');
+  add('member_needs_input', 'reader', { delegationId: 'd1', status: 'needs_input', content: 'Which time window?', objectionKind: 'evidence' });
+  add('tool_completed', 'other', 'Policy evidence', 'files_read');
+  add('member_completed', 'other', { delegationId: 'd2', status: 'completed', content: 'Policy checked' });
+  add('member_started', 'reader', { delegationId: 'd3', from: 'lead', task: 'Use the last hour', reason: 'Resolve the requested time scope' });
+  add('member_completed', 'reader', { delegationId: 'd3', status: 'completed', content: 'Cause verified in application.log:12' });
   // A full first page exercises REST catch-up and export beyond the visible page.
   for (let i = 0; i < 250; i++) { add('model_started', 'lead', 'Model started'); add('model_completed', 'lead', 'Model completed'); }
   add('run_succeeded', null, 'Succeeded');
@@ -69,6 +73,7 @@ test(`team history connects assignments, questions, evidence and full support ex
   await panel.getByRole('combobox', { name: /show member|mitglied anzeigen/i }).selectOption('reader');
   const first = panel.getByRole('article', { name: 'Coordinator at run time → Log researcher' }).first();
   await expect(first).toContainText('Distinguish service failure from policy failure');
+  await expect(first).toContainText(/Parallel: 2/);
   await expect(first).toContainText(/review requires follow-up|prüfung erfordert nacharbeit/i);
   await expect(panel.getByRole('article', { name: 'Coordinator at run time → Log researcher' }).last()).toContainText(/review approved|prüfung freigegeben/i);
   await first.locator('summary').filter({ hasText: /question|rückfrage/i }).click();

@@ -19,6 +19,8 @@ internal sealed record AgentConclusion(string Outcome, string Reason, string Rep
         + "Assess coverage against the original task, not just the subset of evidence available. A complete comparison or investigation cannot be completed when material source coverage is incomplete or unavailable. "
         + "An honest description of missing evidence does not itself resolve that gap. Use partial when some requested conclusions are supported and others cannot yet be established; use blocked when none can be established. "
         + "Reason is a concise explanation of that assessment. Explicit blocked investigation checks prevent a completed assessment. "
+        + "Non-null hostCompletionBlockers means investigation or required review remains incomplete. Choose partial or blocked, never completed. "
+        + "The report must explicitly state this limitation, identify the outstanding questions or missing reviews and their next checks, and distinguish supported findings from unverified claims. Do not claim these checks were resolved or approved. "
         + "Report is a COMPLETE SELF-CONTAINED replacement report, never a review-approval summary, change list or reference to a previous answer. "
         + "Reconcile the initial report with newer evidence and corrections; newer supported corrections supersede earlier claims. "
         + "Include material counterevidence and limitations; do not invent missing facts, sources, actions or completed checks. "
@@ -68,7 +70,7 @@ internal sealed record AgentConclusion(string Outcome, string Reason, string Rep
     }
 
     internal static string Prompt(AgentActivityConfiguration config, string initial, string latest,
-        JsonElement? findings, JsonElement? checks, int contextCharacters, JsonElement? toolActivity = null)
+        JsonElement? findings, JsonElement? checks, int contextCharacters, JsonElement? toolActivity = null, JsonElement? completionBlockers = null)
     {
         var sectionLimit = Math.Max(64, (contextCharacters - 8000) / 12);
         object Section(string text, int limit) => new { text = text.Length > limit ? text[..limit] : text, truncated = text.Length > limit };
@@ -82,7 +84,8 @@ internal sealed record AgentConclusion(string Outcome, string Reason, string Rep
                 id = c.GetProperty("id"), status = c.GetProperty("status"),
                 detail = Section(c.GetRawText(), Math.Max(16, sectionLimit / Math.Max(1, checks.Value.GetArrayLength())))
             }),
-            resultFormat = config.ResultFormat, resultSchema = config.ResultSchema, hostToolActivity = toolActivity
+            resultFormat = config.ResultFormat, resultSchema = config.ResultSchema, hostToolActivity = toolActivity,
+            hostCompletionBlockers = completionBlockers is null ? null : Section(completionBlockers.Value.GetRawText(), sectionLimit)
         });
         var prompt = Build();
         while (prompt.Length + Instructions.Length + 2000 > contextCharacters && sectionLimit > 16)

@@ -8,12 +8,61 @@ namespace NodePilot.Ai.Tests;
 public sealed class AgentInvestigationTests
 {
     [Fact]
+    public async Task ParallelUpdatesHaveContiguousRevisionsAndRetainEveryPatch()
+    {
+        var revisions = new List<int>();
+        var evidence = new AgentEvidenceStore((_, _) => Task.CompletedTask);
+        var register = new AgentInvestigation([new() { Id = "reader" }], evidence, async (e, _) => {
+            await Task.Yield();
+            revisions.Add(JsonDocument.Parse(e.Content).RootElement.GetProperty("revision").GetInt32());
+        }, s => s, _ => { });
+        var update = register.Tools("reader").Single(t => t.Name == "investigation_update");
+        await Task.WhenAll(Enumerable.Range(1, 20).Select(i => update.InvokeAsync(JsonSerializer.SerializeToElement(new {
+            id = "check" + i, question = "Question " + i, nextCheck = "Read source"
+        }), TestContext.Current.CancellationToken)));
+        Assert.Equal(Enumerable.Range(1, 20), revisions);
+        Assert.Equal(20, register.Checks().GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ParallelEvidenceReservesQuotaAndUniqueIdsBeforePersistence()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = 0;
+        var evidence = new AgentEvidenceStore(async (_, ct) => {
+            Interlocked.Increment(ref entered);
+            await release.Task.WaitAsync(ct);
+        });
+        var member = new AgentDefinition { Id = "reader" };
+        var captures = Enumerable.Range(0, 16).Select(_ => evidence.CaptureAsync(member, "read", "", new string('x', 1_000_000), 16000, TestContext.Current.CancellationToken)).ToArray();
+        Assert.Equal(16, entered);
+        await Assert.ThrowsAsync<AgentBudgetExceededException>(() => evidence.CaptureAsync(member, "read", "", "x", 16000, TestContext.Current.CancellationToken));
+        release.SetResult();
+        var results = await Task.WhenAll(captures);
+        Assert.Equal(16, results.Select(r => JsonDocument.Parse(r).RootElement.GetProperty("evidenceId").GetString()).Distinct().Count());
+        Assert.Equal(16, evidence.Count);
+    }
+
+    [Fact]
+    public async Task FailedEvidencePersistenceReturnsQuotaWithoutReusingIds()
+    {
+        var fail = true;
+        var evidence = new AgentEvidenceStore((_, _) => fail ? throw new IOException("failed") : Task.CompletedTask);
+        var member = new AgentDefinition { Id = "reader" };
+        for (var i = 0; i < 20; i++)
+            await Assert.ThrowsAsync<IOException>(() => evidence.CaptureAsync(member, "read", "", new string('x', 1_000_000), 16000, TestContext.Current.CancellationToken));
+        fail = false;
+        var result = await evidence.CaptureAsync(member, "read", "", "ok", 16000, TestContext.Current.CancellationToken);
+        Assert.Contains("ev-00021", result);
+        Assert.Equal(1, evidence.Count);
+    }
+    [Fact]
     public async Task FocusedPatchPreservesQuestionAndEvidenceAndClosedReplyProvidesRecovery()
     {
         var evidence = new AgentEvidenceStore((_, _) => Task.CompletedTask);
         AgentDefinition[] members = [new() { Id = "reader" }];
         var invalidations = 0;
-        var board = new AgentInvestigation(members, evidence, (_, _) => Task.CompletedTask, s => s, () => invalidations++);
+        var board = new AgentInvestigation(members, evidence, (_, _) => Task.CompletedTask, s => s, _ => invalidations++);
         var tool = board.Tools("reader").Single(t => t.Name == "investigation_update");
         await tool.InvokeAsync(Check(), CancellationToken.None);
         await evidence.CaptureAsync(members[0], "read", "{}", "Observed gamma missing", 16000, CancellationToken.None);
@@ -41,7 +90,7 @@ public sealed class AgentInvestigationTests
         var evidence = new AgentEvidenceStore((_, _) => Task.CompletedTask);
         AgentDefinition[] members = [new() { Id = "reader" }, new() { Id = "lead" }];
         var invalidations = 0;
-        var board = new AgentInvestigation(members, evidence, (_, _) => Task.CompletedTask, s => s, () => invalidations++);
+        var board = new AgentInvestigation(members, evidence, (_, _) => Task.CompletedTask, s => s, _ => invalidations++);
         await evidence.CaptureAsync(members[0], "read", "{}", "Original", 16000, CancellationToken.None);
         var update = board.Tools("lead").Single(t => t.Name == "investigation_update");
         var check = JsonSerializer.Deserialize<Dictionary<string, object>>(Check("resolved", ["ev-00001"]).GetRawText())!;
@@ -61,7 +110,7 @@ public sealed class AgentInvestigationTests
         var events = new List<AgentProgress>();
         var store = new AgentEvidenceStore((_, _) => Task.CompletedTask);
         var board = new AgentInvestigation([new() { Id = "reader" }], store,
-            (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s.Replace("SECRET", "[redacted]"), () => { });
+            (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s.Replace("SECRET", "[redacted]"), _ => { });
         var tool = board.Tools("reader").Single(t => t.Name == "investigation_update");
         var fields = JsonSerializer.Deserialize<Dictionary<string, object>>(Check().GetRawText())!;
         fields["question"] = "Inspect SECRET";
@@ -103,7 +152,7 @@ public sealed class AgentInvestigationTests
         var revisions = 0;
         var evidence = new AgentEvidenceStore((e, _) => { events.Add(e); return Task.CompletedTask; });
         AgentDefinition[] members = [new() { Id = "lead" }, new() { Id = "reader" }];
-        var board = new AgentInvestigation(members, evidence, (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s, () => revisions++);
+        var board = new AgentInvestigation(members, evidence, (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s, _ => revisions++);
         var update = board.Tools("reader").Single(t => t.Name == "investigation_update");
         await update.InvokeAsync(Check(), CancellationToken.None);
         Assert.Contains("Compare all entries", board.Blockers);
@@ -129,7 +178,7 @@ public sealed class AgentInvestigationTests
         var fail = false;
         var evidence = new AgentEvidenceStore((_, _) => Task.CompletedTask);
         var board = new AgentInvestigation([new() { Id = "reader" }], evidence,
-            (_, _) => fail ? Task.FromException(new IOException("journal unavailable")) : Task.CompletedTask, s => s, () => { });
+            (_, _) => fail ? Task.FromException(new IOException("journal unavailable")) : Task.CompletedTask, s => s, _ => { });
         var update = board.Tools("reader").Single(t => t.Name == "investigation_update");
         await update.InvokeAsync(Check(), CancellationToken.None);
         await Assert.ThrowsAsync<ArgumentException>(() => update.InvokeAsync(Check("blocked"), CancellationToken.None));

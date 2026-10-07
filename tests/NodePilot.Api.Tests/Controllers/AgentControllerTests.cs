@@ -27,7 +27,7 @@ public sealed class AgentControllerTests
     {
         await using var db = TestDbFactory.Create();
         var execution = await Seed(db);
-        var journal = new AgentRunJournal(db, Mock.Of<IExecutionNotifier>(), new OutputRedactor(null), NullLogger<AgentRunJournal>.Instance);
+        var journal = new AgentRunJournal(new AgentRunDatabase(db), Mock.Of<IExecutionNotifier>(), new OutputRedactor(null), NullLogger<AgentRunJournal>.Instance);
         await journal.StartAsync(new StepExecutionContext { WorkflowExecutionId = execution.Id, StepId = "agent" }, TestContext.Current.CancellationToken);
         await journal.AppendAsync(new AgentProgress("report_draft", "Earlier finding; password=do-not-expose", "lead"), TestContext.Current.CancellationToken);
         // The draft is durable before the final model call begins, including if the process dies.
@@ -140,7 +140,7 @@ public sealed class AgentControllerTests
                 seen.Add(notification);
                 if (notification.Sequence == 2) throw new IOException("Disconnected subscriber");
             });
-        var journal = new AgentRunJournal(db, notifier.Object, new OutputRedactor(null), NullLogger<AgentRunJournal>.Instance);
+        var journal = new AgentRunJournal(new AgentRunDatabase(db), notifier.Object, new OutputRedactor(null), NullLogger<AgentRunJournal>.Instance);
         await journal.StartAsync(new StepExecutionContext { WorkflowExecutionId = execution.Id, StepId = "agent" }, TestContext.Current.CancellationToken);
         await journal.AppendAsync(new AgentProgress("tool_completed", "password=do-not-expose", "researcher", "files_read"), TestContext.Current.CancellationToken);
         var budget = new AgentBudget(20, 40, 0); budget.TakeModelCall(); budget.TakeToolCall();

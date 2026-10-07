@@ -5,12 +5,17 @@ This reference describes the configuration and outputs of every activity type, f
 ## AI Agent / AI Agent Team
 
 `aiAgent` performs a task through repeated model and tool calls. `aiAgentTeam` contains
-one supervisor and sequential specialists with separate sessions. Only the outer team
+one supervisor and specialists with separate sessions and bounded parallel assignments. Only the outer team
 is a workflow step; click a visible member to configure its role, instructions and tools.
 `needs_input` from a specialist goes to the supervisor, not to a user dialogue.
 
 - **Config:** `task`, `agent` (individual) or `members` (team), `resultFormat` (`text`/`json`),
-  `resultSchema`, `maxModelCalls`, `maxToolCalls`, `maxDelegations`, `timeoutSeconds`.
+  `resultSchema`, `maxModelCalls`, `maxToolCalls`, `maxDelegations`, `maxParallelMembers`, `timeoutSeconds`.
+  `maxParallelMembers` bounds each delegation batch alongside the administrator ceiling
+  `Agents:TeamMaxParallelMembers` (default 3) and member count; 1 keeps work sequential.
+  Independent specialists may work together. Reviewers follow specialist work and never
+  share a batch with specialists. Live team pointers identify new peer evidence and
+  register updates; they never replace originals or satisfy review evidence requirements.
   Each agent/member has a stable `id`, free `role`, `instructions`, optional `model`,
   `tools`, `skillIds` and `useServiceIdentity`. Team members also have `targetMachineId`
   and `credentialId`; individual agents use the usual node target/credential fields.
@@ -26,6 +31,8 @@ is a workflow step; click a visible member to configure its role, instructions a
   stdio and Streamable HTTP. Settings → AI agents manages servers, immutable ZIP skill
   versions and runtime ceilings. Skills use root `SKILL.md` with YAML name/description,
   resources and optional scripts. A script needs the corresponding selected shell tool.
+  CMD/Bash scripts execute the checked canonical commands, not package-local command
+  replacements. PowerShell retains original script bytes and target signature checks.
 - **Read-only checks:** shells and skill scripts accept a checked subset of read commands.
   HTTP needs no URL whitelist, rejects bodies/redirects and retains network protection.
   MCP read approvals are administrator-managed and pinned to server/tool revisions; remote
@@ -37,7 +44,14 @@ is a workflow step; click a visible member to configure its role, instructions a
 - **Defaults:** individual 20 model calls / 40 tool calls / 20 minutes; team 100 / 500 /
   20 delegations / 30 minutes, shared. Two concurrent runs per server process. A zero
   timeout uses the default. Timeout includes queue time, tools and child workflows.
-  Automatic retries are rejected. Stop/restart does not undo completed side effects.
+  Exhausting the investigation model budget still uses the reserved tool-free report
+  call after started members finish; unresolved members/reviews remain limitations.
+  This does not increase budgets or turn technical failures into successful reports.
+  Workflow activity retries are rejected. A transient model timeout, HTTP
+  408/429/500/502/503/504 or identified connection interruption may retry once after one second within the same budgets,
+  without replaying tools. Authentication, malformed responses and tool failures are
+  not retried. Persistent failure retains available preliminary findings and journal
+  evidence without claiming completion. Stop/restart does not undo completed side effects.
 - **Logs:** `files_search` filters on the target; `logs_collect` transfers blocks into
   temporary shared storage, at most 250 MB per run/team. `logs_search` returns bounded
   source excerpts. Raw files are removed; evidence used in tool results remains in history.

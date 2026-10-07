@@ -10,19 +10,19 @@ using NodePilot.Engine.PowerShell;
 
 namespace NodePilot.Engine.Agents;
 
-public sealed class AgentTargetFactory(NodePilotDbContext db, ICredentialStore credentials,
+public sealed class AgentTargetFactory(AgentRunDatabase database, ICredentialStore credentials,
     IRemoteSessionFactory sessions, PowerShellEngineFactory engines, IOptionsMonitor<AgentOptions> options,
     ILogger<AgentTargetFactory> logger)
 {
     public async Task<AgentTarget> CreateAsync(AgentDefinition definition, StepExecutionContext context, CancellationToken ct)
     {
         var machine = definition.TargetMachineId.HasValue
-            ? await db.ManagedMachines.AsNoTracking().SingleOrDefaultAsync(m => m.Id == definition.TargetMachineId.Value, ct)
+            ? await database.UseAsync(db => db.ManagedMachines.AsNoTracking().SingleOrDefaultAsync(m => m.Id == definition.TargetMachineId.Value, ct), ct)
             : context.ResolvedMachine;
         if (definition.TargetMachineId.HasValue && machine is null)
             throw new ArgumentException("The configured agent target machine was not found.");
         if (machine is null && context.TargetMachineId.HasValue)
-            machine = await db.ManagedMachines.AsNoTracking().SingleOrDefaultAsync(m => m.Id == context.TargetMachineId.Value, ct);
+            machine = await database.UseAsync(db => db.ManagedMachines.AsNoTracking().SingleOrDefaultAsync(m => m.Id == context.TargetMachineId.Value, ct), ct);
         if (machine is null && (definition.TargetMachineId.HasValue || context.TargetMachineId.HasValue))
             throw new ArgumentException("The configured agent target machine was not found.");
         machine ??= new ManagedMachine { Hostname = "localhost", Name = "NodePilot server" };
@@ -36,7 +36,7 @@ public sealed class AgentTargetFactory(NodePilotDbContext db, ICredentialStore c
         else
         {
             if (credentialId is null) throw new UnauthorizedAccessException("Select an agent credential or explicitly enable service identity.");
-            credential = await credentials.GetAsync(credentialId.Value, ct)
+            credential = await database.UseAsync(_ => credentials.GetAsync(credentialId.Value, ct), ct)
                 ?? throw new UnauthorizedAccessException("The configured agent credential is unavailable.");
         }
         return new AgentTarget(machine, credential, definition.UseServiceIdentity, sessions, engines, options, context.StepId, logger);

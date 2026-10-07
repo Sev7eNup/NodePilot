@@ -79,7 +79,7 @@ ContosoSync and the path are example values that need replacing with details fro
 
 Agents currently operate under a read-only execution policy. NodePilot checks supported operations and blocks disallowed access, while a published agent works independently within those boundaries. Individual tool calls do not require confirmation. A repair proposed in the report remains a proposal. The agent has not thereby performed the change it describes.
 
-Where several responsibilities need to contribute, “AI Agent Team” can divide the investigation. A team lead might assign analysis to a specialist and then have a reviewer assess the findings. Specialists work sequentially, and the journal makes individual assignments, tool calls, and results traceable.
+Where several responsibilities need to contribute, “AI Agent Team” can divide the investigation. The lead can assign independent questions to specialists in parallel within configured limits, then request review. Running members receive pointers to new peer evidence and investigation questions; these pointers never replace original evidence. The journal makes individual assignments, tool calls, and results traceable.
 
 For subsequent processing, NodePilot distinguishes technical completion from assessment of the task's outcome. Successful completion of an Activity does not establish that the investigation is complete. Later steps can therefore consider the `outcome` value as well as execution status. Even `completed` represents an assessment of task completion rather than proof that every model statement is correct.
 

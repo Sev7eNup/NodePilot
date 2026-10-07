@@ -11,7 +11,7 @@ internal static class AgentProcessScript
         var shellCommand = shell switch
         {
             "powershell" => "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); " + command,
-            "cmd" => "@chcp 65001 >nul\r\n" + command,
+            "cmd" => "@\"%SystemRoot%\\System32\\chcp.com\" 65001 >nul\r\n" + command,
             _ => command
         };
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(shellCommand));

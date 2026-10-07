@@ -5,6 +5,17 @@ namespace NodePilot.Ai.Tests;
 
 public sealed class DelegationResponseTests
 {
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("[42]")]
+    [InlineData("[\"\"]")]
+    [InlineData("null")]
+    public void InvalidDependenciesCannotBeSilentlyTreatedAsApproval(string dependencies)
+    {
+        Assert.Throws<System.Text.Json.JsonException>(() => DelegationResponse.Parse(
+            "{\"status\":\"completed\",\"content\":\"Checked\",\"verdict\":\"approved\",\"openChecks\":[],\"reviewDependencies\":" + dependencies + "}", true));
+    }
+
     [Fact]
     public void NeedsInputPreservesStructuredChecksBeforeLongNarrative()
     {

@@ -15,7 +15,12 @@ public sealed record AgentSkillGuidance(Guid Id, string Name, string Version, st
 public sealed record AgentRunResult(string Text, int ModelCalls, int ToolCalls, int Delegations,
     long? InputTokens, long? OutputTokens, string Outcome = "unassessed", string? OutcomeReason = null);
 
-public sealed class AgentBudgetExceededException(string message) : InvalidOperationException(message);
+public enum AgentBudgetLimit { Other, ModelCalls }
+
+public sealed class AgentBudgetExceededException(string message, AgentBudgetLimit limit = AgentBudgetLimit.Other) : InvalidOperationException(message)
+{
+    public AgentBudgetLimit Limit { get; } = limit;
+}
 
 public sealed class AgentBudget
 {
@@ -24,12 +29,16 @@ public sealed class AgentBudget
     public int MaxModelCalls { get; }
     public int MaxToolCalls { get; }
     public int MaxDelegations { get; }
-    public int ModelCalls { get; private set; }
-    public int ToolCalls { get; private set; }
-    public int Delegations { get; private set; }
-    public long? InputTokens { get; private set; }
-    public long? OutputTokens { get; private set; }
-    public int RemainingModelCalls => MaxModelCalls - ModelCalls - _reservedModelCalls;
+    private int _modelCalls, _toolCalls, _delegations;
+    private long? _inputTokens, _outputTokens;
+    public int ModelCalls { get { lock (_sync) return _modelCalls; } }
+    public int ToolCalls { get { lock (_sync) return _toolCalls; } }
+    public int Delegations { get { lock (_sync) return _delegations; } }
+    public long? InputTokens { get { lock (_sync) return _inputTokens; } }
+    public long? OutputTokens { get { lock (_sync) return _outputTokens; } }
+    public int RemainingModelCalls { get { lock (_sync) return MaxModelCalls - _modelCalls - _reservedModelCalls; } }
+    public sealed record Usage(int ModelCalls, int ToolCalls, int Delegations, long? InputTokens, long? OutputTokens);
+    public Usage Snapshot() { lock (_sync) return new(_modelCalls, _toolCalls, _delegations, _inputTokens, _outputTokens); }
     public bool LastModelCall => RemainingModelCalls <= 1;
     public void ReserveFinalReport() { lock (_sync) _reservedModelCalls = MaxModelCalls > 1 ? 1 : 0; }
     public void BeginFinalReport() { lock (_sync) _reservedModelCalls = 0; }
@@ -41,12 +50,12 @@ public sealed class AgentBudget
         MaxDelegations = delegations;
     }
 
-    public void TakeModelCall()
+    public int TakeModelCall()
     {
         lock (_sync)
         {
-            if (RemainingModelCalls <= 0) throw new AgentBudgetExceededException("Model call budget exhausted (the final-report reservation cannot be used for further investigation).");
-            ModelCalls++;
+            if (RemainingModelCalls <= 0) throw new AgentBudgetExceededException("Model call budget exhausted (the final-report reservation cannot be used for further investigation).", AgentBudgetLimit.ModelCalls);
+            return ++_modelCalls;
         }
     }
 
@@ -55,16 +64,18 @@ public sealed class AgentBudget
         lock (_sync)
         {
             if (ToolCalls >= MaxToolCalls) throw new AgentBudgetExceededException("Tool call budget exhausted.");
-            ToolCalls++;
+            _toolCalls++;
         }
     }
 
-    public void TakeDelegation()
+    public bool TryTakeModelRetry(bool reserveAnswer, out int callNumber)
     {
         lock (_sync)
         {
-            if (Delegations >= MaxDelegations) throw new AgentBudgetExceededException("Delegation budget exhausted.");
-            Delegations++;
+            callNumber = 0;
+            if (RemainingModelCalls <= (reserveAnswer ? 1 : 0)) return false;
+            callNumber = ++_modelCalls;
+            return true;
         }
     }
 
@@ -72,8 +83,20 @@ public sealed class AgentBudget
     {
         lock (_sync)
         {
-            if (input.HasValue) InputTokens = (InputTokens ?? 0) + input;
-            if (output.HasValue) OutputTokens = (OutputTokens ?? 0) + output;
+            if (input.HasValue) _inputTokens = (_inputTokens ?? 0) + input;
+            if (output.HasValue) _outputTokens = (_outputTokens ?? 0) + output;
+        }
+    }
+
+    public void TakeDelegationBatch(int assignments, int started)
+    {
+        lock (_sync)
+        {
+            if (assignments < 1 || started < 0 || started > assignments) throw new ArgumentOutOfRangeException(nameof(assignments));
+            if (assignments > MaxToolCalls - _toolCalls) throw new AgentBudgetExceededException("Tool call budget exhausted.");
+            if (started > MaxDelegations - _delegations) throw new AgentBudgetExceededException("Delegation budget exhausted.");
+            _toolCalls += assignments;
+            _delegations += started;
         }
     }
 }

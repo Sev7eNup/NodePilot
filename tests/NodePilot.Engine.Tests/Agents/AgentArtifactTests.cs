@@ -8,6 +8,23 @@ namespace NodePilot.Engine.Tests.Agents;
 public sealed class AgentArtifactTests
 {
     [Fact]
+    public async Task ParallelTransfersReserveQuotaBeforeReadingAndReleaseFailedReservation()
+    {
+        await using var store = new AgentArtifactStore(Guid.NewGuid());
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = store.CollectAsync("first", AgentOptions.MaxCollectedBytes, async (_, _, _) => {
+            await release.Task;
+            throw new IOException("transfer failed");
+        }, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<AgentBudgetExceededException>(() => store.CollectAsync("second", 1,
+            (_, _, _) => throw new InvalidOperationException("Must reject before reading"), TestContext.Current.CancellationToken));
+        release.SetResult();
+        await Assert.ThrowsAsync<IOException>(() => first);
+        var next = await store.CollectAsync("next", 1, (_, _, _) => Task.FromResult(new byte[1]), TestContext.Current.CancellationToken);
+        Assert.Single(store.Artifacts);
+        Assert.Equal(1, next.Length);
+    }
+    [Fact]
     public void Workspaces_AreStableAcrossRestart_AndIsolatedBetweenInstallations()
     {
         var apiRoot = AgentArtifactStore.GetBaseDirectory(@"C:\NodePilot\api");

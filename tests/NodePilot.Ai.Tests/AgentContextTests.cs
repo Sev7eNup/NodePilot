@@ -10,6 +10,33 @@ namespace NodePilot.Ai.Tests;
 public sealed class AgentContextTests
 {
     [Fact]
+    public async Task BoardDeliversPeerEvidenceOnceWithoutMutatingHistoryOrToolFreeCalls()
+    {
+        var board = new TeamBoard();
+        board.BeginAssignment("reader");
+        var store = new AgentEvidenceStore((_, _) => Task.CompletedTask, board);
+        await store.CaptureAsync(new() { Id = "peer" }, "read", "source", "Original peer evidence", 16000, TestContext.Current.CancellationToken);
+        var requests = new List<LlmRequest>();
+        var events = new List<AgentProgress>();
+        var adapter = new LlmChatClientAdapter(Client(r => { requests.Add(r); return new("Done", "test"); }),
+            new(10, 10, 0), new(), (e, _) => { events.Add(e); return Task.CompletedTask; }, "reader", board: board);
+        var history = new List<ChatMessage> { new(ChatRole.User, "Read"),
+            new(ChatRole.Assistant, [new FunctionCallContent("read1", "read", new Dictionary<string, object?>())]),
+            new(ChatRole.Tool, [new FunctionResultContent("read1", "Own result")]) };
+        var options = new ChatOptions { Tools = [AIFunctionFactory.Create(() => "read", "read")] };
+        await adapter.GetResponseAsync(history, options, TestContext.Current.CancellationToken);
+        Assert.Contains("[host_team_board]", requests[0].Conversation!.Last().Content);
+        Assert.Contains("ev-00001", requests[0].Conversation!.Last().Content);
+        Assert.Equal("Own result", history[^1].Contents.OfType<FunctionResultContent>().Single().Result);
+        await adapter.GetResponseAsync(history, options, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain("host_team_board", requests[1].Conversation!.Last().Content);
+        await store.CaptureAsync(new() { Id = "peer" }, "read", "next", "Second", 16000, TestContext.Current.CancellationToken);
+        await adapter.GetResponseAsync(history, new ChatOptions { ToolMode = ChatToolMode.None }, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain("host_team_board", requests[2].Conversation!.Last().Content);
+        Assert.Single(events, e => e.Kind == "team_board");
+        Assert.Contains("ev-00002", board.TakeDelta("reader", 1000)!.Ids);
+    }
+    [Fact]
     public async Task InvocationPreviewAndPagingStayWithinSmallOutputBudget()
     {
         var store = new AgentEvidenceStore((_, _) => Task.CompletedTask);

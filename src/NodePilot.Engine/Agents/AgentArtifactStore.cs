@@ -10,7 +10,8 @@ public sealed class AgentArtifactStore : IAsyncDisposable
     private readonly string _root;
     private readonly Dictionary<string, Artifact> _artifacts = new(StringComparer.Ordinal);
     private long _bytes;
-    public IReadOnlyCollection<Artifact> Artifacts => _artifacts.Values;
+    private readonly object _sync = new();
+    public IReadOnlyCollection<Artifact> Artifacts { get { lock (_sync) return _artifacts.Values.ToArray(); } }
     public string Root => _root;
     // Keep writable storage outside the installation, but isolate installations and test hosts.
     public static string BaseDirectory => GetBaseDirectory(AppContext.BaseDirectory);
@@ -32,8 +33,12 @@ public sealed class AgentArtifactStore : IAsyncDisposable
         Func<long, int, CancellationToken, Task<byte[]>> read, CancellationToken ct,
         Func<CancellationToken, Task<byte[]>>? verifySourceHash = null)
     {
-        if (length < 0 || length > AgentOptions.MaxCollectedBytes - _bytes)
-            throw new AgentBudgetExceededException("Collected logs exceed the shared 250 MB limit.");
+        lock (_sync)
+        {
+            if (length < 0 || length > AgentOptions.MaxCollectedBytes - _bytes)
+                throw new AgentBudgetExceededException("Collected logs exceed the shared 250 MB limit.");
+            _bytes += length;
+        }
         var id = Guid.NewGuid().ToString("N");
         var path = Path.Combine(_root, id + ".log");
         try
@@ -61,16 +66,17 @@ public sealed class AgentArtifactStore : IAsyncDisposable
                     throw new IOException("Source changed during collection. No artifact was kept; collect the file again.");
             }
             var artifact = new Artifact(id, source, length, path);
-            _artifacts.Add(id, artifact);
-            _bytes += length;
+            lock (_sync) _artifacts.Add(id, artifact);
             return artifact;
         }
-        catch { File.Delete(path); throw; }
+        catch { lock (_sync) _bytes -= length; File.Delete(path); throw; }
     }
 
     public async Task<string> SearchAsync(string id, string query, int maxMatches, CancellationToken ct)
     {
-        if (!_artifacts.TryGetValue(id, out var artifact)) throw new ArgumentException("Unknown collected file.");
+        Artifact artifact;
+        lock (_sync)
+            artifact = _artifacts.GetValueOrDefault(id) ?? throw new ArgumentException("Unknown collected file.");
         if (query.Length is < 1 or > 1024) throw new ArgumentException("Search text must contain 1–1024 characters.");
         maxMatches = Math.Clamp(maxMatches, 1, 100);
         using var reader = new StreamReader(artifact.LocalPath, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 8192);

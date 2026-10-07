@@ -14,6 +14,7 @@ public sealed class AgentSettingsDto : IValidatableObject
     [Range(1, 200)] public int TeamModelCalls { get; set; } = 100;
     [Range(1, 500)] public int TeamToolCalls { get; set; } = 500;
     [Range(1, 100)] public int TeamDelegations { get; set; } = 20;
+    [Range(1, 11)] public int TeamMaxParallelMembers { get; set; } = 3;
     [Range(1, 7200)] public int TeamTimeoutSeconds { get; set; } = 1800;
     [Range(1, 3600)] public int ModelCallTimeoutSeconds { get; set; } = 180;
     [Range(256, 250_000)] public int ModelMaxOutputTokens { get; set; } = 250_000;

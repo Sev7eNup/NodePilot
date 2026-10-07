@@ -306,9 +306,9 @@ public sealed class AgentPermissionPolicyTests
         var sessions = new Mock<IRemoteSessionFactory>(MockBehavior.Strict);
         var engine = new Mock<IPowerShellExecutionEngine>(MockBehavior.Strict);
         var monitor = new Mock<IOptionsMonitor<AgentOptions>>(); monitor.SetupGet(x => x.CurrentValue).Returns(new AgentOptions { AllowServiceIdentity = true });
-        var factory = new AgentTargetFactory(db, Mock.Of<ICredentialStore>(), sessions.Object,
+        var factory = new AgentTargetFactory(new AgentRunDatabase(db), Mock.Of<ICredentialStore>(), sessions.Object,
             new PowerShellEngineFactory(engine.Object, engine.Object, engine.Object), monitor.Object, NullLogger<AgentTargetFactory>.Instance);
-        var host = new AgentToolHost(factory, null!, db, null!, null!, new AgentExternalReadPolicy(monitor.Object));
+        var host = new AgentToolHost(factory, null!, new AgentRunDatabase(db), null!, null!, new AgentExternalReadPolicy(monitor.Object));
         await using var session = await host.OpenAsync(new AgentDefinition { UseServiceIdentity = true, Tools = [new() { Name = name, AllowedPaths = ["C:\\"] }] },
             new StepExecutionContext { ResolvedMachine = new ManagedMachine { Hostname = "test-target" } }, Guid.NewGuid(), null!, null!, TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => session.Tools.Single().InvokeAsync(JsonDocument.Parse(input).RootElement, TestContext.Current.CancellationToken));
@@ -319,7 +319,7 @@ public sealed class AgentPermissionPolicyTests
     public async Task McpWithoutAReadContractIsRejectedBeforeConnecting()
     {
         await using var db = TestDbFactory.Create();
-        var host = new AgentToolHost(null!, null!, db, null!, null!, null!);
+        var host = new AgentToolHost(null!, null!, new AgentRunDatabase(db), null!, null!, null!);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => host.OpenAsync(new AgentDefinition { Tools = [new() { Name = "mcp", McpServerId = Guid.NewGuid(), McpToolName = "claimsReadOnly" }] },
             new StepExecutionContext(), Guid.NewGuid(), null!, null!, TestContext.Current.CancellationToken));
     }
@@ -336,7 +336,7 @@ public sealed class AgentPermissionPolicyTests
         var sessions = new Mock<IRemoteSessionFactory>(MockBehavior.Strict);
         var monitor = new Mock<IOptionsMonitor<AgentOptions>>(); monitor.SetupGet(x => x.CurrentValue).Returns(new AgentOptions());
         await using var target = new AgentTarget(new ManagedMachine { Hostname = "test-target" }, new Credential(), false, sessions.Object, null!, monitor.Object, "test", NullLogger.Instance);
-        var tools = await AgentSkillTools.CreateAsync(db, new AgentDefinition { SkillIds = [id], Tools = [new() { Name = "powershell" }] }, target, Guid.NewGuid(), TestContext.Current.CancellationToken);
+        var tools = await AgentSkillTools.CreateAsync(new AgentRunDatabase(db), new AgentDefinition { SkillIds = [id], Tools = [new() { Name = "powershell" }] }, target, Guid.NewGuid(), TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => tools.Single(x => x.Name == "run_skill_script").InvokeAsync(JsonSerializer.SerializeToElement(new { skillId = id, path = "scripts/check.ps1" }), TestContext.Current.CancellationToken));
         Assert.Equal("", target.WorkingRoot);
         sessions.VerifyNoOtherCalls();

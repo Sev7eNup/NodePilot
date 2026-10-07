@@ -15,6 +15,21 @@ namespace NodePilot.Engine.Tests.Agents;
 public sealed class AgentGateTests
 {
     [Fact]
+    public async Task ConcurrentReleasedSections_OnOneLease_AreSerialized()
+    {
+        using var gate = new AgentExecutionGate(Microsoft.Extensions.Options.Options.Create(new AgentOptions { MaxConcurrentRuns = 1 }));
+        using var lease = await gate.AcquireAsync(TestContext.Current.CancellationToken);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = 0;
+        var first = lease.WhileReleasedAsync(async () => { Interlocked.Increment(ref entered); await release.Task; return true; }, TestContext.Current.CancellationToken);
+        var second = lease.WhileReleasedAsync(() => { Interlocked.Increment(ref entered); return Task.FromResult(true); }, TestContext.Current.CancellationToken);
+        Assert.Equal(1, entered);
+        Assert.False(second.IsCompleted);
+        release.SetResult();
+        await Task.WhenAll(first, second);
+        Assert.Equal(2, entered);
+    }
+    [Fact]
     public async Task TwoParentsAwaitChildAgents_ReleaseBothGates_WithoutDeadlock()
     {
         WorkflowScheduler.ResetForTests(); WorkflowScheduler.Configure(2);

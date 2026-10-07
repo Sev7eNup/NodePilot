@@ -8,6 +8,19 @@ namespace NodePilot.Engine.Tests.Agents;
 public sealed class AgentSkillExecutionTests
 {
     [Theory]
+    [InlineData("echo hello")]
+    [InlineData("echo \"hello world\"")]
+    [InlineData("echo hello   world")]
+    public async Task PreparedCmdSkill_PreservesLiteralEchoOutput(string source)
+    {
+        using var original = JsonDocument.Parse(await AgentShellTests.Execute(AgentProcessScript.Build("cmd", source, null, null)));
+        using var prepared = JsonDocument.Parse(await AgentShellTests.Execute(AgentProcessScript.Build("cmd",
+            AgentPermissionPolicy.PrepareSkillScript("cmd", source, []), null, null)));
+        Assert.Equal(original.RootElement.GetProperty("stdout").GetString(), prepared.RootElement.GetProperty("stdout").GetString());
+        Assert.Equal(0, prepared.RootElement.GetProperty("exitCode").GetInt32());
+    }
+
+    [Theory]
     [InlineData(0, false, null)]
     [InlineData(1, false, "process_failed")]
     [InlineData(null, false, "process_failed")]

@@ -79,7 +79,7 @@ public static class SettingsSectionAdapters
                 Descriptor("Agents"),
                 ["Agents:Enabled", "Agents:AllowServiceIdentity", "Agents:MaxConcurrentRuns", "Agents:SingleModelCalls",
                     "Agents:SingleToolCalls", "Agents:SingleTimeoutSeconds", "Agents:TeamModelCalls", "Agents:TeamToolCalls",
-                    "Agents:TeamDelegations", "Agents:TeamTimeoutSeconds", "Agents:MaxContextCharacters",
+                    "Agents:TeamDelegations", "Agents:TeamMaxParallelMembers", "Agents:TeamTimeoutSeconds", "Agents:MaxContextCharacters",
                     "Agents:ModelCallTimeoutSeconds", "Agents:ModelMaxOutputTokens",
                     "Agents:MaxToolOutputCharacters", "Agents:MaxResultCharacters", "Agents:ReadOnlyMcpTools"],
                 () => configRoot.GetSection("Agents").Get<AgentSettingsDto>() ?? new(),

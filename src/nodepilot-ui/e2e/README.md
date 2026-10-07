@@ -7,6 +7,10 @@ UI subset**. Backend-only and environment-bound scenarios are covered elsewhere 
 
 ## Running
 
+Agent budget finalization and packaged CMD/Bash command binding are backend
+regressions in `AgentRuntimeTests` and `AgentSkillTests`; mocked browser tests do
+not establish those guarantees. See the backend cases in the E2E catalogue.
+
 ```bash
 npm run test:e2e          # real config: builds the SPA, serves via vite preview :4173
 # fast local iteration against a running dev server (:5173), no build:
@@ -77,11 +81,11 @@ alongside `dotnet test` and `npm run test:run`.
 
 ## Coverage map (E2ETests.md Teil → spec)
 
-`ai-agents.spec.ts` additionally covers visible team-member selection, separate tools,
+`ai-agents.spec.ts` additionally covers the admin parallel-member limit, visible team-member selection, separate tools,
 and save/reopen without creating extra workflow steps. Live channel delivery remains
 covered through journal/reconnect unit and API tests, since this harness mocks SignalR.
 `agent-run-trace.spec.ts` covers history drill-down, the large communication view,
-member snapshots, assignments/rationales, return questions, tool evidence, escaped
+member snapshots, interleaved parallel assignments and batch badges, assignments/rationales, return questions, tool evidence, escaped
 untrusted content, REST pagination and full support export despite a member filter.
 
 Not in the map (no Teil): `_all-screens.spec.ts` — the screenshot-capture spec that renders

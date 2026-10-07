@@ -7,6 +7,17 @@ namespace NodePilot.Ai.Tests;
 
 public sealed class AgentConfigurationTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(2)]
+    public void ParallelLimitMustBePositiveAndFitMembers(int limit)
+    {
+        var config = new AgentActivityConfiguration { Task = "Check", MaxParallelMembers = limit,
+            Members = [new() { Id = "lead", IsSupervisor = true }, new() { Id = "worker" }] };
+        Assert.Throws<ArgumentException>(() => AgentConfiguration.Validate(config, true));
+        AgentConfiguration.Validate(config with { MaxParallelMembers = 1 }, true);
+    }
     [Fact]
     public void ReviewerIsAnOptionalExplicitNonSupervisorFunction()
     {

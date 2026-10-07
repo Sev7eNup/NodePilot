@@ -1,6 +1,6 @@
 # ADR 0016: General AI agent activities and sequential teams
 
-Date: 2026-09-18. Status: Accepted.
+Date: 2026-09-18. Status: Accepted; sequential-team portions superseded by [ADR 0017](0017-parallel-team-delegation.md).
 
 ## Decision
 
@@ -23,7 +23,7 @@ projection of configuration, never separate graph nodes, workflow edges or varia
 Teams share a bounded investigation register through host-provided read/update
 tools. Entries record question, owner, hypothesis, original evidence and
 counterevidence references, next check, status and conclusion/limitation. An open
-entry prevents completion; changes invalidate prior reviews. Resolved entries
+entry prevents completion; changes invalidate dependent reviews. Resolved entries
 require existing run evidence IDs. Blocked entries require an explicit limitation.
 Entries remain model-authored claims: the host validates structure and references,
 not the semantic truth of a conclusion or the completeness of registered questions.
@@ -35,7 +35,10 @@ is a reviewer response, not another rewrite of the investigation conclusion.
 No new permissions, external tools, technical roles or database tables are added.
 
 Final result synthesis is a separate tool-free call within the shared budget; one
-call is reserved for it. The host passes bounded draft/findings/check context and
+call is reserved for it. The host handles investigation model-call exhaustion separately from other resource/technical
+errors: started parallel members finish, unfinished responses remain obligations,
+and the reserved synthesis runs without replaying tools or raising the budget.
+The host passes bounded draft/findings/check context and
 validates a result envelope separately from the user's output schema. Persisted
 `run_conclusion` metadata and output parameters expose task outcome
 (`completed`/`partial`/`blocked`) independently of technical run success. Missing or
@@ -81,6 +84,8 @@ with explicit writes later, while retaining the existing shell tools.
 A single Engine permission policy now accepts a limited parsed read language, checks
 parameters and CIM classes, and rejects dynamic execution. Native shell commands execute
 a canonical form; packaged scripts are checked with their bound arguments before upload.
+CMD/Bash packages execute the checked canonical command form, preventing package-local
+command shadowing. PowerShell retains the verified original script and signature policy.
 File writes and unsupported operations fail closed. HTTP uses GET/HEAD without bodies or
 redirects and existing network protection, with no mandatory URL whitelist. MCP uses explicit
 administrator approvals pinned to server revisions and tool contracts; this requires trusted
@@ -98,13 +103,22 @@ execution policy is not bypassed. Linux, SSH and WSL are outside this release.
 Team members may opt into a technical reviewer function with `isReviewer`, separate
 from the free role label and mutually exclusive with supervisor. Existing definitions
 default to no required reviewer. The host tracks unresolved needs_input/failed
-responses and completed reviews of the current work revision. Specialist responses
-and supervisor tool use invalidate older reviews. Correction stops after
+responses and completed reviews of the current work revision. Reviews may explicitly
+declare member/check source dependencies; changed sources invalidate dependent reviews.
+Whole-team reviews (no declared dependencies) and new shared questions retain global
+invalidation. Assignment snapshots prevent approval of concurrently changed work.
+Dependency declarations do not narrow the original task or prove semantic independence.
+Correction stops after
 two consecutive corrective supervisor turns without new distinct observations or
 fewer outstanding obligations within the existing budgets; new progress permits
-further rounds. Unresolved review then fails the step. A tool-backed team's candidate
-answer gets one budget-reserved completion check for available discriminating reads;
-new work still requires fresh reviews. This enforces protocol completion, not semantic correctness.
+further rounds. Closing an open investigation check also counts as progress.
+Unresolved review or investigation proceeds to the reserved tool-free final report,
+which must retain the gaps and cannot receive a completed task assessment. Successful
+report delivery completes the step with a partial or blocked outcome. Material evidence
+gaps must be addressed before final review; after complete checks and approvals the host
+proceeds directly to final synthesis without another exploration round. Follow-up must
+identify which requested conclusion or remedy the next observation could change.
+This enforces protocol completion, not semantic correctness.
 New original observations from every member, including other reviewers, can support
 the objection owner's subsequent reassessment. The host deduplicates equal observations
 by target/tool/input/result across roles; recalling snapshots and summaries does not count.
@@ -121,7 +135,14 @@ Single-agent defaults are 20 model calls, 40 tool calls and 20 minutes. Team def
 are 100 model calls, 500 tool calls, 20 delegations and 30 minutes, shared by all members.
 Each model request is separately bounded by 180 seconds and 250,000 output tokens by
 default, configurable through Agent settings. Lower profile limits and the run deadline
-still apply. A model failure terminates the run through nested delegation without retry.
+still apply. A transient model request (timeout, HTTP 408/429/500/502/503/504,
+identified socket reset/abort or prematurely ended HTTP response) may be
+retried once after one cancellable second within the shared budgets. The adapter
+reuses the request and existing tool results without replaying actions. Retry admission
+atomically preserves reserved calls and an answer after working summaries/tool calls.
+TLS/authentication, DNS and refused connections remain terminal.
+Persistent or non-retryable failure terminates the run through nested delegation;
+available preliminary findings and journal evidence remain without claiming completion.
 Context compaction operates at the existing `IChatClient` adapter before every inner
 model call, not just at framework session entry. Complete exchanges are summarized
 into untrusted working notes; immutable redacted observations remain in the run journal.

@@ -5,13 +5,18 @@ Diese Referenz beschreibt Konfiguration und Ausgaben jedes Activity-Typs, von Po
 ## KI-Agent / KI-Agententeam
 
 `aiAgent` bearbeitet eine Aufgabe über mehrere Modell- und Werkzeugaufrufe.
-`aiAgentTeam` enthält einen Supervisor und sequenzielle Spezialisten mit eigenen Sitzungen.
+`aiAgentTeam` enthält einen Supervisor und Spezialisten mit eigenen Sitzungen und begrenzten parallelen Aufträgen.
 Nur das äußere Team ist ein Workflow-Step. Sichtbare Mitglieder lassen sich anklicken und
 mit eigenen Rollen, Anweisungen und Werkzeugen konfigurieren. `needs_input` geht an den
 Supervisor; während des Steps gibt es keine interaktive Benutzerunterhaltung.
 
 - **Config:** `task`, `agent` (Einzelagent) oder `members` (Team), `resultFormat` (`text`/`json`),
-  `resultSchema`, `maxModelCalls`, `maxToolCalls`, `maxDelegations`, `timeoutSeconds`.
+  `resultSchema`, `maxModelCalls`, `maxToolCalls`, `maxDelegations`, `maxParallelMembers`, `timeoutSeconds`.
+  `maxParallelMembers` begrenzt ein Delegationsbündel zusätzlich zum Admin-Limit
+  `Agents:TeamMaxParallelMembers` (Standard 3) und zur Mitgliederzahl; 1 bleibt sequenziell.
+  Unabhängige Spezialisten können zusammen arbeiten, Reviewer erst nach den Spezialisten
+  und nie im selben Bündel mit ihnen. Live-Teamhinweise zeigen neue fremde Belege und
+  Registereinträge; sie ersetzen keine Originalbelege und erfüllen keine Prüfpflicht.
   Agent/Mitglied: stabile `id`, freie `role`, `instructions`, optionales `model`,
   `tools`, `skillIds`, `useServiceIdentity`. Teammitglieder haben eigene `targetMachineId`
   und `credentialId`; Einzelagenten verwenden die üblichen Zielfelder des Nodes.
@@ -28,6 +33,8 @@ Supervisor; während des Steps gibt es keine interaktive Benutzerunterhaltung.
   Streamable HTTP. Einstellungen → KI-Agenten verwaltet Server, versionierte Skill-ZIPs
   und Laufzeitobergrenzen. Skills enthalten `SKILL.md` mit YAML-Name/Beschreibung,
   Ressourcen und optionalen Skripten. Skripte benötigen das passende freigegebene Shell-Tool.
+  CMD/Bash-Skripte führen die geprüfte kanonische Befehlsform aus, keine gleichnamigen
+  Paketdateien. PowerShell behält Originalbytes und Signaturprüfung auf dem Ziel bei.
 - **Leseprüfung:** Shells und Skill-Skripte erlauben einen geprüften Umfang an Lesebefehlen.
   HTTP benötigt keine URL-Whitelist, verbietet Bodies/Weiterleitungen und behält den Netzwerkschutz.
   MCP-Lesefreigaben sind administrativ an Server- und Werkzeugstände gebunden; externe Dienste
@@ -39,8 +46,16 @@ Supervisor; während des Steps gibt es keine interaktive Benutzerunterhaltung.
 - **Standardbudgets:** Einzelagent 20 Modellaufrufe / 40 Tools / 20 Minuten; Team 100 / 500 /
   20 Delegationen / 30 Minuten, gemeinsam gezählt. Zwei aktive Läufe pro Serverprozess.
   Timeout 0 verwendet den Standard. Warteschlange, Tools und untergeordnete Workflows zählen
-  zur Gesamtlaufzeit. Automatische Retries werden abgelehnt. Abbruch/Neustart macht bereits
-  ausgeführte Aktionen nicht rückgängig.
+  zur Gesamtlaufzeit. Wiederholungen der gesamten Workflow-Aktivität werden abgelehnt.
+  Bei erschöpftem Modellbudget der Untersuchung wird nach Ende gestarteter Mitglieder
+  der reservierte werkzeugfreie Bericht erzeugt; offene Mitglieder/Reviews bleiben
+  Einschränkungen. Budgets steigen dadurch nicht, technische Fehler bleiben Fehler.
+  Ein vorübergehender Modell-Timeout, HTTP 408/429/500/502/503/504 oder eindeutig erkannter Verbindungsabbruch darf nach einer
+  Sekunde einmal innerhalb derselben Budgets wiederholt werden, ohne Werkzeuge erneut
+  auszuführen. Authentifizierungsfehler, ungültige Antworten und Werkzeugfehler werden
+  nicht wiederholt. Bei dauerhaftem Fehler bleiben vorhandene vorläufige Befunde und
+  Journalbelege erhalten, ohne einen Abschluss vorzutäuschen. Abbruch/Neustart macht
+  bereits ausgeführte Aktionen nicht rückgängig.
 - **Logs:** `files_search` filtert auf dem Ziel, `logs_collect` überträgt Blöcke in eine
   temporäre gemeinsame Ablage, maximal 250 MB pro Lauf/Team. `logs_search` liefert begrenzte
   Quellenausschnitte. Rohdateien werden entfernt; verwendete Belege bleiben im Journal.

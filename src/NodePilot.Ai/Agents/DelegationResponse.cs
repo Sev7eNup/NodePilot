@@ -2,13 +2,13 @@ using System.Text.Json;
 
 namespace NodePilot.Ai.Agents;
 
-internal sealed record DelegationResponse(string Status, string Content, bool RequiresNewEvidence = true)
+internal sealed record DelegationResponse(string Status, string Content, bool RequiresNewEvidence = true, string[]? ReviewDependencies = null)
 {
     public static string Contract(bool reviewer) => reviewer
         ? "Return one JSON object with top-level status (completed, needs_input, or failed), content (string), verdict (approved or needs_work), and openChecks (string array). For an objection, set objectionKind to evidence when new observations are needed, or revision when existing evidence suffices and only interpretation, wording or the proposed next step needs correction. Omitted objectionKind defaults to evidence. Do not nest these fields inside content or return the supervisor's final schema. Use approved and empty openChecks only when the requested review outcome is supported."
         : "Return one JSON object with top-level status (completed, needs_input, or failed) and content (string). Do not return the supervisor's final schema.";
 
-    public static DelegationResponse Parse(string text, bool reviewer)
+    public static DelegationResponse Parse(string text, bool reviewer, IReadOnlyCollection<string>? reviewSources = null)
     {
         using var doc = JsonDocument.Parse(text);
         var root = doc.RootElement;
@@ -24,7 +24,17 @@ internal sealed record DelegationResponse(string Status, string Content, bool Re
                 throw new JsonException("objectionKind must be evidence or revision.");
             requiresNewEvidence = kind.GetString() == "evidence";
         }
-        var result = new DelegationResponse(status.GetString()!, content.GetString()!, requiresNewEvidence);
+        string[]? dependencies = null;
+        if (reviewer && root.TryGetProperty("reviewDependencies", out var basis))
+        {
+            if (basis.ValueKind != JsonValueKind.Array || basis.GetArrayLength() == 0 || basis.GetArrayLength() > 100
+                || basis.EnumerateArray().Any(v => v.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(v.GetString())))
+                throw new JsonException("reviewDependencies must be a nonempty array of source keys; omit it for a whole-team review.");
+            dependencies = basis.EnumerateArray().Select(v => v.GetString()!).Distinct(StringComparer.Ordinal).ToArray();
+            if (reviewSources is not null && dependencies.Any(source => !reviewSources.Contains(source)))
+                throw new JsonException("reviewDependencies contains an unknown source. Use only supplied reviewSources keys, or omit reviewDependencies for a whole-team review.");
+        }
+        var result = new DelegationResponse(status.GetString()!, content.GetString()!, requiresNewEvidence, dependencies);
         if (!reviewer) return result;
         var hasChecks = root.TryGetProperty("openChecks", out var checks);
         if (hasChecks && (checks.ValueKind != JsonValueKind.Array
@@ -39,6 +49,6 @@ internal sealed record DelegationResponse(string Status, string Content, bool Re
             || !hasChecks)
             throw new JsonException("Invalid reviewer completion. " + Contract(true));
         return verdict.GetString() == "approved" && checks.GetArrayLength() == 0 ? result
-            : new("needs_input", "Review requires further work. Open checks: " + checks.GetRawText() + "\n" + result.Content, requiresNewEvidence);
+            : result with { Status = "needs_input", Content = "Review requires further work. Open checks: " + checks.GetRawText() + "\n" + result.Content };
     }
 }

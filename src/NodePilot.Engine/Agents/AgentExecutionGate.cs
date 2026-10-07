@@ -23,19 +23,25 @@ public sealed class AgentExecutionGate : IDisposable
 
     public sealed class Lease(SemaphoreSlim gate) : IDisposable
     {
+        private readonly SemaphoreSlim _released = new(1, 1);
         private bool _held = true;
         private bool _disposed;
         public async Task<T> WhileReleasedAsync<T>(Func<Task<T>> operation, CancellationToken ct)
         {
-            if (!_held || _disposed) throw new InvalidOperationException("Agent lease is not held.");
-            _held = false;
-            gate.Release();
-            try { return await operation(); }
-            finally
+            await _released.WaitAsync(ct);
+            try
             {
-                await gate.WaitAsync(ct);
-                _held = true;
+                if (!_held || _disposed) throw new InvalidOperationException("Agent lease is not held.");
+                _held = false;
+                gate.Release();
+                try { return await operation(); }
+                finally
+                {
+                    await gate.WaitAsync(ct);
+                    _held = true;
+                }
             }
+            finally { _released.Release(); }
         }
 
         public void Dispose()

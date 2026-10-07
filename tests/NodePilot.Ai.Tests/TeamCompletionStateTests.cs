@@ -7,6 +7,123 @@ namespace NodePilot.Ai.Tests;
 public sealed class TeamCompletionStateTests
 {
     [Fact]
+    public void ProtocolFailureDoesNotClearAnExistingEvidenceObjection()
+    {
+        var state = Create();
+        state.Record("review", "needs_input", "Read the effective configuration");
+        state.Record("review", "failed", "Invalid response format", requiresNewEvidence: false);
+        Assert.False(state.Record("review", "completed", "Corrected response envelope"));
+        state.Observe("worker", "read", "configuration", "Original values");
+        Assert.True(state.Record("review", "completed", "Configuration checked"));
+    }
+
+    [Fact]
+    public void ScopedReviewSurvivesUnrelatedFindingButNotItsOwnChangedBasis()
+    {
+        var state = new TeamCompletionState([
+            new() { Id = "client" }, new() { Id = "server" },
+            new() { Id = "review", IsReviewer = true }]);
+        state.Record("client", "completed", "Client identity verified");
+        state.Record("server", "completed", "Server config verified");
+        state.Record("review", "completed", "Client checked", dependencies: ["member:client"]);
+        state.Record("server", "completed", "Additional server finding");
+        Assert.Null(state.GetBlockers());
+        state.Observe("client", "read", "identity", "changed identity");
+        Assert.Contains("member:client", state.GetBlockers());
+    }
+
+    [Fact]
+    public void ScopedReviewCannotApproveBasisChangedDuringAssignment()
+    {
+        var state = Create();
+        var revision = state.Revision;
+        state.Observe("worker", "read", "config", "changed");
+        state.Record("review", "completed", "Old evidence", reviewedRevision: revision, dependencies: ["member:worker"]);
+        state.Record("second", "completed", "Current");
+        Assert.Contains("review", state.GetBlockers());
+    }
+
+    [Fact]
+    public void CheckChangesInvalidateDependentReviewsAndGlobalChangesInvalidateAll()
+    {
+        var state = Create();
+        state.InvalidateReviews("check:client");
+        state.InvalidateReviews("check:server");
+        state.Record("review", "completed", "Client", dependencies: ["check:client"]);
+        state.Record("second", "completed", "Server", dependencies: ["check:server"]);
+        state.InvalidateReviews("check:server");
+        var blockers = System.Text.Json.JsonDocument.Parse(state.GetBlockers()!).RootElement;
+        Assert.Equal(new[] { "second" }, blockers.GetProperty("reviewRequired").EnumerateArray().Select(x => x.GetString()!).ToArray());
+        state.Record("second", "completed", "Rechecked", dependencies: ["check:server"]);
+        Assert.Null(state.GetBlockers());
+        state.InvalidateReviews();
+        Assert.Equal(2, state.PendingCount);
+    }
+
+    [Theory]
+    [InlineData("member:missing")]
+    [InlineData("check:missing")]
+    public void UnknownReviewDependencyCannotGrantApproval(string dependency)
+    {
+        var state = Create();
+        Assert.Throws<ArgumentException>(() => state.Record("review", "completed", "Invalid", dependencies: [dependency]));
+        Assert.NotNull(state.GetBlockers());
+    }
+
+    [Fact]
+    public void BoardEvictionCountsOnlyUnreadPeerEntries()
+    {
+        var board = new TeamBoard();
+        board.BeginAssignment("worker");
+        for (var i = 0; i < 300; i++) board.Evidence("worker", "own-" + i, "read", null, "", "");
+        Assert.Null(board.TakeDelta("worker", 4000));
+        board.Evidence("peer", "peer-1", "read", null, "", "");
+        for (var i = 0; i < 256; i++) board.Evidence("worker", "own-" + i, "read", null, "", "");
+        var delta = Assert.IsType<TeamBoard.Delta>(board.TakeDelta("worker", 4000));
+        Assert.Empty(delta.Ids);
+        Assert.Equal(1, delta.Omitted);
+        Assert.Null(board.TakeDelta("worker", 4000));
+    }
+
+    [Fact]
+    public void BoardDeltaIsBoundedDeliveredOnceAndNeverCountsAsEvidence()
+    {
+        var state = Create();
+        var board = new TeamBoard();
+        board.BeginAssignment("worker");
+        board.Evidence("worker", "own", "read", null, "query", "own evidence");
+        for (var i = 0; i < 20; i++) board.Evidence("second", "ev-" + i, "read", null, "query", new string('x', 180));
+        var delta = Assert.IsType<TeamBoard.Delta>(board.TakeDelta("worker", 1000));
+        Assert.True(delta.Content.Length <= 1000);
+        Assert.True(delta.Omitted > 0);
+        Assert.Equal("ev-19", delta.Ids[0]);
+        Assert.DoesNotContain("own", delta.Ids);
+        Assert.Null(board.TakeDelta("worker", 1000));
+        Assert.Equal(0, state.ObservationCount);
+        state.Record("review", "needs_input", "Need original");
+        Assert.False(state.Record("review", "completed", "Board mentions it"));
+        board.BeginAssignment("review");
+        Assert.Null(board.TakeDelta("review", 1000));
+    }
+
+    [Fact]
+    public async Task ConcurrentObservationsAreRetainedAndStaleReviewCannotApproveNewRevision()
+    {
+        var state = Create();
+        var revision = state.Revision;
+        await Task.WhenAll(Enumerable.Range(0, 100).Select(i => Task.Run(() => {
+            state.Observe("worker", "read", i.ToString(), "value");
+            state.GetMemberFindings("review");
+            state.GetBlockers();
+        }, TestContext.Current.CancellationToken)));
+        Assert.Equal(100, state.ObservationCount);
+        state.Record("review", "completed", "Old snapshot", reviewedRevision: revision);
+        state.Record("second", "completed", "Current");
+        Assert.Contains("review", state.GetBlockers());
+        state.Record("review", "completed", "Current", reviewedRevision: state.Revision);
+        Assert.Null(state.GetBlockers());
+    }
+    [Fact]
     public void ProcessEnvelopeClockAndElapsedTimeAreNotNewEvidence()
     {
         var state = Create();

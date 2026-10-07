@@ -8,6 +8,12 @@ const event = (sequence: number, kind: string, memberId = 'researcher'): AgentRu
   ({ agentRunId: 'run', sequence, kind, memberId, toolName: null, content: '', timestamp: '2026-09-18T12:00:00Z' });
 
 describe('agent team projection and journal catch-up', () => {
+  it('keeps two parallel members running independently', () => {
+    const events = [event(1, 'member_started', 'a'), event(2, 'member_started', 'b')];
+    expect(memberStatus(events, 'a')).toBe('Running');
+    expect(memberStatus(events, 'b')).toBe('Running');
+    expect(memberStatus([...events, event(3, 'member_completed', 'a')], 'b')).toBe('Running');
+  });
   it('projects only valid members without mutating the persisted graph', () => {
     const config = { task: 'review', members: [{ id: 'supervisor', role: 'Lead' }, null, { role: 'Invalid' }, { id: 'researcher', role: 'Researcher' }] };
     const original = structuredClone(config);

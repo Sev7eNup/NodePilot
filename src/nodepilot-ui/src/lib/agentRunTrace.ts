@@ -6,6 +6,7 @@ export interface TraceDelegation {
   type: 'delegation'; start: AgentRunEvent; end?: AgentRunEvent;
   from: string; to: string; task: string; reason?: string;
   reviewer: boolean;
+  delegationId: string; batchId?: string; batchSize?: number;
   status?: string; response?: string; objectionKind?: string;
   activities: TraceEvent[];
 }
@@ -33,34 +34,39 @@ export function runMembers(events: AgentRunEvent[]): RunMember[] {
   return [...members.values()];
 }
 
-/** Correlation uses journal order: team delegation and tool invocation are sequential. */
+/** Members have one open assignment each; delegation IDs correlate interleaved batches. */
 export function agentRunTrace(events: AgentRunEvent[]): TraceEntry[] {
   const entries: TraceEntry[] = [];
   const reviewers = new Set(runMembers(events).filter(m => m.function === 'reviewer').map(m => m.id));
-  let active: TraceDelegation | undefined;
+  const byId = new Map<string, TraceDelegation>();
+  const open = new Map<string, TraceDelegation>();
   const pending = new Map<string, TraceEvent>();
   for (const event of [...events].sort((a, b) => a.sequence - b.sequence)) {
     if (event.kind === 'run_context') continue;
-    if (event.toolName === 'delegate' && event.kind === 'tool_started') {
+    if (event.kind === 'member_started') {
       const input = traceObject(event.content);
-      if (typeof input.memberId === 'string' && event.memberId) {
-        active = { type: 'delegation', start: event, from: event.memberId, to: input.memberId,
-          task: text(input.task) ?? event.content, reason: text(input.reason), reviewer: reviewers.has(input.memberId), activities: [] };
-        entries.push(active);
+      if (typeof input.delegationId === 'string' && event.memberId) {
+        const delegation: TraceDelegation = { type: 'delegation', start: event, from: text(input.from) ?? '', to: event.memberId,
+          delegationId: input.delegationId, batchId: text(input.batchId), batchSize: typeof input.batchSize === 'number' ? input.batchSize : undefined,
+          task: text(input.task) ?? event.content, reason: text(input.reason), reviewer: reviewers.has(event.memberId), activities: [] };
+        entries.push(delegation);
+        byId.set(input.delegationId, delegation); open.set(event.memberId, delegation);
         continue;
       }
     }
-    if (active && event.memberId === active.from && event.toolName === 'delegate'
-        && ['tool_completed', 'tool_failed'].includes(event.kind)) {
+    if (['member_completed', 'member_needs_input', 'member_failed'].includes(event.kind)) {
       const result = traceObject(event.content);
-      active.end = event;
-      active.status = event.kind === 'tool_failed' || result.error ? 'failed' : text(result.status) ?? 'unknown';
-      active.response = text(result.content) ?? text(result.error) ?? event.content;
-      active.objectionKind = text(result.objectionKind);
-      active = undefined;
-      continue;
+      const delegation = byId.get(text(result.delegationId) ?? '');
+      if (delegation) {
+        delegation.end = event;
+        delegation.status = text(result.status) ?? event.kind.slice('member_'.length);
+        delegation.response = text(result.content) ?? event.content;
+        delegation.objectionKind = text(result.objectionKind);
+        if (open.get(delegation.to) === delegation) open.delete(delegation.to);
+        continue;
+      }
     }
-    const destination = active && event.memberId === active.to ? active.activities : entries;
+    const destination = open.get(event.memberId ?? '')?.activities ?? entries;
     const family = event.kind.startsWith('tool_') ? 'tool' : event.kind.startsWith('model_') ? 'model' : undefined;
     const key = JSON.stringify([event.memberId, family, event.toolName]);
     if (family && event.kind.endsWith('_started')) {
@@ -69,8 +75,6 @@ export function agentRunTrace(events: AgentRunEvent[]): TraceEntry[] {
     } else if (family && /_(completed|failed)$/.test(event.kind) && pending.has(key)) {
       pending.get(key)!.end = event; pending.delete(key);
     } else {
-      // Member start/return duplicate the surrounding delegation's task and answer.
-      if (active && event.memberId === active.to && ['member_started', 'member_completed', 'member_needs_input', 'member_failed'].includes(event.kind)) continue;
       destination.push({ type: 'event', start: event });
     }
   }

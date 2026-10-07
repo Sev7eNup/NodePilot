@@ -28,7 +28,7 @@ _Avoid_: Remote step
 An Activity that owns an iterative model/tool session with host-enforced permissions and budgets. Its optional tools can use WinRM; the Activity itself is not a Remote Activity.
 
 **Agent Team**:
-One executable Activity containing exactly one supervisor and sequential specialists. Members are configuration and a canvas projection, never independent Workflow nodes.
+One executable Activity containing exactly one supervisor and bounded parallel assignment batches. Members have separate sessions and share budgets, evidence and live peer pointers; they are never independent Workflow nodes. See ADR 0017.
 
 **Agent Run**:
 One bounded invocation of an AI Agent Activity, with a durable numbered event journal belonging to its Workflow Execution. See ADR 0016.

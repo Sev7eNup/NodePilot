@@ -10,6 +10,43 @@ not a reprint.
 Entries were reconstructed from the published release notes, so they are condensed rather than
 exhaustive.
 
+## [Unreleased]
+
+Planned version: **1.4.5**.
+
+### Added
+
+- **AI agent workflow activities.** Run an individual agent or a supervisor-led team
+  inside a workflow step. Configure roles, models, tools, skills and per-member target
+  identities; independent specialists work in bounded parallel batches with shared budgets.
+- **Evidence and review.** Agents retain original observations with evidence IDs, track
+  investigation questions and request reviewer checks. Dependent reviews are invalidated
+  when their supporting findings change. Large observations can be recalled and analyzed
+  in sections; conversation compaction preserves the original evidence in the run journal.
+- **Agent operations.** Configure runtime limits, versioned skill packages and approved MCP
+  tools in administration. Follow assignments, tool results and member progress in the
+  designer, inspect execution history and export the journal; REST, CLI and MCP expose
+  agent administration and run inspection.
+- **Explicit task outcomes.** Agent steps return a text or schema-validated JSON report,
+  usage counters and a separate `completed`, `partial` or `blocked` assessment. Missing
+  information remains visible in the report instead of being treated as a proven finding.
+
+### Fixed
+
+- Transient agent model failures can retry the same request once within existing budgets,
+  without repeating completed tools or delegations. Persistent failures retain available
+  preliminary findings and journal evidence.
+- Exhausting the shared investigation model budget now reaches the reserved, tool-free
+  final report, including after parallel delegation. Unfinished members and missing reviews
+  remain unresolved; cancellation and other technical failures keep their failure semantics.
+
+### Security
+
+- Agent tools enforce the current read-only policy, selected targets and identities, file
+  scopes and approved external-tool contracts. Packaged CMD/Bash scripts execute checked
+  canonical commands; the CMD bootstrap also uses a fixed system executable path to prevent
+  package-local command shadowing. PowerShell retains target signature and execution-policy checks.
+
 ## [1.4.4] - 2026-10-03
 
 ### Added
@@ -1774,6 +1811,7 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.4...main
 [1.4.4]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.3...main
 [1.4.3]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.3
 [1.4.2]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.2

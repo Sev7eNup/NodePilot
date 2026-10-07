@@ -98,10 +98,24 @@ public sealed class AgentConclusionTests
         budget.ReserveFinalReport();
         budget.TakeModelCall();
         budget.TakeModelCall();
-        Assert.Throws<AgentBudgetExceededException>(budget.TakeModelCall);
+        Assert.Throws<AgentBudgetExceededException>(() => { budget.TakeModelCall(); });
         budget.BeginFinalReport();
         budget.TakeModelCall();
         Assert.Equal(3, budget.ModelCalls);
-        Assert.Throws<AgentBudgetExceededException>(budget.TakeModelCall);
+        Assert.Throws<AgentBudgetExceededException>(() => { budget.TakeModelCall(); });
+    }
+
+    [Fact]
+    public async Task SharedBudgetNumbersAreUniqueAndBatchReservationIsAtomic()
+    {
+        var budget = new AgentBudget(200, 5, 2);
+        var numbers = await Task.WhenAll(Enumerable.Range(0, 200).Select(_ => Task.Run(() => budget.TakeModelCall(), TestContext.Current.CancellationToken)));
+        Assert.Equal(Enumerable.Range(1, 200), numbers.Order());
+        Assert.Throws<AgentBudgetExceededException>(() => budget.TakeDelegationBatch(3, 3));
+        Assert.Equal(0, budget.ToolCalls);
+        Assert.Equal(0, budget.Delegations);
+        budget.TakeDelegationBatch(2, 2);
+        Assert.Equal(2, budget.Snapshot().ToolCalls);
+        Assert.Equal(2, budget.Snapshot().Delegations);
     }
 }

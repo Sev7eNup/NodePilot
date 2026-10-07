@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using NodePilot.Core.Agents;
@@ -12,7 +13,7 @@ using NodePilot.Engine.Security;
 namespace NodePilot.Engine.Agents;
 
 public sealed class AgentToolHost(AgentTargetFactory targets, AgentMcpClientFactory mcp,
-    NodePilotDbContext db, StartWorkflowActivity workflow, RestApiHttpClientProvider http, AgentExternalReadPolicy reads)
+    AgentRunDatabase database, IServiceScopeFactory scopes, RestApiHttpClientProvider http, AgentExternalReadPolicy reads)
 {
     public async Task<Session> OpenAsync(AgentDefinition definition, StepExecutionContext context,
         Guid runId, AgentArtifactStore artifacts, AgentExecutionGate.Lease lease, CancellationToken ct, int outputLimit = 16_000)
@@ -59,7 +60,7 @@ public sealed class AgentToolHost(AgentTargetFactory targets, AgentMcpClientFact
                 }
                 session.Tools.Add(CreateNative(selection, definition, context, session.Target, artifacts, lease));
             }
-            session.Tools.AddRange(await AgentSkillTools.CreateAsync(db, definition, session.Target, runId, ct, outputLimit));
+            session.Tools.AddRange(await AgentSkillTools.CreateAsync(database, definition, session.Target, runId, ct, outputLimit));
             return session;
         }
         catch { await session.DisposeAsync(); throw; }
@@ -141,8 +142,8 @@ public sealed class AgentToolHost(AgentTargetFactory targets, AgentMcpClientFact
                 {
                     if (!Guid.TryParse(Required("workflowId"), out var id) || !selection.WorkflowIds.Contains(id))
                         throw new UnauthorizedAccessException("Workflow is not selected for this agent.");
-                    if (!await db.Workflows.AsNoTracking().AnyAsync(w => w.Id == id && w.IsEnabled
-                        && w.CheckedOutByUserId == null && w.PublishedByUserId != null, ct))
+                    if (!await database.UseAsync(db => db.Workflows.AsNoTracking().AnyAsync(w => w.Id == id && w.IsEnabled
+                        && w.CheckedOutByUserId == null && w.PublishedByUserId != null, ct), ct))
                         throw new UnauthorizedAccessException("The selected workflow is not published and enabled.");
                     var config = JsonSerializer.SerializeToElement(new
                     {
@@ -155,6 +156,8 @@ public sealed class AgentToolHost(AgentTargetFactory targets, AgentMcpClientFact
                         Variables = context.Variables, PropagateChildCancellation = true
                     };
                     using var readScope = AgentReadOnlyWorkflowScope.Enter();
+                    using var workflowScope = scopes.CreateScope();
+                    var workflow = workflowScope.ServiceProvider.GetRequiredService<StartWorkflowActivity>();
                     var result = await lease.WhileReleasedAsync(() => workflow.ExecuteAsync(childContext, config, ct), ct);
                     return JsonSerializer.Serialize(new { result.Success, result.Output, result.ErrorOutput, result.OutputParameters });
                 }
@@ -189,7 +192,7 @@ public sealed class AgentToolHost(AgentTargetFactory targets, AgentMcpClientFact
     }
 
     private async Task<AgentMcpServer> ReadMcpServerAsync(Guid id, CancellationToken ct)
-        => await db.AgentMcpServers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id && s.Enabled, ct)
+        => await database.UseAsync(db => db.AgentMcpServers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id && s.Enabled, ct), ct)
             ?? throw new UnauthorizedAccessException("MCP server is missing or disabled.");
 
     private static JsonElement Schema(string[] required, params (string Name, string Type)[] fields)

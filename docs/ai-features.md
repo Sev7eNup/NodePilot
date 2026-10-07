@@ -22,7 +22,7 @@ NodePilot integriert einen LLM für drei No-Code-Helfer:
    zurück; eine Mehrfachauswahl lässt den Chat offen — sie ist sein „Auswahl (N)"-Kontext.
 
 Zusätzlich stehen die Laufzeit-Activities `llmQuery`, `aiAgent` und `aiAgentTeam` bereit.
-Die Agenten können ausgewählte Werkzeuge autonom verwenden und Aufgaben sequenziell
+Die Agenten können ausgewählte Werkzeuge autonom verwenden und unabhängige Aufgaben in begrenzten parallelen Bündeln
 delegieren; sie sind nicht auf Windows-Diagnose beschränkt. Konfiguration, Rechte und
 Budgets: [KI-Agenten](ai-agents.md). Die Klickgrenzen der bestehenden Chats bleiben
 bestehen; bei Agenten autorisiert die Veröffentlichung die konfigurierten Aktionen.

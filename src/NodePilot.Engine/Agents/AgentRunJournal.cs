@@ -2,12 +2,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Agents;
 using NodePilot.Core.Interfaces;
-using NodePilot.Data;
 using NodePilot.Engine.Security;
 
 namespace NodePilot.Engine.Agents;
 
-public sealed class AgentRunJournal(NodePilotDbContext db, IExecutionNotifier notifier,
+public sealed class AgentRunJournal(AgentRunDatabase database, IExecutionNotifier notifier,
     OutputRedactor redactor, ILogger<AgentRunJournal> logger)
 {
     private long _sequence;
@@ -16,28 +15,41 @@ public sealed class AgentRunJournal(NodePilotDbContext db, IExecutionNotifier no
 
     public async Task StartAsync(StepExecutionContext context, CancellationToken ct)
     {
-        _sequence = 0;
-        _workflowId = await db.WorkflowExecutions.Where(x => x.Id == context.WorkflowExecutionId).Select(x => x.WorkflowId).SingleAsync(ct);
-        Run = new AgentRun { Id = Guid.NewGuid(), WorkflowExecutionId = context.WorkflowExecutionId, StepId = context.StepId };
-        db.AgentRuns.Add(Run);
-        await db.SaveChangesAsync(ct);
+        await database.UseAsync(async db =>
+        {
+            _sequence = 0;
+            _workflowId = await db.WorkflowExecutions.Where(x => x.Id == context.WorkflowExecutionId).Select(x => x.WorkflowId).SingleAsync(ct);
+            Run = new AgentRun { Id = Guid.NewGuid(), WorkflowExecutionId = context.WorkflowExecutionId, StepId = context.StepId };
+            db.AgentRuns.Add(Run);
+            await db.SaveChangesAsync(ct);
+        }, ct);
         await AppendAsync(new AgentProgress("run_started", "Agent run started"), ct);
     }
 
-    public async Task AppendAsync(AgentProgress progress, CancellationToken ct)
+    public async Task AppendAsync(AgentProgress progress, CancellationToken ct, AgentBudget? budget = null)
     {
         var run = Run ?? throw new InvalidOperationException("Agent journal is not started.");
-        var content = AgentContentRedactor.Redact(progress.Content, redactor);
-        if (content.Length > 64_000) content = content[..64_000] + "\n[truncated]";
-        if (progress.Kind == "report_draft") run.Result = content;
-        var entry = new AgentRunEvent
+        var entry = await database.UseAsync(async db =>
         {
-            AgentRunId = run.Id, Sequence = ++_sequence, MemberId = progress.MemberId,
-            Kind = progress.Kind, ToolName = progress.ToolName, Content = content
-        };
-        db.AgentRunEvents.Add(entry);
-        await db.SaveChangesAsync(ct);
-        db.Entry(entry).State = EntityState.Detached;
+            var content = AgentContentRedactor.Redact(progress.Content, redactor);
+            if (content.Length > 64_000) content = content[..64_000] + "\n[truncated]";
+            if (progress.Kind == "report_draft") run.Result = content;
+            if (budget is not null) ApplyUsage(budget.Snapshot());
+            var saved = new AgentRunEvent
+            {
+                AgentRunId = run.Id,
+                Sequence = ++_sequence,
+                MemberId = progress.MemberId,
+                Kind = progress.Kind,
+                ToolName = progress.ToolName,
+                Content = content
+            };
+            db.AgentRunEvents.Add(saved);
+            try { await db.SaveChangesAsync(ct); }
+            catch { _sequence--; throw; }
+            finally { db.Entry(saved).State = EntityState.Detached; }
+            return saved;
+        }, ct);
         try
         {
             await notifier.AgentEventAsync(_workflowId, new AgentEventNotification(run.WorkflowExecutionId,
@@ -49,16 +61,19 @@ public sealed class AgentRunJournal(NodePilotDbContext db, IExecutionNotifier no
     public async Task FinishAsync(string status, string? result, string? error, AgentBudget budget, CancellationToken ct)
     {
         if (Run is null) return;
-        Run.Status = status;
-        Run.CompletedAt = DateTime.UtcNow;
-        var finalResult = result ?? (status == "Succeeded" ? null : Run.Result);
-        Run.Result = finalResult is null ? null : AgentContentRedactor.Redact(finalResult, redactor);
-        Run.Error = error is null ? null : AgentContentRedactor.Redact(error, redactor);
-        RecordUsage(budget);
-        await AppendAsync(new AgentProgress("run_" + status.ToLowerInvariant(), Run.Error ?? status), ct);
+        await database.UseAsync(db =>
+        {
+            Run.Status = status;
+            Run.CompletedAt = DateTime.UtcNow;
+            var finalResult = result ?? (status == "Succeeded" ? null : Run.Result);
+            Run.Result = finalResult is null ? null : AgentContentRedactor.Redact(finalResult, redactor);
+            Run.Error = error is null ? null : AgentContentRedactor.Redact(error, redactor);
+            return Task.CompletedTask;
+        }, ct);
+        await AppendAsync(new AgentProgress("run_" + status.ToLowerInvariant(), Run.Error ?? status), ct, budget);
     }
 
-    public void RecordUsage(AgentBudget budget)
+    private void ApplyUsage(AgentBudget.Usage budget)
     {
         if (Run is null) return;
         Run.ModelCalls = budget.ModelCalls;

@@ -140,10 +140,13 @@ internal static class AgentPermissionPolicy
     }
 
     internal static void ValidateSkillScript(string shell, string script, string[] arguments)
+        => _ = PrepareSkillScript(shell, script, arguments);
+
+    internal static string PrepareSkillScript(string shell, string script, string[] arguments)
     {
-        if (shell == "powershell") { _ = PreparePowerShell(script, arguments); return; }
+        if (shell == "powershell") return PreparePowerShell(script, arguments);
         if (arguments.Length != 0) throw Denied("CMD/Bash skill arguments require a reviewed binding contract; only literal read scripts are currently supported.");
-        _ = PrepareShell(shell, script);
+        return PrepareShell(shell, script);
     }
 
     private static string PreparePowerShell(string script, string[]? arguments)
@@ -461,6 +464,18 @@ internal static class AgentPermissionPolicy
                         && !Regex.IsMatch(arg, @"^[A-Za-z]:\\[^:]*$", RegexOptions.CultureInvariant))
                         throw Denied("CMD file reads require an explicit local path or an approved DIR option.");
             if (name == "type" && args.Length == 0) throw Denied("TYPE requires a file path.");
+            if (name == "echo")
+            {
+                // ECHO prints quotes and spacing literally. Keep its validated argument text,
+                // but spell the builtin ourselves so even a quoted command name cannot resolve a file.
+                var literal = command.Trim();
+                var end = 0;
+                var quoted = false;
+                for (; end < literal.Length; end++)
+                    if (literal[end] == '"') quoted = !quoted;
+                    else if (!quoted && char.IsWhiteSpace(literal[end])) break;
+                return "echo" + literal[end..];
+            }
             if (name is "whoami" or "hostname") name = "\"%SystemRoot%\\System32\\" + name + ".exe\"";
             return name + " " + string.Join(" ", args.Select(a => "\"" + a + "\""));
         }

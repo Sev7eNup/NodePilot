@@ -9,6 +9,290 @@ namespace NodePilot.Ai.Tests;
 
 public sealed class AgentRuntimeTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ExhaustedParallelModelBudget_UsesReservedReportAndRetainsFindings(bool unfinishedMember, bool requiredReview)
+    {
+        var events = new System.Collections.Concurrent.ConcurrentQueue<AgentProgress>();
+        var finalCalls = 0;
+        var runtime = Create(request =>
+        {
+            var prompt = request.Conversation?.LastOrDefault(m => m.Role == "user")?.Content ?? "";
+            if (prompt.StartsWith("Final report synthesis:"))
+            {
+                finalCalls++;
+                Assert.Empty(request.Tools ?? []);
+                Assert.Contains("Finding A", prompt);
+                if (unfinishedMember) Assert.Contains("model", prompt, StringComparison.OrdinalIgnoreCase);
+                else Assert.Contains("Finding B", prompt);
+                return new("""{"outcome":"completed","reason":"Available findings","report":"Retained findings with limitations","coverage":[{"requirement":"Compare","status":"fulfilled","basis":"Findings"}]}""", "test");
+            }
+            if (request.SystemPrompt.Contains("Role: Lead")) return DelegateBatch("a", "b");
+            if (request.SystemPrompt.Contains("Role: WorkerA")) return new("""{"status":"completed","content":"Finding A"}""", "test");
+            return unfinishedMember
+                ? new("""{"status":"completed"}""", "test") // Format repair needs an unavailable investigation call.
+                : new("""{"status":"completed","content":"Finding B"}""", "test");
+        }, autoConclude: false);
+        var config = ParallelConfig();
+        if (requiredReview) config = config with { Members = [.. config.Members, new() { Id = "review", IsReviewer = true }] };
+        var result = await RunParallel(runtime, config, new(4, 10, 2), events.Enqueue,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(4, result.ModelCalls);
+        Assert.Equal(1, finalCalls);
+        Assert.Single(events, e => e.Kind == "report_finalizing");
+        Assert.Equal("Retained findings with limitations", result.Text);
+        if (unfinishedMember || requiredReview) Assert.Equal("partial", result.Outcome);
+        if (unfinishedMember)
+        {
+            Assert.Contains(events, e => e.MemberId == "b" && e.Kind == "member_needs_input");
+        }
+    }
+
+    [Fact]
+    public async Task ModelBudgetExhaustedInsideParallelTools_AwaitsSiblingsWithoutReplayingReads()
+    {
+        var reads = 0;
+        var bothReading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var events = new System.Collections.Concurrent.ConcurrentQueue<AgentProgress>();
+        var runtime = Create(request =>
+        {
+            var prompt = request.Conversation?.LastOrDefault(m => m.Role == "user")?.Content ?? "";
+            if (prompt.StartsWith("Final report synthesis:"))
+            {
+                Assert.Equal(2, reads);
+                Assert.Contains(events, e => e.Kind == "member_completed" && e.MemberId != "lead");
+                Assert.Contains(events, e => e.Kind == "member_needs_input");
+                Assert.Empty(request.Tools ?? []);
+                return new("""{"outcome":"completed","reason":"Findings","report":"Collected findings; one member could not finish","coverage":[{"requirement":"Compare","status":"fulfilled","basis":"Findings"}]}""", "test");
+            }
+            if (request.SystemPrompt.Contains("Role: Lead")) return DelegateBatch("a", "b");
+            return request.Conversation!.Any(m => m.Role == "tool")
+                ? new("""{"status":"completed","content":"Original read verified"}""", "test")
+                : new("", "test", ToolCalls: [new("read", "read", "{}")]);
+        }, autoConclude: false);
+        var read = new AgentTool("read", "Read", JsonSerializer.SerializeToElement(new { type = "object" }), async (_, ct) =>
+        {
+            if (Interlocked.Increment(ref reads) == 2) bothReading.TrySetResult();
+            await bothReading.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            return "Original evidence";
+        });
+        var config = ParallelConfig();
+        var tools = config.Members.ToDictionary(m => m.Id, m => (IReadOnlyList<AgentTool>)(m.IsSupervisor ? [] : new[] { read }));
+        var result = await runtime.RunAsync(config, true, tools, new(5, 10, 2), new(),
+            (e, _) => { events.Enqueue(e); return Task.CompletedTask; }, s => s, TestContext.Current.CancellationToken);
+        Assert.Equal(5, result.ModelCalls);
+        Assert.Equal(2, reads);
+        Assert.Equal("partial", result.Outcome);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InvalidReviewDependencyIsAFormatErrorAndNeverInventsAnEvidenceObjection(bool correctionAlsoInvalid)
+    {
+        var lead = 0;
+        var reviews = 0;
+        var events = new List<AgentProgress>();
+        var runtime = Create(request =>
+        {
+            if (request.SystemPrompt.Contains("Role: Quality"))
+            {
+                reviews++;
+                if (reviews == 2) Assert.Empty(request.Tools ?? []);
+                return reviews <= (correctionAlsoInvalid ? 2 : 1)
+                    ? new("""{"status":"completed","verdict":"approved","openChecks":[],"content":"Evidence checked","reviewDependencies":["member:unknown"]}""", "test")
+                    : new("""{"status":"completed","verdict":"approved","openChecks":[],"content":"Evidence checked","reviewDependencies":["member:researcher"]}""", "test");
+            }
+            return ++lead <= (correctionAlsoInvalid ? 2 : 1) ? Delegate("review", "Review existing evidence") : new("Complete", "test");
+        });
+        var config = TeamConfig(true);
+        var tools = config.Members.ToDictionary(m => m.Id, _ => (IReadOnlyList<AgentTool>)[]);
+        tools["researcher"] = [new("read", "Read", JsonSerializer.SerializeToElement(new { type = "object" }),
+            (_, _) => throw new InvalidOperationException("A format error must not require a new observation"))];
+        var result = await runtime.RunAsync(config, true, tools, new(20, 20, 5), new(),
+            (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s, TestContext.Current.CancellationToken);
+        Assert.Equal("completed", result.Outcome);
+        Assert.Equal(correctionAlsoInvalid ? 3 : 2, reviews);
+        Assert.Single(events, e => e.Kind == "member_response_invalid");
+        Assert.DoesNotContain(events, e => e.Content.StartsWith("Host rejected closing this review"));
+    }
+
+    [Fact]
+    public async Task UnrelatedFollowUpPreservesScopedReviewThroughDelegationProtocol()
+    {
+        var lead = 0;
+        var reviews = 0;
+        var events = new List<AgentProgress>();
+        var runtime = Create(request =>
+        {
+            if (request.SystemPrompt.Contains("Role: Quality"))
+            {
+                reviews++;
+                Assert.Contains("member:client", request.Conversation!.Last(m => m.Role == "user").Content);
+                return new("""{"status":"completed","content":"Client identity verified independently","verdict":"approved","openChecks":[],"reviewDependencies":["member:client"]}""", "test");
+            }
+            if (request.SystemPrompt.Contains("Role: Client")) return new("""{"status":"completed","content":"Client identity verified"}""", "test");
+            if (request.SystemPrompt.Contains("Role: Server")) return new("""{"status":"completed","content":"Server-only supplementary finding"}""", "test");
+            return ++lead switch
+            {
+                1 => Delegate("client", "Verify client identity"),
+                2 => Delegate("review", "Review client identity"),
+                3 => Delegate("server", "Supplement independent server finding"),
+                4 => new("Complete result", "test"),
+                _ => throw new InvalidOperationException("Unrelated follow-up must not require repeating an independent review")
+            };
+        });
+        var config = new AgentActivityConfiguration { Task = "Verify client identity and collect a separate server finding", Members = [
+            new() { Id = "lead", IsSupervisor = true }, new() { Id = "client", Role = "Client" },
+            new() { Id = "server", Role = "Server" }, new() { Id = "review", Role = "Quality", IsReviewer = true }] };
+        var result = await runtime.RunAsync(config, true, config.Members.ToDictionary(m => m.Id, _ => (IReadOnlyList<AgentTool>)[]),
+            new(30, 30, 10), new(), (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s, TestContext.Current.CancellationToken);
+        Assert.Equal("Complete result", result.Text);
+        Assert.Equal(1, reviews);
+        Assert.DoesNotContain(events, e => e.Kind == "team_completion_blocked");
+    }
+
+    private static LlmResponse DelegateBatch(params string[] ids) => new("", "test", ToolCalls: [new("batch", "delegate",
+        JsonSerializer.Serialize(new { assignments = ids.Select(memberId => new { memberId, task = "Inspect", reason = "Independent check" }) }))]);
+
+    private static AgentActivityConfiguration ParallelConfig(bool reviewers = false) => new() {
+        Task = "Compare independent findings", MaxParallelMembers = 2, Members = [
+            new() { Id = "lead", Role = "Lead", IsSupervisor = true },
+            new() { Id = "a", Role = "WorkerA", IsReviewer = reviewers },
+            new() { Id = "b", Role = "WorkerB", IsReviewer = reviewers }]
+    };
+
+    private static Task<AgentRunResult> RunParallel(AgentRuntime runtime, AgentActivityConfiguration config,
+        AgentBudget budget, Action<AgentProgress>? progress = null, CancellationToken ct = default)
+        => runtime.RunAsync(config, true, config.Members.ToDictionary(m => m.Id, _ => (IReadOnlyList<AgentTool>)[]),
+            budget, new(), (e, _) => { progress?.Invoke(e); return Task.CompletedTask; }, s => s, ct);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Batch_RunsMembersConcurrently_WithStableReviewSnapshot(bool reviewers)
+    {
+        var arrived = 0;
+        var barrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshots = new System.Collections.Concurrent.ConcurrentBag<string>();
+        var events = new System.Collections.Concurrent.ConcurrentQueue<AgentProgress>();
+        var rootCalls = 0;
+        var runtime = CreateAsync(async (request, ct) => {
+            if (request.SystemPrompt.Contains("Role: Lead")) return ++rootCalls == 1 ? DelegateBatch("a", "b") : new("Compared", "test");
+            snapshots.Add(request.Conversation!.Last(m => m.Role == "user").Content);
+            if (Interlocked.Increment(ref arrived) == 2) barrier.TrySetResult();
+            await barrier.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            return new(reviewers ? "{\"status\":\"completed\",\"content\":\"Checked\",\"verdict\":\"approved\",\"openChecks\":[]}" : "{\"status\":\"completed\",\"content\":\"Found\"}", "test");
+        });
+        var result = await RunParallel(runtime, ParallelConfig(reviewers), new(8, 10, 2), events.Enqueue, TestContext.Current.CancellationToken);
+        Assert.Equal(2, result.Delegations);
+        Assert.Equal(2, result.ToolCalls);
+        Assert.Equal(2, arrived);
+        Assert.Single(snapshots.Distinct());
+        var trace = events.ToArray();
+        Assert.Equal(2, trace.TakeWhile(e => e.Kind != "member_completed").Count(e => e.Kind == "member_started" && e.MemberId != "lead"));
+        using var output = JsonDocument.Parse(Assert.Single(trace, e => e.Kind == "tool_completed" && e.ToolName == "delegate").Content);
+        Assert.Equal(new[] { "a", "b" }, output.RootElement.GetProperty("results").EnumerateArray().Select(r => r.GetProperty("memberId").GetString()));
+    }
+
+    [Theory]
+    [InlineData("duplicate")]
+    [InlineData("mixed")]
+    [InlineData("limit")]
+    public async Task Batch_ValidationRejectsWithoutChargingOrStarting(string kind)
+    {
+        var config = ParallelConfig();
+        if (kind == "mixed") config = config with { Members = [config.Members[0], config.Members[1], config.Members[2] with { IsReviewer = true }] };
+        if (kind == "limit") config = config with { MaxParallelMembers = 1 };
+        var calls = 0;
+        var events = new List<AgentProgress>();
+        var runtime = Create(_ => ++calls == 1 ? DelegateBatch("a", kind == "duplicate" ? "a" : "b") : new("Cannot continue", "test"));
+        var budget = new AgentBudget(5, 10, 5);
+        try { await RunParallel(runtime, config, budget, events.Add, TestContext.Current.CancellationToken); }
+        catch (Exception ex) when (kind == "mixed" && ex is InvalidOperationException) { }
+        Assert.Equal(0, budget.ToolCalls);
+        Assert.Equal(0, budget.Delegations);
+        Assert.DoesNotContain(events, e => e.Kind == "member_started" && e.MemberId != "lead");
+        Assert.Contains(events, e => e.Kind == "tool_failed" && e.Content.Contains("invalid_arguments"));
+    }
+
+    [Theory]
+    [InlineData(1, 2)]
+    [InlineData(2, 1)]
+    public async Task Batch_BudgetIsAllOrNothing(int tools, int delegations)
+    {
+        var events = new List<AgentProgress>();
+        var runtime = Create(_ => DelegateBatch("a", "b"));
+        var budget = new AgentBudget(10, tools, delegations);
+        await Assert.ThrowsAsync<AgentBudgetExceededException>(() => RunParallel(runtime, ParallelConfig(), budget, events.Add));
+        Assert.Equal(0, budget.ToolCalls);
+        Assert.Equal(0, budget.Delegations);
+        Assert.DoesNotContain(events, e => e.Kind == "member_started" && e.MemberId != "lead");
+    }
+
+    [Fact]
+    public async Task Batch_TruncatesContentWithoutBreakingEnvelope()
+    {
+        var calls = 0;
+        var events = new List<AgentProgress>();
+        var runtime = Create(request => {
+            if (!request.SystemPrompt.Contains("Role: Lead"))
+                return new(JsonSerializer.Serialize(new { status = "completed", content = new string('x', 10000) }), "test");
+            return ++calls == 1 ? DelegateBatch("a", "b") : new("Compared", "test");
+        });
+        var config = ParallelConfig();
+        await runtime.RunAsync(config, true, config.Members.ToDictionary(m => m.Id, _ => (IReadOnlyList<AgentTool>)[]),
+            new(10, 10, 2), new() { MaxToolOutputCharacters = 1024 },
+            (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s, TestContext.Current.CancellationToken);
+        var output = Assert.Single(events, e => e.Kind == "tool_completed" && e.ToolName == "delegate").Content;
+        Assert.True(output.Length <= 1024);
+        using var parsed = JsonDocument.Parse(output);
+        var results = parsed.RootElement.GetProperty("results");
+        Assert.Equal(2, results.GetArrayLength());
+        Assert.All(results.EnumerateArray(), r => Assert.True(r.GetProperty("contentTruncated").GetBoolean()));
+    }
+
+    [Fact]
+    public async Task Batch_ModelFailureCancelsAndDrainsSibling()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelled = false;
+        var runtime = CreateAsync(async (request, ct) => {
+            if (request.SystemPrompt.Contains("Role: Lead")) return DelegateBatch("a", "b");
+            if (request.SystemPrompt.Contains("Role: WorkerA")) {
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+                throw new LlmException(LlmErrorKind.MalformedResponse, "broken model");
+            }
+            entered.TrySetResult();
+            try { await Task.Delay(Timeout.Infinite, ct); }
+            finally { cancelled = true; }
+            return new("unreachable", "test");
+        });
+        var error = await Assert.ThrowsAsync<LlmException>(() => RunParallel(runtime, ParallelConfig(), new(10, 10, 5), ct: TestContext.Current.CancellationToken));
+        Assert.Contains("broken model", error.Message);
+        Assert.True(cancelled);
+    }
+
+    [Fact]
+    public async Task Batch_MemberFailureReturnsSlotAndSiblingCompletes()
+    {
+        var calls = 0;
+        var events = new List<AgentProgress>();
+        var runtime = Create(request => {
+            if (request.SystemPrompt.Contains("Role: WorkerA")) throw new IOException("member failed");
+            if (request.SystemPrompt.Contains("Role: WorkerB")) return new("{\"status\":\"completed\",\"content\":\"Sibling finished\"}", "test");
+            return ++calls == 1 ? DelegateBatch("a", "b") : new("Blocked", "test");
+        });
+        var result = await RunParallel(runtime, ParallelConfig(), new(10, 10, 5), events.Add, TestContext.Current.CancellationToken);
+        Assert.Equal("partial", result.Outcome);
+        using var output = JsonDocument.Parse(Assert.Single(events, e => e.Kind == "tool_completed" && e.ToolName == "delegate").Content);
+        var slots = output.RootElement.GetProperty("results");
+        Assert.Equal("failed", slots[0].GetProperty("status").GetString());
+        Assert.Equal("completed", slots[1].GetProperty("status").GetString());
+    }
+
     [Fact]
     public async Task InvalidArgumentsGiveActionableFeedbackAndOnlyCorrectedCallExecutes()
     {
@@ -198,7 +482,7 @@ public sealed class AgentRuntimeTests
     }
 
     [Fact]
-    public async Task FinalReportIsSynthesizedWithoutToolsAfterCompletionCheckInsteadOfReturningReviewDelta()
+    public async Task FinalReportIsSynthesizedWithoutToolsFromTheCompleteDraft()
     {
         var lead = 0;
         var reads = 0;
@@ -209,7 +493,6 @@ public sealed class AgentRuntimeTests
                 Assert.Contains(AgentConclusion.Instructions, request.SystemPrompt);
                 var prompt = request.Conversation!.Last(m => m.Role == "user").Content;
                 Assert.Contains("Missing gamma; source ev-00001; renew affected entry; verify complete inventory", prompt);
-                Assert.Contains("Review approved", prompt);
                 return new("""{"outcome":"completed","reason":"Complete comparison and remedy reviewed","report":"Missing gamma; source ev-00001; renew affected entry; verify complete inventory","coverage":[{"requirement":"Compare inventory","status":"fulfilled","basis":"ev-00001"}]}""", "test");
             }
             if (request.SystemPrompt.Contains("Role: Reader"))
@@ -287,9 +570,10 @@ public sealed class AgentRuntimeTests
         var config = new AgentActivityConfiguration { Task = "Investigate differences", Members = [
             new() { Id = "lead", IsSupervisor = true }, new() { Id = "reader", Role = "Reader" }] };
         var tools = config.Members.ToDictionary(m => m.Id, _ => (IReadOnlyList<AgentTool>)[]);
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.RunAsync(config, true, tools,
-            new(15, 15, 4), new(), (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s, TestContext.Current.CancellationToken));
-        Assert.Contains("Compare all entries", error.Message);
+        var result = await runtime.RunAsync(config, true, tools,
+            new(15, 15, 4), new(), (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s, TestContext.Current.CancellationToken);
+        Assert.Equal("partial", result.Outcome);
+        Assert.Contains(events, e => e.Kind == "team_completion_blocked" && e.Content.Contains("Compare all entries"));
         Assert.Contains(events, e => e.Kind == "team_completion_blocked");
         Assert.DoesNotContain(events, e => e.Kind == "evidence_snapshot");
     }
@@ -443,8 +727,8 @@ public sealed class AgentRuntimeTests
         {
             Assert.Equal("supervisor", e.MemberId);
             using var value = JsonDocument.Parse(e.Content);
-            Assert.Equal("researcher", value.RootElement.GetProperty("memberId").GetString());
-            Assert.False(string.IsNullOrWhiteSpace(value.RootElement.GetProperty("reason").GetString()));
+            Assert.Equal("researcher", value.RootElement.GetProperty("assignments")[0].GetProperty("memberId").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(value.RootElement.GetProperty("assignments")[0].GetProperty("reason").GetString()));
         });
         var replies = events.Where(e => e.Kind == "tool_completed" && e.ToolName == "delegate").ToArray();
         Assert.Equal(2, replies.Length);
@@ -552,7 +836,7 @@ public sealed class AgentRuntimeTests
         var task = runtime.RunAsync(config, true, tools, new AgentBudget(15, 10, 3), new(),
             (entry, _) => { events.Add(entry); return Task.CompletedTask; }, x => x, TestContext.Current.CancellationToken);
         if (approve) Assert.Equal("Final", (await task).Text);
-        else await Assert.ThrowsAsync<InvalidOperationException>(() => task);
+        else Assert.Equal("partial", (await task).Outcome);
         Assert.Equal(3, reviewCalls);
         Assert.Equal(1, reads);
         Assert.Single(events, e => e.Kind == "member_response_invalid");
@@ -573,7 +857,7 @@ public sealed class AgentRuntimeTests
             }
             return ++rootCalls == 1 ? Delegate("review", "Review") : new LlmResponse("Final", "local");
         });
-        await Assert.ThrowsAsync<InvalidOperationException>(() => RunTeam(runtime, true, []));
+        Assert.Equal("partial", (await RunTeam(runtime, true, [])).Outcome);
         Assert.Equal(2, reviewCalls);
     }
 
@@ -600,7 +884,7 @@ public sealed class AgentRuntimeTests
         var runtime = Create(request => request.SystemPrompt.Contains("Role: Quality")
             ? new LlmResponse("{\"status\":\"completed\",\"verdict\":\"needs_work\",\"openChecks\":[\"Check effective endpoint rules\"],\"content\":\"Review finished, cause still unknown\"}", "local")
             : ++rootCalls == 1 ? Delegate("review", "Review") : new LlmResponse("Final", "local"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => RunTeam(runtime, true, []));
+        Assert.Equal("partial", (await RunTeam(runtime, true, [])).Outcome);
     }
 
     [Theory]
@@ -640,9 +924,9 @@ public sealed class AgentRuntimeTests
         }
         else
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => task);
+            Assert.Equal("partial", (await task).Outcome);
             Assert.Equal(0, reads);
-            Assert.DoesNotContain(events, e => e.Kind == "member_completed" && e.MemberId == "supervisor");
+            Assert.Contains(events, e => e.Kind == "run_conclusion" && e.Content.Contains("partial"));
         }
         Assert.Contains(events, e => e.Kind == "member_needs_input" && e.Content.Contains("Host rejected"));
     }
@@ -704,10 +988,10 @@ public sealed class AgentRuntimeTests
         }
         else
         {
-            var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => task);
-            Assert.Contains("Which period?", failure.Message);
+            Assert.Equal("partial", (await task).Outcome);
+            Assert.Contains(events, e => e.Kind == "team_completion_blocked" && e.Content.Contains("Which period?"));
             Assert.Equal(4, rootCalls);
-            Assert.DoesNotContain(events, e => e.Kind == "member_completed" && e.MemberId == "supervisor");
+            Assert.Contains(events, e => e.Kind == "run_conclusion" && e.Content.Contains("partial"));
         }
     }
 
@@ -763,17 +1047,76 @@ public sealed class AgentRuntimeTests
     {
         var runtime = Create(_ => new LlmResponse("{\"answer\":42}", "local"));
         var config = TeamConfig(true) with { ResultFormat = "json", ResultSchema = JsonSerializer.SerializeToElement(new { type = "object" }) };
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.RunAsync(config, true,
-            config.Members.ToDictionary(m => m.Id, _ => (IReadOnlyList<AgentTool>)[]), new AgentBudget(1, 1, 1), new(),
-            (_, _) => Task.CompletedTask, x => x, TestContext.Current.CancellationToken));
-        Assert.Contains("Team review incomplete", error.Message);
+        var result = await runtime.RunAsync(config, true,
+            config.Members.ToDictionary(m => m.Id, _ => (IReadOnlyList<AgentTool>)[]), new AgentBudget(2, 1, 1), new(),
+            (_, _) => Task.CompletedTask, x => x, TestContext.Current.CancellationToken);
+        Assert.Equal("partial", result.Outcome);
+        Assert.Contains("incomplete", result.OutcomeReason);
+        using var report = JsonDocument.Parse(result.Text);
+        Assert.Equal(42, report.RootElement.GetProperty("answer").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(20)]
+    public async Task OpenInvestigationProducesFinalReportWithLimitations(int modelCalls)
+    {
+        var calls = 0;
+        var events = new List<AgentProgress>();
+        var runtime = Create(request => {
+            var prompt = request.Conversation!.Last(m => m.Role == "user").Content;
+            if (prompt.StartsWith("Final report synthesis:"))
+            {
+                Assert.Empty(request.Tools ?? []);
+                using var payload = JsonDocument.Parse(prompt["Final report synthesis: ".Length..]);
+                Assert.Contains("hardware-events", payload.RootElement.GetProperty("hostCompletionBlockers").ToString());
+                return new(JsonSerializer.Serialize(new {
+                    outcome = "completed", reason = "Model overstates completion", report = "Observed restart. Limitation: hardware-events correlation remains open; compare original timestamps next.",
+                    coverage = new[] { new { requirement = "Diagnose restart", status = "fulfilled", basis = "Observed restart" } }
+                }), "test");
+            }
+            return ++calls == 1
+                ? new("", "test", ToolCalls: [new("open", "investigation_update", """{"id":"hardware-events","question":"Does the event correlate with the restart?","nextCheck":"Compare original timestamps"}""")])
+                : new("Observed restart", "test");
+        }, autoConclude: false);
+        var config = new AgentActivityConfiguration { Task = "Diagnose restart", Members = [
+            new() { Id = "lead", IsSupervisor = true }, new() { Id = "reader", Role = "Reader" }] };
+        var result = await runtime.RunAsync(config, true, config.Members.ToDictionary(m => m.Id, _ => (IReadOnlyList<AgentTool>)[]),
+            new(modelCalls, 10, 2), new(), (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s, TestContext.Current.CancellationToken);
+        Assert.Equal("partial", result.Outcome);
+        Assert.Contains("correlation remains open", result.Text);
+        Assert.Single(events, e => e.Kind == "report_finalizing");
+        Assert.Single(events, e => e.Kind == "run_conclusion");
+        Assert.DoesNotContain(events, e => e.Kind == "tool_started" && events.IndexOf(e) > events.FindIndex(x => x.Kind == "report_finalizing"));
+    }
+
+    [Fact]
+    public async Task ConcreteUnavailableChecksCountAsCorrectionProgress()
+    {
+        var calls = 0;
+        var events = new List<AgentProgress>();
+        var runtime = Create(_ => {
+            calls++;
+            if (calls == 1) return new("", "test", ToolCalls: Enumerable.Range(1, 3).Select(i => new LlmToolCall(
+                "open" + i, "investigation_update", JsonSerializer.Serialize(new { id = "check" + i, question = "Read counterpart " + i, nextCheck = "Check access" }))).ToArray());
+            if (calls is 3 or 5 or 7) return new("", "test", ToolCalls: [new("limit" + calls, "investigation_update",
+                JsonSerializer.Serialize(new { id = "check" + ((calls - 1) / 2), status = "blocked", limitation = "Counterpart is outside the configured target scope" }))]);
+            return new("Available findings; counterpart checks unavailable", "test");
+        });
+        var config = new AgentActivityConfiguration { Task = "Compare", Members = [
+            new() { Id = "lead", IsSupervisor = true }, new() { Id = "reader", Role = "Reader" }] };
+        var result = await runtime.RunAsync(config, true, config.Members.ToDictionary(m => m.Id, _ => (IReadOnlyList<AgentTool>)[]),
+            new(20, 20, 2), new(), (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s, TestContext.Current.CancellationToken);
+        Assert.Equal(3, events.Count(e => e.Kind == "investigation_updated" && e.Content.Contains("\"status\":\"blocked\"")));
+        Assert.Equal("partial", result.Outcome);
+        Assert.Contains("blocked investigation", result.OutcomeReason);
     }
 
     private static LlmResponse Delegate(string memberId, string task) => new("", "local", ToolCalls:
-        [new(Guid.NewGuid().ToString(), "delegate", JsonSerializer.Serialize(new { memberId, task, reason = "Resolve the next open question" }))]);
+        [new(Guid.NewGuid().ToString(), "delegate", JsonSerializer.Serialize(new { assignments = new[] { new { memberId, task, reason = "Resolve the next open question" } } }))]);
 
     [Fact]
-    public async Task CompletionCheckCanReopenInvestigationAndRequiresFreshReview()
+    public async Task ApprovedCompleteWorkGoesDirectlyToFinalReportWithoutAnotherExplorationRound()
     {
         var rootCalls = 0;
         var reviews = 0;
@@ -790,13 +1133,8 @@ public sealed class AgentRuntimeTests
             {
                 1 => new("", "local", ToolCalls: [new("first", "read", "{}")]),
                 2 => Delegate("review", "Review first observation"),
-                3 => new("Cause uncertain; an object comparison is still possible", "local"),
-                4 => request.Conversation!.Last(m => m.Role == "user").Content.Contains("completion check")
-                    ? new("", "local", ToolCalls: [new("second", "read", "{}")])
-                    : throw new InvalidOperationException("Expected a host completion check"),
-                5 => new("Cause now established", "local"),
-                6 => Delegate("review", "Review the additional comparison"),
-                _ => new("Supported cause and remedy", "local")
+                3 => new("Supported cause and remedy", "local"),
+                _ => throw new InvalidOperationException("Approved work must not trigger another exploration round")
             };
         });
         var config = TeamConfig(true);
@@ -806,10 +1144,10 @@ public sealed class AgentRuntimeTests
         var result = await runtime.RunAsync(config, true, tools, new AgentBudget(30, 30, 10), new(),
             (e, _) => { events.Add(e); return Task.CompletedTask; }, x => x, TestContext.Current.CancellationToken);
         Assert.Equal("Supported cause and remedy", result.Text);
-        Assert.Equal(2, reads);
-        Assert.Equal(2, reviews);
-        Assert.Single(events, e => e.Kind == "team_completion_check");
-        Assert.Single(events, e => e.Kind == "team_completion_blocked");
+        Assert.Equal(1, reads);
+        Assert.Equal(1, reviews);
+        Assert.DoesNotContain(events, e => e.Kind == "team_completion_check");
+        Assert.DoesNotContain(events, e => e.Kind == "team_completion_blocked");
     }
 
     [Fact]
@@ -827,9 +1165,9 @@ public sealed class AgentRuntimeTests
             (_, _) => { reads++; return Task.FromResult("decisive evidence"); })];
         await runtime.RunAsync(config, true, tools, new AgentBudget(20, 20, 5), new(),
             (e, _) => { events.Add(e); return Task.CompletedTask; }, x => x, TestContext.Current.CancellationToken);
-        Assert.Equal(3, calls);
+        Assert.Equal(2, calls);
         Assert.Equal(1, reads);
-        Assert.Single(events, e => e.Kind == "team_completion_check");
+        Assert.DoesNotContain(events, e => e.Kind == "team_completion_check");
     }
 
     [Fact]
@@ -1024,7 +1362,7 @@ public sealed class AgentRuntimeTests
             rootCalls++;
             supervisorRequests.Add(request);
             return rootCalls <= 2 ? new LlmResponse("", "local", ToolCalls:
-                [new(rootCalls.ToString(), "delegate", "{\"memberId\":\"researcher\",\"task\":\"Investigate yesterday\",\"reason\":\"Check historical evidence\"}")])
+                [new(rootCalls.ToString(), "delegate", "{\"assignments\":[{\"memberId\":\"researcher\",\"task\":\"Investigate yesterday\",\"reason\":\"Check historical evidence\"}]}")])
                 : new LlmResponse("Team result", "local");
         });
         var config = new AgentActivityConfiguration { Task = "Investigate", Members =
@@ -1040,7 +1378,7 @@ public sealed class AgentRuntimeTests
         Assert.Equal(2, result.Delegations);
         Assert.Contains(workerRequests[1].Conversation!, m => m.Content.Contains("Which period?"));
         Assert.Contains("matching memberId", supervisorRequests[0].SystemPrompt);
-        Assert.Contains("returns automatically to you", supervisorRequests[0].SystemPrompt);
+        Assert.Contains("results[] in assignment order", supervisorRequests[0].SystemPrompt);
         Assert.Contains("needs_input", workerRequests[0].SystemPrompt);
         Assert.Contains("without a Markdown code fence", workerRequests[0].SystemPrompt);
         Assert.Contains(supervisorRequests[1].Conversation!, m => m.Role == "tool" && m.Content.Contains("Which period?"));
@@ -1104,10 +1442,13 @@ public sealed class AgentRuntimeTests
             new(), (_, _) => Task.CompletedTask, x => x, CancellationToken.None);
 
     private static AgentRuntime Create(Func<LlmRequest, LlmResponse> reply, bool autoConclude = true)
+        => CreateAsync((request, _) => Task.FromResult(reply(request)), autoConclude);
+
+    private static AgentRuntime CreateAsync(Func<LlmRequest, CancellationToken, Task<LlmResponse>> reply, bool autoConclude = true)
     {
         var client = new Mock<ILlmClient>();
         client.Setup(x => x.CompleteAsync(It.IsAny<LlmRequest>(), It.IsAny<CancellationToken>()))
-            .Returns((LlmRequest request, CancellationToken _) => {
+            .Returns((LlmRequest request, CancellationToken token) => {
                 var last = request.Conversation?.LastOrDefault(m => m.Role == "user")?.Content ?? "";
                 if (autoConclude && last.StartsWith("Final report synthesis:"))
                 {
@@ -1118,7 +1459,7 @@ public sealed class AgentRuntimeTests
                         coverage = new[] { new { requirement = "Test task", status = "fulfilled", basis = "Test evidence" } }
                     }), "test"));
                 }
-                return Task.FromResult(reply(request));
+                return reply(request, token);
             });
         var factory = new Mock<ILlmClientFactory>();
         factory.Setup(x => x.Create(It.IsAny<LlmConnection>())).Returns(client.Object);

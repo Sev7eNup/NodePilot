@@ -18,11 +18,41 @@ namespace NodePilot.Engine.Tests.Agents;
 [Collection("AgentDeadlines")]
 public sealed class AgentActivityRunnerTests
 {
+    [Fact]
+    public async Task ParallelJournalAppendsCommitContiguousSequencesAndUsage()
+    {
+        await using var db = TestDbFactory.Create();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "parallel", DefinitionJson = "{}" };
+        var execution = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id, Workflow = workflow };
+        db.WorkflowExecutions.Add(execution);
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        using var database = new AgentRunDatabase(db);
+        var journal = new AgentRunJournal(database, Mock.Of<IExecutionNotifier>(), new OutputRedactor(null), NullLogger<AgentRunJournal>.Instance);
+        await journal.StartAsync(new StepExecutionContext { WorkflowExecutionId = execution.Id, StepId = "team" }, TestContext.Current.CancellationToken);
+        var budget = new AgentBudget(200, 200, 20);
+        await Task.WhenAll(Enumerable.Range(0, 200).Select(i => Task.Run(async () => {
+            budget.TakeModelCall();
+            await journal.AppendAsync(new AgentProgress("model_started", i.ToString(), "member" + i % 2), TestContext.Current.CancellationToken, budget);
+        }, TestContext.Current.CancellationToken)));
+        var events = await db.AgentRunEvents.OrderBy(e => e.Sequence).ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(Enumerable.Range(1, 201).Select(i => (long)i), events.Select(e => e.Sequence));
+        Assert.Equal(200, journal.Run!.ModelCalls);
+    }
+
+    [Fact]
+    public void AgentServicesCannotInjectSharedContextWithoutDatabaseGate()
+    {
+        var offenders = typeof(AgentRunDatabase).Assembly.GetTypes()
+            .Where(t => t.Namespace == typeof(AgentRunDatabase).Namespace && t != typeof(AgentRunDatabase) && t != typeof(AgentMcpClientFactory))
+            .SelectMany(t => t.GetConstructors().Where(c => c.GetParameters().Any(p => p.ParameterType == typeof(NodePilot.Data.NodePilotDbContext))).Select(_ => t.Name));
+        Assert.Empty(offenders);
+    }
     [Theory]
     [InlineData("completed")]
     [InlineData("partial")]
     [InlineData("blocked")]
     [InlineData("timeout")]
+    [InlineData("timeout-retry")]
     public async Task TechnicalSuccessPreservesSeparateTaskOutcomeAndUserJson(string outcome)
     {
         await using var db = TestDbFactory.Create();
@@ -36,7 +66,7 @@ public sealed class AgentActivityRunnerTests
             .Returns((LlmRequest request, CancellationToken _) => {
                 if (++calls == 1) return Task.FromResult(new LlmResponse("Draft", "test"));
                 Assert.Empty(request.Tools ?? []);
-                if (outcome == "timeout") throw new LlmException(LlmErrorKind.Timeout, "Timed out");
+                if (outcome.StartsWith("timeout", StringComparison.Ordinal)) throw new LlmException(LlmErrorKind.Timeout, "Timed out");
                 return Task.FromResult(new LlmResponse(JsonSerializer.Serialize(new {
                     outcome, reason = "Explicit task assessment", report = new { answer = 42 },
                     coverage = new[] { new { requirement = "Answer", status = "fulfilled", basis = "Supplied data" } }
@@ -47,15 +77,15 @@ public sealed class AgentActivityRunnerTests
         var monitor = new Mock<IOptionsMonitor<AgentOptions>>(); monitor.SetupGet(m => m.CurrentValue).Returns(options);
         var llm = new Mock<IOptionsMonitor<LlmOptions>>(); llm.SetupGet(m => m.CurrentValue).Returns(new LlmOptions { Enabled = true });
         var redactor = new OutputRedactor(null);
-        var journal = new AgentRunJournal(db, Mock.Of<IExecutionNotifier>(), redactor, NullLogger<AgentRunJournal>.Instance);
+        var journal = new AgentRunJournal(new AgentRunDatabase(db), Mock.Of<IExecutionNotifier>(), redactor, NullLogger<AgentRunJournal>.Instance);
         using var gate = new AgentExecutionGate(Microsoft.Extensions.Options.Options.Create(options));
         var runner = new AgentActivityRunner(new AgentRuntime(factory.Object, llm.Object),
-            new AgentToolHost(null!, null!, db, null!, null!, new AgentExternalReadPolicy(monitor.Object)), gate, journal, monitor.Object, redactor, NullLogger<AgentActivityRunner>.Instance);
-        var config = new AgentActivityConfiguration { Task = "Answer", MaxModelCalls = 2, ResultFormat = "json",
+            new AgentToolHost(null!, null!, new AgentRunDatabase(db), null!, null!, new AgentExternalReadPolicy(monitor.Object)), gate, journal, monitor.Object, redactor, NullLogger<AgentActivityRunner>.Instance);
+        var config = new AgentActivityConfiguration { Task = "Answer", MaxModelCalls = outcome == "timeout-retry" ? 4 : 2, ResultFormat = "json",
             ResultSchema = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{"answer":{"type":"integer"}},"required":["answer"],"additionalProperties":false}""") };
         var result = await runner.ExecuteAsync(new StepExecutionContext { WorkflowExecutionId = execution.Id, StepId = "agent" },
             JsonSerializer.SerializeToElement(config, AgentConfiguration.JsonOptions), false, TestContext.Current.CancellationToken);
-        if (outcome == "timeout")
+        if (outcome.StartsWith("timeout", StringComparison.Ordinal))
         {
             Assert.False(result.Success);
             Assert.Equal("unassessed", result.OutputParameters["outcome"]);
@@ -64,7 +94,9 @@ public sealed class AgentActivityRunnerTests
             Assert.Equal("Failed", interrupted.Status);
             Assert.Equal("Draft", interrupted.Result);
             Assert.False(await db.AgentRunEvents.AnyAsync(e => e.Kind == "run_conclusion", TestContext.Current.CancellationToken));
-            Assert.Equal(2, calls);
+            Assert.Equal(outcome == "timeout-retry" ? 3 : 2, calls);
+            Assert.Equal(outcome == "timeout-retry" ? 1 : 0,
+                await db.AgentRunEvents.CountAsync(e => e.Kind == "model_retrying", TestContext.Current.CancellationToken));
             return;
         }
         Assert.True(result.Success, result.ErrorOutput);
@@ -90,12 +122,15 @@ public sealed class AgentActivityRunnerTests
         db.Workflows.Add(workflow); db.WorkflowExecutions.Add(execution);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         var calls = 0;
+        var modelEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var client = new Mock<ILlmClient>();
         client.Setup(c => c.CompleteAsync(It.IsAny<LlmRequest>(), It.IsAny<CancellationToken>()))
             .Returns(async (LlmRequest _, CancellationToken token) =>
             {
-                if (Interlocked.Increment(ref calls) == 1 && team && modelTimesOut)
-                    return new LlmResponse("", "test", ToolCalls: [new("delegate-1", "delegate", "{\"memberId\":\"researcher\",\"task\":\"Review\",\"reason\":\"Verify evidence\"}")]);
+                var call = Interlocked.Increment(ref calls);
+                modelEntered.TrySetResult();
+                if (call == 1 && team && modelTimesOut)
+                    return new LlmResponse("", "test", ToolCalls: [new("delegate-1", "delegate", "{\"assignments\":[{\"memberId\":\"researcher\",\"task\":\"Review\",\"reason\":\"Verify evidence\"}]}")]);
                 await Task.Delay(Timeout.Infinite, token);
                 return new LlmResponse("unreachable", "test");
             });
@@ -104,19 +139,24 @@ public sealed class AgentActivityRunnerTests
         var monitor = new Mock<IOptionsMonitor<AgentOptions>>(); monitor.SetupGet(m => m.CurrentValue).Returns(options);
         var llmOptions = new Mock<IOptionsMonitor<LlmOptions>>(); llmOptions.SetupGet(m => m.CurrentValue).Returns(new LlmOptions { Enabled = true });
         var redactor = new OutputRedactor(null);
-        var journal = new AgentRunJournal(db, Mock.Of<IExecutionNotifier>(), redactor, NullLogger<AgentRunJournal>.Instance);
+        var journal = new AgentRunJournal(new AgentRunDatabase(db), Mock.Of<IExecutionNotifier>(), redactor, NullLogger<AgentRunJournal>.Instance);
         using var gate = new AgentExecutionGate(Microsoft.Extensions.Options.Options.Create(options));
         var runner = new AgentActivityRunner(new AgentRuntime(factory.Object, llmOptions.Object),
-            new AgentToolHost(null!, null!, db, null!, null!, new AgentExternalReadPolicy(monitor.Object)), gate, journal, monitor.Object, redactor, NullLogger<AgentActivityRunner>.Instance);
+            new AgentToolHost(null!, null!, new AgentRunDatabase(db), null!, null!, new AgentExternalReadPolicy(monitor.Object)), gate, journal, monitor.Object, redactor, NullLogger<AgentActivityRunner>.Instance);
         var config = new AgentActivityConfiguration { Task = "Wait", TimeoutSeconds = callerCancels || modelTimesOut ? 60 : 1,
             Members = team ? [new() { Id = "lead", IsSupervisor = true }, new() { Id = "researcher", IsReviewer = true }] : [] };
         using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        if (callerCancels) caller.CancelAfter(TimeSpan.FromSeconds(1));
+        if (callerCancels) caller.CancelAfter(TimeSpan.FromSeconds(15));
         var task = runner.ExecuteAsync(new StepExecutionContext { WorkflowExecutionId = execution.Id, StepId = "agent" },
             JsonSerializer.SerializeToElement(config, AgentConfiguration.JsonOptions), team, caller.Token);
-        if (callerCancels) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
+        if (callerCancels)
+        {
+            await modelEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            caller.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
+        }
         else Assert.False((await task).Success);
-        Assert.Equal(team && modelTimesOut ? 2 : 1, calls);
+        Assert.Equal(modelTimesOut ? (team ? 3 : 2) : 1, calls);
         var run = await db.AgentRuns.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(callerCancels ? "Cancelled" : "Failed", run.Status);
         Assert.NotNull(run.CompletedAt);

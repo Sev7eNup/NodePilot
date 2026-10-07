@@ -20,7 +20,7 @@ public sealed class AgentTargetTests
         var sessions = new Mock<IRemoteSessionFactory>(MockBehavior.Strict);
         var options = Monitor(new AgentOptions { AllowServiceIdentity = true });
         var engine = new Mock<IPowerShellExecutionEngine>();
-        var factory = new AgentTargetFactory(db, Mock.Of<ICredentialStore>(), sessions.Object,
+        var factory = new AgentTargetFactory(new AgentRunDatabase(db), Mock.Of<ICredentialStore>(), sessions.Object,
             new PowerShellEngineFactory(engine.Object, engine.Object, engine.Object), options, NullLogger<AgentTargetFactory>.Instance);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => factory.CreateAsync(new AgentDefinition(), new StepExecutionContext(), TestContext.Current.CancellationToken));
         await using var allowed = await factory.CreateAsync(new AgentDefinition { UseServiceIdentity = true }, new StepExecutionContext(), TestContext.Current.CancellationToken);
@@ -33,7 +33,7 @@ public sealed class AgentTargetTests
     {
         await using var db = TestDbFactory.Create();
         var engine = new Mock<IPowerShellExecutionEngine>();
-        var factory = new AgentTargetFactory(db, Mock.Of<ICredentialStore>(), Mock.Of<IRemoteSessionFactory>(),
+        var factory = new AgentTargetFactory(new AgentRunDatabase(db), Mock.Of<ICredentialStore>(), Mock.Of<IRemoteSessionFactory>(),
             new PowerShellEngineFactory(engine.Object, engine.Object, engine.Object), Monitor(new AgentOptions()), NullLogger<AgentTargetFactory>.Instance);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => factory.CreateAsync(new AgentDefinition { UseServiceIdentity = true }, new StepExecutionContext(), TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<ArgumentException>(() => factory.CreateAsync(new AgentDefinition { TargetMachineId = Guid.NewGuid() }, new StepExecutionContext(), TestContext.Current.CancellationToken));

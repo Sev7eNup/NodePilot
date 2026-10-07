@@ -21,7 +21,7 @@ public sealed class AgentReadCallsTests
     {
         await using var db = TestDbFactory.Create();
         var handler = new RecordingHttpHandler();
-        var host = new AgentToolHost(null!, null!, db, null!, HttpProvider(handler), Policy());
+        var host = new AgentToolHost(null!, null!, new AgentRunDatabase(db), null!, HttpProvider(handler), Policy());
         await using var session = await host.OpenAsync(new AgentDefinition { Tools = [new() { Name = "http_request" }] },
             new(), Guid.NewGuid(), null!, null!, TestContext.Current.CancellationToken);
         var schema = NodePilot.Ai.Agents.AgentJsonSchema.Compile(session.Tools.Single().Schema);
@@ -62,7 +62,7 @@ public sealed class AgentReadCallsTests
     {
         await using var db = TestDbFactory.Create();
         var handler = new RecordingHttpHandler();
-        var host = new AgentToolHost(null!, null!, db, null!, HttpProvider(handler), Policy());
+        var host = new AgentToolHost(null!, null!, new AgentRunDatabase(db), null!, HttpProvider(handler), Policy());
         await using var session = await host.OpenAsync(new AgentDefinition { Tools = [new() { Name = "http_request" }] },
             new StepExecutionContext(), Guid.NewGuid(), null!, null!, TestContext.Current.CancellationToken);
         var output = await session.Tools.Single().InvokeAsync(JsonSerializer.SerializeToElement(new { url = "https://example.test/status?node=1", method }), TestContext.Current.CancellationToken);
@@ -82,7 +82,7 @@ public sealed class AgentReadCallsTests
     {
         await using var db = TestDbFactory.Create();
         var handler = new RecordingHttpHandler();
-        var host = new AgentToolHost(null!, null!, db, null!, HttpProvider(handler), Policy());
+        var host = new AgentToolHost(null!, null!, new AgentRunDatabase(db), null!, HttpProvider(handler), Policy());
         await using var session = await host.OpenAsync(new AgentDefinition { Tools = [new() { Name = "http_request" }] }, new(), Guid.NewGuid(), null!, null!, TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => session.Tools.Single().InvokeAsync(
             JsonSerializer.SerializeToElement(new { url = "https://example.test/status", method, body }), TestContext.Current.CancellationToken));
@@ -101,7 +101,7 @@ public sealed class AgentReadCallsTests
     {
         await using var db = TestDbFactory.Create();
         var handler = new RecordingHttpHandler { Redirect = true };
-        var host = new AgentToolHost(null!, null!, db, null!, HttpProvider(handler), Policy());
+        var host = new AgentToolHost(null!, null!, new AgentRunDatabase(db), null!, HttpProvider(handler), Policy());
         await using var session = await host.OpenAsync(new AgentDefinition { Tools = [new() { Name = "http_request" }] }, new(), Guid.NewGuid(), null!, null!, TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<InvalidOperationException>(() => session.Tools.Single().InvokeAsync(JsonSerializer.SerializeToElement(new { url = "https://example.test/status" }), TestContext.Current.CancellationToken));
         Assert.Single(handler.Methods);

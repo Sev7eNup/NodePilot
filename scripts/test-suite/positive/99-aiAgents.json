@@ -5,7 +5,7 @@
   "workflows": [
     {
       "name": "[TestSuite] AI agents",
-      "description": "Opt-in live model and sequential delegation check. No host tools.",
+      "description": "Opt-in live model, sequential and parallel delegation checks. No host tools.",
       "definition": {
         "nodes": [
           {
@@ -111,10 +111,68 @@
             }
           },
           {
-            "id": "assert",
+            "id": "v2",
             "type": "activity",
             "position": {
               "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Team: parallel specialists",
+              "activityType": "aiAgentTeam",
+              "config": {
+                "task": "Delegate independent confirmations of OK to first and second together in one assignments batch. Then return {\"answer\":\"OK\"}.",
+                "resultFormat": "json",
+                "resultSchema": {
+                  "type": "object",
+                  "properties": {
+                    "answer": {
+                      "const": "OK"
+                    }
+                  },
+                  "required": [
+                    "answer"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxParallelMembers": 2,
+                "maxModelCalls": 8,
+                "maxToolCalls": 4,
+                "maxDelegations": 2,
+                "timeoutSeconds": 120,
+                "members": [
+                  {
+                    "id": "supervisor",
+                    "role": "Supervisor",
+                    "isSupervisor": true,
+                    "instructions": "Use one delegate batch containing both specialists.",
+                    "model": "gpt-6-luna",
+                    "tools": []
+                  },
+                  {
+                    "id": "first",
+                    "role": "First specialist",
+                    "instructions": "Confirm OK.",
+                    "model": "gpt-6-luna",
+                    "tools": []
+                  },
+                  {
+                    "id": "second",
+                    "role": "Second specialist",
+                    "instructions": "Independently confirm OK.",
+                    "model": "gpt-6-luna",
+                    "tools": []
+                  }
+                ]
+              },
+              "outputVariable": "v2"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1340,
               "y": 260
             },
             "data": {
@@ -123,7 +181,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 60,
-                "script": "\n$single = {{v0.output}} | ConvertFrom-Json\n$team = {{v1.output}} | ConvertFrom-Json\n$run = {{v1.param.agentRunId}}\n$delegations = [int]{{v1.param.delegations}}\nif ($single.answer -ne 'OK' -or $team.answer -ne 'OK') { throw 'Unexpected agent result' }\nif ([string]::IsNullOrWhiteSpace($run)) { throw 'Agent run ID missing' }\nif ($delegations -lt 1) { throw 'The model did not delegate' }\n$assertOk = 'aiAgents'\n"
+                "script": "\n$single = {{v0.output}} | ConvertFrom-Json\n$team = {{v1.output}} | ConvertFrom-Json\n$run = {{v1.param.agentRunId}}\n$delegations = [int]{{v1.param.delegations}}\n$parallel = {{v2.output}} | ConvertFrom-Json\nif ($parallel.answer -ne 'OK' -or [int]{{v2.param.delegations}} -ne 2) { throw 'Parallel team did not finish both assignments' }\nif ($single.answer -ne 'OK' -or $team.answer -ne 'OK') { throw 'Unexpected agent result' }\nif ([string]::IsNullOrWhiteSpace($run)) { throw 'Agent run ID missing' }\nif ($delegations -lt 1) { throw 'The model did not delegate' }\n$assertOk = 'aiAgents'\n"
               },
               "outputVariable": "assert",
               "targetMachineId": "localhost"
@@ -133,7 +191,7 @@
             "id": "ret",
             "type": "activity",
             "position": {
-              "x": 1340,
+              "x": 1660,
               "y": 260
             },
             "data": {
@@ -171,8 +229,18 @@
             }
           },
           {
-            "id": "e-v1-assert",
+            "id": "e-v1-v2",
             "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-assert",
+            "source": "v2",
             "target": "assert",
             "type": "labeled",
             "data": {

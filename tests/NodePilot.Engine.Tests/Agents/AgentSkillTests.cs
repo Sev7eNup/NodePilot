@@ -32,6 +32,59 @@ public sealed class AgentSkillTests
     private const string Instructions = "---\nname: windows-diagnostics\ndescription: >-\n  Windows update diagnosis\n  using bounded log excerpts.\n---\nRead evidence before making changes.";
 
     [Theory]
+    [InlineData("cmd", "whoami", "\"%SystemRoot%\\System32\\whoami.exe\"")]
+    [InlineData("bash", "whoami", "'/usr/bin/whoami'")]
+    public async Task ShellSkill_ExecutesCanonicalCommand_NotOriginalPackageScript(string shell, string source, string expected)
+    {
+        await using var db = TestDbFactory.Create();
+        var scriptName = shell == "cmd" ? "scripts/check.cmd" : "scripts/check.sh";
+        var bytes = Package(("SKILL.md", Instructions), (scriptName, source),
+            ("whoami.cmd", "echo package-shadow-marker"), ("chcp.cmd", "echo bootstrap-shadow-marker"));
+        var parsed = AgentSkillArchive.Read(bytes);
+        var id = Guid.NewGuid();
+        db.AgentSkillPackages.Add(new AgentSkillPackage { Id = id, Name = parsed.Name, Version = "1", Description = parsed.Description, Sha256 = parsed.Sha256, Package = bytes });
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var scripts = new List<string>();
+        var monitor = new Mock<IOptionsMonitor<AgentOptions>>(); monitor.SetupGet(m => m.CurrentValue).Returns(new AgentOptions());
+        var session = new Mock<IRemoteSession>();
+        // Capture the actual target dispatch without executing any package content.
+        session.Setup(s => s.ExecuteScriptAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Returns(async (string script, int? _, CancellationToken _) =>
+            {
+                scripts.Add(script);
+                return new RemoteExecutionResult { Success = true,
+                    Output = script.Contains("$command=[Text.Encoding]::Unicode.GetString")
+                        ? "{\"exitCode\":0,\"timedOut\":false,\"stdout\":\"bound-user\",\"stderr\":\"\"}"
+                        : await AgentShellTests.Execute(script) };
+            });
+        var factory = new Mock<IRemoteSessionFactory>();
+        factory.Setup(f => f.CreateSessionAsync(It.IsAny<ManagedMachine>(), It.IsAny<Credential>(), It.IsAny<CancellationToken>())).ReturnsAsync(session.Object);
+        var engine = Mock.Of<IPowerShellExecutionEngine>();
+        await using var target = new AgentTarget(new ManagedMachine { Hostname = "bound-target" }, new Credential(), false, factory.Object,
+            new PowerShellEngineFactory(engine, engine, engine), monitor.Object, "skill", NullLogger.Instance);
+        var tools = await AgentSkillTools.CreateAsync(new AgentRunDatabase(db), new AgentDefinition { SkillIds = [id], Tools = [new() { Name = shell }] }, target, Guid.NewGuid(), TestContext.Current.CancellationToken);
+        await tools.Single(t => t.Name == "run_skill_script").InvokeAsync(
+            JsonSerializer.SerializeToElement(new { skillId = id, path = scriptName }), TestContext.Current.CancellationToken);
+        var dispatch = Assert.Single(scripts, s => s.Contains("$command=[Text.Encoding]::Unicode.GetString"));
+        var encoded = System.Text.RegularExpressions.Regex.Match(dispatch, "FromBase64String\\('([^']+)'\\)").Groups[1].Value;
+        var command = Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
+        Assert.Contains(expected, command);
+        Assert.DoesNotContain("check.", command);
+        Assert.DoesNotContain("call ", command, StringComparison.OrdinalIgnoreCase);
+        if (shell == "cmd") Assert.StartsWith("@\"%SystemRoot%\\System32\\chcp.com\" 65001 >nul", command);
+        // Execute only the already-asserted canonical wrapper, without package working directory.
+        // The shadow file is never executed, even when running this test against an unfixed build.
+        if (shell == "cmd")
+        {
+            using var result = JsonDocument.Parse(await AgentShellTests.Execute(AgentProcessScript.Build(shell,
+                AgentPermissionPolicy.PrepareShell(shell, source), null, null)));
+            Assert.Equal(0, result.RootElement.GetProperty("exitCode").GetInt32());
+            Assert.False(string.IsNullOrWhiteSpace(result.RootElement.GetProperty("stdout").GetString()));
+            Assert.DoesNotContain("package-shadow-marker", result.RootElement.GetProperty("stdout").GetString());
+        }
+    }
+
+    [Theory]
     [InlineData("Restricted", "Write-Output 'must not run'", "execution_policy_blocked")]
     [InlineData("AllSigned", "Write-Output 'must not run'", "skill_signature_required")]
     [InlineData("RemoteSigned", "Get-Item -LiteralPath 'C:\\NodePilot-Nonexistent-Skill-Test-File'", "process_failed")]
@@ -59,7 +112,7 @@ public sealed class AgentSkillTests
         string staging;
         try
         {
-            var tools = await AgentSkillTools.CreateAsync(db, new AgentDefinition { SkillIds = [id], Tools = [new() { Name = "powershell" }] }, target, Guid.NewGuid(), TestContext.Current.CancellationToken);
+            var tools = await AgentSkillTools.CreateAsync(new AgentRunDatabase(db), new AgentDefinition { SkillIds = [id], Tools = [new() { Name = "powershell" }] }, target, Guid.NewGuid(), TestContext.Current.CancellationToken);
             var error = await Assert.ThrowsAsync<AgentToolExecutionException>(() => tools.Single(t => t.Name == "run_skill_script").InvokeAsync(
                 JsonSerializer.SerializeToElement(new { skillId = id, path = "scripts/check.ps1" }), TestContext.Current.CancellationToken));
             Assert.Contains(code, error.Message);
@@ -130,7 +183,7 @@ public sealed class AgentSkillTests
         try
         {
             var definition = new AgentDefinition { SkillIds = [id], Tools = [new AgentToolSelection { Name = "powershell" }] };
-            var tools = await AgentSkillTools.CreateAsync(db, definition, target, Guid.NewGuid(), TestContext.Current.CancellationToken);
+            var tools = await AgentSkillTools.CreateAsync(new AgentRunDatabase(db), definition, target, Guid.NewGuid(), TestContext.Current.CancellationToken);
             using var result = JsonDocument.Parse(await tools.Single(t => t.Name == "run_skill_script").InvokeAsync(
                 JsonSerializer.SerializeToElement(new { skillId = id, path = "scripts/check.ps1", arguments = new[] { "quoted ' & input" } }), TestContext.Current.CancellationToken));
             Assert.Equal(0, result.RootElement.GetProperty("exitCode").GetInt32());
@@ -177,7 +230,7 @@ public sealed class AgentSkillTests
         var id = Guid.NewGuid();
         db.AgentSkillPackages.Add(new AgentSkillPackage { Id = id, Name = parsed.Name, Version = "1", Description = parsed.Description, Sha256 = parsed.Sha256, Package = bytes });
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
-        var tools = await AgentSkillTools.CreateAsync(db, new AgentDefinition { SkillIds = [id] }, null, Guid.NewGuid(), TestContext.Current.CancellationToken);
+        var tools = await AgentSkillTools.CreateAsync(new AgentRunDatabase(db), new AgentDefinition { SkillIds = [id] }, null, Guid.NewGuid(), TestContext.Current.CancellationToken);
         var load = tools.Single(t => t.Name == "load_skill");
         Assert.Contains("already loaded", await load.InvokeAsync(JsonSerializer.SerializeToElement(new { skillId = id }), TestContext.Current.CancellationToken));
         Assert.Contains("Read evidence", Assert.Single(load.Skills).Instructions);
@@ -200,7 +253,7 @@ public sealed class AgentSkillTests
         db.AgentSkillPackages.Add(new AgentSkillPackage { Id = id, Name = parsed.Name, Version = "1", Description = parsed.Description, Sha256 = parsed.Sha256, Package = bytes });
         var ct = TestContext.Current.CancellationToken;
         await db.SaveChangesAsync(ct);
-        var tools = await AgentSkillTools.CreateAsync(db, new AgentDefinition { SkillIds = [id] }, null, Guid.NewGuid(), ct, 1024);
+        var tools = await AgentSkillTools.CreateAsync(new AgentRunDatabase(db), new AgentDefinition { SkillIds = [id] }, null, Guid.NewGuid(), ct, 1024);
         var read = tools.Single(t => t.Name == "read_skill_resource");
         var assembled = new StringBuilder();
         var offset = 0;

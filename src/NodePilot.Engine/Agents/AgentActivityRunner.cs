@@ -35,6 +35,9 @@ public sealed class AgentActivityRunner(AgentRuntime runtime, AgentToolHost tool
             if (modelCalls < 2) throw new ArgumentException("Agent model budget needs at least two calls: investigation and final report.");
             var toolCalls = Bound(config.MaxToolCalls, team ? limits.TeamToolCalls : limits.SingleToolCalls, "tool calls");
             var seconds = Bound(config.TimeoutSeconds, team ? limits.TeamTimeoutSeconds : limits.SingleTimeoutSeconds, "timeout");
+            if (team) config = config with { MaxParallelMembers = Math.Min(config.Members.Length - 1,
+                Math.Min(config.MaxParallelMembers ?? limits.TeamMaxParallelMembers,
+                    Bound(null, limits.TeamMaxParallelMembers, "parallel members"))) };
             budget = new AgentBudget(modelCalls, toolCalls, team ? Bound(config.MaxDelegations, limits.TeamDelegations, "delegations") : 0);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
@@ -57,8 +60,7 @@ public sealed class AgentActivityRunner(AgentRuntime runtime, AgentToolHost tool
             var answer = await runtime.RunAsync(config, team, memberTools, budget, limits, async (progress, token) =>
             {
                 if (!options.CurrentValue.Enabled) throw new InvalidOperationException("Agent activities have been disabled.");
-                journal.RecordUsage(budget);
-                await journal.AppendAsync(progress, token);
+                await journal.AppendAsync(progress, token, budget);
             }, text => AgentContentRedactor.Redact(text, redactor), timeout.Token);
             result = answer.Text;
             outcome = answer.Outcome;

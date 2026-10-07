@@ -1,7 +1,7 @@
 # AI agent activities
 
 `aiAgent` runs a general-purpose agent inside one workflow step. `aiAgentTeam` gives
-one supervisor a visible team of sequential specialists. `llmQuery` remains a single
+one supervisor a visible team of specialists working in bounded parallel batches. `llmQuery` remains a single
 model request; agents can choose tools, inspect their results and continue working.
 Architecture and trust boundaries: [ADR 0016](adr/0016-general-ai-agent-activities.md).
 
@@ -12,7 +12,8 @@ tools automatically; users need not select or name them. For material investigat
 members record focused questions, owners, hypotheses, evidence/counterevidence IDs,
 next checks and conclusions. Up to 20 checks are kept for a run. An open check blocks
 completion; resolving it requires original run evidence, and blocking it requires a
-specific limitation. Changes invalidate previous reviews. Updates appear in the
+specific limitation. Changes invalidate dependent reviews; new checks invalidate all
+reviews. Updates appear in the
 existing journal and support export and survive model-context compaction.
 
 Updates accept a stable `id` plus changed fields; omitted fields are preserved.
@@ -21,6 +22,11 @@ An attempted rewrite of a closed check returns `accepted=false`, its current
 contents and the exact reopening step. It does not silently modify the conclusion
 or invalidate review. Review approval belongs in the member's response.
 
+Exhausting the shared investigation model
+budget, including inside a parallel batch, enters the reserved tool-free final report
+after started members finish. Unfinished members and missing reviews stay open;
+the reserve neither grants approval nor increases the configured call limit.
+Context/evidence limits, cancellation and technical failures remain distinct errors.
 Finalization also records `coverage` in `run_conclusion`: each requested deliverable
 has a requirement, `fulfilled`/`unresolved` status and supporting basis. The host
 prevents `completed` when any listed requirement is unresolved: some fulfilled
@@ -70,10 +76,33 @@ Schema validation checks shape and categories; it cannot establish factual truth
    save and publish. Publishing authorizes autonomous selected actions within the current
    read-only policy. There is no per-call approval dialog.
 
-The supervisor uses `delegate(memberId, task, reason)`, including a short user-facing
+The supervisor uses `delegate({assignments: [{memberId, task, reason}]})`, including a short user-facing
 explanation of the assignment and the open question it addresses. Specialists return JSON containing
 `status` (`completed`, `needs_input`, `failed`) and string `content`. A follow-up reuses
 that member's session. Questions go to the supervisor, not to an interactive user.
+
+### Parallel assignments and live team board
+
+Independent questions go to different members in one batch; dependent work stays in
+separate batches. The effective limit is the minimum of `maxParallelMembers`, the
+administrator's `TeamMaxParallelMembers` (default 3), and non-supervisor member count.
+Set the workflow limit to 1 for sequential execution. Duplicate members, mixed
+reviewer/specialist batches and oversized batches are rejected before any budget is
+charged. Each accepted assignment consumes one tool call and each started member one
+delegation. Results return in `results[]` in input order, with batch/delegation IDs and
+per-answer truncation flags. Reviewers receive a stable snapshot after specialist work;
+material changes during review require reviewing the new revision.
+
+Running members receive bounded pointers to new peer evidence and shared checks before
+their next tool-enabled model call. These untrusted team-board pointers do not count as
+observations: use `evidence_read` and `investigation_read` for the originals. The board
+is ephemeral and bounded; omitted notices are counted, and delivery IDs appear as
+`team_board` events. The collaboration view groups interleaved events by delegation ID
+and marks parallel batches. Model/transport failure cancels and awaits siblings before
+finishing the run. Individual assignment failures remain visible failed results.
+Concurrent calls can increase provider rate-limit errors (429). A transient model
+request may be retried once within the shared budgets; persistent failure terminates
+the run. See [ADR 0017](adr/0017-parallel-team-delegation.md).
 
 ### Follow a team run
 
@@ -129,8 +158,9 @@ For a correction to interpretation, wording or the proposed next step, the revie
 can use `objectionKind: "revision"`; a subsequent review is required but a new read is
 not. Omitted objection kinds default to `evidence`. A later revision request cannot
 erase an already outstanding evidence requirement.
-Every configured reviewer must complete a review; new specialist responses or
-supervisor tool use invalidate previous reviews. Sessions and budgets remain shared
+Every configured reviewer must complete a review; changed specialist findings or
+supervisor tool use invalidate reviews that depend on those sources. Reviews without
+an explicit dependency declaration cover the whole team. Sessions and budgets remain shared
 as before, and reviewers gain no tools or delegation rights.
 
 Each reviewer can be invoked at most three times against an unchanged observation
@@ -175,6 +205,9 @@ A malformed delegation response gets one format-only correction in the same memb
 session with tools disabled. The correction counts toward the shared model budget,
 preserves open objections and does not replay actions. A second invalid response
 fails that delegation. The host reports `member_response_invalid` for the correction.
+Unknown review dependency keys follow this same format-correction path. A protocol
+failure blocks completion but does not create an evidence objection; any genuine
+evidence objection from an earlier valid review remains in force.
 Before each model call, agents also receive their remaining shared budgets so they
 can reserve calls for necessary follow-up and review.
 
@@ -182,19 +215,22 @@ On a premature final answer the host journals `team_completion_blocked` and asks
 the supervisor to continue within the existing budgets and timeout. New distinct
 observations or fewer outstanding member/review obligations permit further rounds;
 two consecutive corrective turns without either kind of progress stop the loop.
-If the obligations remain open, the step fails with the unresolved member IDs and
-questions instead of publishing a successful final result. JSON output is subject
+If the obligations remain open, the final report includes unresolved member IDs and
+questions and the host prevents a completed outcome. JSON output is subject
 to the same gate. Review approval concerns the requested outcome, not merely finishing
 the review. Remaining actionable checks must be reported as open. The protocol gate
 does not prove the semantic correctness or relevance of a verdict or observation.
 
-After a tool-backed team produces a candidate final answer, one additional
-`team_completion_check` challenges material evidence gaps when budget remains for
-a focused follow-up and all configured reviews. The supervisor may perform or
-delegate an available discriminating read and must obtain fresh reviews after
-new work. A supported answer needs no repeated reads. The check does not expand
-the original task, authorize repairs or aim for a budget utilization percentage.
-It consumes the existing shared budget and remains subject to cancellation.
+Material gaps must be reconciled before final review. Each follow-up identifies the
+requested conclusion or remedy it could change and the observation that would decide
+it. Once member obligations, shared checks and required reviews are complete, the
+host proceeds directly to tool-free final synthesis without an extra exploration
+round. Incidental chronology or historical authorship must not reopen a bounded
+diagnosis unless it can change the requested answer.
+A first plausible explanation is insufficient: credible alternatives, unexplained
+contradictions and indications of multiple faults still require discriminating checks.
+New counterevidence reopens the affected investigation and review. Tools, model
+selection and budgets are unchanged by these stopping rules.
 
 `Agents:ModelMaxOutputTokens` defaults to **250,000 output tokens per model call**.
 The active profile can impose a lower output limit; `run_context` records both values.
@@ -270,9 +306,20 @@ timeout and the overall run deadline still apply. `Agents:ModelMaxOutputTokens`
 a lower profile output limit is preserved. Both settings are available in Agent administration.
 `MaxResultCharacters` still limits the final workflow result; it no longer caps every
 intermediate model response. Final reports should cite stored evidence instead of embedding logs.
-Model transport failures and truncated responses produce a `model_failed` event with
-the member ID and fail the whole run. Nested delegation cannot swallow the error or
-automatically retry it. Cancellation releases the run resources; completed actions
+Timeouts, HTTP 408/429 and HTTP 500/502/503/504, positively identified socket resets/
+aborts and prematurely ended HTTP responses may retry the same model request once
+after one cancellable second. Each attempt consumes a model call; the final-report
+reservation and overall deadline remain enforced. A tool-enabled or working-summary
+retry requires room for a following answer, checked atomically against concurrent
+members at admission. `model_retrying` identifies the member and failed call.
+The retry stays inside the transport adapter: it reuses the conversation, including
+existing tool results, without replaying tools, delegations or workflow activities.
+Authentication/TLS failures, other HTTP errors, unidentified unreachable endpoints,
+DNS failures, refused connections, malformed/truncated responses and tool failures
+are not retried. Connection interruption classification uses exception types/codes,
+never localized error messages; TLS failures remain terminal even with an inner reset.
+Persistent or non-retryable failures produce `model_failed` and fail the whole run;
+nested delegation cannot swallow the error. Cancellation releases run resources; completed actions
 are not undone. Existing chats and `llmQuery` keep their own profile limits.
 
 
@@ -290,6 +337,9 @@ with an explicit log name. CIM classes and namespaces are checked: `Win32_Produc
 WQL and remote-session overrides are rejected. Nonliteral assignments, dynamic invocation, script blocks,
 subprocesses, redirection and unapproved parameters are rejected rather than guessed safe.
 Native shell calls execute a canonical form with explicit module/executable names.
+Packaged CMD/Bash scripts execute that same checked canonical form, rather than
+resolving commands from the uploaded package directory. PowerShell skill scripts
+retain their verified original bytes and target signature/execution-policy checks.
 CMD accepts one supported literal read command per call, such as `type`.
 Bash also accepts pipelines of checked commands, such as `cat '/c/log.txt' | grep ERROR | head -n 20`.
 This intentionally rejects some harmless but unsupported scripts.
@@ -309,7 +359,7 @@ delegation. This establishes local existence/content, not end-to-end SMB access 
 another account's effective rights; inspect share ACLs and filesystem ACLs separately.
 Other hosts, device/WebDAV paths, alternate streams, traversal and reparse points
 are rejected. Delegate a different server's investigation to its configured member.
-Packaged scripts retain original bytes and therefore use local paths; inline UNC
+Packaged PowerShell scripts retain original bytes and therefore use local paths; inline UNC
 resolution does not silently rewrite skill files. Existing file-tool allowed paths
 and HTTP/MCP/workflow authorization remain unchanged.
 
@@ -558,14 +608,18 @@ Regression and actual-model evidence: [timestamp acceptance](testing/ai-agent-ti
 | Model calls | 20 | 100 |
 | Tool calls | 40 | 500 |
 | Delegations | — | 20 |
+| Parallel members | — | 3, capped by member count |
 | Total time | 20 minutes | 30 minutes |
 
 Settings section `Agents` sets ceilings and `Enabled`/`AllowServiceIdentity`.
 `MaxConcurrentRuns` defaults to 2 per server process and requires restart; other values
 are observed on new runs, and disabling execution is checked before further calls.
 Queue time, tools and child waits count toward the total timeout. Team members use one
-agent slot. Waiting for another workflow releases both scheduler and agent slots.
-No automatic retry is supported. Cancellation and restart do not undo completed actions;
+agent slot. Calls to another workflow are serialized within a team and use separate
+database scopes. Waiting releases both scheduler and agent slots; other members may
+continue working while those slots are released.
+Retries of the activity or its tools are not supported. Only the bounded transient
+model-request retry described above is automatic. Cancellation and restart do not undo completed actions;
 starting again creates a new run. A malformed final JSON result has one repair round,
 without tools and within the model budget, before the step fails.
 
@@ -591,16 +645,35 @@ schema gets at most one tool-free format correction within the remaining budget.
 The user's text/JSON result stays in `output`; assessment metadata does not change
 its schema. Blocked investigation checks prevent a `completed` outcome.
 
+If required reviews or investigation questions remain open after two correction
+rounds without progress, or only the reserved report call remains, the team still
+produces this final report. It includes the outstanding questions, missing reviews,
+limitations and next checks. The host prevents a `completed` outcome; the result is
+`partial` or `blocked`, while successful report delivery keeps the step successful.
+The supervisor routes missing information to the responsible capable member, which
+returns evidence or a specific inability to obtain it. Closing an open investigation
+check counts as correction progress; paraphrasing or reassigning it does not.
+
 The first report draft is saved before finalization. On failure/cancellation it
 remains in the journal/result as **preliminary findings**, possibly superseded by
 later evidence. It is not a validated final result and may not satisfy the user's
 JSON schema. Technical status stays failed/cancelled and outcome stays `unassessed`.
-Before a first draft exists there is no report to retain. No retry or extra model
-call is made after a timeout to manufacture a final answer.
+Before a first draft exists there is no report to retain; collected evidence remains
+in the journal. After the bounded model retry is exhausted, no extra call manufactures
+a successful final answer. Persistent failure retains the preliminary draft when present.
 
 Identical specialist findings and owner-only register reassignment do not stale
-reviews. New specialist observations, changed findings and material register
-changes still do. Tool schema errors identify the argument path and constraint
+reviews. A reviewer may declare a nonempty `reviewDependencies` array using host
+`reviewSources` keys: `member:<id>` for every member whose findings or original
+observations support or could contradict the verdict, and `check:<id>` for each
+dependent shared check. Cross-target dependencies must be included. Omission means
+a whole-team review, invalidated by any material change. Empty or unknown dependencies
+cannot grant approval. Changed sources invalidate their dependent reviews; introducing
+a new shared question invalidates all reviews. Approval records the assignment's
+starting revision, so changes during review still require reassessment. Host blockers
+list affected reviewers and changed sources for focused follow-up. Dependency relevance,
+like the verdict itself, remains a semantic judgment; the host enforces the protocol.
+Tool schema errors identify the argument path and constraint
 without echoing rejected values.
 The live inspector/history displays persisted events and member status. After reconnect,
 missing sequences are fetched over REST and deduplicated.

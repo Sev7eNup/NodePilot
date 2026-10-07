@@ -29,12 +29,13 @@ Ein Posten wandert von R2 nach R1, wenn sein Trigger eintritt — nicht, weil er
 
 `aiAgent` und `aiAgentTeam`: allgemeine Agenten mit auswählbaren nativen Werkzeugen,
 PowerShell/CMD/Git Bash, MCP-Client, versionierten Skills, begrenzter Logsammlung und
-sichtbaren sequenziellen Teams. Die Schleife liegt innerhalb des Steps; die Workflow-
+sichtbaren Teams mit begrenzten parallelen Aufträgen. Die Schleife liegt innerhalb des Steps; die Workflow-
 Engine bleibt bestehen. Veröffentlichung autorisiert konfigurierte autonome Aktionen;
 Chat-Freigaben bleiben unverändert. [ADR 0016](adr/0016-general-ai-agent-activities.md)
 und [Betriebs-/Konfigurationsreferenz](ai-agents.md) sind verbindlich. Entwicklung in
-drei Abschnitten, eine vollständige Veröffentlichung; keine parallelen oder verschachtelten
-Teams und keine Wiederaufnahme nach Neustart. Umsetzung auf `feature/ai-agent-activities`.
+drei Abschnitten, eine vollständige Veröffentlichung. [ADR 0017](adr/0017-parallel-team-delegation.md)
+ergänzt parallele Delegationsbündel und Live-Teamhinweise; verschachtelte Teams und
+Wiederaufnahme nach Neustart bleiben ausgeschlossen. Umsetzung auf `feature/ai-agents`.
 
 28 Posten in acht Wellen. Die Wellenreihenfolge ist bewusst: erst wird ehrlich, was gerade
 unehrlich ist, dann wird gebaut.

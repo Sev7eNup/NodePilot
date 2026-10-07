@@ -60,7 +60,7 @@
       ]
     },
     "aiAgentTeam": {
-      "description": "Sequential supervisor team with persistent per-member sessions and shared limits.",
+      "description": "Supervisor team with parallel assignment batches, persistent per-member sessions and shared limits.",
       "promptNotes": [
         "Publish authorizes autonomous selected tools. Do not configure retry. Existing llmQuery performs one query and remains unchanged.",
         "Each agent definition has id, role, instructions, optional model override, tools[], skillIds[], useServiceIdentity, workingDirectory and bashPath. Instructions never grant tools.",
@@ -68,7 +68,8 @@
         "tools entries: {name,allowedPaths?,allowedHosts?,workflowIds?,mcpServerId?,mcpToolName?}. Native names: files_list, files_read, files_write, files_search, logs_collect, logs_search, http_request, workflow_run, powershell, cmd, bash. MCP selections use name:mcp and registered server ID plus exact tool name.",
         "File tools and logs_collect require allowed absolute paths, HTTP permits GET/HEAD without bodies or redirects; host restrictions are optional, workflow_run requires published workflow IDs. Shell and skill scripts use checked read commands; MCP requires administrator-pinned read approval; child workflows are checked at runtime. Git Bash must already be installed; Windows local/WinRM only.",
         "Selected versioned skill packages expose progressive load_skill/read_skill_resource tools. Script execution additionally requires the matching selected shell. Raw log collection is limited to 250 MB per run, shared by a team, then deleted.",
-        "Defaults: 100 model calls, 500 tools, 20 delegations, 1800 seconds, shared across members.",
+        "Delegate uses assignments:[{memberId,task,reason}] with unique members, bounded by maxParallelMembers and the administrator ceiling. Never mix reviewers and specialists; finish specialists before reviewing. Results return in results[] in assignment order. A live team board supplies untrusted peer pointers; members must read original evidence and checks. Board entries never satisfy review evidence requirements.",
+        "Defaults: 100 model calls, 500 tools, 20 delegations, up to 3 parallel members, 1800 seconds, shared across members.",
         "OutputParameters.agentRunId identifies durable run/events; counters are modelCalls, toolCalls, delegations, promptTokens, completionTokens. Never place full logs in step output."
       ],
       "configKeys": [
@@ -119,6 +120,12 @@
           "type": "number",
           "required": false,
           "description": "Optional lower shared delegation limit."
+        },
+        {
+          "key": "maxParallelMembers",
+          "type": "number",
+          "required": false,
+          "description": "Maximum assignments per batch, bounded by non-supervisor member count and Agents:TeamMaxParallelMembers (default 3). One keeps assignments sequential."
         }
       ]
     },

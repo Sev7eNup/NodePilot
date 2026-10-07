@@ -15,7 +15,7 @@ test.describe('AI agent teams', () => {
     await page.route('**/api/admin/settings/Agents', route => {
       if (route.request().method() === 'PUT') saved = route.request().postDataJSON();
       return route.fulfill({ json: { sectionPath: 'Agents', payload: { enabled: true, allowServiceIdentity: false,
-        maxConcurrentRuns: 2, readOnlyMcpTools: saved?.ReadOnlyMcpTools ?? [] }, etag: '"v1"', effectiveSource: {}, isHotReloadable: false } });
+        maxConcurrentRuns: 2, teamMaxParallelMembers: saved?.TeamMaxParallelMembers ?? 3, readOnlyMcpTools: saved?.ReadOnlyMcpTools ?? [] }, etag: '"v1"', effectiveSource: {}, isHotReloadable: false } });
     });
     await page.route('**/api/agents/mcp-servers', route => route.fulfill({ json: [server] }));
     await page.route(`**/api/agents/mcp-servers/${workflowId}/tools`, route => route.fulfill({ json: [
@@ -23,11 +23,13 @@ test.describe('AI agent teams', () => {
       { name: 'writer_tool', description: 'Changes status', schema: {}, readOnly: false, contractSha256: 'b'.repeat(64) },
     ] }));
     await page.goto('/settings?tab=system&section=agents');
+    await page.getByRole('spinbutton', { name: /maximum simultaneous members|maximal gleichzeitig arbeitende mitglieder/i }).fill('2');
     await page.getByRole('combobox', { name: /add tools from an MCP server|werkzeuge von einem MCP-server/i }).selectOption(workflowId);
     await expect(page.getByRole('checkbox', { name: /writer_tool/ })).toBeDisabled();
     await page.getByRole('checkbox', { name: /reader_tool/ }).check();
     await page.getByRole('button', { name: /^save$|^speichern$/i }).click();
     await expect.poll(() => saved?.ReadOnlyMcpTools).toEqual([{ serverId: workflowId, toolName: 'reader_tool', serverUpdatedAt: server.updatedAt, contractSha256 }]);
+    expect(saved?.TeamMaxParallelMembers).toBe(2);
     await page.getByRole('button', { name: /^remove$|^entfernen$/i }).click();
     await page.getByRole('button', { name: /^save$|^speichern$/i }).click();
     await expect.poll(() => saved?.ReadOnlyMcpTools).toEqual([]);

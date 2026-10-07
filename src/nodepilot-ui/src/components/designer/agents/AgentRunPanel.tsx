@@ -129,6 +129,7 @@ function TraceRow({ entry, run, label }: { entry: TraceEntry; run: AgentRun; lab
   return <article className="rounded border border-outline-variant p-3 space-y-2" aria-label={`${label(entry.from)} → ${label(entry.to)}`}>
     <div className="flex flex-wrap justify-between gap-1"><EventTime event={entry.start} /><Outcome entry={entry} run={run} /></div>
     <h5 className="font-semibold break-words">{label(entry.from)} <span className="text-primary">→</span> {label(entry.to)}</h5>
+    {(entry.batchSize ?? 0) > 1 && <span className="inline-block rounded border border-outline-variant px-2 py-1 text-on-surface-variant">{t('trace.parallel', { count: entry.batchSize })}</span>}
     {entry.reason && <p className="whitespace-pre-wrap break-words"><span className="text-on-surface-variant">{t('trace.reason')}: </span>{entry.reason}</p>}
     <details><summary className="cursor-pointer text-primary">{t('trace.assignment')}</summary><Content value={entry.task} /></details>
     <details><summary className="cursor-pointer text-primary">{t('trace.activities', { count: entry.activities.length })}</summary>

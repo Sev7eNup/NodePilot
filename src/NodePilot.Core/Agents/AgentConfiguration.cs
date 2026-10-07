@@ -44,6 +44,7 @@ public abstract record AgentConfigurationBase
     public int? MaxModelCalls { get; init; }
     public int? MaxToolCalls { get; init; }
     public int? MaxDelegations { get; init; }
+    public int? MaxParallelMembers { get; init; }
     public int? TimeoutSeconds { get; init; }
 }
 
@@ -59,6 +60,7 @@ public sealed class AgentOptions
     public int TeamModelCalls { get; set; } = 100;
     public int TeamToolCalls { get; set; } = 500;
     public int TeamDelegations { get; set; } = 20;
+    public int TeamMaxParallelMembers { get; set; } = 3;
     public int TeamTimeoutSeconds { get; set; } = 1800;
     public int ModelCallTimeoutSeconds { get; set; } = 180;
     public int ModelMaxOutputTokens { get; set; } = 250_000;
@@ -114,13 +116,15 @@ public static partial class AgentConfiguration
         if (config.ResultFormat == "json" && config.ResultSchema?.ValueKind is not (JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False))
             throw new ArgumentException("JSON results require a JSON Schema.");
         if (config.MaxModelCalls is < 2) throw new ArgumentException("Agent model budget needs at least two calls: investigation and final report.");
-        if (new[] { config.MaxModelCalls, config.MaxToolCalls, config.MaxDelegations, config.TimeoutSeconds }.Any(x => x is <= 0))
+        if (new[] { config.MaxModelCalls, config.MaxToolCalls, config.MaxDelegations, config.MaxParallelMembers, config.TimeoutSeconds }.Any(x => x is <= 0))
             throw new ArgumentException("Agent budgets must be positive.");
         if (config.Agent is null || config.Members is null) throw new ArgumentException("Agent and members cannot be null.");
         if (!team && (config.Agent.TargetMachineId.HasValue || config.Agent.CredentialId.HasValue))
             throw new ArgumentException("Individual agents use the workflow node's targetMachineId/credentialId fields; nested bindings are for team members.");
         if (team && (config.Members.Length is < 2 or > 12 || config.Members.Count(x => x?.IsSupervisor == true) != 1))
             throw new ArgumentException("A team requires 2–12 members and exactly one supervisor.");
+        if (team && config.MaxParallelMembers > config.Members.Length - 1)
+            throw new ArgumentException("Parallel member limit cannot exceed the number of non-supervisor members.");
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var member in team ? config.Members : [config.Agent])
         {

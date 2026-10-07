@@ -86,7 +86,7 @@ function AgentConfig({ config, onUpdate, upstreamVars = [], stepId = '', team }:
     {config.resultFormat === 'json' && <JsonSchemaField value={config.resultSchema} onChange={resultSchema => onUpdate({ resultSchema })} />}
     <details><summary className="text-xs cursor-pointer">{t('budgets')}</summary>
       <p className="text-xs text-on-surface-variant my-2">{t(team ? 'teamBudgetHint' : 'singleBudgetHint')}</p>
-      {(team ? ['maxModelCalls', 'maxToolCalls', 'maxDelegations'] : ['maxModelCalls', 'maxToolCalls']).map(key =>
+      {(team ? ['maxModelCalls', 'maxToolCalls', 'maxDelegations', 'maxParallelMembers'] : ['maxModelCalls', 'maxToolCalls']).map(key =>
         <Field key={key} label={t(key)}><input className="input-field" type="number" min={1}
           value={typeof config[key] === 'number' ? config[key] as number : ''}
           onChange={e => onUpdate({ [key]: e.target.value === '' ? undefined : Number(e.target.value) })} /></Field>)}

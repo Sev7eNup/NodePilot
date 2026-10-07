@@ -10,11 +10,11 @@ namespace NodePilot.Engine.Agents;
 
 internal static class AgentSkillTools
 {
-    internal static async Task<IReadOnlyList<AgentTool>> CreateAsync(NodePilotDbContext db, AgentDefinition definition,
+    internal static async Task<IReadOnlyList<AgentTool>> CreateAsync(AgentRunDatabase database, AgentDefinition definition,
         AgentTarget? target, Guid runId, CancellationToken ct, int outputLimit = 16_000)
     {
         if (definition.SkillIds.Length == 0) return [];
-        var packages = await db.AgentSkillPackages.AsNoTracking().Where(x => definition.SkillIds.Contains(x.Id) && x.Enabled).ToListAsync(ct);
+        var packages = await database.UseAsync(db => db.AgentSkillPackages.AsNoTracking().Where(x => definition.SkillIds.Contains(x.Id) && x.Enabled).ToListAsync(ct), ct);
         if (packages.Count != definition.SkillIds.Distinct().Count()) throw new ArgumentException("A selected skill is missing or disabled.");
         var skills = packages.ToDictionary(p => p.Id.ToString(), p => AgentSkillArchive.Read(p.Package));
         foreach (var package in packages)
@@ -23,7 +23,7 @@ internal static class AgentSkillTools
         async Task ValidatePackage(Guid id, CancellationToken token)
         {
             var expected = packages.Single(p => p.Id == id);
-            if (!await db.AgentSkillPackages.AsNoTracking().AnyAsync(x => x.Id == id && x.Enabled && x.Sha256 == expected.Sha256, token))
+            if (!await database.UseAsync(db => db.AgentSkillPackages.AsNoTracking().AnyAsync(x => x.Id == id && x.Enabled && x.Sha256 == expected.Sha256, token), token))
                 throw new UnauthorizedAccessException("Selected skill has been disabled or changed.");
         }
         var schema = JsonSerializer.SerializeToElement(new
@@ -96,7 +96,7 @@ internal static class AgentSkillTools
                     if (!hasBom && bytes.Any(b => b > 127))
                         throw new UnauthorizedAccessException("Agent read-only policy: scripts must be ASCII or UTF-8 with BOM so validation and target decoding agree.");
                     var source = new UTF8Encoding(false, true).GetString(bytes.AsSpan(hasBom ? 3 : 0));
-                    AgentPermissionPolicy.ValidateSkillScript(shell, source.Trim(), arguments);
+                    var prepared = AgentPermissionPolicy.PrepareSkillScript(shell, source.Trim(), arguments);
                     if (shell == "powershell") await AgentSkillExecution.CheckPowerShellPolicyAsync(target, token);
                     var root = await target.EnsureWorkingRootAsync(runId, definition.Id, token);
                     var packageRoot = Path.Combine(root, input.GetProperty("skillId").GetString()!);
@@ -106,20 +106,15 @@ internal static class AgentSkillTools
                     var scriptPath = Path.Combine(packageRoot, path.Replace('/', Path.DirectorySeparatorChar));
                     if (shell == "powershell")
                         await AgentSkillExecution.VerifyPowerShellFileAsync(target, scriptPath, Convert.ToHexString(SHA256.HashData(bytes)), token);
-                    var command = shell switch
-                    {
-                        "powershell" => "$ErrorActionPreference='Stop'; & " + PowerShellOperation.Literal(scriptPath) + " " + string.Join(" ", arguments.Select(PowerShellOperation.Literal)),
-                        "bash" => "bash " + BashQuote(scriptPath.Replace('\\', '/')) + " " + string.Join(" ", arguments.Select(BashQuote)),
-                        _ when arguments.Any(x => x.IndexOfAny(['\r', '\n', '"', '%', '!', '&', '|', '<', '>', '^']) >= 0)
-                            => throw new ArgumentException("CMD skill arguments contain unsupported metacharacters."),
-                        _ => "call \"" + scriptPath + "\" " + string.Join(" ", arguments.Select(x => "\"" + x + "\""))
-                    };
+                    // PowerShell retains the verified original bytes for target signature policy.
+                    // CMD/Bash execute only the checked form with pinned executables, never package-local commands.
+                    var command = shell == "powershell"
+                        ? "$ErrorActionPreference='Stop'; & " + PowerShellOperation.Literal(scriptPath) + " " + string.Join(" ", arguments.Select(PowerShellOperation.Literal))
+                        : prepared;
                     return AgentSkillExecution.RequireSuccess(await target.ExecuteAsync(AgentProcessScript.Build(shell, command, packageRoot, definition.BashPath), token, 310));
                 })
         ];
     }
-
-    private static string BashQuote(string text) => "'" + text.Replace("'", "'\"'\"'") + "'";
 
     private static async Task UploadAsync(AgentTarget target, string root, IReadOnlyDictionary<string, byte[]> files, CancellationToken ct)
     {

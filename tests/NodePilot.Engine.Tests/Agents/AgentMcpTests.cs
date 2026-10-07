@@ -113,7 +113,7 @@ public sealed class AgentMcpTests
         var tool = (await discovery.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken)).Single();
         var options = new AgentOptions(); var policy = AgentReadCallsTests.Policy(options);
         var definition = new AgentDefinition { Tools = [new() { Name = "mcp", McpServerId = server.Id, McpToolName = "echo" }] };
-        var host = new AgentToolHost(null!, factory, db, null!, null!, policy);
+        var host = new AgentToolHost(null!, factory, new AgentRunDatabase(db), null!, null!, policy);
         var connections = handler.Authorizations.Count;
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => host.OpenAsync(definition, new(), Guid.NewGuid(), null!, null!, TestContext.Current.CancellationToken));
         Assert.Equal(connections, handler.Authorizations.Count);
@@ -149,7 +149,7 @@ public sealed class AgentMcpTests
         await using var discovery = await factory.ConnectAsync(server.Id, TestContext.Current.CancellationToken);
         var tool = (await discovery.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken)).Single();
         var options = new AgentOptions { ReadOnlyMcpTools = [new() { ServerId = server.Id, ToolName = "echo", ServerUpdatedAt = server.UpdatedAt.ToString("O"), ContractSha256 = AgentExternalReadPolicy.ContractFingerprint(tool) }] };
-        var host = new AgentToolHost(null!, factory, db, null!, null!, AgentReadCallsTests.Policy(options));
+        var host = new AgentToolHost(null!, factory, new AgentRunDatabase(db), null!, null!, AgentReadCallsTests.Policy(options));
         var definition = new AgentDefinition { Tools = [new() { Name = "mcp", McpServerId = server.Id, McpToolName = "echo" }] };
         await using var session = await host.OpenAsync(definition, new(), Guid.NewGuid(), null!, null!, TestContext.Current.CancellationToken);
         var failure = await Assert.ThrowsAsync<AgentToolExecutionException>(() => session.Tools.Single().InvokeAsync(
