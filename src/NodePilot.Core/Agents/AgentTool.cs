@@ -26,6 +26,7 @@ public sealed class AgentBudget
 {
     private readonly object _sync = new();
     private int _reservedModelCalls;
+    public bool Unlimited { get; }
     public int MaxModelCalls { get; }
     public int MaxToolCalls { get; }
     public int MaxDelegations { get; }
@@ -36,15 +37,16 @@ public sealed class AgentBudget
     public int Delegations { get { lock (_sync) return _delegations; } }
     public long? InputTokens { get { lock (_sync) return _inputTokens; } }
     public long? OutputTokens { get { lock (_sync) return _outputTokens; } }
-    public int RemainingModelCalls { get { lock (_sync) return MaxModelCalls - _modelCalls - _reservedModelCalls; } }
+    public int RemainingModelCalls { get { lock (_sync) return Unlimited ? int.MaxValue : MaxModelCalls - _modelCalls - _reservedModelCalls; } }
     public sealed record Usage(int ModelCalls, int ToolCalls, int Delegations, long? InputTokens, long? OutputTokens);
     public Usage Snapshot() { lock (_sync) return new(_modelCalls, _toolCalls, _delegations, _inputTokens, _outputTokens); }
     public bool LastModelCall => RemainingModelCalls <= 1;
     public void ReserveFinalReport() { lock (_sync) _reservedModelCalls = MaxModelCalls > 1 ? 1 : 0; }
     public void BeginFinalReport() { lock (_sync) _reservedModelCalls = 0; }
 
-    public AgentBudget(int modelCalls, int toolCalls, int delegations)
+    public AgentBudget(int modelCalls, int toolCalls, int delegations, bool unlimited = false)
     {
+        Unlimited = unlimited;
         MaxModelCalls = modelCalls;
         MaxToolCalls = toolCalls;
         MaxDelegations = delegations;
@@ -63,7 +65,7 @@ public sealed class AgentBudget
     {
         lock (_sync)
         {
-            if (ToolCalls >= MaxToolCalls) throw new AgentBudgetExceededException("Tool call budget exhausted.");
+            if (!Unlimited && ToolCalls >= MaxToolCalls) throw new AgentBudgetExceededException("Tool call budget exhausted.");
             _toolCalls++;
         }
     }
@@ -93,8 +95,8 @@ public sealed class AgentBudget
         lock (_sync)
         {
             if (assignments < 1 || started < 0 || started > assignments) throw new ArgumentOutOfRangeException(nameof(assignments));
-            if (assignments > MaxToolCalls - _toolCalls) throw new AgentBudgetExceededException("Tool call budget exhausted.");
-            if (started > MaxDelegations - _delegations) throw new AgentBudgetExceededException("Delegation budget exhausted.");
+            if (!Unlimited && assignments > MaxToolCalls - _toolCalls) throw new AgentBudgetExceededException("Tool call budget exhausted.");
+            if (!Unlimited && started > MaxDelegations - _delegations) throw new AgentBudgetExceededException("Delegation budget exhausted.");
             _toolCalls += assignments;
             _delegations += started;
         }

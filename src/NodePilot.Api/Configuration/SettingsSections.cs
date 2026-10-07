@@ -77,7 +77,7 @@ public static class SettingsSectionAdapters
         {
             new DelegateSettingsSectionAdapter<AgentSettingsDto>(
                 Descriptor("Agents"),
-                ["Agents:Enabled", "Agents:AllowServiceIdentity", "Agents:MaxConcurrentRuns", "Agents:SingleModelCalls",
+                ["Agents:Enabled", "Agents:PowerMode", "Agents:AllowServiceIdentity", "Agents:MaxConcurrentRuns", "Agents:SingleModelCalls",
                     "Agents:SingleToolCalls", "Agents:SingleTimeoutSeconds", "Agents:TeamModelCalls", "Agents:TeamToolCalls",
                     "Agents:TeamDelegations", "Agents:TeamMaxParallelMembers", "Agents:TeamTimeoutSeconds", "Agents:MaxContextCharacters",
                     "Agents:ModelCallTimeoutSeconds", "Agents:ModelMaxOutputTokens",

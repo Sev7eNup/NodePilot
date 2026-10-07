@@ -6,6 +6,7 @@ namespace NodePilot.Api.Dtos.Settings;
 public sealed class AgentSettingsDto : IValidatableObject
 {
     public bool Enabled { get; set; } = true;
+    public bool PowerMode { get; set; }
     public bool AllowServiceIdentity { get; set; }
     [Range(1, 32)] public int MaxConcurrentRuns { get; set; } = 2;
     [Range(1, 200)] public int SingleModelCalls { get; set; } = 20;

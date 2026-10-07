@@ -254,7 +254,7 @@ public sealed class AgentRuntime(ILlmClientFactory clients, IOptionsMonitor<LlmO
                 var invoker = new FunctionInvokingChatClient(adapter)
                 {
                     AllowConcurrentInvocation = false,
-                    MaximumIterationsPerRequest = budget.MaxModelCalls,
+                    MaximumIterationsPerRequest = budget.Unlimited ? int.MaxValue : budget.MaxModelCalls,
                     IncludeDetailedErrors = false
                 };
                 chatClients.Add(invoker);

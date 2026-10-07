@@ -31,16 +31,16 @@ public sealed class AgentActivityRunner(AgentRuntime runtime, AgentToolHost tool
             var config = AgentConfiguration.Parse(raw, team);
             if (!team && config.Agent.TargetMachineId is null)
                 config = config with { Agent = config.Agent with { TargetMachineId = context.TargetMachineId } };
-            var modelCalls = Bound(config.MaxModelCalls, team ? limits.TeamModelCalls : limits.SingleModelCalls, "model calls");
-            if (modelCalls < 2) throw new ArgumentException("Agent model budget needs at least two calls: investigation and final report.");
-            var toolCalls = Bound(config.MaxToolCalls, team ? limits.TeamToolCalls : limits.SingleToolCalls, "tool calls");
-            var seconds = Bound(config.TimeoutSeconds, team ? limits.TeamTimeoutSeconds : limits.SingleTimeoutSeconds, "timeout");
+            var modelCalls = limits.PowerMode ? 0 : Bound(config.MaxModelCalls, team ? limits.TeamModelCalls : limits.SingleModelCalls, "model calls");
+            if (!limits.PowerMode && modelCalls < 2) throw new ArgumentException("Agent model budget needs at least two calls: investigation and final report.");
+            var toolCalls = limits.PowerMode ? 0 : Bound(config.MaxToolCalls, team ? limits.TeamToolCalls : limits.SingleToolCalls, "tool calls");
+            var seconds = limits.PowerMode ? 0 : Bound(config.TimeoutSeconds, team ? limits.TeamTimeoutSeconds : limits.SingleTimeoutSeconds, "timeout");
             if (team) config = config with { MaxParallelMembers = Math.Min(config.Members.Length - 1,
                 Math.Min(config.MaxParallelMembers ?? limits.TeamMaxParallelMembers,
                     Bound(null, limits.TeamMaxParallelMembers, "parallel members"))) };
-            budget = new AgentBudget(modelCalls, toolCalls, team ? Bound(config.MaxDelegations, limits.TeamDelegations, "delegations") : 0);
+            budget = new AgentBudget(modelCalls, toolCalls, team && !limits.PowerMode ? Bound(config.MaxDelegations, limits.TeamDelegations, "delegations") : 0, limits.PowerMode);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
+            if (!limits.PowerMode) timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
             await journal.StartAsync(context, timeout.Token);
             using var lease = await gate.AcquireAsync(timeout.Token);
             artifacts = new AgentArtifactStore(journal.Run!.Id);

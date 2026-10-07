@@ -1,4 +1,42 @@
 {
+  "powerMode": "Power-Modus",
+  "unlimitedInPowerMode": "Im Power-Modus unbegrenzt",
+  "limitGroups": {
+    "general": "Allgemein",
+    "single": "Einzelagent",
+    "team": "Agententeam",
+    "model": "Modell und Ausgabe"
+  },
+  "registry": {
+    "import": "Importieren",
+    "importHint": "ZIP-Paket auswählen und Version prüfen. Danach wird Importieren verfügbar.",
+    "packageTooLarge": "Das ZIP-Paket darf maximal 10 MB groß sein. Bitte eine kleinere Datei auswählen.",
+    "search": "{{title}} durchsuchen",
+    "matches": "{{count}} von {{total}} Einträgen",
+    "empty": "Noch keine Einträge vorhanden.",
+    "noMatches": "Keine passenden Einträge gefunden.",
+    "details": "Details anzeigen",
+    "hideDetails": "Details ausblenden"
+  },
+  "limitHelp": {
+    "powerMode": "Hebt für neu gestartete Agentenläufe die Budgets für Modellaufrufe, Werkzeugaufrufe, Delegationen und die Agenten-Gesamtlaufzeit auf, auch aus der Activity-Konfiguration. Laufzeit und API-Kosten können steigen. Manuelles Stoppen, gesetzte Workflow-Timeouts, Berechtigungen, Parallelitäts- und einzelne Anfragegrenzen bleiben wirksam.",
+    "enabled": "Erlaubt Agenten-Activities. Ausschalten stoppt auch laufende Agenten beim nächsten Fortschrittsereignis.",
+    "allowServiceIdentity": "Erlaubt Agenten die Ausführung mit der NodePilot-Dienstidentität, wenn diese in der Activity ausgewählt ist.",
+    "maxConcurrentRuns": "Maximale Anzahl gleichzeitig laufender Agenten-Activities auf dieser Instanz. Weitere Läufe warten auf einen freien Platz.",
+    "singleModelCalls": "Maximale Modellaufrufe pro Einzelagentenlauf, einschließlich Abschlussbericht und Wiederholungen. Activities können ein kleineres Budget festlegen.",
+    "singleToolCalls": "Maximale Werkzeugaufrufe pro Einzelagentenlauf. Activities können ein kleineres Budget festlegen.",
+    "singleTimeoutSeconds": "Maximale Gesamtlaufzeit eines Einzelagenten in Sekunden, einschließlich Wartezeit auf einen freien Platz.",
+    "teamModelCalls": "Gemeinsames Budget für Modellaufrufe aller Teammitglieder, einschließlich Teamleitung, Prüfungen und Abschlussbericht.",
+    "teamToolCalls": "Gemeinsames Budget für Werkzeugaufrufe des Teams. Delegierte Aufträge verbrauchen ebenfalls Werkzeugbudget.",
+    "teamDelegations": "Maximale Anzahl gestarteter delegierter Aufträge im gesamten Teamlauf.",
+    "teamMaxParallelMembers": "Maximale Anzahl gleichzeitig arbeitender Mitglieder neben der Teamleitung. Gilt auch im Power-Modus.",
+    "teamTimeoutSeconds": "Maximale Gesamtlaufzeit des Agententeams in Sekunden, einschließlich Wartezeit auf einen freien Platz.",
+    "modelCallTimeoutSeconds": "Zeitlimit einer einzelnen Modellanfrage in Sekunden. Begrenzt auch im Power-Modus das Warten auf eine Antwort.",
+    "modelMaxOutputTokens": "Obergrenze der Ausgabe-Tokens pro Modellanfrage. Je nach Aufgabe und Modell kann eine kleinere Grenze gelten.",
+    "maxContextCharacters": "Zeichenbudget für den Modellkontext. Ältere Inhalte werden bei Bedarf verdichtet; ursprüngliche Belege bleiben separat erhalten.",
+    "maxToolOutputCharacters": "Begrenzt die Zeichenmenge einer Werkzeugausgabe im Modellkontext. Größere Belege werden über die Belegverwaltung gelesen.",
+    "maxResultCharacters": "Maximale Länge des abschließenden Berichts in Zeichen. Eine zu große Ausgabe wird nicht als gültiges Ergebnis übernommen."
+  },
   "missingSkill": "Skill nicht zugeordnet ({{id}}). Entfernen und den passenden Skill auswählen.",
   "trace": {
     "parallel": "Parallel: {{count}} Aufträge",

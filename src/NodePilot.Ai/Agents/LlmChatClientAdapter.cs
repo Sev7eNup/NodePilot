@@ -36,9 +36,11 @@ public sealed class LlmChatClientAdapter(
             conversation.Add(new LlmMessage(message.Role.Value, message.Text, ToolCalls: calls.Length == 0 ? null : calls));
         }
         var baseSystem = system;
-        string BudgetStatus() => $"\nHost budget before this call (shared across the team): {budget.RemainingModelCalls} model calls, {budget.MaxToolCalls - budget.ToolCalls} tool calls, {budget.MaxDelegations - budget.Delegations} delegations remaining. The host separately reserves one final-report call during investigation. Use available calls for concrete checks that could change the answer; do not defer such a check merely to finish early. Reserve calls for required reviews. Stop when the requested outcome is supported or further permitted checks cannot distinguish the alternatives; never repeat reads just to spend budget. A budget limit is not evidence that an unresolved finding is proved.";
+        string BudgetStatus() => budget.Unlimited
+            ? "\nPower mode: model calls, tool calls and delegations have no run budget. Stop when the requested outcome is supported or further permitted checks cannot distinguish the alternatives. Do not repeat checks without new evidence. Permissions and individual request limits still apply."
+            : $"\nHost budget before this call (shared across the team): {budget.RemainingModelCalls} model calls, {budget.MaxToolCalls - budget.ToolCalls} tool calls, {budget.MaxDelegations - budget.Delegations} delegations remaining. The host separately reserves one final-report call during investigation. Use available calls for concrete checks that could change the answer; do not defer such a check merely to finish early. Reserve calls for required reviews. Stop when the requested outcome is supported or further permitted checks cannot distinguish the alternatives; never repeat reads just to spend budget. A budget limit is not evidence that an unresolved finding is proved.";
         system += BudgetStatus();
-        var tools = options?.ToolMode == ChatToolMode.None || budget.LastModelCall || budget.ToolCalls >= budget.MaxToolCalls ? null
+        var tools = options?.ToolMode == ChatToolMode.None || budget.LastModelCall || (!budget.Unlimited && budget.ToolCalls >= budget.MaxToolCalls) ? null
             : options?.Tools?.OfType<AIFunctionDeclaration>()
                 .Select(t => new LlmToolDefinition(t.Name, t.Description, t.JsonSchema)).ToArray();
         var schemaCharacters = tools?.Sum(t => (long)t.Parameters.GetRawText().Length + t.Description.Length + t.Name.Length + 32) ?? 0;

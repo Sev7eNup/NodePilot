@@ -16,6 +16,50 @@ namespace NodePilot.Ai.Tests;
 public sealed class AgentModelTimeoutTests
 {
     [Fact]
+    public async Task PowerModeKeepsToolsAndCountsUsageBeyondConfiguredBudgets()
+    {
+        var budget = new AgentBudget(2, 1, 1, unlimited: true);
+        budget.ReserveFinalReport();
+        for (var i = 0; i < 12; i++)
+        {
+            budget.TakeModelCall();
+            budget.TakeToolCall();
+            budget.TakeDelegationBatch(2, 2);
+        }
+        Assert.True(budget.TryTakeModelRetry(true, out var retry));
+        Assert.Equal(13, retry);
+        Assert.False(budget.LastModelCall);
+        var client = new Mock<ILlmClient>();
+        client.Setup(c => c.CompleteAsync(It.IsAny<LlmRequest>(), It.IsAny<CancellationToken>()))
+            .Returns<LlmRequest, CancellationToken>((request, _) => {
+                Assert.Single(request.Tools!);
+                Assert.Contains("Power mode", request.SystemPrompt);
+                Assert.DoesNotContain("delegations remaining", request.SystemPrompt);
+                return Task.FromResult(new LlmResponse("Done", "test"));
+            });
+        var adapter = new LlmChatClientAdapter(client.Object, budget, new(),
+            (_, _) => Task.CompletedTask, "agent");
+        await adapter.GetResponseAsync([new(ChatRole.User, "Inspect")],
+            new ChatOptions { Tools = [AIFunctionFactory.Create(() => "read", "read")] }, TestContext.Current.CancellationToken);
+        Assert.Equal(14, budget.ModelCalls);
+        Assert.Equal(36, budget.ToolCalls);
+        Assert.Equal(24, budget.Delegations);
+        budget.BeginFinalReport();
+        Assert.Equal(15, budget.TakeModelCall());
+    }
+
+    [Fact]
+    public void NormalModeStillEnforcesToolAndDelegationBudgets()
+    {
+        var tools = new AgentBudget(3, 1, 3);
+        tools.TakeToolCall();
+        Assert.Throws<AgentBudgetExceededException>(() => tools.TakeToolCall());
+        var delegations = new AgentBudget(3, 10, 1);
+        delegations.TakeDelegationBatch(1, 1);
+        Assert.Throws<AgentBudgetExceededException>(() => delegations.TakeDelegationBatch(1, 1));
+    }
+
+    [Fact]
     public async Task ConcurrentRetriesPreserveAnswerAndFinalReportReservations()
     {
         var budget = new AgentBudget(5, 10, 0);

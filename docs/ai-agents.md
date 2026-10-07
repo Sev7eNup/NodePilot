@@ -7,6 +7,22 @@ Architecture and trust boundaries: [ADR 0016](adr/0016-general-ai-agent-activiti
 
 ## Configure an agent
 
+### Power mode and execution limits
+
+Settings → System → AI Agents offers an administrator-only `Agents:PowerMode`
+switch (default `false`). New agent activities snapshot this setting when they start.
+Power mode removes model-call, tool-call, delegation and overall agent-time budgets
+for both single agents and teams, including activity-level budget overrides. Usage
+is still counted. Turning it off restores the saved limits for subsequent runs.
+Manual cancellation and the agent kill switch remain effective, as do explicit
+workflow timeouts, concurrency limits, permissions, per-request timeouts and
+context/output size limits. Power mode does not make a workflow immune to cancellation
+or guarantee that a model can finish an analysis. Runtime and API costs may increase.
+The Agents section retains its existing restart notice for settings such as gate capacity.
+
+The settings registry uses searchable, height-limited lists for skills and MCP servers.
+Expand an entry's details to inspect skill descriptions and hashes or server IDs.
+
 Teams have shared `investigation_read` and `investigation_update` working-memory
 tools automatically; users need not select or name them. For material investigations,
 members record focused questions, owners, hypotheses, evidence/counterevidence IDs,

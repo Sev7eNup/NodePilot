@@ -1,4 +1,42 @@
 {
+  "powerMode": "Power mode",
+  "unlimitedInPowerMode": "Unlimited in power mode",
+  "limitGroups": {
+    "general": "General",
+    "single": "Single agent",
+    "team": "Agent team",
+    "model": "Model and output"
+  },
+  "registry": {
+    "import": "Import",
+    "importHint": "Select a ZIP package and check its version. Import then becomes available.",
+    "packageTooLarge": "The ZIP package must be no larger than 10 MB. Please select a smaller file.",
+    "search": "Search {{title}}",
+    "matches": "{{count}} of {{total}} entries",
+    "empty": "No entries yet.",
+    "noMatches": "No matching entries found.",
+    "details": "Show details",
+    "hideDetails": "Hide details"
+  },
+  "limitHelp": {
+    "powerMode": "Removes model-call, tool-call, delegation and overall agent-time budgets for newly started agent runs, including activity overrides. Runtime and API costs may increase. Manual cancellation, configured workflow timeouts, permissions, concurrency and individual request limits still apply.",
+    "enabled": "Allows agent activities. Disabling also stops running agents at their next progress event.",
+    "allowServiceIdentity": "Allows agents to use the NodePilot service identity when selected in the activity.",
+    "maxConcurrentRuns": "Maximum agent activities running concurrently on this instance. Additional runs wait for a free slot.",
+    "singleModelCalls": "Maximum model calls per single-agent run, including the final report and retries. Activities can set a smaller budget.",
+    "singleToolCalls": "Maximum tool calls per single-agent run. Activities can set a smaller budget.",
+    "singleTimeoutSeconds": "Maximum total single-agent runtime in seconds, including time waiting for a free slot.",
+    "teamModelCalls": "Shared model-call budget for all members, including the supervisor, reviews and final report.",
+    "teamToolCalls": "Shared tool-call budget for the team. Delegated assignments also consume tool budget.",
+    "teamDelegations": "Maximum number of delegated assignments started during the entire team run.",
+    "teamMaxParallelMembers": "Maximum members working simultaneously alongside the supervisor. Still applies in power mode.",
+    "teamTimeoutSeconds": "Maximum total team runtime in seconds, including time waiting for a free slot.",
+    "modelCallTimeoutSeconds": "Timeout for each individual model request in seconds. Also limits waiting for a response in power mode.",
+    "modelMaxOutputTokens": "Maximum output tokens per model request. The task or model may impose a smaller limit.",
+    "maxContextCharacters": "Character budget for model context. Older content is compacted when needed; original evidence is retained separately.",
+    "maxToolOutputCharacters": "Limits the characters of a tool output in model context. Larger evidence is read through evidence management.",
+    "maxResultCharacters": "Maximum final report length in characters. An oversized response is not accepted as a valid result."
+  },
   "missingSkill": "Unresolved skill ({{id}}). Remove it and select the appropriate skill.",
   "trace": {
     "parallel": "Parallel: {{count}} assignments",

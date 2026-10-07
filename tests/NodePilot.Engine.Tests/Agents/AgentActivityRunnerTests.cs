@@ -114,7 +114,11 @@ public sealed class AgentActivityRunnerTests
     [InlineData(true, true, false)]
     [InlineData(false, false, true)]
     [InlineData(true, false, true)]
-    public async Task DeadlinesAndCallerCancellation_EndJournalAndReleaseSlot(bool team, bool callerCancels, bool modelTimesOut)
+    [InlineData(false, true, false, true)]
+    [InlineData(true, true, false, true)]
+    [InlineData(false, false, true, true)]
+    [InlineData(true, false, true, true)]
+    public async Task DeadlinesAndCallerCancellation_EndJournalAndReleaseSlot(bool team, bool callerCancels, bool modelTimesOut, bool powerMode = false)
     {
         await using var db = TestDbFactory.Create();
         var workflow = new Workflow { Id = Guid.NewGuid(), Name = "agent deadline", DefinitionJson = "{}" };
@@ -135,7 +139,7 @@ public sealed class AgentActivityRunnerTests
                 return new LlmResponse("unreachable", "test");
             });
         var factory = new Mock<ILlmClientFactory>(); factory.Setup(f => f.Create(It.IsAny<LlmConnection>())).Returns(client.Object);
-        var options = new AgentOptions { MaxConcurrentRuns = 1, ModelCallTimeoutSeconds = modelTimesOut ? 1 : 180 };
+        var options = new AgentOptions { PowerMode = powerMode, MaxConcurrentRuns = 1, ModelCallTimeoutSeconds = modelTimesOut ? 1 : 180 };
         var monitor = new Mock<IOptionsMonitor<AgentOptions>>(); monitor.SetupGet(m => m.CurrentValue).Returns(options);
         var llmOptions = new Mock<IOptionsMonitor<LlmOptions>>(); llmOptions.SetupGet(m => m.CurrentValue).Returns(new LlmOptions { Enabled = true });
         var redactor = new OutputRedactor(null);
@@ -143,7 +147,7 @@ public sealed class AgentActivityRunnerTests
         using var gate = new AgentExecutionGate(Microsoft.Extensions.Options.Options.Create(options));
         var runner = new AgentActivityRunner(new AgentRuntime(factory.Object, llmOptions.Object),
             new AgentToolHost(null!, null!, new AgentRunDatabase(db), null!, null!, new AgentExternalReadPolicy(monitor.Object)), gate, journal, monitor.Object, redactor, NullLogger<AgentActivityRunner>.Instance);
-        var config = new AgentActivityConfiguration { Task = "Wait", TimeoutSeconds = callerCancels || modelTimesOut ? 60 : 1,
+        var config = new AgentActivityConfiguration { Task = "Wait", TimeoutSeconds = powerMode ? 1 : callerCancels || modelTimesOut ? 60 : 1,
             Members = team ? [new() { Id = "lead", IsSupervisor = true }, new() { Id = "researcher", IsReviewer = true }] : [] };
         using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         if (callerCancels) caller.CancelAfter(TimeSpan.FromSeconds(15));
@@ -152,6 +156,11 @@ public sealed class AgentActivityRunnerTests
         if (callerCancels)
         {
             await modelEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            if (powerMode)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(1200), TestContext.Current.CancellationToken);
+                Assert.False(task.IsCompleted);
+            }
             caller.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
         }

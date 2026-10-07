@@ -84,6 +84,8 @@ alongside `dotnet test` and `npm run test:run`.
 `ai-agents.spec.ts` additionally covers the admin parallel-member limit, visible team-member selection, separate tools,
 and save/reopen without creating extra workflow steps. Live channel delivery remains
 covered through journal/reconnect unit and API tests, since this harness mocks SignalR.
+`agent-settings.spec.ts` covers bounded searchable registries, expandable details, explicit skill import,
+MCP enable/disable with revision conflicts, power-mode persistence, environment locks and responsive DE/EN layouts.
 `agent-run-trace.spec.ts` covers history drill-down, the large communication view,
 member snapshots, interleaved parallel assignments and batch badges, assignments/rationales, return questions, tool evidence, escaped
 untrusted content, REST pagination and full support export despite a member filter.

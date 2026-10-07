@@ -52,6 +52,7 @@ public sealed class AgentOptions
 {
     public const string SectionName = "Agents";
     public bool Enabled { get; set; } = true;
+    public bool PowerMode { get; set; }
     public bool AllowServiceIdentity { get; set; }
     public int MaxConcurrentRuns { get; set; } = 2;
     public int SingleModelCalls { get; set; } = 20;
