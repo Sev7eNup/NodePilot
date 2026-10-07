@@ -590,8 +590,9 @@ function StepTimeline({ steps, executionStart, workflowId, executionId, onScrubT
               </button>
               {isOpen && (
                 <div className="px-12 pb-3 pt-1.5 bg-surface-low/40 border-t border-outline-variant/10 space-y-2">
-                  <StepInputBlock workflowId={workflowId} stepId={r.step.stepId} />
-                  {['aiAgent', 'aiAgentTeam'].includes(r.step.stepType) && <AgentRunPanel executionId={executionId} stepId={r.step.stepId} />}
+                  {['aiAgent', 'aiAgentTeam'].includes(r.step.stepType) ? <AgentRunPanel executionId={executionId} stepId={r.step.stepId}>
+                    <StepInputBlock workflowId={workflowId} stepId={r.step.stepId} />
+                  </AgentRunPanel> : <StepInputBlock workflowId={workflowId} stepId={r.step.stepId} />}
                   <StepOutputParametersBlock outputParametersJson={r.step.outputParametersJson} />
                   {r.step.output && (
                     <OutputBlock label={t('execution.timeline.output')} variant="default">{r.step.output}</OutputBlock>

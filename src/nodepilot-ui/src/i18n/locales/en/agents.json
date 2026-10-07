@@ -247,6 +247,17 @@
   "error": "Error",
   "loadMore": "Load earlier events",
   "sequence": "Sequence",
+  "summary": {
+    "title": "Result summary",
+    "running": "Work in progress",
+    "runningHint": "The task assessment will appear when the run finishes.",
+    "unassessedHint": "No final assessment is available. Any existing findings are preliminary.",
+    "unresolved": "Still open",
+    "fulfilled": "Completed",
+    "loading": "Loading result checklist…",
+    "unavailable": "The result checklist could not be loaded.",
+    "noCoverage": "No structured result checklist is available for this run."
+  },
   "taskOutcome": {
     "label": "Task outcome",
     "completed": "Completed",

@@ -122,6 +122,14 @@ the run. See [ADR 0017](adr/0017-parallel-team-delegation.md).
 
 ### Follow a team run
 
+The result summary appears before inputs and the journal in live step details,
+execution history and the large agent view. It shows the final task assessment and
+its recorded deliverables, with unresolved work before fulfilled work. The full
+report is expandable directly below it. These are the agent's recorded assessments,
+not independently verified facts. Running or interrupted runs do not show a final
+checklist; missing assessment data is explicitly identified. Member filters only
+affect the journal, not the overall result summary.
+
 Open the agent step in the live execution details or execution history. **Open large
 view** provides more space for the same journal. The collaboration view groups each
 supervisor-to-member assignment with its rationale, the member's tool arguments and

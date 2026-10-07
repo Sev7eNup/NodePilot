@@ -424,9 +424,10 @@ function LiveExecutionDetail({ execution, workflowId, historyExecutions }: Reado
               </div>
 
               {/* Input config */}
-              <StepInputBlock workflowId={workflowId} stepId={selected.stepId} />
-              {['aiAgent', 'aiAgentTeam'].includes(selected.stepType ?? '') && <AgentRunPanel
-                executionId={execution.executionId} stepId={selected.stepId} active={execution.status === 'Running'} />}
+              {['aiAgent', 'aiAgentTeam'].includes(selected.stepType ?? '') ? <AgentRunPanel
+                executionId={execution.executionId} stepId={selected.stepId} active={execution.status === 'Running'}>
+                <StepInputBlock workflowId={workflowId} stepId={selected.stepId} />
+              </AgentRunPanel> : <StepInputBlock workflowId={workflowId} stepId={selected.stepId} />}
 
               {/* Output parameters */}
               <StepOutputParametersBlock parameters={selectedOutputParameters} />

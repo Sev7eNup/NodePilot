@@ -1,26 +1,28 @@
-import { createContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAgentEvents, useAgentRuns } from '../../../hooks/useAgentRuns';
 import type { AgentRun, AgentRunEvent } from '../../../types/agents';
 import { agentRunTrace, runMembers, traceDuration, traceMatches, traceOutcome, type TraceEntry, type TraceEvent } from '../../../lib/agentRunTrace';
 import { downloadTextFile } from '../../../lib/chatExport';
+import { AgentResultSummary } from './AgentResultSummary';
+import { formatTime } from '../../../lib/format';
 
 export const AgentCanvasExecutionContext = createContext<{ executionId: string | null; active: boolean; scrubTimeMs: number | null }>({
   executionId: null, active: false, scrubTimeMs: null,
 });
 
-export function AgentRunPanel({ executionId, stepId, active = false }: { executionId: string; stepId: string; active?: boolean }) {
+export function AgentRunPanel({ executionId, stepId, active = false, children }: { executionId: string; stepId: string; active?: boolean; children?: ReactNode }) {
   const { t } = useTranslation('agents');
   const { data: runs = [], error } = useAgentRuns(executionId, active);
   const matching = runs.filter(run => run.stepId === stepId);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const expanded = matching.find(run => run.id === expandedId);
   return <section className="space-y-3 text-xs" aria-label={t('history')}>
-    <h4 className="font-semibold">{t('history')}</h4>
     {error && <p role="alert" className="text-error">{error.message}</p>}
     {!error && matching.length === 0 && <p>{t('noRuns')}</p>}
-    {matching.map(run => <RunDetails key={run.id} run={run} onExpand={() => setExpandedId(run.id)} />)}
+    {matching.length === 0 && children}
+    {matching.map(run => <RunDetails key={run.id} run={run} onExpand={() => setExpandedId(run.id)}>{children}</RunDetails>)}
     {expanded && <TraceDialog run={expanded} onClose={() => setExpandedId(null)} />}
   </section>;
 }
@@ -42,7 +44,7 @@ function TraceDialog({ run, onClose }: { run: AgentRun; onClose: () => void }) {
   </dialog></div>, document.body);
 }
 
-function RunDetails({ run, onExpand }: { run: AgentRun; onExpand?: () => void }) {
+function RunDetails({ run, onExpand, children }: { run: AgentRun; onExpand?: () => void; children?: ReactNode }) {
   const { t } = useTranslation('agents');
   const { data: events = [], error, isFetching } = useAgentEvents(run);
   const [visible, setVisible] = useState(100);
@@ -62,12 +64,12 @@ function RunDetails({ run, onExpand }: { run: AgentRun; onExpand?: () => void })
     lastSequence: events.at(-1)?.sequence ?? 0, run, members, events,
   }, null, 2), 'application/json');
   return <div className="space-y-3 min-w-0" data-testid="agent-run-trace">
+    <AgentResultSummary run={run} events={events} loading={isFetching} unavailable={!!error} />
+    {run.result && <details className="border-b border-outline-variant pb-3"><summary className="cursor-pointer font-semibold">{t(run.status === 'Succeeded' ? 'trace.finalResult' : 'taskOutcome.draft')}</summary>
+      {run.status !== 'Succeeded' && <p className="text-on-surface-variant">{t('taskOutcome.draftHint')}</p>}<Content value={run.result} /></details>}
+    {children}
+    <h4 className="font-semibold">{t('history')}</h4>
     <div>{t(`status.${run.status}`)} · {t('modelCalls')}: {run.modelCalls} · {t('toolCalls')}: {run.toolCalls} · {t('delegations')}: {run.delegations}</div>
-    <div data-testid="agent-task-outcome">
-      <span className="font-semibold">{t('taskOutcome.label')}: {t(`taskOutcome.${run.outcome ?? 'unassessed'}`)}</span>
-      {run.outcomeReason && <p className="whitespace-pre-wrap break-words">{run.outcomeReason}</p>}
-      <p className="text-on-surface-variant">{t('taskOutcome.hint')}</p>
-    </div>
     <code className="text-on-surface-variant break-all">{run.id}</code>
     {onExpand && <button type="button" className="text-primary block" onClick={onExpand}>{t('trace.expand')}</button>}
     <div className="flex flex-wrap gap-2">{members.map(m => <span key={m.id} className="rounded border border-outline-variant px-2 py-1" title={`${m.id}${m.model ? ` · ${m.model}` : ''}`}>
@@ -93,8 +95,6 @@ function RunDetails({ run, onExpand }: { run: AgentRun; onExpand?: () => void })
       </li>)}
     </ol>
     {events.length === 0 && <p>{t('noEvents')}</p>}
-    {run.result && <details className="border-t border-outline-variant pt-3"><summary className="cursor-pointer font-semibold">{t(run.status === 'Succeeded' ? 'trace.finalResult' : 'taskOutcome.draft')}</summary>
-      {run.status !== 'Succeeded' && <p className="text-on-surface-variant">{t('taskOutcome.draftHint')}</p>}<Content value={run.result} /></details>}
   </div>;
 }
 
@@ -105,10 +105,10 @@ function Content({ value }: { value: string }) {
 }
 
 function EventTime({ event }: { event: AgentRunEvent }) {
-  const { i18n } = useTranslation();
+  useTranslation();
   const date = new Date(event.timestamp);
   return <span className="font-mono text-on-surface-variant">#{event.sequence} · <time dateTime={event.timestamp} title={event.timestamp}>
-    {Number.isNaN(date.getTime()) ? event.timestamp : date.toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+    {Number.isNaN(date.getTime()) ? event.timestamp : formatTime(date, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
   </time></span>;
 }
 

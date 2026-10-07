@@ -46,6 +46,10 @@ test(`team history connects assignments, questions, evidence and full support ex
   add('member_completed', 'reader', { delegationId: 'd3', status: 'completed', content: 'Cause verified in application.log:12' });
   // A full first page exercises REST catch-up and export beyond the visible page.
   for (let i = 0; i < 250; i++) { add('model_started', 'lead', 'Model started'); add('model_completed', 'lead', 'Model completed'); }
+  if (!interrupted) add('run_conclusion', 'lead', { outcome: 'partial', coverage: [
+    { requirement: 'Inspect configuration', status: 'fulfilled', basis: 'Configuration checked against requirements.' },
+    { requirement: 'Verify client connectivity', status: 'unresolved', basis: 'Client unavailable during investigation.' },
+  ] });
   add('run_succeeded', null, 'Succeeded');
   const cursors: number[] = [];
   await page.route(`**/api/agents/runs/${runId}/events?**`, route => {
@@ -57,6 +61,8 @@ test(`team history connects assignments, questions, evidence and full support ex
   await page.getByRole('button', { name: /history|historie|verlauf/i }).click();
   await page.locator(`[data-row-id="${executionId}"]`).click();
   await page.getByRole('button', { name: /Investigation team.*aiAgentTeam/ }).click();
+  const inlineSummary = page.getByTestId('agent-result-summary');
+  await expect(inlineSummary).toBeVisible();
   await page.getByRole('button', { name: /open large view|große ansicht/i }).click();
   const dialog = page.getByRole('dialog', { name: /agent|agenten/i });
   const panel = dialog.getByTestId('agent-run-trace');
@@ -68,9 +74,15 @@ test(`team history connects assignments, questions, evidence and full support ex
   } else {
     await expect(panel.getByTestId('agent-task-outcome')).toContainText(/partially completed|teilweise bearbeitet/i);
     await expect(panel.getByTestId('agent-task-outcome')).toContainText('Counterpart unavailable; symptom established.');
+    const summary = panel.getByTestId('agent-result-summary');
+    await expect(summary.getByRole('listitem').first()).toContainText('Verify client connectivity');
+    await expect(summary.getByRole('listitem').last()).toContainText('Inspect configuration');
+    await expect(summary).not.toContainText('Which time window?');
+    await summary.screenshot({ path: '../../.runlogs/agent-result-summary.png' });
   }
   await expect.poll(() => cursors.includes(500)).toBe(true);
   await panel.getByRole('combobox', { name: /show member|mitglied anzeigen/i }).selectOption('reader');
+  if (!interrupted) await expect(panel.getByTestId('agent-result-summary')).toContainText('Verify client connectivity');
   const first = panel.getByRole('article', { name: 'Coordinator at run time → Log researcher' }).first();
   await expect(first).toContainText('Distinguish service failure from policy failure');
   await expect(first).toContainText(/Parallel: 2/);

@@ -247,6 +247,17 @@
   "error": "Fehler",
   "loadMore": "Frühere Ereignisse laden",
   "sequence": "Sequenz",
+  "summary": {
+    "title": "Ergebnisübersicht",
+    "running": "Bearbeitung läuft",
+    "runningHint": "Die Ergebnisbewertung erscheint nach Abschluss des Laufs.",
+    "unassessedHint": "Es liegt keine abschließende Bewertung vor. Vorhandene Erkenntnisse sind vorläufig.",
+    "unresolved": "Noch offen",
+    "fulfilled": "Erledigt",
+    "loading": "Ergebnisliste wird geladen…",
+    "unavailable": "Ergebnisliste konnte nicht geladen werden.",
+    "noCoverage": "Für diesen Lauf liegt keine strukturierte Ergebnisliste vor."
+  },
   "taskOutcome": {
     "label": "Aufgabenergebnis",
     "completed": "Vollständig bearbeitet",
