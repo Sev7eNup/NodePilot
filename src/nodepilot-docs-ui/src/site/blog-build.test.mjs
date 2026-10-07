@@ -28,7 +28,7 @@ describe('article publication and preview boundary', () => {
       it('emits complete articles and respects publication state', () => {
         const sitemap = readFileSync(join(root, 'sitemap.xml'), 'utf8')
         const index = parseHTML(readFileSync(join(root, 'blog/index.html'), 'utf8')).document
-        expect(index.querySelectorAll('.blog-index-row').length).toBe(preview ? 16 : 3)
+        expect(index.querySelectorAll('.blog-index-row').length).toBe(preview ? 16 : 4)
         expect(index.querySelectorAll('.blog-index-row[data-category="hintergrund"]').length).toBe(preview ? 3 : 1)
         for (const article of articles) {
           expect(allPages.some(page => page.path === article.docs), article.docs).toBe(true)
