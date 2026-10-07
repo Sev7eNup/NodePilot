@@ -108,7 +108,7 @@
               "label": "rest: unknown path",
               "activityType": "restApi",
               "config": {
-                "url": "{{globals.NP_TESTSUITE_SELF_URL}}/no-such-segment",
+                "url": "{{globals.NP_TESTSUITE_API_URL}}/no/such/segment",
                 "method": "GET",
                 "timeoutSeconds": 10
               },

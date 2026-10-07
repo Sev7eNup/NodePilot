@@ -40,7 +40,10 @@ public class RunspaceEngineSuccessPolicyTests
             },
             CancellationToken.None);
 
-        result.Output.Should().BeEmpty();
+        // The wrapper's own markers survive the throw; the script itself wrote nothing.
+        var (clean, _, _) = PowerShellActivitySupport.ExtractMarkers(
+            result.Output, "step-1", Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        clean.Should().BeEmpty();
         result.Success.Should().BeFalse("no output was produced and the error stream got content");
     }
 

@@ -455,8 +455,8 @@ np config set tls-thumbprint A1B2...8F90   # 'none' clears the pin again
 
 Two different failures hide behind "TLS does not work", and they need different fixes.
 
-**The host is not one of the certificate's names.** The error says *"Der Hostname steht nicht in
-den Zertifikatsnamen"* and lists the names the certificate carries. Trust is not the problem here —
+**The host is not one of the certificate's names.** The error says *"The hostname is not among
+the certificate names"* and lists the names the certificate carries. Trust is not the problem here —
 the URL is. Point the CLI at a name the certificate actually names; the error prints the command:
 
 ```powershell
@@ -468,8 +468,8 @@ because the certificate names the public host name, not `localhost`. Importing t
 a root store does not help — a name mismatch is not a trust problem. Pin it only when the host has
 to stay as it is, for instance behind a reverse proxy or an alias.
 
-**The chain does not validate.** The error says *"Serverzertifikat auf diesem Client nicht
-vertrauenswürdig"*. That is the case the two options below address.
+**The chain does not validate.** The error says *"This client does not trust the
+server certificate"*. That is the case the two options below address.
 
 The CLI validates the certificate chain like any other client — unlike a browser, it cannot be
 clicked through. When the handshake fails, the error names the cause, the certificate the server

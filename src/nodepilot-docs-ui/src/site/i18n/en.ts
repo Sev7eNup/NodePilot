@@ -1,3 +1,4 @@
+import { articleTexts } from '../blog'
 import type { Messages } from './de'
 
 /** English texts of the project website. `satisfies` holds the keys to those of `de.ts`. */
@@ -5,17 +6,18 @@ export const en = {
   experience: {
     "nav": "Walkthrough",
     "title": "Try NodePilot",
-    "kicker": "TRY IT YOURSELF · ABOUT 2 MINUTES",
-    "headline": "Your first task with NodePilot.",
-    "intro": "Start a workflow, check its result and then find the cause of a failure. A short walkthrough guides you directly through the product interface.",
-    "firstKicker": "YOUR FIRST SUCCESSFUL EXECUTION",
+    "kicker": "TRY IT YOURSELF · 2 TO 4 MINUTES PER TASK",
+    "headline": "Try NodePilot yourself.",
+    "intro": "Ten short tasks guide you through the product interface, from your first run to decisions, Live Ops and maintenance planning.",
+    "moreAction": "Start task",
+    "firstKicker": "DELIVER A CONFIGURATION FILE",
     "firstTitle": "Deliver a file.",
     "firstText": "Change a configuration value. PowerShell creates your file, File Copy delivers it and Return Data shows you the result.",
     "firstStep": "Change a value in the start dialog",
     "secondStep": "Start and follow the workflow",
     "thirdStep": "Check file content and destination",
     "firstAction": "Start guided walkthrough",
-    "secondKicker": "NEXT · OR JUMP STRAIGHT IN",
+    "secondKicker": "INVESTIGATE A FAILURE",
     "secondTitle": "Understand a failure.",
     "secondText": "A file was created but not copied. Inspect a prepared execution and discover where it failed.",
     "clue": "Which activity is affected, and what does its log tell you?",
@@ -30,10 +32,12 @@ export const en = {
     descriptions: {
       home: 'NodePilot connects PowerShell and Windows activities into visual workflows. Agentless, self-hosted, open source and free.',
       product: 'Designer, step debugger, Live Ops, triggers, alerting and AI support in one tool. 29 activity types from PowerShell to SQL.',
-      experience: 'Try NodePilot in the browser: start a workflow, check its result and find the cause of a failure. No sign-up, no installation.',
-      blog: 'Why certain decisions were made, how things work and what helps when automating.',
+      experience: 'Try NodePilot in the browser: ten guided tasks from workflow design and Live Ops to maintenance windows. No sign-up or installation.',
+      videos: 'NodePilot Media: 25 short video tutorials on PowerShell and Windows automation, the workflow designer, debugger, Live Ops, CLI and AI.',
+      blog: 'Practical articles on PowerShell workflows, Windows automation and importing System Center Orchestrator runbooks into NodePilot.',
       impressum: 'Provider details and contact for the NodePilot open-source project.',
       datenschutz: 'How this website handles data: hosting, browser storage and your rights.',
+      solution: 'Use cases',
       notfound: 'This address does not exist on nodepilot.run.',
     },
   },
@@ -54,7 +58,12 @@ export const en = {
     discover: 'DISCOVER',
     home: 'Overview',
     product: 'Features',
+    videos: 'Media',
     blog: 'Blog',
+    useCases: 'USE CASES',
+    powershellAutomation: 'PowerShell automation',
+    scorchAlternative: 'SCOrch alternative',
+    selfHosted: 'Self-hosted',
     resources: 'RESOURCES',
     docs: 'Documentation',
     liveDemo: 'Live demo',
@@ -67,24 +76,28 @@ export const en = {
     experience: "Walkthrough",
     home: 'Overview',
     product: 'Features',
+    videos: 'Media',
     blog: 'Blog',
+    solution: 'Use cases',
     article: 'Blog / Post',
     impressum: 'Legal notice',
     datenschutz: 'Privacy policy',
     notfound: 'Page not found',
   },
   titles: {
-    experience: "Walkthrough",
-    home: 'Windows automation, step by step.',
-    product: 'Features',
-    blog: 'Blog',
+    experience: 'Try NodePilot in your browser: guided walkthrough',
+    home: 'Visual Windows and PowerShell automation',
+    product: 'Visual workflow designer for Windows and PowerShell',
+    videos: 'Media: Windows automation videos and tutorials',
+    blog: 'PowerShell, Windows automation and SCOrch migration',
     impressum: 'Legal notice',
     datenschutz: 'Privacy policy',
+    solution: 'Use cases',
     notfound: 'Page not found',
   },
   home: {
     eyebrow: 'WINDOWS WORKFLOW ORCHESTRATION',
-    title: 'Turn scripts into workflows.<br><span>See everything run.</span>',
+    title: 'PowerShell automation.<br><span>See your workflows run.</span>',
     lead: 'Your Windows automation deserves more than a folder full of scripts.',
     description:
       'With NodePilot you build workflows in the browser, run them over WinRM and see what happens at every step. No agents on the target systems.',
@@ -201,7 +214,7 @@ export const en = {
   },
   product: {
     kicker: 'FEATURES',
-    title: 'One workflow.<br>From idea to log.',
+    title: 'One workflow. <br>From idea to log.',
     intro: 'Designer, debugger and Live Ops belong in the same workspace instead of three separate tools.',
     designerTitle: 'Design workflows',
     designerText: '29 activity types: PowerShell, files and folders, services, the registry, WMI, scheduled tasks, REST calls and SQL, wired up with conditions and parallel paths on one canvas.',
@@ -219,7 +232,8 @@ export const en = {
       'NodePilot runs PowerShell and Windows activities agentless over WinRM. REST calls, SQL queries and mails run inside the engine itself. In between, conditions decide, branches run in parallel, failed steps repeat and every step hands its result to the next one. A run starts on a schedule, a file, an event-log entry, a database change or a webhook; afterwards the log shows step by step what happened. Existing SCOrch runbooks can be imported as <code>.ois_export</code> files. Review the import log and the configuration before you enable a workflow.',
     readMore: 'Read more in the documentation',
     codeExample: 'Example',
-    codeComment: '# Reuse existing logic',
+    codeComment: '# Assigned variables become the step\'s outputs',
+    codeNext: '# The next edge checks {{diskCheck.param.critical}}',
     features: {
       kicker: 'WHAT IT DOES',
       title: 'What NodePilot can do',
@@ -300,6 +314,17 @@ export const en = {
     unavailableText: 'The product image could not be loaded.',
     openOnGithub: 'Open image on GitHub',
   },
+  videos: {
+    kicker: 'MEDIA',
+    title: 'NodePilot Media: Videos and tutorials.',
+    intro: 'The “NodePilot in 2 minutes” series: 25 short episodes about the interface, workflows, permissions, the command line and AI.',
+    episode: 'Episode {number}',
+    play: 'Play video: {title}',
+    close: 'Close video',
+    youtube: 'Watch on YouTube',
+    download: 'Open video as MP4',
+    unavailable: 'The video could not be loaded.',
+  },
   gallery: {
     title: 'ORIGINAL WEB UI',
     close: 'Close product view',
@@ -326,7 +351,7 @@ export const en = {
   },
   blog: {
     kicker: 'NODEPILOT / BLOG',
-    title: 'Notes from<br>development.',
+    title: 'Notes from development.',
     intro: 'Why certain decisions were made, how things work and what helps when automating.',
     filterLabel: 'Filter posts by category',
     filterAll: 'All posts',
@@ -347,52 +372,7 @@ export const en = {
     toBlog: 'Back to the blog',
     toDocs: 'Go to the documentation',
   },
-  articles: {
-    'why-nodepilot': {
-      category: 'BACKGROUND',
-      title: 'Why NodePilot exists.',
-      indexTitle: 'Why NodePilot exists.',
-      summary: 'From PowerShell scripts and SCOrch to a tool of its own.',
-      teaser:
-        'PowerShell solves many tasks. Coordinating them, running them and troubleshooting them takes more than a collection of individual scripts.',
-      lead: 'PowerShell does the work. What gets lost is the overview of what happens between the scripts.',
-      body: `<p>One script checks services, another copies files. A third queries a database. Each of them works on its own. But as soon as these tasks depend on each other, knowing where the files are is no longer enough.</p>
-<p>Which step ran? What output did it produce? Why did the next step not start? And what has to change without affecting the rest of the workflow?</p>
-<h2>The work between the scripts</h2>
-<p>This is where NodePilot comes in. PowerShell remains the tool for the actual work on the systems. The workflow describes how the individual steps fit together: with conditions, error paths and parallel branches.</p>
-<p>Working scripts stay as they are. They are simply embedded in a workflow that you can design, run and trace afterwards.</p>
-<h2>One workspace instead of separate views</h2>
-<p>NodePilot combines the visual designer with execution history, debugging and Live Ops. Target systems are reached over WinRM; they need no additional NodePilot agent. The application itself runs in your own environment.</p>
-<p>Existing automation should not get lost either. That is why importing SCOrch runbooks is part of the project. An import does not replace a review, but it takes the existing structure as the starting point – instead of an empty canvas.</p>
-<h2>Open, limits included</h2>
-<p>NodePilot is released under Apache 2.0. You can read the source code, run it yourself and change it. There is no split into a free interface and product features locked behind a paywall.</p>
-<p>That said, it is no substitute for a support contract. With an open-source project, careful evaluation, tests with your own workflows and a look at the documentation are part of the deal.</p>
-<div class="article-note">This post describes the motivation and approach of the project, not an operational guarantee.</div>
-<p class="article-source">Technical background: <a href="https://github.com/Sev7eNup/NodePilot#why-nodepilot" target="_blank" rel="noopener noreferrer">NodePilot README</a>. The <a data-docs-path="" target="_blank" rel="noopener noreferrer">documentation</a> covers setup and operations.</p>`,
-    },
-    'scorch-import': {
-      category: 'IN PRACTICE',
-      title: 'Bring your runbooks. Don’t start over.',
-      indexTitle: 'Bring your runbooks.<br>Don’t start over.',
-      summary: 'What matters when importing from System Center Orchestrator.',
-      teaser:
-        'What becomes of activities, links and published data, and why the import report is part of the migration.',
-      lead: 'Existing automation is more than a row of boxes. An import also has to carry over the links and the data between them.',
-      body: `<p>A mature SCOrch runbook holds a lot of work: the right order, error handling, conditions and data passed from one activity to the next. That is exactly what nobody should have to rebuild by hand during a migration.</p>
-<h2>Start from the existing export</h2>
-<p>NodePilot reads SCOrch exports in the <code>.ois_export</code> format. You can start the import from the web UI or the CLI:</p>
-<pre><code>np workflow import-scorch --file .\\runbooks.ois_export</code></pre>
-<p>Supported activities are translated into matching NodePilot activities. Links, conditions, global variables and published data references are carried over as well. The folder structure can come along too.</p>
-<h2>The import report is part of the result</h2>
-<p>Not every activity and not every property translates without loss. An unsupported activity should therefore not simply disappear. NodePilot creates a disabled placeholder for it and lists the relevant details in the import report.</p>
-<p>Incomplete target system settings, data references that cannot be translated and schedules that carry over only approximately need attention as well. The result is a starting point for a review, not a promise that every automation runs unchanged.</p>
-<h2>Review, test, enable deliberately</h2>
-<p>Imported workflows start out disabled. Credentials are not reconstructed from the encrypted SCOrch data. Before enabling a workflow, check the items named in the report, the target systems, permissions and error paths.</p>
-<p>Then test it in a suitable test environment. Only when its behavior meets your requirements do you enable the workflow explicitly.</p>
-<div class="article-note">The migration decisions stay with you. What the import adds is the actual runbook and a report you can follow.</div>
-<p class="article-source">Background and current details: <a href="https://github.com/Sev7eNup/NodePilot#coming-from-system-center-orchestrator" target="_blank" rel="noopener noreferrer">SCOrch import in the NodePilot README</a>.</p>`,
-    },
-  },
+  articles: articleTexts.en,
   notFound: {
     title: 'No workflow here.',
     text: 'This page does not exist.',

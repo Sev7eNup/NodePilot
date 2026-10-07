@@ -19,6 +19,11 @@ public class DocumentationCountsTests
     private static int ActivityTypes() =>
         CountMatches(new[] { RepoPath("src", "NodePilot.Core", "Activities", "ActivityCatalog.cs") },
             @"(?:Action|Logic|ControlFlow)\(""");
+    private static int TriggerTypes() =>
+        CountMatches(new[] { RepoPath("src", "NodePilot.Core", "Activities", "ActivityCatalog.cs") }, @"Trigger\(""");
+    private static int SettingsSections() =>
+        CountMatches(new[] { RepoPath("src", "NodePilot.Api", "Configuration", "SettingsSchema.cs") },
+            @"new SettingsSectionDescriptor\(");
     // Colour skins offered by the theme switcher, counted from the THEMES registry. `system`
     // is not a skin — it resolves to one — so the doc phrasing says "N Skins + system".
     private static int Skins() =>
@@ -34,6 +39,10 @@ public class DocumentationCountsTests
         CountFiles(RepoPath("src", "nodepilot-ui", "e2e"), f =>
             f.EndsWith(".spec.ts") || f.EndsWith(".spec.tsx")
             || f.EndsWith(".test.ts") || f.EndsWith(".test.tsx"));
+    // Pages per language on the documentation site. Both languages carry the same page set,
+    // which the docs-ui language parity test enforces, so the English tree is the count.
+    private static int DocSitePages() =>
+        CountFiles(RepoPath("src", "nodepilot-docs-ui", "content", "en"), f => f.EndsWith(".md"));
 
     public static IEnumerable<object[]> DocClaims()
     {
@@ -44,6 +53,7 @@ public class DocumentationCountsTests
         var skins = Skins();
         var vitestFiles = VitestFiles();
         var e2eSpecs = E2eSpecs();
+        var docPages = DocSitePages();
 
         // (relative doc path, regex with one capturing group, expected value, what it is)
         yield return Row("CLAUDE.md", @"über (\d+) Tools", toolTotal, "MCP tools (CLAUDE.md overview)");
@@ -61,6 +71,8 @@ public class DocumentationCountsTests
         // and the other two drifted to 29 in #402 while it stayed at 27. Both are pinned now.
         yield return Row("README.md", @"\[All (\d+) activities\]", activities, "activity types (README reference table)");
         yield return Row("README.md", @"WorkflowEngine, (\d+) activities", activities, "activity types (README solution tree)");
+        yield return Row("README.md", @"documentation site\]\([^)]*\)\*\*, (\d+) pages", docPages, "doc site pages (README intro)");
+        yield return Row("README.md", @"the documentation website\. (\d+) pages", docPages, "doc site pages (README links)");
         // The scoped-testing rule in CLAUDE.md is argued from these two figures. They drifted in
         // #292 and again in #353/#354 because nothing derived them; now something does. The third
         // number in that sentence — the backend test-case count — needs a real test run and stays
@@ -97,6 +109,14 @@ public class DocumentationCountsTests
             @"(\d+) Aktivitätstypen", activities, "activity types (website, de)");
         yield return Row("src/nodepilot-docs-ui/src/site/i18n/en.ts",
             @"(\d+) activity types", activities, "activity types (website, en)");
+        // The release-lab catalog counts node types, not just activities. Each figure is guarded
+        // on its own so the sum cannot hide a drift in one of its parts.
+        const string releaseLab = "scripts/release-lab/README.md";
+        yield return Row(releaseLab, @"(\d+) node types \(", activities + TriggerTypes(), "node types (release lab)");
+        yield return Row(releaseLab, @"\((\d+) activities \+", activities, "activity types (release lab)");
+        yield return Row(releaseLab, @"activities \+ (\d+) triggers\)", TriggerTypes(), "trigger types (release lab)");
+        yield return Row(releaseLab, @"(\d+) settings sections", SettingsSections(), "settings sections (release lab)");
+        yield return Row(releaseLab, @"(\d+) skins \+ system", skins, "colour skins (release lab)");
         yield return Row("src/nodepilot-docs-ui/content/de/designer/overview.md",
             @"Popover mit (\d+) Skins", skins, "colour skins (doc site, de)");
         yield return Row("src/nodepilot-docs-ui/content/en/designer/overview.md",

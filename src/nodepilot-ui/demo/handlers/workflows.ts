@@ -15,12 +15,13 @@ import type {
 } from '../../src/types/api';
 import { route, type RequestContext, type Route } from '../net/router';
 import { badRequest, conflict, download, json, noContent, notFound, notInDemo } from '../net/respond';
-import { definitionOf, findWorkflow, getWorld, type GraphNode } from '../state/world';
+import { definitionOf, findWorkflow, getWorld, notifyWorld, type GraphNode } from '../state/world';
 import { runtimeId } from '../state/ids';
 import { DEMO_USER } from '../seed/entities';
 import { buildStepStats } from '../seed/dashboard';
 import { cancelRun, startRun } from '../run/player';
 import { FILE_WORKFLOW_ID, fileInputError } from '../run/fileScenario';
+import { MISSION_WORKFLOW_IDS } from '../seed/missionFixtures';
 
 interface SaveBody {
   name?: string;
@@ -98,6 +99,27 @@ function withWorkflow(ctx: RequestContext, run: (workflow: Workflow) => Response
   const workflow = findWorkflow(ctx.params.id);
   if (!workflow) return notFound('Workflow');
   return run(workflow);
+}
+
+/** Mirrors WorkflowNameResolver: exact case wins, else case-insensitive; more than one match is ambiguous. */
+function resolveWorkflowByName(name: string): Workflow | 'ambiguous' | null {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  const candidates = getWorld().workflows.filter((w) => w.name.toLowerCase() === lower);
+  const exact = candidates.filter((w) => w.name === trimmed);
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1 || candidates.length > 1) return 'ambiguous';
+  return candidates[0] ?? null;
+}
+
+function withWorkflowByName(name: string, run: (workflow: Workflow) => Response) {
+  const result = resolveWorkflowByName(name);
+  // Same 409 body as WorkflowsController: a bare `{ message }`, not a problem document.
+  if (result === 'ambiguous') {
+    return json({ message: `Multiple workflows named '${name.trim()}' — disambiguate with the GUID.` }, 409);
+  }
+  return result ? run(result) : notFound('Workflow');
 }
 
 function buildContract(workflow: Workflow): WorkflowContractResponse {
@@ -216,6 +238,7 @@ export const workflowRoutes: Route[] = [
       const changed = typeof body?.definitionJson === 'string' && body.definitionJson !== workflow.definitionJson;
       applySave(workflow, body);
       if (changed) snapshotVersion(workflow, 'Saved from the designer');
+      notifyWorld();
       return json(workflow);
     })),
 
@@ -272,6 +295,7 @@ export const workflowRoutes: Route[] = [
       workflow.checkedOutByUserId = null;
       workflow.checkedOutByUserName = null;
       workflow.checkedOutAt = null;
+      notifyWorld();
       return json(workflow);
     })),
 
@@ -291,6 +315,7 @@ export const workflowRoutes: Route[] = [
       workflow.checkedOutByUserId = null;
       workflow.checkedOutByUserName = null;
       workflow.checkedOutAt = null;
+      notifyWorld();
       return json(workflow);
     })),
 
@@ -319,6 +344,12 @@ export const workflowRoutes: Route[] = [
     if (ctx.params.id === FILE_WORKFLOW_ID) {
       const error = fileInputError(parameters);
       if (error) return badRequest('INVALID_PARAMETERS', error);
+    }
+    if (ctx.params.id === MISSION_WORKFLOW_IDS.decision && (!Number.isFinite(Number(parameters.freeSpaceGb ?? '8')) || Number(parameters.freeSpaceGb ?? '8') < 0)) {
+      return badRequest('INVALID_PARAMETERS', 'freeSpaceGb must be a non-negative number.');
+    }
+    if (ctx.params.id === MISSION_WORKFLOW_IDS.service && !['stopped', 'running'].includes((parameters.serviceState ?? 'Stopped').toLowerCase())) {
+      return badRequest('INVALID_PARAMETERS', 'serviceState must be Stopped or Running.');
     }
     return withWorkflow(ctx, (workflow) => {
       if (!workflow.isEnabled) {
@@ -416,20 +447,17 @@ export const workflowRoutes: Route[] = [
   // --- analysis surfaces ---------------------------------------------------
 
   // A `startWorkflow` node may reference its child by NAME, so the designer resolves the
-  // contract over this path rather than the by-id one. Resolution mirrors WorkflowNameResolver:
-  // exact case wins, case-insensitive otherwise.
+  // workflow and its contract over these paths rather than the by-id ones.
   //
   // An unknown name must answer 404. `useWorkflowContract` treats only 404 as "no contract" and
   // then falls back to the free-form parameter table; anything else is taken as a contract, and
   // `ContractMappingTable` iterates `contract.inputs` without a guard — a 200 with an empty body
   // blanks the entire designer.
-  route('GET', '/workflows/by-name/:name/contract', (ctx) => {
-    const wanted = ctx.params.name;
-    const rows = getWorld().workflows;
-    const match = rows.find((w) => w.name === wanted)
-      ?? rows.find((w) => w.name.toLowerCase() === wanted.toLowerCase());
-    return match ? json(buildContract(match)) : notFound('Workflow');
-  }),
+  route('GET', '/workflows/by-name/:name', (ctx) =>
+    withWorkflowByName(ctx.params.name, (w) => json(w))),
+
+  route('GET', '/workflows/by-name/:name/contract', (ctx) =>
+    withWorkflowByName(ctx.params.name, (w) => json(buildContract(w)))),
 
   route('GET', '/workflows/:id/contract', (ctx) => withWorkflow(ctx, (w) => json(buildContract(w)))),
 

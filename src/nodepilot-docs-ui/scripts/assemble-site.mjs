@@ -1,4 +1,4 @@
-// Assembles the GitHub Pages tree from the separate build outputs:
+// Assembles the public webspace tree from the separate build outputs:
 //
 //   dist-site/*              -> _site/              project website (npm run build:site)
 //   dist/*                   -> _site/docs/         docs SPA, the bundle the installers ship (npm run build)
@@ -7,7 +7,7 @@
 //   pages-media/*            -> _site/media/        tour video and poster, kept out of the installers
 //   public/og-image.png      -> _site/og-image.png  social preview image for the website
 //
-// The Pages workflow and `npm run preview:site` both run this script, so the layout exists once.
+// The webspace publisher and `npm run preview:site` both run this script, so the layout exists once.
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,7 +41,7 @@ const SITE_ROOT_META = '<meta name="np-site-root" content="../">'
  * Every page of the docs, not only its entry: each address became its own file when the docs
  * got real addresses, and a reader landing deep in the tree needs the same back-links.
  */
-function markDocsAsPagesCopy(docsDir) {
+function markDocsAsPublicCopy(docsDir) {
   let stamped = 0
   const walk = (dir) => {
     for (const entry of readdirSync(dir)) {
@@ -52,13 +52,13 @@ function markDocsAsPagesCopy(docsDir) {
       }
       if (!entry.endsWith('.html')) continue
       const html = readFileSync(full, 'utf8')
-      if (!html.includes('</head>')) throw new Error(`${full} has no </head> to mark as the Pages copy.`)
+      if (!html.includes('</head>')) throw new Error(`${full} has no </head> to mark as the public copy.`)
       writeFileSync(full, html.replace('</head>', `  ${SITE_ROOT_META}\n  </head>`))
       stamped++
     }
   }
   walk(docsDir)
-  if (stamped === 0) throw new Error(`No HTML file under ${docsDir} to mark as the Pages copy.`)
+  if (stamped === 0) throw new Error(`No HTML file under ${docsDir} to mark as the public copy.`)
   return stamped
 }
 
@@ -69,7 +69,7 @@ function isWithin(dir, path) {
 }
 
 /**
- * Writes the Pages tree and returns its absolute path. `outDir` resolves against `packageRoot`.
+ * Writes the public site tree and returns its absolute path. `outDir` resolves against `packageRoot`.
  * It is deleted first, so it has to be a folder inside the package that no input shares.
  */
 export function assembleSite(packageRoot, outDir = '_site') {
@@ -82,7 +82,7 @@ export function assembleSite(packageRoot, outDir = '_site') {
   }
   for (const name of RESERVED_NAMES) {
     if (existsSync(input(join('dist-site', name))))
-      throw new Error(`dist-site/${name} collides with the Pages layout, which uses that name.`)
+      throw new Error(`dist-site/${name} collides with the public site layout, which uses that name.`)
   }
   const inputDirs = ['dist', 'dist-site', DEMO_DIR, 'pages-media', 'public'].map(input)
   if (!isWithin(root, out) || inputDirs.some((dir) => isWithin(dir, out) || isWithin(out, dir)))
@@ -91,7 +91,7 @@ export function assembleSite(packageRoot, outDir = '_site') {
   rmSync(out, { recursive: true, force: true })
   cpSync(input('dist-site'), out, { recursive: true })
   cpSync(input('dist'), join(out, 'docs'), { recursive: true })
-  markDocsAsPagesCopy(join(out, 'docs'))
+  markDocsAsPublicCopy(join(out, 'docs'))
   cpSync(input(DEMO_DIR), join(out, 'demo'), { recursive: true })
   cpSync(input('pages-media'), join(out, 'media'), { recursive: true })
   cpSync(input('public/og-image.png'), join(out, 'og-image.png'))

@@ -12,23 +12,36 @@ import { route, type Route } from '../net/router';
 import { json } from '../net/respond';
 import { getWorld } from '../state/world';
 import { demoId } from '../state/ids';
-import { DEMO_HOST, DEMO_USER } from '../seed/entities';
+import { DEMO_HOST } from '../seed/entities';
 import type { SupportEventResponse } from '../../src/api/diagnostics';
 
 /** Serilog levels, as `LEVEL_LABELS` in SupportEventsTable maps them. */
 const INFO = 2;
 const WARN = 3;
-const ERROR = 4;
 
+/** Support-log file tokens from SupportLogFormatter (`[Level:u4]`, "ERR " padded). */
+const LEVEL_TOKENS: Record<number, string> = { 0: 'TRCE', 1: 'DBUG', 2: 'INFO', 3: 'WARN', 4: 'ERR ', 5: 'FATL' };
+
+/** Matches `Guid.ToString("N")[..8]` for the demo's ids. */
 function shortId(id: string): string {
-  return id.slice(0, 8);
+  return id.replaceAll('-', '').slice(0, 8);
 }
 
-/** Every event the world implies, newest first. */
-function buildEvents(): SupportEventResponse[] {
+/** An event row plus the rendered message the file sink writes for it. */
+interface DemoSupportEvent {
+  row: SupportEventResponse;
+  rendered: string;
+}
+
+/**
+ * Every event the world implies, oldest first. Messages and levels follow the engine:
+ * `row.message` is the `support.message` projection, `rendered` the log template.
+ */
+function buildEvents(): DemoSupportEvent[] {
   const world = getWorld();
   const nameById = new Map(world.workflows.map((w) => [w.id, w.name]));
-  const rows: SupportEventResponse[] = [];
+  const userIdByName = new Map(world.users.map((u) => [u.username, u.id]));
+  const events: DemoSupportEvent[] = [];
 
   const base = (execution: { id: string; workflowId: string; startedAt: string }) => ({
     workflowId: execution.workflowId,
@@ -46,47 +59,65 @@ function buildEvents(): SupportEventResponse[] {
   });
 
   for (const execution of world.executions) {
-    rows.push({
-      ...base(execution),
-      id: demoId(`support:${execution.id}:started`),
-      timestamp: execution.startedAt,
-      level: INFO,
-      eventType: 'EXECUTION_STARTED',
-      message: `Execution started (${execution.triggeredBy ?? 'manual'}).`,
-      userName: execution.startedByUsername ?? null,
+    const workflowName = nameById.get(execution.workflowId) ?? '';
+    const exec = shortId(execution.id);
+    const trigger = execution.triggeredBy ?? 'manual';
+    const userId = (execution.startedByUsername && userIdByName.get(execution.startedByUsername)) || null;
+    events.push({
+      row: {
+        ...base(execution),
+        id: demoId(`support:${execution.id}:started`),
+        timestamp: execution.startedAt,
+        level: INFO,
+        eventType: 'EXECUTION_STARTED',
+        message: `trigger=${trigger} user=${userId ?? '-'}`,
+        userName: execution.startedByUsername ?? null,
+        userId,
+      },
+      rendered: `EXECUTION_STARTED workflow=${workflowName} exec=${exec} trigger=${trigger} user=${userId ?? '-'}`,
     });
 
-    // The step that ended the run carries the reason, so the failure reads like a log and not
-    // like a status word.
+    // StepRunner logs a genuine step failure as a Warning, not an Error.
     const steps = world.steps.get(execution.id) ?? [];
     const broken = steps.find((s) => s.status === 'Failed');
     if (broken) {
-      rows.push({
-        ...base(execution),
-        id: demoId(`support:${execution.id}:step-failed`),
-        timestamp: broken.completedAt ?? broken.startedAt ?? execution.startedAt,
-        level: ERROR,
-        eventType: 'STEP_FAILED',
-        message: broken.errorOutput ?? 'The step failed.',
-        stepId: broken.stepId,
-        stepLabel: broken.stepName,
-        activityType: broken.stepType,
+      const reason = broken.errorOutput || '(no error message)';
+      const label = broken.stepName ?? broken.stepId;
+      events.push({
+        row: {
+          ...base(execution),
+          id: demoId(`support:${execution.id}:step-failed`),
+          timestamp: broken.completedAt ?? broken.startedAt ?? execution.startedAt,
+          level: WARN,
+          eventType: 'STEP_FAILED',
+          message: reason,
+          stepId: broken.stepId,
+          stepLabel: label,
+          activityType: broken.stepType,
+        },
+        rendered: `STEP_FAILED exec=${exec} step=${label} activity=${broken.stepType} reason=${reason}`,
       });
     }
 
     if (execution.completedAt) {
-      const failed = execution.status === 'Failed';
-      const cancelled = execution.status === 'Cancelled';
-      rows.push({
-        ...base(execution),
-        id: demoId(`support:${execution.id}:finished`),
-        timestamp: execution.completedAt,
-        level: failed ? ERROR : cancelled ? WARN : INFO,
-        eventType: failed ? 'EXECUTION_FAILED' : cancelled ? 'EXECUTION_CANCELLED' : 'EXECUTION_SUCCEEDED',
-        message: failed
-          ? (execution.errorMessage ?? 'The execution failed.')
-          : cancelled ? 'The execution was cancelled by an operator.'
-          : `Execution completed with ${steps.length} step(s).`,
+      // WorkflowEngine: Succeeded is Information, every other terminal state a Warning.
+      const eventType = execution.status === 'Succeeded' ? 'EXECUTION_SUCCEEDED'
+        : execution.status === 'Failed' ? 'EXECUTION_FAILED'
+        : execution.status === 'Cancelled' ? 'EXECUTION_CANCELLED'
+        : 'EXECUTION_COMPLETED';
+      const seconds = Math.max(0, Date.parse(execution.completedAt) - Date.parse(execution.startedAt)) / 1000;
+      const count = (status: string) => steps.filter((s) => s.status === status).length;
+      const stats = `duration=${seconds.toFixed(1)}s steps=ok:${count('Succeeded')}/fail:${count('Failed')}/skip:${count('Skipped')}`;
+      events.push({
+        row: {
+          ...base(execution),
+          id: demoId(`support:${execution.id}:finished`),
+          timestamp: execution.completedAt,
+          level: eventType === 'EXECUTION_SUCCEEDED' ? INFO : WARN,
+          eventType,
+          message: stats,
+        },
+        rendered: `${eventType} workflow=${workflowName} exec=${exec} ${stats}`,
       });
     }
   }
@@ -94,20 +125,29 @@ function buildEvents(): SupportEventResponse[] {
   // One boot line, so the type filter has a non-execution row and the tail starts somewhere.
   const oldest = world.executions.at(-1)?.startedAt;
   if (oldest) {
-    rows.push({
-      id: demoId('support:boot'),
-      timestamp: oldest,
-      level: INFO,
-      eventType: 'SYSTEM_BOOT',
-      message: `NodePilot ${DEMO_HOST.appVersion} started on ${DEMO_HOST.machineName}.`,
-      workflowId: null, workflowName: null, executionId: null, executionShort: null,
-      stepId: null, stepLabel: null, activityType: null,
-      userName: DEMO_USER.username, userId: DEMO_USER.id,
-      traceId: null, spanId: null, propertiesJson: null,
+    const version = DEMO_HOST.appVersion;
+    events.push({
+      row: {
+        id: demoId('support:boot'),
+        timestamp: oldest,
+        level: INFO,
+        eventType: 'SYSTEM_BOOT',
+        message: `started version=${version} env=Production db=postgres`,
+        workflowId: null, workflowName: null, executionId: null, executionShort: null,
+        stepId: null, stepLabel: null, activityType: null,
+        userName: null, userId: null,
+        traceId: null, spanId: null, propertiesJson: null,
+      },
+      rendered: `NodePilot.Api started — version=${version} env=Production db=postgres`,
     });
   }
 
-  return rows.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  return events.sort((a, b) => Date.parse(a.row.timestamp) - Date.parse(b.row.timestamp));
+}
+
+/** Newest first, the table's default order. */
+function buildRows(): SupportEventResponse[] {
+  return buildEvents().map((e) => e.row).reverse();
 }
 
 /** Applies the filters the events table sends. Unknown keys are ignored, as the product does. */
@@ -133,26 +173,43 @@ function filterEvents(rows: SupportEventResponse[], query: URLSearchParams): Sup
   return result;
 }
 
-/** cmtrace-ish single line per event, the shape the plain-text viewer renders. */
-function logLine(row: SupportEventResponse): string {
-  const level = row.level >= 4 ? 'ERR' : row.level === 3 ? 'WRN' : 'INF';
-  const scope = row.workflowName ? ` [${row.workflowName}]` : '';
-  return `${row.timestamp} [${level}]${scope} ${row.eventType}: ${row.message}`;
+function pad(value: number, width = 2): string {
+  return String(value).padStart(width, '0');
 }
 
+/** `yyyy-MM-dd HH:mm:ss.fff` in local time, as Serilog renders a DateTimeOffset. */
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} `
+    + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+}
+
+/** One line per event, in SupportLogFormatter's layout. */
+function logLine(event: DemoSupportEvent): string {
+  return `${formatTimestamp(event.row.timestamp)} [${LEVEL_TOKENS[event.row.level] ?? 'INFO'}] ${event.rendered}`;
+}
+
+/** Today's daily file name (UTC date), as SupportLogFileResolver builds it. */
+function supportLogFileName(): string {
+  const now = new Date();
+  return `nodepilot-support-${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}.log`;
+}
+
+/** Tail cap, as DiagnosticsController applies it. */
+const MAX_TAIL_LINES = 1000;
+
 export const diagnosticsRoutes: Route[] = [
-  route('GET', '/diagnostics/support-log', () => {
-    const lines = buildEvents().slice(0, 500).map(logLine);
-    return json({
-      file: `C:\\ProgramData\\NodePilot\\logs\\nodepilot-${new Date().toISOString().slice(0, 10)}.log`,
-      lineCount: lines.length,
-      lines,
-    });
+  route('GET', '/diagnostics/support-log', (ctx) => {
+    const requested = Number(ctx.query.get('lines') ?? 200) || 200;
+    const count = Math.min(Math.max(requested, 1), MAX_TAIL_LINES);
+    // The file is append-only, so the tail is the newest lines in file order (oldest first).
+    const lines = buildEvents().map(logLine).slice(-count);
+    return json({ file: supportLogFileName(), lineCount: lines.length, lines });
   }),
 
   route('GET', '/diagnostics/support-events', (ctx) => {
     const take = Math.min(Number(ctx.query.get('take') ?? 200) || 200, 500);
-    const rows = filterEvents(buildEvents(), ctx.query);
+    const rows = filterEvents(buildRows(), ctx.query);
     const page = rows.slice(0, take);
     return json({
       items: page,

@@ -29,7 +29,17 @@ describe('LintPanel', () => {
     };
     render(<LintPanel result={result} nodes={[]} edges={[]} onJump={vi.fn()} onClose={vi.fn()} />);
 
-    expect(screen.getByText(/1 errors · 2 warnings/)).toBeInTheDocument();
+    expect(screen.getByText(/1 error · 2 warnings/)).toBeInTheDocument();
+  });
+
+  it('counts_useSingularForOneWarning', () => {
+    const result = {
+      errors: [err('E1', 'a'), err('E2', 'b')],
+      warnings: [warn('W1', 'soft')],
+    };
+    render(<LintPanel result={result} nodes={[]} edges={[]} onJump={vi.fn()} onClose={vi.fn()} />);
+
+    expect(screen.getByText('2 errors · 1 warning')).toBeInTheDocument();
   });
 
   it('rendersAllIssuesInOrderErrorsThenWarnings', () => {

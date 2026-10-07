@@ -183,6 +183,11 @@
     "reencryptSkipDetails": "Skipped entries (name · reason · ID)"
   },
   "logging": {
+    "supportLogHeading": "Support log (second, lean sink)",
+    "supportLogIntro": "Writes a lean plain-text file <code>nodepilot-support-*.log</code> with only support-relevant events (user log activity, workflow lifecycle, auth audits, system boot). Changes require an API restart.",
+    "dbProjection": "DB projection (web viewer)",
+    "supportLogPath": "Path (empty = next to the main log)",
+    "supportLogRetentionDays": "Retention (days)",
     "asyncFileSink": "Async file sink",
     "retainedFiles": "Retained files",
     "maxFileSizeBytes": "Max file size (bytes)",
@@ -195,6 +200,7 @@
     "supportLogEnabled": "Plain-text file enabled"
   },
   "otel": {
+    "grafanaBaseUrl": "Grafana base URL (optional drill-down)",
     "serviceName": "Service name",
     "environment": "Environment",
     "redactHostnames": "Redact hostnames",

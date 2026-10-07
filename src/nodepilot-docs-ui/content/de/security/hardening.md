@@ -2,7 +2,7 @@
 
 Hardening-Flags sind in `appsettings.json` standardmäßig `true`. Ein fehlender Schlüssel wird ebenfalls als `true` behandelt. `appsettings.Development.json` setzt ausgewählte Flags für lokale Entwicklung auf `false`.
 
-Ausnahme: `PrometheusScrapeAllowAnonymous` ist eine Relaxation und defaultet auf `false`.
+Zwei Ausnahmen sind Relaxations und defaulten auf `false`: `PrometheusScrapeAllowAnonymous` und `Remote:RequireWinRmSsl`. Letzteres blockt WinRM über HTTP nur, wenn der Wert wörtlich `true` ist — ein fehlender Key erlaubt es also.
 
 | Key | Default | Effect |
 |---|---|---|
@@ -18,7 +18,7 @@ Ausnahme: `PrometheusScrapeAllowAnonymous` ist eine Relaxation und defaultet auf
 | `Webhook:RequireSecret` | `true` | `webhookTrigger` erzwingt ein konfiguriertes Secret — verifiziert je nach `signatureMode` als `X-Webhook-Secret`-Header oder HMAC-Signatur (Dev: `false`) |
 | `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` | `false` | `/metrics` anonym erreichbar |
 
-> **Missing key = hardened.** Ein fehlender Hardening-Key liest als `true` (bzw. bei `PrometheusScrapeAllowAnonymous` als `false`). In Produktion also lieber explizit setzen, um kein Missverständnis zu riskieren.
+> **Missing key = hardened.** Ein fehlender Hardening-Key liest als `true`. Ausnahme sind die beiden Lockerungen `PrometheusScrapeAllowAnonymous` und `Remote:RequireWinRmSsl`: dort liest ein fehlender Key als `false`. In Produktion also lieber explizit setzen, um kein Missverständnis zu riskieren.
 
 ## DbAdmin Query Console
 

@@ -10,6 +10,9 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Tests.Helpers;
+using NodePilot.Core.Activities;
+using NodePilot.Engine.Activities;
+using NodePilot.Engine.PowerShell;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Execution;
@@ -22,6 +25,82 @@ namespace NodePilot.Engine.Tests.Execution;
 [Collection("SerialEngineTests")]
 public class GlobalVariableResolutionTests
 {
+    [Theory]
+    [InlineData(false, "resolved")]
+    [InlineData(true, "resolved")]
+    [InlineData(false, "missing")]
+    [InlineData(true, "missing")]
+    [InlineData(false, "undecryptable")]
+    [InlineData(true, "undecryptable")]
+    [InlineData(false, "unreachable")]
+    [InlineData(true, "unreachable")]
+    public async Task CustomDefinitionGlobals_ResolveOrFailBeforePowerShell(bool inDefault, string state)
+    {
+        var (triggerRegistry, _) = CountingRegistry("restApi");
+        var (db, _, conn) = TestDbContext.CreateWithScopedServices(triggerRegistry);
+        using (conn)
+        {
+            var definitions = new CustomActivityDefinitionStore(db);
+            var definition = await definitions.CreateAsync(new CustomActivityDefinitionInput
+            {
+                Key = "global_greeting", Name = "Global greeting",
+                ScriptTemplate = inDefault ? "Write-Output $Greeting" : "Write-Output \"{{globals.GREETING}}\"",
+                InputParametersJson = inDefault
+                    ? """[{"name":"Greeting","type":"string","default":"{{globals.GREETING}}"}]"""
+                    : "[]",
+            }, "test", CancellationToken.None);
+            await definitions.SetEnabledAsync(definition.Id, true, "test", CancellationToken.None);
+
+            PowerShellExecutionRequest? captured = null;
+            var powershell = new Mock<IPowerShellExecutionEngine>();
+            powershell.SetupGet(p => p.IsAvailable).Returns(true);
+            powershell.Setup(p => p.ExecuteAsync(It.IsAny<PowerShellExecutionRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<PowerShellExecutionRequest, CancellationToken>((request, _) => captured = request)
+                .ReturnsAsync(new PowerShellExecutionResult { Success = true, Output = "ok" });
+            var custom = new CustomActivityExecutor(definitions,
+                new PowerShellEngineFactory(powershell.Object, powershell.Object, powershell.Object),
+                NullLogger<CustomActivityExecutor>.Instance);
+            var registry = new ActivityRegistry(new[] { triggerRegistry.GetExecutor("manualTrigger"), custom });
+            var globals = new Mock<IGlobalVariableStore>();
+            if (state == "unreachable")
+                globals.Setup(g => g.GetAllResolvedDetailedAsync(It.IsAny<CancellationToken>()))
+                    .ThrowsAsync(new InvalidOperationException("variables table unreachable"));
+            else
+                globals.Setup(g => g.GetAllResolvedDetailedAsync(It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new GlobalVariableResolutionResult(
+                        state == "resolved" ? new Dictionary<string, string> { ["GREETING"] = "Grüße von client1" } : new(),
+                        state == "undecryptable" ? new HashSet<string> { "GREETING" } : new()));
+            var services = new ServiceCollection();
+            services.AddDbContext<NodePilotDbContext>(options => options.UseSqlite(conn));
+            services.AddScoped(_ => registry);
+            services.AddScoped(_ => globals.Object);
+            using var provider = services.BuildServiceProvider();
+            var workflow = WorkflowWithStep(db, "custom:global_greeting",
+                JsonSerializer.Serialize(new { __customDefinitionId = definition.Id, __customKey = definition.Key }));
+            workflow.DefinitionJson.Should().NotContain("{{globals.");
+            var engine = new WorkflowEngine(db, NullLogger<WorkflowEngine>.Instance, provider, Mock.Of<IExecutionNotifier>());
+
+            var execution = await engine.ExecuteAsync(workflow, "test", CancellationToken.None);
+
+            if (state == "resolved")
+            {
+                execution.Status.Should().Be(ExecutionStatus.Succeeded);
+                captured.Should().NotBeNull();
+                if (inDefault) captured!.Parameters!["Greeting"].Should().Be("Grüße von client1");
+                else captured!.ScriptText.Should().Contain("Grüße von client1").And.NotContain("{{globals.");
+            }
+            else
+            {
+                execution.Status.Should().Be(ExecutionStatus.Failed);
+                captured.Should().BeNull("unavailable globals must never reach PowerShell as literal placeholders");
+                if (state == "unreachable") execution.ErrorMessage.Should().Contain("Global variables could not be loaded");
+                else db.StepExecutions.Single(s => s.WorkflowExecutionId == execution.Id && s.StepId == "s1")
+                    .ErrorOutput.Should().Contain("GREETING");
+            }
+            globals.Verify(g => g.GetAllResolvedDetailedAsync(It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
     [Fact]
     public async Task EngineInjectsGlobalsIntoActivityConfig()
     {

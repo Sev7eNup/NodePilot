@@ -176,7 +176,7 @@ describe('EditorHeader — designer back button (location.state)', () => {
     useDesignStore.setState({ designerMode: 'standard' });
     renderWithState(undefined);
 
-    expect(screen.getByRole('button', { name: /Test/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Run$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Debug/i })).not.toBeInTheDocument();
     expect(screen.queryByTitle(/Failure heatmap/i)).not.toBeInTheDocument();
 
@@ -216,7 +216,7 @@ describe('EditorHeader — toolbar-layout toggle', () => {
     expect(screen.queryByTestId('view-overlays-trigger')).not.toBeInTheDocument();
     expect(screen.queryByTestId('canvas-settings-trigger')).not.toBeInTheDocument();
     // The run button is icon-only, so it is resolved by its accessible name.
-    expect(screen.getByRole('button', { name: 'Test run' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run' })).toBeInTheDocument();
     expect(screen.getByTestId('toggle-toolbar-layout')).toBeInTheDocument();
   });
 });
@@ -232,7 +232,7 @@ describe.each(['compact', 'classic'] as const)('EditorHeader — role contract (
   it('writer_seesRunAndDisable', () => {
     // defaultProps sets roleCanWrite and workflow.isEnabled, so Run and Disable are shown.
     renderWithState(undefined);
-    expect(screen.getByRole('button', { name: 'Test run' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disable' })).toBeInTheDocument();
   });
 
@@ -244,7 +244,7 @@ describe.each(['compact', 'classic'] as const)('EditorHeader — role contract (
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    expect(screen.queryByRole('button', { name: 'Test run' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
   });

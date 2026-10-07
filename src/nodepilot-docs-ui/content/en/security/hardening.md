@@ -2,7 +2,7 @@
 
 Hardening flags default to `true` in `appsettings.json`. A missing key is also treated as `true`. `appsettings.Development.json` sets selected flags to `false` for local development.
 
-The exception: `PrometheusScrapeAllowAnonymous` is a relaxation and defaults to `false`.
+Two exceptions are relaxations and default to `false`: `PrometheusScrapeAllowAnonymous` and `Remote:RequireWinRmSsl`. The latter blocks WinRM over HTTP only when the value is literally `true`, so a missing key permits it.
 
 | Key | Default | Effect |
 |---|---|---|
@@ -18,7 +18,7 @@ The exception: `PrometheusScrapeAllowAnonymous` is a relaxation and defaults to 
 | `Webhook:RequireSecret` | `true` | `webhookTrigger` requires a configured secret — verified as an `X-Webhook-Secret` header or an HMAC signature depending on `signatureMode` (development: `false`) |
 | `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` | `false` | Makes `/metrics` reachable anonymously |
 
-> **Missing key = hardened.** A missing hardening key reads as `true` (or, for `PrometheusScrapeAllowAnonymous`, as `false`). In production it is better to set them explicitly, to avoid any misunderstanding.
+> **Missing key = hardened.** A missing hardening key reads as `true`. The two relaxations `PrometheusScrapeAllowAnonymous` and `Remote:RequireWinRmSsl` are the exceptions: a missing key reads as `false`. In production it is better to set them explicitly, to avoid any misunderstanding.
 
 ## The database-admin query console
 

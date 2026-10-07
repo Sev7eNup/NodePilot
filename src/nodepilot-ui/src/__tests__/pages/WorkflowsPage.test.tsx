@@ -111,7 +111,7 @@ describe('WorkflowsPage — basics', () => {
   it('shows loading state initially', () => {
     server.use(http.get(`${BASE}/api/workflows`, () => new Promise(() => {})));
     renderPage();
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/loading/i).length).toBeGreaterThan(0);
   });
 
   it('renders workflow names', async () => {
@@ -375,6 +375,32 @@ describe('WorkflowsPage — import result toast', () => {
 
     await waitFor(() => expect(received).not.toBeNull());
     expect(Array.from(received!)).toEqual(Array.from(utf16));
+  });
+
+  it('refreshes the folder tree after a JSON import', async () => {
+    seedImportResponse({ created: 1, workflows: [], errors: [] });
+    const { container, queryClient } = renderPage('Admin');
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    await importFile(container);
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['shared-folders'] }));
+  });
+
+  it('refreshes the folder tree after a SCOrch import', async () => {
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.post(`${BASE}/api/workflows/import-scorch`, () =>
+        HttpResponse.json({ created: 1, workflows: [], variables: [], warnings: [], errors: [] })),
+    );
+    const { container, queryClient } = renderPage('Admin');
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+    const input = container.querySelector(
+      'input[accept=".ois_export,.ore,application/xml,text/xml,.xml"]',
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['<x />'], 'a.ois_export', { type: 'application/xml' })] } });
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['shared-folders'] }));
   });
 });
 
@@ -711,11 +737,13 @@ describe('WorkflowsPage — Mutations', () => {
         return HttpResponse.json(mkWorkflow({ id: 'wf-1-dup' }));
       }),
     );
-    renderPage();
+    const { queryClient } = renderPage();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
     await waitFor(() => expect(screen.getByText('Backup Workflow')).toBeInTheDocument());
 
     fireEvent.click(screen.getByTitle('Duplicate'));
     await waitFor(() => expect(duplicated).toBe(true));
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['shared-folders'] }));
   });
 
   it('Delete button confirms then deletes', async () => {
@@ -724,12 +752,36 @@ describe('WorkflowsPage — Mutations', () => {
       http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
       http.delete(`${BASE}/api/workflows/wf-1`, () => { deleted = true; return new HttpResponse(null, { status: 204 }); }),
     );
-    renderPage();
+    const { queryClient } = renderPage();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
     await waitFor(() => expect(screen.getByText('Backup Workflow')).toBeInTheDocument());
 
     fireEvent.click(screen.getByTitle('Delete'));
     await waitFor(() => expect(deleted).toBe(true));
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['shared-folders'] }));
     expect(confirmDialog).toHaveBeenCalled();
+  });
+
+  it('updates the folder badge after deleting its last workflow', async () => {
+    let deleted = false;
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json(
+        deleted ? [] : [mkWorkflow({ folderId: 'f-1' })],
+      )),
+      http.get(`${BASE}/api/shared-workflow-folders`, () =>
+        HttpResponse.json(bulkFolders(deleted ? 0 : 1))),
+      http.delete(`${BASE}/api/workflows/wf-1`, () => {
+        deleted = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderPage();
+    const folder = await screen.findByTestId('shared-folder-f-1');
+    await waitFor(() => expect(folder).toHaveTextContent('1'));
+    fireEvent.click(screen.getByTitle('Delete'));
+
+    await waitFor(() => expect(folder).toHaveTextContent('0'));
+    expect(screen.queryByText('Workflow A')).not.toBeInTheDocument();
   });
 
   it('Delete button does NOT delete when confirm is cancelled', async () => {
@@ -1286,6 +1338,38 @@ describe('WorkflowsPage — bulk actions', () => {
       { id: 'wf-1', target: 'f-1' },
       { id: 'wf-2', target: 'f-1' },
     ]));
+  });
+
+  it('moves a workflow when its row is dropped on a folder', async () => {
+    const moved: string[] = [];
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([
+        mkWorkflow({ id: 'wf-1', name: 'Alpha', folderId: BULK_ROOT }),
+      ])),
+      http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json(bulkFolders())),
+      http.post(`${BASE}/api/workflows/wf-1/move-folder`, async ({ request }) => {
+        const body = await request.json() as { targetFolderId: string };
+        moved.push(body.targetFolderId);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderPage();
+    const row = (await screen.findByText('Alpha')).closest('tr')!;
+    const folder = await screen.findByTestId('shared-folder-f-1');
+    const values = new Map<string, string>();
+    const dataTransfer = {
+      types: ['application/x-nodepilot-workflow'],
+      setData: (type: string, value: string) => values.set(type, value),
+      getData: (type: string) => values.get(type) ?? '',
+      effectAllowed: 'move',
+      dropEffect: 'move',
+    };
+
+    fireEvent.dragStart(row, { dataTransfer });
+    fireEvent.dragOver(folder, { dataTransfer });
+    fireEvent.drop(folder, { dataTransfer });
+
+    await waitFor(() => expect(moved).toEqual(['f-1']));
   });
 
   it('skips a workflow that already sits in the target folder', async () => {

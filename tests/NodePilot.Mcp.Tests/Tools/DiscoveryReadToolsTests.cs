@@ -58,11 +58,10 @@ public sealed class DiscoveryReadToolsTests
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
                 fires = new[] { DateTime.UtcNow.AddHours(1), DateTime.UtcNow.AddHours(2) },
-                summary = "Every hour",
             }));
 
         var json = JsonSerializer.Serialize(await Tools(api).ValidateCron("0 0 * * * ?"));
         json.Should().Contain("\"valid\":true");
-        json.Should().Contain("Every hour");
+        json.Should().Contain("\"nextFires\":[");
     }
 }

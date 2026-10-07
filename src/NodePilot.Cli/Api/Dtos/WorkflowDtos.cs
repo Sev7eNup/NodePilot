@@ -123,7 +123,7 @@ public sealed record AuditCursor(DateTime Timestamp, Guid Id);
 
 public sealed record AuditPageResponse(IReadOnlyList<AuditEntryResponse> Items, AuditCursor? NextCursor);
 
-public sealed record NextFiresResponse(List<DateTime> Fires, string Summary);
+public sealed record NextFiresResponse(List<DateTime> Fires);
 
 public sealed record WorkflowExportItem(
     string Name, string? Description, JsonElement Definition,

@@ -80,3 +80,4 @@ Credentials are encrypted with DPAPI (`Credentials:DpapiScope`). In a cluster, A
 
 - **SQL Server 2022 CU1 or later** (trusted connection, build ≥ 16.0.4003.1) or **PostgreSQL 16+** (user/password). The production connection uses `Encrypt=Strict` (TDS 8.0) — SQL Server 2019 cannot do that, and 2022 RTM aborts parameterized queries with TDS error 8005 (fixed from CU1).
 - The gMSA login / the Postgres role needs DDL permissions (for `Migrate()`).
+- The database server needs a TLS certificate that NodePilot can verify: [Database certificates](../deployment/database-tls).

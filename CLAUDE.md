@@ -6,15 +6,6 @@ Moderner, schlanker Ersatz fuer Microsoft System Center Orchestrator. Agentless 
 
 **Pflege:** Ein Feature-PR fügt hier höchstens eine Zeile hinzu. Wer einen Absatz schreiben will, schreibt ihn in `docs/claude-reference.md` und verlinkt ihn von hier. Keine Fehler-Rückblenden („vorher war es so…"), keine Messwerte als Beleg — dieselbe Regel wie für Code-Kommentare. Steht eine Erklärung schon in `docs/`, steht hier nur der Zeiger. Umfang ist per `DocumentationCountsTests` gedeckelt.
 
-## Contributor- & Attribution-Policy
-
-NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (diese Datei, `.claude/`, `.agents/` bleiben in Nutzung) — aber für ALLE Commits ab v1.0.0 gilt:
-
-- **Autor & Committer sind immer** `Sev7eNup <79143581+Sev7eNup@users.noreply.github.com>`. Der GitHub-Contributor-Graph zeigt ausschließlich `sev7enup`.
-- **Co-Author-Trailer sind erlaubt** (Claude, Codex, Dependabot). Sie stehen immer *hinter* dem Autor: `Sev7eNup` bleibt Hauptautor und damit das erste Avatar am Commit. Ein Trailer darf den Autor nie ersetzen.
-- **Natürliche, menschliche Sprache.** Alle Texte und Beschreibungen — ebenso PR-Titel, PR-Beschreibungen und Commit-Nachrichten — sind natürlich und menschlich formuliert. KI-Floskeln und aufgeblähte Formulierungen sind zu vermeiden, Aussagen bleiben konkret und verständlich.
-- **Sprache auf GitHub ist Englisch.** Commit-Messages, PR-Titel/-Beschreibungen, Issues, Issue-Kommentare, Review-Kommentare und Branch-Namen werden auf Englisch verfasst — unabhängig davon, in welcher Sprache der Chat geführt wird. (Repo-interne Doku und Code-Kommentare bleiben davon unberührt: dort gilt weiter die vorhandene Sprache der jeweiligen Datei.)
-
 ## Agent skills
 
 - **Issue tracker:** GitHub Issues für `Sev7eNup/NodePilot`, siehe `docs/agents/issue-tracker.md`
@@ -32,18 +23,18 @@ NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (di
 - `docs/deployment-guide.md` — (EN) Artefakt verifizieren, selbst bauen, Troubleshooting — **nicht** der Installationsweg, der steht **einmal** auf der Doku-Website (`content/{de,en}/deployment/production.md`)
 - `docs/av-exclusions.md` — Antiviren-Ausschlüsse (Server + Desktop) als Übergabedokument für eine AV-Abteilung
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
-- `docs/workflow-tests.md` — Test-Suite unter `scripts/test-suite/`: 46 generierte Workflows gegen die laufende Engine, `suite-manifest.json` als Abdeckungsquelle, Guard-Test `TestSuiteCoverageTests`
+- `docs/workflow-tests.md` — Test-Suite unter `scripts/test-suite/`: 51 generierte Workflows gegen die laufende Engine, `suite-manifest.json` als Abdeckungsquelle, Guard-Test `TestSuiteCoverageTests`
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
 - `docs/ai-feature-ideas.md` — Beschreibungstiefe zu den KI-Ideen, **keine Spezifikation**. Priorisierung und Status stehen in `docs/roadmap.md`.
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen
-- `src/nodepilot-ui/demo/` — **Browser-Demo** der SPA für GitHub Pages (`/demo/`), dieselbe App gegen ein In-Memory-Backend; Regeln in `src/nodepilot-ui/CLAUDE.md`
-- `src/nodepilot-docs-ui/src/site/` — **Projekt-Website** (DE/EN) an der Pages-Wurzel, Doku darunter unter `/docs/`; **nie** Teil von `dist/`. Build, Routen, Vorschau: `src/nodepilot-docs-ui/README.md`. Impressum/Datenschutz liefert der User.
+- `src/nodepilot-ui/demo/` — **Browser-Demo** der SPA auf www.nodepilot.run (`/demo/`), dieselbe App gegen ein In-Memory-Backend; Regeln in `src/nodepilot-ui/CLAUDE.md`
+- `src/nodepilot-docs-ui/src/site/` — **Projekt-Website** (DE/EN) an der Website-Wurzel, Doku darunter unter `/docs/`; **nie** Teil von `dist/`. Build, Routen, Vorschau: `src/nodepilot-docs-ui/README.md`. Impressum/Datenschutz liefert der User.
 
 ## Tech-Stack
 
 - **Backend:** ASP.NET Core Web API, .NET 10, Windows-only (`net10.0-windows`)
 - **Datenbank:** PostgreSQL (default) / SQL Server (`Database:Provider` = `postgres` | `sqlserver`). SQLite nur als Test-In-Memory-Backend.
-- **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` braucht `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`, sonst Boot-Abbruch). Engine-local In-Proc-Pool (WinPS-Kompatibilität bewusst aus): `docs/performance-improvements.md`
+- **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` braucht `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`, sonst Boot-Abbruch). Lokale Nutzerskripte (`engine: auto`) laufen als Windows-PowerShell-5.1-Prozess wie remote; der In-Proc-Pool (WinPS-Kompatibilität bewusst aus) bedient die eingebauten Activities und `engine: runspace`: `docs/claude-reference.md`
 - **Real-time:** SignalR (`/hubs/execution`)
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
 - **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 112 Tools, HTTP-only gegen die REST-API
@@ -225,7 +216,7 @@ Layout-Styleguide für Workflow-JSONs: **zuerst** `docs/workflow-styleguide.md` 
 
 **RunScript Auto-Quoting:** `{{step.output}}` wird als Single-Quoted String eingesetzt. Im Script `$x = {{step.output}}` schreiben, NICHT `$x = '{{step.output}}'`.
 
-**RunScript Erfolg (fehler-basiert):** Ein Step scheitert **nur** bei einem terminierenden PowerShell-Fehler. Ein `exit N` macht den Step **nicht** rot; opt-in `config.successExitCodes` macht non-zero Codes wieder zum Fehlschlag. Der Exit-Code liegt als `{{step.param.exitCode}}` an und meint das letzte native Kommando **dieses** Skripts — der Wrapper setzt `$LASTEXITCODE` und `$Error` vorher zurück, weil beide sonst im prozesslang offenen Runspace-Pool aus einem fremden Lauf überleben. **Engine-Asymmetrie:** ein script-eigenes `exit N` ist nur im Prozess/isoliert-Pfad sichtbar (Runspace kann `exit` nicht beobachten → `0`). Ein **Parse-Fehler** ist auf jeder Engine rot: das Fehlen des `###NODEPILOT_START###`-Markers werten die Prozess-Engines als „Skript lief nie". Gating in `RunScriptActivity`.
+**RunScript Erfolg (fehler-basiert, lokal wie remote):** Ein Step scheitert an **jedem** PowerShell-Fehlereintrag (`!HadErrors`; der 5.1-Prozess-Bootstrap spiegelt das über den `ERROR`-Marker), natives stderr beendet in 5.1 das Skript. Ein `exit N` macht den Step **nicht** rot; opt-in `config.successExitCodes` macht non-zero Codes wieder zum Fehlschlag. Der Exit-Code liegt als `{{step.param.exitCode}}` an und meint das letzte native Kommando **dieses** Skripts — der Wrapper setzt `$LASTEXITCODE` und `$Error` vorher zurück, weil beide sonst im prozesslang offenen Runspace-Pool aus einem fremden Lauf überleben. **Engine-Asymmetrie:** ein script-eigenes `exit N` ist nur im Prozess/isoliert-Pfad sichtbar (Runspace kann `exit` nicht beobachten → `0`). Ein **Parse-Fehler** ist auf jeder Engine rot: das Fehlen des `###NODEPILOT_START###`-Markers werten die Prozess-Engines als „Skript lief nie". Gating in `RunScriptActivity`.
 
 ## Edge Conditions
 
@@ -275,11 +266,11 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 ### Testumfang pro Änderung
 
-**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 237 Vitest-Dateien, 79 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 244 Vitest-Dateien, 79 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
 
 **Der Nightly ist kein verlässlicher zweiter Boden.** Er läuft als Windows-Task um 22:00 gegen den ausgecheckten Baum und wird verpasst, sobald die Maschine dann aus ist. Wer sich auf ihn beruft, prüft vorher `C:\temp\nodepilot-nightly\latest.md` auf sein Datum.
 
-**Markdown-Ausnahme:** Ein PR, der **ausschließlich** `*.md` oder `docs/images/**` anfasst, überspringt Frontend, Desktop und E2E (`changes`-Job). **Backend und docs-ui laufen immer**, weil Markdown für sie eine Eingabe ist (`DocumentationCountsTests`, `SettingsSchemaDocumentationTests`, `MonitoringDeploymentSecurityTests`, Sprach-Parity-Guard). Pushes auf `main` laufen **immer** vollständig; jeder Fehlerpfad der Erkennung endet bei „alles ausführen".
+**Markdown-Ausnahme:** Ein PR, der **ausschließlich** `*.md` oder `docs/images/**` anfasst, überspringt Frontend, Desktop, Database und E2E (`changes`-Job). **Backend und docs-ui laufen immer**, weil Markdown für sie eine Eingabe ist (`DocumentationCountsTests`, `SettingsSchemaDocumentationTests`, `MonitoringDeploymentSecurityTests`, Sprach-Parity-Guard). Pushes auf `main` laufen **immer** vollständig; jeder Fehlerpfad der Erkennung endet bei „alles ausführen".
 
 Default bei Feature-Arbeit:
 
@@ -327,8 +318,9 @@ Parity-/Drift-Tests erzwingen Konsistenz zwischen weit auseinanderliegenden Date
 | `RequestSizeLimit` an `/import`/`/import-scorch` oder die Upload-Gates in `WorkflowsPage.tsx` | `ImportSizeLimitFrontendSyncTests` | Api.Tests |
 | LLM-Profil-Defaults (`LlmProfileOptions`, `LlmProfileSettingsDto`, `SettingsSections.cs`, `IntegrationsSection.tsx`) | `LlmProfileDefaultsTests` | Api.Tests |
 | `vite.config.ts`-Proxy / Dev-Ports | `AppSettingsHygieneTests` | Api.Tests |
+| OpenTelemetry-Block in `Directory.Packages.props` | `OpenTelemetryVersionParityTests` | Api.Tests |
 | Neues Testprojekt in `NodePilot.slnx` / `coverage.runsettings` | `TestRunSettingsTests` | Api.Tests |
-| Browser-Demo (`demo/`), Hub-/Doku-/Auth-Naht, root-absolute URL-Literale in `src/` | `src/__tests__/demo/*` + `e2e-demo/demo-smoke.spec.ts` | nodepilot-ui |
+| Browser-Demo (`demo/`), Hub-/Doku-/Auth-Naht, root-absolute URL-Literale in `src/` | `src/__tests__/demo/*` + `e2e-demo/*.spec.ts` (Naht, Routing, alle zehn Touren) | nodepilot-ui |
 | `index.css` / `designer-atelier.css` designer-light tokens | `designerLightParity.test.ts` | nodepilot-ui |
 | Font-Tokens / Monaco-Stack | `fontTokens.test.ts` | nodepilot-ui |
 
@@ -407,3 +399,5 @@ Getrennt vom Workflow-Export: portables, passphrasenverschlüsseltes Konfigurati
 ## Production Deployment
 
 Rollout über `deploy/`-Skripte (Freigabe-Regel unter *Projekt starten*). Doku: `deploy/README.md`; Architektur, Config-Keys und Stolperfallen: `docs/claude-reference.md` § Production Deployment. **Desktop-App** (Electron, `deploy/desktop/`, `Deployment:Mode=Desktop`): relaxiert **nur** loopback-DB-TLS + Kestrel-`ListenLocalhost`, der Rest bleibt Production-gehärtet — `deploy/desktop/README.md`.
+
+**Vor jedem Release Pflicht:** die Lab-Matrix `scripts/release-lab/` gegen die signierten Artefakte aus `out\` — Server-Setup in allen Identitäts-/DB-Kombinationen frisch und als Update, jeweils mit Deinstallation, dazu das Desktop-Setup auf dem Lab-Client, danach die Test-Suite `scripts/test-suite/` auf der gehärteten Lab-Instanz mit `fail=0`. Ohne grünen Lauf aller drei kein Tag (`RELEASING.md` Schritt 6). Der Computer-Use-Lauf `scripts/release-lab/computer-use/` ist experimentell und kein Gate.

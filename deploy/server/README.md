@@ -254,6 +254,14 @@ stayed **green** for a missing role, a missing database or a wrong password — 
 NodePilot role, in the same TLS shape as the runtime (`sslmode=verify-full` against the supplied root
 certificate).
 
+**Certificate revocation is checked separately.** `psql` does not check revocation, but the service
+does (online, `Check Certificate Revocation=true`) and refuses a server whose certificate is revoked
+or whose CRL it cannot reach. The row therefore fetches the server certificate and checks it the same
+way. If that fails, the installation aborts with *"Aborted: Postgres pre-flight failed - certificate
+revocation could not be checked."* The fix is to make the CRL distribution point in the certificate
+reachable from the NodePilot server, or to import the CRL into its `LocalMachine\CA` store
+(`certutil -addstore CA <file>.crl`).
+
 **What is missing is looked up in the catalog, not read out of the error message.** psql messages are
 localized — a German server answers "Rolle »nodepilot« existiert nicht" — so a matcher written
 against English classifies correctly on one host and marks everything as "rejected" on the next. On a
@@ -885,7 +893,9 @@ answer file. Both fixed — and on the first run with the new row the layout cav
 the tenth row was five lines tall, which pushed its own checkbox behind the buttons. A fix you can see,
 have explained to you, and cannot tick. Two corrections: the message is shortened to two lines (the
 operating system's chain reasoning now lives in the scrollable instructions field), and `LayoutReadiness`
-counts the visible fix boxes up front and guarantees each one a clickable strip above the buttons. Rows
+counts the visible fix boxes up front and guarantees each one a clickable strip above the buttons. When the
+rows still do not leave the instructions box about four lines, passing rows (then warning and skipped rows,
+and as the last step failing rows) are cut to one line and show their full text in that box when selected. Rows
 41/42 below cover the case and have **not** been clicked yet.
 
 Follow-up on the consequence: the row has since lost its blocking effect again — not because it was

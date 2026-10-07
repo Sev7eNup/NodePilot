@@ -413,11 +413,11 @@ export function SharedFolderTree({
       <div className="flex-1 overflow-auto">
         {error && (
           <div className="px-3 py-2 text-xs text-error">
-            Fehler beim Laden: {error}
+            {t('workflows:folder.loadError', { error })}
           </div>
         )}
         {isLoading && !error && (
-          <div className="px-3 py-2 text-xs text-on-surface-variant">Lade …</div>
+          <div className="px-3 py-2 text-xs text-on-surface-variant">{t('common:loading')}</div>
         )}
         {folders && (
           <ul>{tree.map((n) => renderNode(n, 0))}</ul>

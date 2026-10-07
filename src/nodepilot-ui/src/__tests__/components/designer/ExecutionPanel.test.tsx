@@ -149,7 +149,7 @@ describe('ExecutionPanel', () => {
     server.use(http.get(`${BASE}/api/executions`, () => HttpResponse.json([])));
     renderPanel();
 
-    expect(screen.getByText(/Click "Test" to run the workflow/)).toBeInTheDocument();
+    expect(screen.getByText(/Click "Run" to run the workflow/)).toBeInTheDocument();
   });
 
   it('liveTab_withExecution_rendersStepList', async () => {

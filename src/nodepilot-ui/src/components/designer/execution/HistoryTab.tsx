@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, ChevronUp, CircleDash, History, View } from '@carbon/icons-react';
-import { useState, useMemo, useRef, memo } from 'react';
+import { useState, useMemo, useRef, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -16,7 +16,8 @@ import { formatDate } from '../../../lib/format';
 type HistorySortKey = 'status' | 'workflow' | 'id' | 'trigger' | 'failedStep' | 'steps' | 'user' | 'started' | 'finished' | 'duration' | 'extras' | 'error';
 type SortDirection = 'asc' | 'desc';
 
-export function HistoryTab({ executions, scope, workflowNames, expandedId, onToggle, onReplay, activeReplayId, onScrubTime }: Readonly<{
+export function HistoryTab({ executions, scope, workflowNames, expandedId, onToggle, onReplay, activeReplayId, onScrubTime, initialView = 'list' }: Readonly<{
+  initialView?: 'list' | 'gantt';
   executions: WorkflowExecution[];
   scope: 'current' | 'all';
   workflowNames: Map<string, string>;
@@ -123,6 +124,7 @@ export function HistoryTab({ executions, scope, workflowNames, expandedId, onTog
                 onReplay={onReplay}
                 activeReplayId={activeReplayId}
                 onScrubTime={onScrubTime}
+                initialView={initialView}
                 gridTemplate={gridTemplate}
               />
             </div>
@@ -276,7 +278,7 @@ function executionExtrasCount(execution: WorkflowExecution): number {
     + (execution.traceId ? 1 : 0);
 }
 
-const HistoryRow = memo(function HistoryRow({ execution, scope, workflowName, isExpanded, onToggle, onReplay, activeReplayId, onScrubTime, gridTemplate }: {
+const HistoryRow = memo(function HistoryRow({ execution, scope, workflowName, isExpanded, onToggle, onReplay, activeReplayId, onScrubTime, gridTemplate, initialView }: {
   execution: WorkflowExecution;
   scope: 'current' | 'all';
   workflowName?: string;
@@ -285,6 +287,7 @@ const HistoryRow = memo(function HistoryRow({ execution, scope, workflowName, is
   onReplay?: (executionId: string) => void;
   activeReplayId?: string | null;
   onScrubTime?: (t: number | null) => void;
+  initialView?: 'list' | 'gantt';
   gridTemplate: string;
 }) {
   const { t } = useTranslation('designer');
@@ -400,6 +403,7 @@ const HistoryRow = memo(function HistoryRow({ execution, scope, workflowName, is
         <div className="bg-surface-low/30 px-4 py-3">
           {steps && steps.length > 0 ? (
             <StepTimeline
+              initialView={initialView}
               steps={steps}
               executionStart={execution.startedAt}
               executionId={execution.id}
@@ -430,13 +434,15 @@ const HistoryRow = memo(function HistoryRow({ execution, scope, workflowName, is
  * faster; the absolute time is in the tooltip. Steps are sorted by `startedAt`, since the
  * API's own order isn't chronological for parallel branches.
  */
-function StepTimeline({ steps, executionStart, workflowId, executionId, onScrubTime }: Readonly<{
+function StepTimeline({ steps, executionStart, workflowId, executionId, onScrubTime, initialView = 'list' }: Readonly<{
+  initialView?: 'list' | 'gantt';
   steps: StepExecution[]; executionStart: string; workflowId: string; executionId: string;
   onScrubTime?: (t: number | null) => void;
 }>) {
   const { t } = useTranslation('designer');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'gantt'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'gantt'>(initialView);
+  useEffect(() => setViewMode(initialView), [initialView]);
   const [scrubValue, setScrubValue] = useState<number | null>(null);
 
   // Sorted by StartedAt ascending; steps without a StartedAt (skipped) are appended

@@ -1,6 +1,6 @@
 # Live demo
 
-The [live demo](https://sev7enup.github.io/NodePilot/demo/) is the real NodePilot web UI with
+The [live demo](https://www.nodepilot.run/demo/) is the real NodePilot web UI with
 sample data, running entirely in your browser. Nothing is installed, no account is created and no
 data leaves your machine.
 

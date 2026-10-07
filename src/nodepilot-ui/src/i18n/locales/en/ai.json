@@ -33,6 +33,8 @@
     "reviewWarning": "Read AI output before saving. Malicious instructions may be injected via upstream data."
   },
   "workflowDialog": {
+    "fieldName": "Name",
+    "fieldActivities": "Activities",
     "title": "Generate workflow with AI",
     "promptLabel": "Describe the workflow",
     "promptPlaceholder": "e.g. \"Run a PowerShell daily at 6 AM, send the result via email, notify operations channel on failure.\"",

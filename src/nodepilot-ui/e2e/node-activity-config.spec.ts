@@ -156,7 +156,8 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
 
     // Persist via the Engine <select>: CodeMirror keystroke replacement is editor-internal and
     // not reliably synthesizable. Switch from auto to PowerShell 7 and assert it round-trips.
-    const engineSelect = page.getByRole('combobox').filter({ hasText: /auto/i }).first();
+    // Found by its option values, which do not change with the label text.
+    const engineSelect = page.getByRole('combobox').filter({ has: page.locator('option[value="runspace"]') }).first();
     await engineSelect.selectOption('pwsh');
     await saveInPlace(page);
     const cfg = await expect.poll(() => persistedConfig(state.putBody), { timeout: 10_000 }).not.toBeNull().then(() => persistedConfig(state.putBody));
@@ -375,7 +376,7 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     await openAndSelect(page, /start workflow|sub.?workflow/i);
 
     // Distinctive surfaces: the workflow reference field and the wait-for-completion checkbox.
-    const refInput = page.getByPlaceholder(/Rollback-Runbook/i);
+    const refInput = page.getByPlaceholder(/Rollback.Runbook/i);
     await expect(refInput).toBeVisible();
     await expect(refInput).toHaveValue('Child_WF');
     await expect(page.getByText(/auf abschluss warten|wait for completion/i)).toBeVisible();

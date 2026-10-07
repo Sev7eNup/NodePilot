@@ -1,71 +1,27 @@
-name: Website and docs
+name: Pages redirects
 
-# Publishes GitHub Pages at https://sev7enup.github.io/NodePilot/, built from
-# src/nodepilot-docs-ui:
-#
-#   /         project website (src/site; `npm run build:site` writes dist-site/)
-#   /docs/    documentation SPA (`npm run build` writes dist/, the bundle the installers ship)
-#   /media/   Pages-only tour video and poster (pages-media/, kept out of the installers)
-#
-# scripts/assemble-site.mjs combines them into _site/, and `npm run preview:site` runs the same
-# script locally. The website never goes into dist/, so the product's wwwroot/docs stays
-# docs-only.
-#
-# Documentation links from before the website (/NodePilot/#/en/...) now open the website. Its
-# first script, legacy-docs-redirect.js, forwards every hash that is not a website route to docs/.
-#
-# One-time manual step: in Settings, under Pages, set Build and deployment Source to
-# "GitHub Actions". No workflow can do it: actions/configure-pages has an `enablement` input,
-# but it needs a token other than GITHUB_TOKEN (a PAT with repo scope, or a GitHub App with
-# administration:write). Until that switch is set, deploy-pages fails with a 404 naming the
-# settings URL.
-#
-# Custom domain (later): set it in Settings, under Pages. Deployments from Actions ignore a
-# CNAME file, so the artifact carries none. Assets, routes and the links between website, docs
-# and media are relative, so the same artifact works under /NodePilot/ and at a domain root;
-# only absolute URLs such as canonical and Open Graph tags need updating then.
-#
-# configure-pages is deliberately not used. Its only other job is injecting a base path for a
-# known SSG, and it recognises nuxt, next, gatsby and sveltekit only, not Vite. Both apps build
-# location-independent: `base: './'` emits relative asset URLs, and both apps write one file per
-# address, so the server only ever serves an index.html that is really there. No SPA fallback is
-# needed; the website's own 404.html covers an address that belongs to neither app.
+# The full website is published separately with deploy/Publish-Site.ps1.
+# Pages forwards old links to the matching page on www.nodepilot.run.
 on:
   push:
     branches: [main]
-    # Only these paths can change what gets published: the package, the screenshots in
-    # docs/images that the website imports, and this workflow. A backend-only commit would
-    # otherwise redeploy a byte-identical site on every push to main.
     paths:
       - 'src/nodepilot-docs-ui/**'
-      - 'docs/images/**'
       - '.github/workflows/docs-pages.yml'
-      # The browser demo is built from the app package. Without this entry the demo would be
-      # published once and then freeze, and nothing would go red about it.
-      - 'src/nodepilot-ui/**'
-      # The demo seeds its workflows from the definitions these folders ship.
-      - 'samples/**'
-      - 'scripts/*.json'
-  # Manual re-deploy: useful after enabling Pages for the first time, and after a failed run
-  # whose cause was fixed outside this repository.
   workflow_dispatch:
 
-# The repository's default workflow token is read-only, so every permission a Pages
-# deployment needs has to be named here.
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# A single global queue for Pages. cancel-in-progress stays false so a deployment already
-# writing to the live site finishes instead of being killed halfway by a newer push.
 concurrency:
   group: 'pages'
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Build + deploy to Pages
+    name: Build and deploy redirects
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -75,59 +31,21 @@ jobs:
         working-directory: src/nodepilot-docs-ui
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: 'npm'
-          # Both packages are installed here: the site tree includes the browser demo, which
-          # is built from the app package.
-          cache-dependency-path: |
-            src/nodepilot-docs-ui/package-lock.json
-            src/nodepilot-ui/package-lock.json
-
+          cache-dependency-path: src/nodepilot-docs-ui/package-lock.json
       - name: Install
         run: npm ci
-
-      # ci.yml already gates every PR with lint, the de/en corpus parity guard and both builds.
-      # The tests run again here because this job is the last check before the live site is
-      # updated.
       - name: Tests
         run: npm run test:run
-
-      - name: Build docs
-        run: npm run build
-
-      - name: Build website
-        run: npm run build:site
-
-      - name: Install app package
-        working-directory: src/nodepilot-ui
-        run: npm ci
-
-      - name: Demo tests
-        # Scoped to the demo: ci.yml runs the full frontend suite on every PR and push.
-        working-directory: src/nodepilot-ui
-        run: npx vitest run src/__tests__/demo
-
-      - name: Build browser demo
-        working-directory: src/nodepilot-ui
-        run: npm run build:demo
-
-      - name: Assemble Pages site
-        run: npm run assemble:site
-
-      - name: Verify the demo is in the published tree
-        # assemble:site already fails on a missing input; this also catches a layout change
-        # that drops the demo without failing the copy.
-        run: test -f _site/demo/index.html
-
+      - name: Build redirects
+        run: npm run build:pages-redirects
       - name: Upload artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: src/nodepilot-docs-ui/_site
-
+          path: src/nodepilot-docs-ui/_pages-redirects
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

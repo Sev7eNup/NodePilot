@@ -527,7 +527,7 @@ public class RenderersTableCommandTests
         var result = h.Run("maintenance", "get", Guid.NewGuid().ToString(), "-o", "table");
 
         result.ExitCode.Should().Be(ExitCodes.Error);
-        result.StdErr.Should().Contain("nicht gefunden");
+        result.StdErr.Should().Contain("not found");
     }
 
     // ---- alerting list / get / deliveries ----------------------------------
@@ -575,7 +575,7 @@ public class RenderersTableCommandTests
         var result = h.Run("alerting", "get", Guid.NewGuid().ToString(), "-o", "table");
 
         result.ExitCode.Should().Be(ExitCodes.Error);
-        result.StdErr.Should().Contain("nicht gefunden");
+        result.StdErr.Should().Contain("not found");
     }
 
     [Fact]

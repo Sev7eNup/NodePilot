@@ -163,7 +163,7 @@ function humanize(value: string) { return value.replaceAll('_', ' ').replace(/\b
 function last(series: MetricsDataSeries) { return series.points.at(-1)?.value ?? null; }
 function Empty() { return <p className="py-10 text-center text-sm text-on-surface-variant">—</p>; }
 function SetupState() { const { t } = useTranslation('metrics'); return <div className="np-card flex items-start gap-3 p-6"><WarningAltFilled className="mt-0.5 text-amber-500" size={20} /><div><h3 className="font-semibold text-on-surface">{t('notConfigured')}</h3><p className="mt-1 text-sm text-on-surface-variant">{t('notConfiguredDetail')}</p><Link to="/settings" className="mt-3 inline-block text-sm text-primary hover:underline">{t('openSettings')}</Link></div></div>; }
-function LoadingState() { return <div className="np-card flex items-center justify-center gap-2 p-16 text-on-surface-variant"><CircleDash className="animate-spin" size={20} />Laden…</div>; }
+function LoadingState() { const { t } = useTranslation('common'); return <div className="np-card flex items-center justify-center gap-2 p-16 text-on-surface-variant"><CircleDash className="animate-spin" size={20} />{t('loading')}</div>; }
 function ErrorState({ text }: { text: string }) { return <div className="np-card p-6 text-red-500">{text}</div>; }
 
 function formatValue(value: number | null, unit: string) {

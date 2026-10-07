@@ -30,7 +30,7 @@ internal static class ExecWatcher
         {
             var rc = await TryStreamWithSignalRAsync(api, session, executionId, writer, ct);
             if (rc.HasValue) return rc.Value;
-            writer.Warning("SignalR nicht erreichbar — falle auf Polling zurück.");
+            writer.Warning("SignalR is not reachable. Falling back to polling.");
         }
 
         return await PollLoopAsync(api, executionId, writer, ct);
@@ -65,7 +65,7 @@ internal static class ExecWatcher
         }
         catch (Exception ex)
         {
-            writer.Warning($"SignalR-Connect fehlgeschlagen: {ex.Message}");
+            writer.Warning($"SignalR connection failed: {ex.Message}");
             return null;
         }
 

@@ -12,6 +12,7 @@ import {
   DB_ADMIN_QUERY_HISTORY_KEY,
 } from '../../security/sensitiveBrowserState';
 import { clearLocalAuthBoundary } from '../../security/authBoundary';
+import i18n from '../../i18n';
 
 function renderLoginPage() {
   return render(
@@ -50,6 +51,30 @@ describe('LoginPage', () => {
     expect(screen.getByText('Username')).toBeInTheDocument();
     expect(screen.getByText('Password')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it('shows German validation in the page when a required login field is empty', async () => {
+    await act(async () => { await i18n.changeLanguage('de'); });
+    try {
+      const user = userEvent.setup();
+      const loginMock = vi.fn();
+      useAuthStore.setState({ login: loginMock });
+      renderLoginPage();
+
+      await user.click(screen.getByRole('button', { name: 'Anmelden' }));
+
+      expect(await screen.findByText('Bitte Benutzernamen eingeben.')).toBeInTheDocument();
+      expect(document.activeElement).toBe(screen.getByLabelText('Benutzername'));
+      expect(loginMock).not.toHaveBeenCalled();
+
+      await user.type(screen.getByLabelText('Benutzername'), 'admin');
+      await user.click(screen.getByRole('button', { name: 'Anmelden' }));
+      expect(await screen.findByText('Bitte Passwort eingeben.')).toBeInTheDocument();
+      expect(document.activeElement).toBe(screen.getByLabelText('Passwort'));
+      expect(loginMock).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => { await i18n.changeLanguage('en'); });
+    }
   });
 
   it('submit calls login with credentials', async () => {
@@ -109,6 +134,10 @@ describe('LoginPage', () => {
     expect(await screen.findByText(/first-time setup/i)).toBeInTheDocument();
     const tokenInput = document.getElementById('np-login-setup-token') as HTMLElement;
     expect(tokenInput).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+    expect(document.activeElement).toBe(tokenInput);
+    expect(loginMock).toHaveBeenCalledTimes(1);
 
     await user.type(tokenInput, 'one-shot-token');
     await user.click(screen.getByRole('button', { name: /sign in/i }));

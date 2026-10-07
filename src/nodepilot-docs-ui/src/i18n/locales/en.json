@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "NodePilot Docs",
-    "titleSuffix": " — NodePilot Docs"
+    "title": "NodePilot Documentation",
+    "titleSuffix": " — NodePilot Documentation"
   },
   "ui": {
     "brandEdition": "Docs",
@@ -79,6 +79,7 @@
       "configuration/performance": "Performance sizing",
       "deployment/overview": "Operating modes",
       "deployment/production": "Windows Server",
+      "deployment/database-tls": "Database certificates",
       "deployment/desktop": "Desktop app",
       "deployment/av-exclusions": "Antivirus exclusions",
       "deployment/logs": "Logs & diagnostics",

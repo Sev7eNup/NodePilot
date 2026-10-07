@@ -32,12 +32,14 @@ NodePilot is a workflow orchestrator: the core of the application consists of ex
 starting processes. Five behaviours that follow from that regularly collide with standard heuristics:
 
 1. **A service running as `LocalSystem` writes a script to `%TEMP%` and executes it.**
-   For the "isolated process" and "explicit PowerShell host" execution modes, NodePilot writes the
-   workflow script as `nodepilot_<32-hex>.ps1` into the temp directory, hardens its ACL to
-   owner-full-control (all inherited rights are removed) and starts it with
-   `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`. File creation, ACL hardening and
-   immediate execution in the temp directory is the strongest heuristic signature in the entire
-   product.
+   For every local script step that runs as its own process (the default engine, an explicit
+   PowerShell host and the isolated mode), NodePilot writes the workflow script as
+   `nodepilot_<32-hex>.ps1` into the temp directory, hardens its ACL to owner-full-control (all
+   inherited rights are removed) and starts the host with
+   `-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand <bootstrap>`. The bootstrap
+   reads the file, deletes it and runs its text. File creation, ACL hardening, an encoded command
+   line and immediate deletion in the temp directory is the strongest heuristic signature in the
+   entire product.
 
 2. **Process isolation uses low-level Windows APIs.**
    With `config.isolated: true`, NodePilot starts the PowerShell host not through the standard .NET
@@ -109,8 +111,8 @@ Explicitly **not** included: folders that workflows write to. See
 | Process | Path | Role | Why it is needed | Priority | Residual risk |
 |---|---|---|---|---|---|
 | `NodePilot.Api.exe` | `C:\Program Files\NodePilot\NodePilot.Api.exe` | The service itself. Contains the workflow engine, the in-process PowerShell runspace pool and the WinRM client | Starts child processes, opens inheritable pipes, creates job objects, reads and writes continuously under `ProgramData` | Required | By design the process executes arbitrary PowerShell code chosen by the workflow author. A process exclusion makes its file accesses invisible. **Compensating control:** NodePilot has its own role/folder permissions and a complete audit log for every workflow change and execution |
-| `pwsh.exe` | `C:\Program Files\PowerShell\7\pwsh.exe` | PowerShell 7, the preferred host for isolated and explicitly process-based steps | Started with `-ExecutionPolicy Bypass -File <temp script>` | Required | A process exclusion for a generic script host is the broadest rule in this list. **Narrow it where possible:** only when the parent process is `NodePilot.Api.exe`, or only in combination with the file pattern from [C.1](#c1-temporary-script-and-transcript-files) |
-| `powershell.exe` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Fallback host when PowerShell 7 is not installed | as above | Required unless PowerShell 7 is guaranteed to be present | as above |
+| `powershell.exe` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Windows PowerShell 5.1, the default host for local script steps (engine `auto`, `powershell`, isolated) | Started with `-ExecutionPolicy Bypass -EncodedCommand <bootstrap>`, which reads and deletes a temp script | Required | A process exclusion for a generic script host is the broadest rule in this list. **Narrow it where possible:** only when the parent process is `NodePilot.Api.exe`, or only in combination with the file pattern from [C.1](#c1-temporary-script-and-transcript-files) |
+| `pwsh.exe` | `C:\Program Files\PowerShell\7\pwsh.exe` | PowerShell 7, used for steps with engine `pwsh`, and for `auto` only when Windows PowerShell is missing | as above | Required when steps use engine `pwsh` | as above |
 | `where.exe` | `C:\Windows\System32\where.exe` | Called **once** at engine start to locate the PowerShell host | A call by a service can be classified as discovery behaviour | Recommended | Very low — pure path resolution with no write access |
 | `np.exe` | `C:\Program Files\NodePilot\tools\np\np.exe` | The operations CLI. Shipped with the installer since 1.2.8 and placed on the machine `PATH`; a pure HTTPS client against NodePilot's own REST API | Invoked interactively by administrators, creates a DPAPI-protected session file under `%APPDATA%` | Recommended | Low — no service context, no child processes. **Note:** the bundled client binaries are themselves **not** Authenticode-signed (only the installer is), so a publisher rule does not apply here — use a process or path rule |
 | `nodepilot-mcp.exe` | `C:\Program Files\NodePilot\tools\mcp\nodepilot-mcp.exe` | MCP server for AI agents, shipped since 1.2.8. Started over stdio by an agent, speaks HTTPS against the REST API only | A process started by an editor/agent that opens a network connection can be flagged as unusual | Optional — only needed if the MCP server is used on this host | As for `np.exe`: unsigned, no service context. Runs only while an agent keeps it open |
@@ -215,7 +217,7 @@ This part concerns **the executing host**, i.e. the orchestrator server or the d
 
 | Pattern | When it appears | Why it is needed | Priority | Residual risk |
 |---|---|---|---|---|
-| `%TEMP%\nodepilot_*.ps1`<br>under `LocalSystem`: `C:\Windows\Temp\nodepilot_*.ps1` | On every workflow step that runs isolated or with an explicitly selected PowerShell host. Deleted again after the run | The file is created, ACL-hardened and immediately executed with `-ExecutionPolicy Bypass` — the most common blocking pattern | Required | **The broadest entry in this list.** `C:\Windows\Temp` is writable by many processes; an attacker who places a file there matching this naming scheme would evade the scanner. **Therefore: exclude the name pattern only, never the entire temp directory**, and where possible additionally restrict it to the parent process `NodePilot.Api.exe` |
+| `%TEMP%\nodepilot_*.ps1`<br>under `LocalSystem`: `C:\Windows\Temp\nodepilot_*.ps1` | On every local script step that runs as a process (default engine, explicit host, isolated). Deleted as soon as the host has read it; orphans older than an hour are removed at service start | The file is created, ACL-hardened, read by a host started with an encoded command and deleted — the most common blocking pattern | Required | **The broadest entry in this list.** `C:\Windows\Temp` is writable by many processes; an attacker who places a file there matching this naming scheme would evade the scanner. **Therefore: exclude the name pattern only, never the entire temp directory**, and where possible additionally restrict it to the parent process `NodePilot.Api.exe` |
 | `%TEMP%\NodePilot-Transcript-*.log` | Only for steps with transcription enabled (`transcript`); cleans itself up after 24 h | Written during the run and read back afterwards | Recommended | A plain text file with no execution path |
 
 > **A common mistake:** an exclusion covering "everything under `C:\Program Files\NodePilot` and

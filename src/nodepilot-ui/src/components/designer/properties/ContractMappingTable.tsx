@@ -101,18 +101,18 @@ export function ContractMappingTable({ contract, values, onChange, upstreamVars,
       </div>
       {/* Stale keys: parameters that are sent but not declared by the child */}
       {staleKeys.length > 0 && (
-        <div className="rounded-md border border-orange-200 bg-orange-50 p-2 space-y-1.5">
-          <div className="flex items-center gap-1.5 text-[11px] font-label font-semibold text-orange-800">
+        <div className="rounded-md border border-warning/40 bg-warning-container/60 p-2 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[11px] font-label font-semibold text-on-warning-container">
             <WarningAltFilled size={12} />
             {t('config.startWorkflow.contract.staleKeysHeader')}
           </div>
           {staleKeys.map((key) => (
             <div key={key} className="flex items-center gap-2 text-[11px] font-mono">
-              <span className="text-orange-900 flex-1 truncate">{key} = {values[key]}</span>
+              <span className="text-on-warning-container flex-1 truncate">{key} = {values[key]}</span>
               <button
                 type="button"
                 onClick={() => removeStale(key)}
-                className="text-orange-700 hover:text-orange-900 underline text-[10px]"
+                className="text-on-warning-container hover:opacity-80 underline text-[10px]"
               >
                 {t('config.startWorkflow.contract.removeStaleKey')}
               </button>
@@ -147,7 +147,7 @@ function InputRow({
         <span className="font-mono text-[12px] text-on-surface">{input.name}</span>
         {input.required && (
           <span
-            className="text-red-600 text-[11px]"
+            className="text-error text-[11px]"
             title={t('config.startWorkflow.contract.requiredTooltip')}
           >
             *
@@ -158,7 +158,7 @@ function InputRow({
         </span>
         {input.hasConflict && (
           <span
-            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded"
+            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-on-warning-container bg-warning-container px-1.5 py-0.5 rounded"
             title={t('config.startWorkflow.contract.conflictTooltip')}
           >
             <WarningAltFilled size={10} />
@@ -174,7 +174,7 @@ function InputRow({
       {input.description && (
         <div className="text-[10px] text-on-surface-variant leading-snug">{input.description}</div>
       )}
-      <div className={isMissing ? 'rounded ring-1 ring-red-400' : undefined}>
+      <div className={isMissing ? 'rounded ring-1 ring-error' : undefined}>
         <VariableInsertField
           label=""
           value={value}
@@ -186,7 +186,7 @@ function InputRow({
         />
       </div>
       {isMissing && (
-        <div className="flex items-center gap-1 text-[10px] text-red-700">
+        <div className="flex items-center gap-1 text-[10px] text-error">
           <WarningFilled size={10} />
           {t('config.startWorkflow.contract.requiredMissing')}
         </div>
@@ -211,7 +211,7 @@ function OutputsSection({
         {t('config.startWorkflow.contract.outputsHeader')}
         {hasMultipleReturnDataNodes && (
           <span
-            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded ml-auto"
+            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-on-warning-container bg-warning-container px-1.5 py-0.5 rounded ml-auto"
             title={t('config.startWorkflow.contract.multipleReturnDataTooltip')}
           >
             <WarningAltFilled size={10} />
@@ -223,7 +223,7 @@ function OutputsSection({
         {outputs.map((out) => (
           <div key={out.name + ':' + out.source} className="flex items-baseline gap-2 text-[11px] font-mono">
             <span
-              className={`${out.source === 'system' ? 'text-blue-700' : out.source === 'multiple' ? 'text-amber-700' : 'text-indigo-700'} flex-shrink-0`}
+              className={`${out.source === 'system' ? 'text-primary' : out.source === 'multiple' ? 'text-warning' : 'text-secondary'} flex-shrink-0`}
               title={out.source === 'system'
                 ? t('config.startWorkflow.contract.systemOutputTooltip')
                 : out.source === 'multiple'

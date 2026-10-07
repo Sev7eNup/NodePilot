@@ -26,7 +26,8 @@
     "backoffLinear": "Linear",
     "backoffExponential": "Exponentiell",
     "initialDelay": "Initial-Delay (ms)",
-    "maxDelay": "Max-Delay (ms)"
+    "maxDelay": "Max-Delay (ms)",
+    "hint": "Inklusive erstem Versuch. Dauerhafte Remote-Fehler (z. B. abgelehnter WinRM-Logon) werden nicht wiederholt."
   },
   "test": {
     "section": "Test & Debug",
@@ -92,9 +93,10 @@
       "scriptPlaceholder": "Get-PSDrive C",
       "scriptEditorPlaceholder": "# Write-Output 'hello'",
       "engineLabel": "Engine",
-      "engineAuto": "Auto (PS7 → PS5.1)",
-      "enginePwsh": "PowerShell 7",
-      "enginePowerShell": "Windows PS 5.1",
+      "engineAuto": "Standard – Windows PowerShell 5.1 (wie remote)",
+      "enginePwsh": "PowerShell 7 (pwsh.exe)",
+      "enginePowerShell": "Windows PowerShell 5.1",
+      "engineRunspace": "In-Process PS 7 (schnell, nur Core-Module)",
       "autoLogging": "Auto-Logging",
       "autoLoggingOn": "Transcript an",
       "autoLoggingOff": "Aus",
@@ -111,7 +113,8 @@
       "isolatedOn": "Isolierter Prozess",
       "isolatedOff": "Aus",
       "remoteIsolatedHint": "Prozess-Isolation gilt nur für lokale Ausführung. Remote-Steps laufen außerhalb des NodePilot-Hosts via WinRM (eigene Session, aber ohne Job-Object-Limits) — das Backend entscheidet final.",
-      "isolatedHint": "Läuft in einem separaten Prozess (kein In-Process-Pool) — etwas langsamer, dafür Crash-/Leak-Containment: ein abstürzendes Skript reißt den Orchestrator nicht mit, und beim Host-Neustart bleiben keine verwaisten Prozesse zurück.",
+      "isolatedHint": "Läuft in einem Windows-Job-Object mit Crash-/Leak-Containment: ein abstürzendes Skript reißt den Orchestrator nicht mit, und beim Host-Neustart bleiben keine verwaisten Prozesse zurück.",
+      "runspaceIsolatedHint": "In-Process läuft im NodePilot-Prozess selbst und kann nicht isoliert werden.",
       "memoryLimit": "Speicherlimit (MB)",
       "maxProcesses": "Max. Prozesse",
       "unlimitedPlaceholder": "0 = unbegrenzt",
@@ -169,12 +172,16 @@
       "jsonPickerHint": "Das Wählen eines Pfads setzt Quelle auf Inline-Content, Content auf die gewählte Upstream-Ausgabe und JSONPath auf den gewählten Pfad."
     },
     "fileHash": {
+      "expectedPlaceholder": "Hex-Wert — bei Abweichung schlägt der Step fehl",
+      "outputHint": "Output: <code>{{hash}}</code>, <code>{{match}}</code> (<code>true</code>/<code>false</code>, leer ohne erwarteten Hash).",
       "path": "Pfad",
       "algorithm": "Algorithmus",
       "expectedHash": "Erwarteter Hash (optional)",
       "expectedHashHint": "Wenn gesetzt, schlägt der Step bei Mismatch fehl."
     },
     "zipOperation": {
+      "sourceCompress": "Source (Datei, Verzeichnis oder Glob)",
+      "sourceExtract": "Source (ZIP-Archiv)",
       "operation": "Operation",
       "operationZip": "Komprimieren",
       "operationUnzip": "Entpacken",
@@ -190,6 +197,7 @@
       "compressNote": "Hinweis: <code>Compress-Archive</code> ist auf rund 4 GB Gesamtgröße limitiert. Für größere Datenmengen ein externes Tool nutzen. Eine Source mit literalem <code>[</code> oder <code>]</code> wird als Glob gelesen — solche Pfade meiden."
     },
     "serviceManagement": {
+      "displayNamePlaceholder": "Mein Service",
       "serviceName": "Dienst-Name",
       "action": "Action",
       "actionStatus": "Get Status",
@@ -259,6 +267,8 @@
       ]
     },
     "registry": {
+      "binaryPlaceholder": "DEADBEEF (Hex, optional 0x-Prefix oder Trenner , ; : -)",
+      "multiStringPlaceholder": "Eintrag1\\nEintrag2\\nEintrag3 (eine Zeile pro Eintrag)",
       "operation": "Operation",
       "operationRead": "Lesen",
       "operationWrite": "Wert setzen (Anlegen/Aktualisieren)",
@@ -283,6 +293,13 @@
       "hintListValues": "Listet alle Values mit Name, Typ und Wert als Array."
     },
     "wmiQuery": {
+      "optionQuery": "Klassen-Abfrage (Get-CimInstance)",
+      "optionWql": "WQL-Abfrage (SELECT … FROM …)",
+      "optionInvokeMethod": "Methode aufrufen (Invoke-CimMethod)",
+      "filterLabel": "Filter (optional, WHERE-Klausel)",
+      "wqlQuery": "WQL-Query",
+      "captureProperties": "captureProperties (optional, kommagetrennt)",
+      "argumentsLabel": "Argumente (JSON-Objekt, optional)",
       "mode": "Modus",
       "modeQuery": "Query",
       "modeWql": "WQL",
@@ -334,6 +351,9 @@
       "forceCloseHint": "Offene Anwendungen ohne Rückfrage schließen (<code>/f</code>)"
     },
     "waitForCondition": {
+      "pathPlaceholder": "C:\\path\\to\\flag.txt — oder {{example}}",
+      "hostPlaceholder": "db.internal — oder {{example}}",
+      "noTemplatesHint": "Templates wie <code>{{example}}</code> sind hier <strong>nicht</strong> erlaubt — verwende die getypten Modi oben oder baue den Wert in einem vorgelagerten <em>runScript</em>-Step zusammen.",
       "scriptLabel": "Bedingungs-Skript (PowerShell)",
       "scriptHint": "Skript wird wiederholt ausgeführt, bis es $true zurückgibt.",
       "intervalSeconds": "Intervall (Sekunden)",
@@ -545,10 +565,11 @@
       "skippedWarning": "Verbleibende (nicht gestartete) Nodes in Geschwister-Branches werden als <1>Übersprungen</1> markiert. Laufende Tasks werden im Hintergrund fertig, ihre Ergebnisse aber verworfen."
     },
     "startWorkflow": {
-      "workflowNameOrId": "Workflow",
+      "workflowNameOrId": "Workflow (Name oder GUID)",
+      "workflowNameOrIdPlaceholder": "z. B. Rollback-Runbook",
       "workflowPicker": "Workflow auswählen…",
       "parameters": "Parameter",
-      "waitForCompletion": "Auf Beendigung warten",
+      "waitForCompletion": "Auf Abschluss warten",
       "contract": {
         "loading": "Contract wird geladen…",
         "workflowNotFound": "Workflow „{{name}}“ nicht gefunden — freie Parameter-Eingabe verfügbar.",
@@ -573,6 +594,7 @@
       },
       "pickFromLibraryTitle": "Workflow aus der Library auswählen",
       "pickFromLibrary": "Aus Library wählen",
+      "preview": "Vorschau",
       "previewAvailable": "Sub-Workflow als read-only Vorschau anzeigen",
       "previewIsVariable": "Keine Vorschau — die Referenz ist eine Variable und löst sich erst zur Laufzeit auf",
       "previewNeedsTarget": "Zuerst einen Workflow-Namen oder eine GUID setzen",
@@ -813,8 +835,15 @@
     "help": "↑↓ navigieren · Enter/Tab einfügen · Esc schließen"
   },
   "preview": {
+    "noValue": "Kein Wert vom letzten Lauf — Workflow noch nicht ausgeführt oder Step lief nicht.",
     "truncated": "(gekürzt)",
     "empty": "(leer)"
+  },
+  "expressionTester": {
+    "templatePlaceholder": "Template eingeben, z. B. Server: {{example}}",
+    "testValuePlaceholder": "Testwert…",
+    "availableVariables": "Verfügbare Variablen: {{list}}",
+    "moreVariables": " +{{count}} weitere"
   },
   "template": {
     "closingWithoutOpening": "Schließende Klammern ohne passende öffnende Klammern.",

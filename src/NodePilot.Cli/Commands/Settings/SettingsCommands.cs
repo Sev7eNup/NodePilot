@@ -186,7 +186,7 @@ public sealed class SettingsGetCommand : BaseCommand<SettingsGetSettings>
         {
             if (settings.EtagOnly)
             {
-                writer.Error("--etag-only setzt eine konkrete Section voraus.");
+                writer.Error("--etag-only needs a specific section.");
                 return ExitCodes.Error;
             }
             using var snapshot = await api.GetSettingsSnapshotAsync(ct);
@@ -244,12 +244,12 @@ public sealed class SettingsPutCommand : BaseCommand<SettingsPutSettings>
     {
         if (string.IsNullOrWhiteSpace(settings.File))
         {
-            writer.Error("--file <PATH> ist Pflicht (oder `--file -` für stdin).");
+            writer.Error("--file <PATH> is required (or `--file -` for stdin).");
             return ExitCodes.Error;
         }
         if (string.IsNullOrWhiteSpace(settings.Etag))
         {
-            writer.Error("--etag <ETAG> ist Pflicht. Hol ihn dir mit `np settings get <section> --etag-only`.");
+            writer.Error("--etag <ETAG> is required. Get it with `np settings get <section> --etag-only`.");
             return ExitCodes.Error;
         }
 
@@ -262,7 +262,7 @@ public sealed class SettingsPutCommand : BaseCommand<SettingsPutSettings>
         }
         catch (IOException ex)
         {
-            writer.Error($"Datei konnte nicht gelesen werden: {ex.Message}");
+            writer.Error($"Could not read the file: {ex.Message}");
             return ExitCodes.Error;
         }
 
@@ -270,7 +270,7 @@ public sealed class SettingsPutCommand : BaseCommand<SettingsPutSettings>
         try { payloadDoc = JsonDocument.Parse(json); }
         catch (JsonException ex)
         {
-            writer.Error($"Payload ist kein gültiges JSON: {ex.Message}");
+            writer.Error($"The payload is not valid JSON: {ex.Message}");
             return ExitCodes.Error;
         }
 
@@ -306,7 +306,7 @@ public sealed class SettingsTestSmtpCommand : BaseCommand<SettingsTestSmtpSettin
     {
         if (string.IsNullOrWhiteSpace(settings.File))
         {
-            writer.Error("--file <PATH> ist Pflicht (Body-Shape: { settings: SmtpSettingsDto, toAddress?: string }).");
+            writer.Error("--file <PATH> is required (body shape: { settings: SmtpSettingsDto, toAddress?: string }).");
             return ExitCodes.Error;
         }
 
@@ -327,14 +327,14 @@ public sealed class SettingsTestSmtpCommand : BaseCommand<SettingsTestSmtpSettin
                 ? await Console.In.ReadToEndAsync(ct)
                 : await File.ReadAllTextAsync(file, ct);
         }
-        catch (IOException ex) { return (null, $"Datei konnte nicht gelesen werden: {ex.Message}"); }
+        catch (IOException ex) { return (null, $"Could not read the file: {ex.Message}"); }
 
         try
         {
             var parsed = JsonSerializer.Deserialize<T>(json, NodePilotApiClient.JsonOptions);
-            return parsed is null ? (null, "Payload ist leer.") : (parsed, null);
+            return parsed is null ? (null, "The payload is empty.") : (parsed, null);
         }
-        catch (JsonException ex) { return (null, $"Payload ist kein gültiges JSON: {ex.Message}"); }
+        catch (JsonException ex) { return (null, $"The payload is not valid JSON: {ex.Message}"); }
     }
 
     internal static int WriteResult(OutputWriter writer, SettingsTestProbeResult result)
@@ -368,8 +368,8 @@ public sealed class SettingsTestLlmCommand : BaseCommand<SettingsTestLlmSettings
     {
         if (string.IsNullOrWhiteSpace(settings.File))
         {
-            writer.Error("--file <PATH> ist Pflicht (Body-Shape: { profileId?: string, settings: { baseUrl, apiKey?, timeoutSeconds } }). "
-                         + "profileId ist nur noetig, wenn apiKey der Marker \"__unchanged__\" ist.");
+            writer.Error("--file <PATH> is required (body shape: { profileId?: string, settings: { baseUrl, apiKey?, timeoutSeconds } }). "
+                         + "profileId is only needed when apiKey is the \"__unchanged__\" marker.");
             return ExitCodes.Error;
         }
 

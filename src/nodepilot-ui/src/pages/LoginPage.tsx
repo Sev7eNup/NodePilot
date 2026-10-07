@@ -8,7 +8,7 @@ import {
   User,
   WarningFilled,
 } from '@carbon/icons-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/authStore';
@@ -31,6 +31,9 @@ export function LoginPage() {
   const [showSetupToken, setShowSetupToken] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const setupTokenRef = useRef<HTMLInputElement>(null);
   const [methods, setMethods] = useState<AuthMethodsResponse | null>(null);
   const login = useAuthStore((s) => s.login);
   const acceptAuthenticatedIdentity = useAuthStore((s) => s.acceptAuthenticatedIdentity);
@@ -55,6 +58,23 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Chromium's native required-field tooltip follows the OS locale, not NodePilot's
+    // selected language. Validate here so desktop and browser show the same translation.
+    if (!username.trim()) {
+      setError(t('auth:usernameRequired'));
+      usernameRef.current?.focus();
+      return;
+    }
+    if (!password) {
+      setError(t('auth:passwordRequired'));
+      passwordRef.current?.focus();
+      return;
+    }
+    if (showSetupToken && !setupToken.trim()) {
+      setError(t('auth:setupTokenRequired'));
+      setupTokenRef.current?.focus();
+      return;
+    }
     setError('');
     setSubmitting(true);
     try {
@@ -161,7 +181,7 @@ export function LoginPage() {
           </div>
         )}
 
-        {hasPasswordLogin ? <form onSubmit={handleSubmit} className="space-y-4">
+        {hasPasswordLogin ? <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div>
             <label htmlFor="np-login-username" className="block text-xs font-semibold uppercase tracking-wide text-on-surface-variant mb-1.5">
               {t('auth:username')}
@@ -170,6 +190,7 @@ export function LoginPage() {
               <User size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/70" />
               <input
                 id="np-login-username"
+                ref={usernameRef}
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -189,6 +210,7 @@ export function LoginPage() {
               <Locked size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/70" />
               <input
                 id="np-login-password"
+                ref={passwordRef}
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -209,6 +231,7 @@ export function LoginPage() {
                 <Password size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/70" />
                 <input
                   id="np-login-setup-token"
+                  ref={setupTokenRef}
                   type="text"
                   value={setupToken}
                   onChange={(e) => setSetupToken(e.target.value)}

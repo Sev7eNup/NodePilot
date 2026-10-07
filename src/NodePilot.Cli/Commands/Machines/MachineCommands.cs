@@ -78,7 +78,7 @@ public sealed class MachineCreateCommand : BaseCommand<MachineWriteSettings>
     {
         if (string.IsNullOrWhiteSpace(settings.Name) || string.IsNullOrWhiteSpace(settings.Hostname))
         {
-            writer.Error("--name und --hostname sind Pflicht.");
+            writer.Error("--name and --hostname are required.");
             return ExitCodes.Error;
         }
 
@@ -88,7 +88,7 @@ public sealed class MachineCreateCommand : BaseCommand<MachineWriteSettings>
             settings.Port ?? 5985, settings.UseSsl ?? false,
             settings.CredentialId, settings.Tags);
         var created = await api.CreateMachineAsync(req, ct);
-        writer.Success($"Machine angelegt: [bold]{Markup.Escape(created.Name)}[/] ({created.Id}).");
+        writer.Success($"Machine created: [bold]{Markup.Escape(created.Name)}[/] ({created.Id}).");
         writer.WriteData(created, (console, value) => Renderers.MachineDetail(console, value));
         return ExitCodes.Success;
     }
@@ -123,7 +123,7 @@ public sealed class MachineUpdateCommand : BaseCommand<MachineUpdateSettings>
             settings.CredentialId ?? current.DefaultCredentialId,
             settings.Tags ?? current.Tags);
         await api.UpdateMachineAsync(settings.Id, req, ct);
-        writer.Success($"Machine [bold]{Markup.Escape(req.Name)}[/] aktualisiert.");
+        writer.Success($"Machine [bold]{Markup.Escape(req.Name)}[/] updated.");
         return ExitCodes.Success;
     }
 }
@@ -138,11 +138,11 @@ public sealed class MachineDeleteCommand : BaseCommand<MachineIdSettings>
         var m = await api.GetMachineAsync(settings.Id, ct);
         if (!Console.IsInputRedirected)
         {
-            var ok = await AnsiConsole.ConfirmAsync($"Machine [red]{Markup.Escape(m.Name)}[/] ({m.Hostname}) wirklich löschen?", defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            var ok = await AnsiConsole.ConfirmAsync($"Delete machine [red]{Markup.Escape(m.Name)}[/] ({m.Hostname})?", defaultValue: false);
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
         await api.DeleteMachineAsync(settings.Id, ct);
-        writer.Success($"Machine gelöscht.");
+        writer.Success("Machine deleted.");
         return ExitCodes.Success;
     }
 }
@@ -166,8 +166,8 @@ public sealed class MachineTestCommand : BaseCommand<MachineTestSettings>
         writer.WriteData(result, (console, value) =>
         {
             console.MarkupLine(value.Success
-                ? $"[green]✓ Erreichbar[/] (Credential: {Markup.Escape(value.CredentialUsed ?? "-")})"
-                : $"[red]✗ Fehlgeschlagen[/] (Credential: {Markup.Escape(value.CredentialUsed ?? "-")})");
+                ? $"[green]✓ Reachable[/] (Credential: {Markup.Escape(value.CredentialUsed ?? "-")})"
+                : $"[red]✗ Failed[/] (Credential: {Markup.Escape(value.CredentialUsed ?? "-")})");
             if (!string.IsNullOrEmpty(value.ComputerName)) console.MarkupLine($"  ComputerName: {Markup.Escape(value.ComputerName)}");
             if (!string.IsNullOrEmpty(value.Error)) console.MarkupLine($"  [red]Error:[/] {Markup.Escape(value.Error)}");
         });

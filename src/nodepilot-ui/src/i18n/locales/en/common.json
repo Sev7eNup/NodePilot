@@ -62,6 +62,11 @@
   "deleteFailed": "Delete failed: {{message}}",
   "importFailed": "Import failed: {{message}}",
   "exportFailed": "Export failed: {{message}}",
+  "errorBoundary": {
+    "title": "Unexpected error",
+    "message": "The interface could not be rendered. The error was logged to the browser console.",
+    "reloadPage": "Reload page"
+  },
   "loadError": "Failed to load.",
   "retry": "Try again",
   "minus": "—",

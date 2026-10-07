@@ -29,7 +29,7 @@ Hermetische Specs in `e2e/` — alle APIs via `page.route` gemockt (kein Backend
 
 ## Browser-Demo (`demo/`)
 
-Dieselbe SPA gegen ein In-Memory-Backend, veröffentlicht auf GitHub Pages unter `/demo/`. Kein
+Dieselbe SPA gegen ein In-Memory-Backend, veröffentlicht auf www.nodepilot.run unter `/demo/`. Kein
 Server, keine DB — der Zustand lebt pro Tab und ein Reload stellt den Seed wieder her.
 
 - **Entry und Build:** `demo.html` → `demo/main.demo.ts` → dritter Vite-Build
@@ -45,8 +45,8 @@ Server, keine DB — der Zustand lebt pro Tab und ein Reload stellt den Seed wie
   `mockServiceWorker.js`, kein Worker-Lebenszyklus mit veralteten Mocks nach einem Redeploy, keine
   Registrierungsreihenfolge gegen das Modul-scope-`fetch` in `src/main.tsx`. (Der Scope eines
   Workers hätte `/api` **nicht** verhindert — das Argument ist Wartbarkeit, nicht Reichweite.)
-- **`__NP_DEMO__`** existiert für genau eine Entscheidung: Hash- statt Path-Routing, weil ein
-  statischer Host unbekannte Pfade nicht umschreibt. In `vite.config.ts` **und**
+- **`__NP_DEMO__`** wählt die Router-Basis `/demo` statt `/`. Apache liefert bei Demo-Seitenpfaden
+  die Demo-Startdatei aus; Assets nutzen `/demo/`. Alte Hash-Links normalisiert der Demo-Entry. In `vite.config.ts` **und**
   `vitest.config.ts` auf `'false'` definiert — fehlt das zweite, bricht jeder Test, der `App`
   importiert, mit einem `ReferenceError`, der nach etwas anderem aussieht.
 - **Tab-Isolation ist nicht gratis.** Ein zweiter Tab publiziert ein Identitäts-Ereignis, und jeder
@@ -126,3 +126,7 @@ Server, keine DB — der Zustand lebt pro Tab und ein Reload stellt den Seed wie
   simulierten Ausgaben aus den Startparametern ab. `Protected` scheitert bei File Copy,
   nachfolgende Steps laufen nicht. Retry behält die ursprünglichen Eingaben.
   Die geführten Szenarien sind in `e2e-demo/guided-tour.spec.ts` abgesichert.
+  Acht weitere Aufgaben (`?tour=build|decision|parallel|service|live|versions|machine|maintenance`)
+  liegen in `demo/ui/additionalTours.ts`, ihre Seed-Daten in `demo/seed/missionFixtures.ts` und die
+  Laufsimulation in `demo/run/missionScenarios.ts`; abgesichert in `e2e-demo/additional-tours.spec.ts`.
+  Die Website-Route `/walkthrough/` verlinkt alle zehn Aufgaben.

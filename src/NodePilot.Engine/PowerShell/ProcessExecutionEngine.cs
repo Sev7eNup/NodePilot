@@ -4,6 +4,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using NodePilot.Engine.Security;
 
 namespace NodePilot.Engine.PowerShell;
 
@@ -17,16 +18,95 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     private readonly string _executable;
     private readonly ILogger _logger;
 
-    // Grace period for the isolated stdout/stderr drain AFTER the root process has exited and its
-    // job tree has been terminated. At that point no legitimate writer to the pipe remains, so an
-    // unbounded wait can only be blocked by a leaked inherited pipe handle in an unrelated process
-    // (see ProcessSpawnCoordinator). Bounding the drain converts that permanent hang into an
-    // at-most-grace wait, so the isolated step always returns. Configurable via
-    // Engine:IsolatedDrainGraceSeconds.
+    // Grace period for the stdout/stderr drain AFTER the script process has exited (isolated: and
+    // its job tree has been terminated). A read still open then is held by an inherited pipe
+    // handle: a background program the script started, or a leak in an unrelated process (see
+    // ProcessSpawnCoordinator). Bounding the drain turns that wait into an at-most-grace wait, so
+    // the step always returns. Configurable via Engine:IsolatedDrainGraceSeconds.
     private readonly TimeSpan _isolatedDrainGrace;
 
     public string EngineType { get; }
     public bool IsAvailable { get; }
+
+    /// <summary>
+    /// Command-line arguments that run the wrapped script at <paramref name="scriptPath"/> the way
+    /// a remote step runs over WinRM. The bootstrap:
+    /// <list type="bullet">
+    /// <item>reads the script as text and deletes the file at once, so injected values stay on disk
+    /// only for that moment;</item>
+    /// <item>runs it as a scriptblock, not as a script file, so a machine execution policy
+    /// (AllSigned) does not block it;</item>
+    /// <item>writes every output object as its ToString(), leaves Write-Host, warnings and progress out, and
+    /// turns every error record into a failure plus its message on stderr (the `!HadErrors`
+    /// rule);</item>
+    /// <item>switches the console to UTF-8, since this engine reads UTF-8 and Windows PowerShell
+    /// otherwise writes in the OEM code page.</item>
+    /// </list>
+    /// `exit N` still ends the process with N.
+    /// </summary>
+    internal static string BootstrapArguments(string scriptPath)
+    {
+        var bootstrap = $$"""
+            try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }
+            $ProgressPreference = 'SilentlyContinue'
+            $__npPath = {{PowerShellQuoter.Literal(scriptPath)}}
+            try { $__npText = [System.IO.File]::ReadAllText($__npPath, [System.Text.Encoding]::UTF8) }
+            finally { try { [System.IO.File]::Delete($__npPath) } catch { } }
+            $__npErrorSeen = $false
+            try {
+                $__npBlock = [scriptblock]::Create($__npText)
+                & $__npBlock 2>&1 3>$null 6>$null | ForEach-Object {
+                    if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                        if (-not $__npErrorSeen) { $__npErrorSeen = $true; [Console]::Out.WriteLine('{{PowerShellScriptWrapper.ErrorMarker}}') }
+                        [Console]::Error.WriteLine($_.ToString())
+                    }
+                    elseif ($null -eq $_) { [Console]::Out.WriteLine('') }
+                    else { [Console]::Out.WriteLine($_.psobject.ToString()) }
+                }
+            }
+            catch {
+                [Console]::Error.WriteLine($_.ToString())
+                exit 1
+            }
+            """;
+        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(bootstrap));
+        return $"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}";
+    }
+
+    /// <summary>
+    /// Removes the CLIXML blocks Windows PowerShell writes to stderr for progress records when it
+    /// runs an encoded command. The bootstrap turns progress off, but a script can turn it back on.
+    /// </summary>
+    internal static string StripSerializedStreams(string stderr)
+        => stderr.Contains("#< CLIXML", StringComparison.Ordinal)
+            ? SerializedStreamPattern.Replace(stderr, "")
+            : stderr;
+
+    private static readonly System.Text.RegularExpressions.Regex SerializedStreamPattern = new(
+        @"#< CLIXML\r?\n?|<Objs Version=""[^""]*"" xmlns=""http://schemas\.microsoft\.com/powershell/2004/04"">.*?</Objs>",
+        System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Deletes temp scripts older than an hour that a killed host left behind. The bootstrap
+    /// deletes each script as soon as it has read it, so anything this old is an orphan.
+    /// </summary>
+    internal static void DeleteOrphanedTempScripts(ILogger logger, string? directory = null, TimeSpan? minimumAge = null)
+    {
+        var cutoff = DateTime.UtcNow - (minimumAge ?? TimeSpan.FromHours(1));
+        try
+        {
+            foreach (var file in new DirectoryInfo(directory ?? Path.GetTempPath()).EnumerateFiles("nodepilot_*.ps1"))
+            {
+                if (file.LastWriteTimeUtc > cutoff) continue;
+                try { file.Delete(); }
+                catch (Exception ex) { logger.LogDebug(ex, "Could not delete orphaned temp script {File}", file.FullName); }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Could not sweep orphaned temp scripts");
+        }
+    }
 
     // internal (not private) so tests can construct an engine pointing at a deliberately invalid
     // executable to exercise the isolated native-failure catch path, and inject a tiny drain grace
@@ -84,22 +164,32 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             var psi = new ProcessStartInfo
             {
                 FileName = _executable,
-                Arguments = $"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{tempScript}\"",
+                Arguments = BootstrapArguments(tempScript),
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                WorkingDirectory = request.WorkingDirectory ?? Path.GetTempPath(),
+                // The host's directory, as for the in-process pool; TEMP would change what a
+                // relative path in a script means.
+                WorkingDirectory = request.WorkingDirectory ?? Environment.CurrentDirectory,
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
             };
+            ChildProcessEnvironment.Apply(psi.Environment);
 
-            using var process = new Process { StartInfo = psi };
+            // Waits for the script process itself, not for pipe EOF like WaitForExitAsync does: a
+            // background program the script started without a new window (Start-Process
+            // -NoNewWindow, cmd /c start) inherits the pipes and would hold the step until it exits.
+            using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
             var stdout = new StringBuilder();
             var stderr = new StringBuilder();
+            var stdoutClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var stderrClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
-            process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
+            process.OutputDataReceived += (_, e) => Collect(stdout, stdoutClosed, e.Data);
+            process.ErrorDataReceived += (_, e) => Collect(stderr, stderrClosed, e.Data);
+            process.Exited += (_, _) => exited.TrySetResult();
 
             _logger.LogDebug("Starting {Engine}: {File}", EngineType, tempScript);
             // Serialize with the isolated launcher's inheritable-handle window: this redirected
@@ -119,7 +209,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
 
             try
             {
-                await process.WaitForExitAsync(cts.Token);
+                await exited.Task.WaitAsync(cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -134,29 +224,40 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 {
                     Success = false,
                     ExitCode = -1,
-                    Output = stdout.ToString().TrimEnd(),
+                    Output = Snapshot(stdout).TrimEnd(),
                     Error = $"Script execution timed out after {request.Timeout!.Value.TotalSeconds:0}s",
                     TimedOut = true,
                     Duration = sw.Elapsed,
                 };
             }
 
+            // The script has exited, so everything it wrote is in the pipes. A read still open
+            // after the grace is held by a background program; keep what has been collected.
+            try
+            {
+                await Task.WhenAll(stdoutClosed.Task, stderrClosed.Task).WaitAsync(_isolatedDrainGrace, ct);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogDebug(
+                    "{Engine} (pid {Pid}): output stayed open {Grace:0}s after the script exited; a background " +
+                    "program it started holds the pipe. Returned the collected output.",
+                    EngineType, process.Id, _isolatedDrainGrace.TotalSeconds);
+            }
+
             sw.Stop();
-            var stdoutText = stdout.ToString();
+            var stdoutText = Snapshot(stdout);
+            var stderrText = StripSerializedStreams(Snapshot(stderr)).TrimEnd();
             return new PowerShellExecutionResult
             {
-                // Error-based success: the script "failed" only if it raised a terminating error
-                // (the wrapper emits ErrorMarker on a throw), OR never started at all. An explicit
-                // `exit N` is NOT a failure — consistent with the in-process runspace and WinRM
-                // (!HadErrors). The real exit code is still surfaced via ExitCode for
-                // {{step.param.exitCode}} / successExitCodes.
+                // Error-based success, as over WinRM (!HadErrors): the script failed if it wrote
+                // any error record (ErrorMarker from the bootstrap or the wrapper's catch) or never
+                // started. `exit N` is not a failure; its code goes to ExitCode.
                 Success = DidExecute(stdoutText)
                           && !stdoutText.Contains(PowerShellScriptWrapper.ErrorMarker, StringComparison.Ordinal),
                 ExitCode = process.ExitCode,
                 Output = stdoutText.TrimEnd(),
-                Error = DidExecute(stdoutText)
-                    ? stderr.ToString().TrimEnd()
-                    : DescribeMissingExecution(stderr.ToString().TrimEnd()),
+                Error = DidExecute(stdoutText) ? stderrText : DescribeMissingExecution(stderrText),
                 TimedOut = false,
                 Duration = sw.Elapsed,
             };
@@ -195,11 +296,9 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             var wrappedScript = PowerShellScriptWrapper.Wrap(request.ScriptText, request.Parameters, _logger, request.OutputCaptureAllowlist);
             await WritePrivateScriptAsync(tempScript, wrappedScript, ct);
 
-            var args = $"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{tempScript}\"";
-
             _logger.LogDebug("Starting isolated {Engine}: {File}", EngineType, tempScript);
             using var launched = IsolatedProcessLauncher.Launch(
-                _executable, args, request.WorkingDirectory ?? Path.GetTempPath(), request.IsolationLimits);
+                _executable, BootstrapArguments(tempScript), request.WorkingDirectory ?? Environment.CurrentDirectory, request.IsolationLimits);
 
             // Start draining the pipes IMMEDIATELY and concurrently with the wait — a noisy script
             // would otherwise deadlock once the pipe buffers fill (child blocks writing, we block
@@ -278,11 +377,11 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             }
 
             var exitCode = launched.GetExitCode();
-            // Error-based success (see non-isolated path): fail on a terminating error
+            // Error-based success (see non-isolated path): fail on any error record
             // (ErrorMarker) or on a script that never started, not on `exit N`.
             var success = DidExecute(stdout)
                           && !stdout.Contains(PowerShellScriptWrapper.ErrorMarker, StringComparison.Ordinal);
-            var error = stderr.TrimEnd();
+            var error = StripSerializedStreams(stderr).TrimEnd();
             if (!DidExecute(stdout))
                 error = DescribeMissingExecution(error);
 
@@ -351,6 +450,19 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
         {
             return (ObserveAbandonedRead(stdoutTask), ObserveAbandonedRead(stderrTask), true);
         }
+    }
+
+    // Line callbacks of one stream arrive in order, but a snapshot may be taken while they still
+    // run, hence the lock. A null line is the stream's end.
+    private static void Collect(StringBuilder sink, TaskCompletionSource closed, string? line)
+    {
+        if (line is null) { closed.TrySetResult(); return; }
+        lock (sink) sink.AppendLine(line);
+    }
+
+    private static string Snapshot(StringBuilder sink)
+    {
+        lock (sink) return sink.ToString();
     }
 
     /// <summary>
@@ -460,6 +572,8 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             createdFile = true;
             ApplyRestrictiveAcl(path);
 
+            // With a BOM, so any reader detects UTF-8, not only the bootstrap.
+            await stream.WriteAsync(Encoding.UTF8.GetPreamble(), ct);
             var bytes = Encoding.UTF8.GetBytes(content);
             await stream.WriteAsync(bytes, ct);
             await stream.FlushAsync(ct);

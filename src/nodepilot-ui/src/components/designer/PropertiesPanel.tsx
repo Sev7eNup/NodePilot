@@ -23,7 +23,7 @@ import { setVariableDragData } from '../../lib/variableDragDrop';
 import { ACTIVITY_TYPES, EXTERNAL_TRIGGER_TYPES } from '../../lib/activityTypes';
 import {
   REMOTE_ACTIVITY_TYPES, TIMEOUT_ACTIVITY_TYPES,
-  TimeoutField, DynamicTargetField,
+  TimeoutField, RetryField, DynamicTargetField, type RetryConfig,
 } from './properties/shared';
 import { PanelHeader, StatusPillRow, Section, FieldGrid } from './properties/panelChrome';
 import { getActivityConfigComponent } from './properties/activityConfigMap';
@@ -39,6 +39,10 @@ import {
   assertAuthBoundaryGenerationCurrent,
   captureAuthBoundaryGeneration,
 } from '../../security/authBoundary';
+
+const NO_RETRY_TYPES: ReadonlySet<string> = new Set([
+  ACTIVITY_TYPES.JUNCTION, ACTIVITY_TYPES.DECISION, ACTIVITY_TYPES.RETURN_DATA,
+]);
 
 interface Props {
   node: Node;
@@ -137,6 +141,8 @@ function PropertiesPanelImpl({
     || isCustomActivityType(activityType) // custom activities always run a script
     || (activityType === ACTIVITY_TYPES.START_PROGRAM && config.waitForExit !== false)
     || (activityType === ACTIVITY_TYPES.START_WORKFLOW && config.waitForCompletion !== false);
+  // Retry wraps every executed step (StepRunner.RunWithRetryAsync); flow-control nodes do no work to repeat.
+  const showRetry = !isTrigger && !NO_RETRY_TYPES.has(activityType);
   // Stable module-level reference from ACTIVITY_CONFIG_COMPONENTS — rendered via createElement so
   // the
   // react-hooks/static-components rule doesn't misread the dynamic dispatch as a per-render
@@ -301,6 +307,19 @@ function PropertiesPanelImpl({
             <TimeoutField
               value={config.timeoutSeconds as number | undefined}
               onChange={(v) => updateConfig({ timeoutSeconds: v })}
+            />
+          </Section>
+        )}
+
+        {showRetry && (
+          <Section
+            title={t('properties:retry.title')}
+            collapsible
+            defaultOpen={false}
+          >
+            <RetryField
+              value={config.retry as Partial<RetryConfig> | undefined}
+              onChange={(v) => updateConfig({ retry: v })}
             />
           </Section>
         )}
@@ -517,6 +536,7 @@ function ExpressionTester({
    */
   lastStepsByStepId: Map<string, StepExecution>;
 }>) {
+  const { t } = useTranslation('properties');
   const [template, setTemplate] = useState('');
   const [mockValues, setMockValues] = useState<Record<string, string>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -582,7 +602,7 @@ function ExpressionTester({
           onSelect={autocomplete.refresh}
           onKeyDown={autocomplete.handleKeyDown}
           onBlur={() => setTimeout(autocomplete.close, 150)}
-          placeholder={'Enter template, e.g. Server: {{disk.output}}'}
+          placeholder={t('expressionTester.templatePlaceholder', { example: '{{disk.output}}' })}
           className="w-full text-xs font-mono border border-outline-variant/30 rounded p-2 bg-surface-container resize-y min-h-[56px] focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <VariableSuggestionsDropdown
@@ -602,7 +622,7 @@ function ExpressionTester({
               </code>
               <input
                 className="flex-1 text-xs border border-outline-variant/30 rounded px-2 py-1 bg-surface-container font-mono focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="test value…"
+                placeholder={t('expressionTester.testValuePlaceholder')}
                 value={mockValues[key] ?? prefill(key)}
                 onChange={(e) => setMockValues((prev) => ({ ...prev, [key]: e.target.value }))}
               />
@@ -611,14 +631,14 @@ function ExpressionTester({
         </div>
       )}
       {template && (
-        <div className={`text-xs rounded p-2 font-mono whitespace-pre-wrap break-all ${hasUnresolved ? 'bg-amber-50 border border-amber-200 text-amber-800' : 'bg-surface-container border border-green-200 text-green-800'}`}>
+        <div className={`text-xs rounded p-2 font-mono whitespace-pre-wrap break-all ${hasUnresolved ? 'bg-warning-container border border-warning/40 text-on-warning-container' : 'bg-success-container border border-success/30 text-on-success-container'}`}>
           {resolved}
         </div>
       )}
       {upstreamVars.length > 0 && template === '' && (
         <div className="text-[10px] text-on-surface-variant">
-          Verfügbare Variablen: {upstreamVars.slice(0, 4).map((v) => v.expression).join(', ')}
-          {upstreamVars.length > 4 && ` +${upstreamVars.length - 4} mehr`}
+          {t('expressionTester.availableVariables', { list: upstreamVars.slice(0, 4).map((v) => v.expression).join(', ') })}
+          {upstreamVars.length > 4 && t('expressionTester.moreVariables', { count: upstreamVars.length - 4 })}
         </div>
       )}
     </div>

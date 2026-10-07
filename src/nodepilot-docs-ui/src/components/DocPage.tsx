@@ -1,12 +1,8 @@
-import { useEffect, useRef, type ReactNode } from 'react'
-import { Link } from 'react-router'
+import { useEffect, useRef } from 'react'
+import { Link, useLocation } from 'react-router'
 import { Trans, useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight } from '@carbon/icons-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeSlug from 'rehype-slug'
-import rehypeHighlight from 'rehype-highlight'
-import type { Components } from 'react-markdown'
+import DocMarkdown from './DocMarkdown'
 import { getContent, hasTranslation } from '../lib/content'
 import { navTitleKey, neighbors } from '../data/nav'
 import { DEFAULT_LANG, type Lang } from '../i18n/languages'
@@ -17,12 +13,15 @@ export default function DocPage({ lang, path }: { lang: Lang; path: string }) {
   const { t } = useTranslation()
   const markdown = getContent(lang, path)
   const articleRef = useRef<HTMLElement>(null)
+  const { hash } = useLocation()
 
   // Reset scroll on navigation. The document is the scroller; an inner scroller would break
   // `scroll-padding-top` for TOC jumps and deep links.
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' })
-  }, [path, lang])
+    if (hash) {
+      try { document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView() } catch { /* Invalid fragment: keep the page usable. */ }
+    } else window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [path, lang, hash])
 
   if (!markdown) {
     return (
@@ -64,13 +63,7 @@ export default function DocPage({ lang, path }: { lang: Lang; path: string }) {
             </div>
           )}
 
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeSlug, rehypeHighlight]}
-            components={makeLinkComponents(lang, path)}
-          >
-            {markdown}
-          </ReactMarkdown>
+          <DocMarkdown markdown={markdown} lang={lang} path={path} />
 
           <hr className="my-10" />
 
@@ -128,91 +121,4 @@ function FooterLink({
       </span>
     </Link>
   )
-}
-
-// Markdown component overrides. Headings keep the `id` from rehype-slug but render no visible
-// anchor; section navigation goes through the right-side <Toc/> via scrollIntoView.
-//
-// Internal cross-links (`./x`, `../group/page`, `/group/page`) become react-router `<Link>`s
-// so they navigate client-side. A plain `<a href="./installation">` would resolve against the
-// document's own address, which is one directory per page, and land a level too deep.
-//
-// The markdown sources cross-link by content path only (`../enterprise/folder-rbac`), never
-// by language, so the active language is re-applied here to keep a reader in their language.
-
-/** Resolve a markdown cross-link href against the current doc path into a nav
- * path like "getting-started/installation". Returns null for non-internal links. */
-function resolveDocHref(href: string, currentPath: string): string | null {
-  if (!href) return null
-  // External (http/https), mailto, tel, data: leave these to the browser.
-  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) return null
-  // In-page anchor (#slug); InternalLink handles it by scrolling.
-  if (href.startsWith('#')) return null
-  // Treat the current page path as a directory base ("getting-started/" for
-  // "getting-started/introduction"; "" for top-level pages like "triggers").
-  const baseDir = currentPath.includes('/') ? currentPath.replace(/[^/]*$/, '') : ''
-  let pathname: string
-  try {
-    pathname = new URL(href, `http://docs.local/${baseDir}`).pathname
-  } catch {
-    return null
-  }
-  return pathname.replace(/^\//, '').replace(/\/+$/, '')
-}
-
-function InternalLink({
-  href,
-  lang,
-  currentPath,
-  children,
-}: {
-  href: string
-  lang: Lang
-  currentPath: string
-  children?: ReactNode
-}) {
-  // In-page anchor: scroll to the element instead of changing the hash route.
-  if (href.startsWith('#')) {
-    const id = href.slice(1)
-    return (
-      <a
-        href={href}
-        onClick={(e) => {
-          e.preventDefault()
-          document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }}
-      >
-        {children}
-      </a>
-    )
-  }
-  const target = resolveDocHref(href, currentPath)
-  if (target === null) {
-    return <a href={href}>{children}</a>
-  }
-  return (
-    <Link to={docPath(lang, target)}>
-      {children}
-    </Link>
-  )
-}
-
-function makeLinkComponents(lang: Lang, currentPath: string): Components {
-  return {
-    a: ({ href, children }) => {
-      const external = /^https?:\/\//.test(href ?? '') || /^(mailto|tel):/i.test(href ?? '')
-      if (external) {
-        return (
-          <a href={href} target="_blank" rel="noreferrer">
-            {children}
-          </a>
-        )
-      }
-      return (
-        <InternalLink href={href ?? ''} lang={lang} currentPath={currentPath}>
-          {children}
-        </InternalLink>
-      )
-    },
-  }
 }

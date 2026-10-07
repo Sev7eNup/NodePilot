@@ -32,10 +32,21 @@ function emitAsIndexHtml(outDir: string): Plugin {
 // The docs package uses the same two-builds-one-package pattern (vite.config.ts plus
 // vite.site.config.ts); this is the third build in the repository, not a new idea.
 export default defineConfig({
-  plugins: [react(), tailwindcss(), emitAsIndexHtml(OUT_DIR)],
-  // Relative asset URLs plus hash routing (see App.tsx), so the output works under any
-  // sub-path without a build-time base and without a 404.html fallback.
-  base: './',
+  plugins: [react(), tailwindcss(), emitAsIndexHtml(OUT_DIR), {
+    name: 'demo-dev-entry',
+    configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        const url = new URL(request.url ?? '/', 'http://localhost');
+        if (request.headers.accept?.includes('text/html') &&
+            url.pathname.startsWith('/demo/') && !url.pathname.includes('.')) {
+          request.url = `/demo/demo.html${url.search}`;
+        }
+        next();
+      });
+    },
+  }],
+  // Deep links resolve assets against the demo root, independent of the current route.
+  base: '/demo/',
   define: {
     __NP_DEMO__: 'true',
     __NP_DEMO_VERSION__: JSON.stringify(VERSION),

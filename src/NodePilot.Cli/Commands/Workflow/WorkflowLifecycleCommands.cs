@@ -19,7 +19,7 @@ public sealed class WorkflowLockCommand : BaseCommand<WorkflowGetSettings>
         var api = ClientFactory.Create(session);
         var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
         var locked = await api.LockWorkflowAsync(w.Id, ct);
-        writer.Success($"Workflow [bold]{Markup.Escape(locked.Name)}[/] gelockt — Bearbeiten freigegeben.");
+        writer.Success($"Workflow [bold]{Markup.Escape(locked.Name)}[/] locked. You can edit it now.");
         return ExitCodes.Success;
     }
 }
@@ -33,7 +33,7 @@ public sealed class WorkflowUnlockCommand : BaseCommand<WorkflowGetSettings>
         var api = ClientFactory.Create(session);
         var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
         var unlocked = await api.UnlockWorkflowAsync(w.Id, ct);
-        writer.Success($"Lock entfernt. Workflow bleibt {(unlocked.IsEnabled ? "[green]enabled[/]" : "[grey]disabled[/]")}.");
+        writer.Success($"Lock released. Workflow stays {(unlocked.IsEnabled ? "[green]enabled[/]" : "[grey]disabled[/]")}.");
         return ExitCodes.Success;
     }
 }
@@ -110,7 +110,7 @@ public sealed class WorkflowCancelAllCommand : BaseCommand<WorkflowGetSettings>
         var api = ClientFactory.Create(session);
         var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
         var result = await api.CancelAllAsync(w.Id, ct);
-        writer.Success($"Cancelled {result.Signalled} von {result.Total} laufenden Executions.");
+        writer.Success($"Cancelled {result.Signalled} of {result.Total} running execution(s).");
         return ExitCodes.Success;
     }
 }
@@ -124,7 +124,7 @@ public sealed class WorkflowDuplicateCommand : BaseCommand<WorkflowGetSettings>
         var api = ClientFactory.Create(session);
         var src = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
         var copy = await api.DuplicateWorkflowAsync(src.Id, ct);
-        writer.Success($"Dupliziert → [bold]{Markup.Escape(copy.Name)}[/] ({copy.Id})");
+        writer.Success($"Duplicated → [bold]{Markup.Escape(copy.Name)}[/] ({copy.Id})");
         return ExitCodes.Success;
     }
 }
@@ -141,12 +141,12 @@ public sealed class WorkflowDeleteCommand : BaseCommand<WorkflowGetSettings>
         // Destructive — confirm unless stdin is non-interactive (script context).
         if (!Console.IsInputRedirected)
         {
-            var ok = await AnsiConsole.ConfirmAsync($"Workflow [red]{Markup.Escape(w.Name)}[/] wirklich löschen?", defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            var ok = await AnsiConsole.ConfirmAsync($"Delete workflow [red]{Markup.Escape(w.Name)}[/]?", defaultValue: false);
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
 
         await api.DeleteWorkflowAsync(w.Id, ct);
-        writer.Success($"Workflow gelöscht.");
+        writer.Success("Workflow deleted.");
         return ExitCodes.Success;
     }
 }
@@ -174,7 +174,7 @@ public sealed class WorkflowPublishCommand : BaseCommand<WorkflowPublishSettings
     {
         if (string.IsNullOrWhiteSpace(settings.File) || !File.Exists(settings.File))
         {
-            writer.Error($"Datei nicht gefunden: {settings.File}");
+            writer.Error($"File not found: {settings.File}");
             return ExitCodes.Error;
         }
 
@@ -182,7 +182,7 @@ public sealed class WorkflowPublishCommand : BaseCommand<WorkflowPublishSettings
         try { using var _doc = JsonDocument.Parse(json); }
         catch (JsonException ex)
         {
-            writer.Error($"Definition ist kein gültiges JSON: {ex.Message}");
+            writer.Error($"The definition is not valid JSON: {ex.Message}");
             return ExitCodes.Error;
         }
 
@@ -215,7 +215,7 @@ public sealed class WorkflowRollbackCommand : BaseCommand<WorkflowRollbackSettin
         var api = ClientFactory.Create(session);
         var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
         var rolled = await api.RollbackAsync(w.Id, settings.Version, new RollbackRequest(settings.Reason), ct);
-        writer.Success($"Rollback auf Version {settings.Version} → neue Version {rolled.Version}.");
+        writer.Success($"Rolled back to version {settings.Version} → new version {rolled.Version}.");
         return ExitCodes.Success;
     }
 }
@@ -234,13 +234,13 @@ public sealed class WorkflowForceUnlockCommand : BaseCommand<WorkflowGetSettings
         {
             var owner = w.CheckedOutByUserName ?? "?";
             var ok = await AnsiConsole.ConfirmAsync(
-                $"Workflow [yellow]{Markup.Escape(w.Name)}[/] ist gelockt von [yellow]{Markup.Escape(owner)}[/]. Wirklich force-unlocken?",
+                $"Workflow [yellow]{Markup.Escape(w.Name)}[/] is locked by [yellow]{Markup.Escape(owner)}[/]. Force-unlock it?",
                 defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
 
         var unlocked = await api.ForceUnlockWorkflowAsync(w.Id, ct);
-        writer.Success($"Lock von [yellow]{Markup.Escape(w.CheckedOutByUserName ?? "?")}[/] gebrochen. Workflow ist [grey]disabled[/] (Admin re-publish nötig).");
+        writer.Success($"Broke the lock held by [yellow]{Markup.Escape(w.CheckedOutByUserName ?? "?")}[/]. Workflow is [grey]disabled[/] (an Admin has to re-publish it).");
         writer.WriteData(unlocked, (console, value) => Renderers.WorkflowDetail(console, value));
         return ExitCodes.Success;
     }

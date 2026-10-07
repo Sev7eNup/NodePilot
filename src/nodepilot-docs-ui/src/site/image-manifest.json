@@ -1,0 +1,72 @@
+{
+  "designer": {
+    "width": 2544,
+    "height": 1265,
+    "widths": [
+      480,
+      960,
+      1600,
+      2544
+    ]
+  },
+  "logs": {
+    "width": 2549,
+    "height": 1271,
+    "widths": [
+      480,
+      960,
+      1600,
+      2549
+    ]
+  },
+  "ai": {
+    "width": 2550,
+    "height": 1272,
+    "widths": [
+      480,
+      960,
+      1600,
+      2550
+    ]
+  },
+  "dashboard": {
+    "width": 2556,
+    "height": 1273,
+    "widths": [
+      480,
+      960,
+      1600,
+      2556
+    ]
+  },
+  "liveops": {
+    "width": 2549,
+    "height": 1271,
+    "widths": [
+      480,
+      960,
+      1600,
+      2549
+    ]
+  },
+  "first-workflow-designer": {
+    "width": 1700,
+    "height": 1050,
+    "widths": [
+      480,
+      960,
+      1600,
+      1700
+    ]
+  },
+  "first-workflow-run": {
+    "width": 1700,
+    "height": 1050,
+    "widths": [
+      480,
+      960,
+      1600,
+      1700
+    ]
+  }
+}

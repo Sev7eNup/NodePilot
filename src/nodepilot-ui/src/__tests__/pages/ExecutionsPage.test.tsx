@@ -221,6 +221,29 @@ describe('ExecutionsPage', () => {
     expect(screen.getByText(/"status": "ok"/)).toBeInTheDocument();
   });
 
+  it('labels step statuses like the row badge', async () => {
+    mockList();
+    server.use(
+      http.get(`${BASE}/api/executions/exec-1/steps`, () =>
+        HttpResponse.json([
+          {
+            id: 's1', stepId: 'node-slow', stepName: 'Slow', stepType: 'runScript',
+            targetMachine: null, status: 'TimedOut',
+            startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+            output: null, errorOutput: null, traceOutput: null, outputParametersJson: null,
+          },
+        ])
+      )
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Disk Check' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Disk Check' }));
+
+    await waitFor(() => expect(screen.getByText('node-slow')).toBeInTheDocument());
+    expect(screen.getByText('Timed out')).toBeInTheDocument();
+    expect(screen.queryByText('TimedOut')).not.toBeInTheDocument();
+  });
+
   it('collapses an expanded row when clicked again', async () => {
     mockList();
     server.use(

@@ -34,7 +34,7 @@
     },
     "live": {
       "noActiveExecution": "No active execution",
-      "clickTestToRun": "Click \"Test\" to run the workflow",
+      "clickTestToRun": "Click \"Run\" to run the workflow",
       "paused": "Paused"
     },
     "inspector": {
@@ -325,7 +325,32 @@
     "globalsOption": "globals.{{name}}",
     "remove": "Remove",
     "addCondition": "Condition",
-    "addGroup": "Group"
+    "addGroup": "Group",
+    "introEvent": "Compare event fields with a fixed value or with each other. On both sides you can choose between <0>Field</0> and <1>Literal</1>.",
+    "noFilterSet": "No filter set — the rule applies to every matching event.",
+    "and": "AND",
+    "or": "OR",
+    "not": "NOT",
+    "opGroupCompare": "Compare",
+    "opGroupString": "String",
+    "opGroupUnary": "Unary",
+    "ops": {
+      "eq": "equals",
+      "ne": "not equals",
+      "lt": "less than",
+      "gt": "greater than",
+      "le": "≤",
+      "ge": "≥",
+      "contains": "contains",
+      "startsWith": "starts with",
+      "endsWith": "ends with",
+      "matches": "matches regex",
+      "isEmpty": "is empty",
+      "isNotEmpty": "is not empty",
+      "isTrue": "is true",
+      "isFalse": "is false"
+    },
+    "groupEvent": "Event"
   },
   "bulkEdit": {
     "title": "Bulk Edit",
@@ -440,19 +465,41 @@
   "snippets": {
     "foreach": {
       "name": "ForEach over a list",
-      "description": "RunScript produces a comma-separated list (e.g. hostnames from a DB query) — a ForEach-child workflow runs against each item."
+      "description": "RunScript produces a comma-separated list (e.g. hostnames from a DB query) — a ForEach-child workflow runs against each item.",
+      "nodes": {
+        "produce": "Produce list",
+        "forEach": "For each item",
+        "done": "All items done"
+      }
     },
     "httpRetry": {
       "name": "HTTP call with retry + fallback",
-      "description": "REST API call with 3 retries built-in via the retry-policy — on total failure falls through to a log step that records the error."
+      "description": "REST API call with 3 retries built-in via the retry-policy — on total failure falls through to a log step that records the error.",
+      "nodes": {
+        "http": "HTTP call",
+        "alertOps": "Alert ops",
+        "processResponse": "Process response"
+      }
     },
     "parallelFanout": {
       "name": "Parallel fan-out + join",
-      "description": "Three parallel branches that all wait at a Junction before continuing — good starting point for „do three things at once, then summarize\"."
+      "description": "Three parallel branches that all wait at a Junction before continuing — good starting point for „do three things at once, then summarize\".",
+      "nodes": {
+        "start": "Fan-out start",
+        "branch": "Branch {{name}}",
+        "join": "Wait for all",
+        "after": "After join"
+      }
     },
     "tryCatch": {
       "name": "Try-Catch around script",
-      "description": "RunScript with explicit failure branch — the script runs, and on failure a log step captures the error before the flow continues."
+      "description": "RunScript with explicit failure branch — the script runs, and on failure a log step captures the error before the flow continues.",
+      "nodes": {
+        "try": "Try script",
+        "catch": "On failure — log",
+        "merge": "Merge paths",
+        "continue": "Continue"
+      }
     }
   },
   "toolbar": {

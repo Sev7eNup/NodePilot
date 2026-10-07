@@ -23,6 +23,14 @@ public sealed class DatabaseReadinessGateTests
         => DatabaseReadinessGate.ResolveStartupWait(ConfigWith(null))
             .Should().Be(DatabaseReadinessGate.DefaultStartupWait);
 
+    [Fact]
+    public void DefaultStartupWait_OutlastsADelayedAutomaticSqlServerStart()
+    {
+        // A local SQL Server starts delayed-automatic about two minutes after boot, while NodePilot
+        // starts at once. A shorter default failed the first start after every restart.
+        DatabaseReadinessGate.DefaultStartupWait.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMinutes(5));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]

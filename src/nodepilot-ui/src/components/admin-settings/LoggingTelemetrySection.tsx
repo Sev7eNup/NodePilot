@@ -1,6 +1,6 @@
 import { Activity, ChartBar, Chip, Document } from '@carbon/icons-react';
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { SecretField, serializeSecretField, type SecretFieldMode } from './SecretField';
 import { EnvOverrideBadge } from './EnvOverrideBadge';
 import { GroupHeading, HotReloadHint, useSectionForm, CompactCard } from './SectionFormHelpers';
@@ -104,24 +104,22 @@ function LoggingCard() {
           onChange={(v) => set({ ...form, redaction: { enabled: v } })}
           configKey="Logging:Redaction:Enabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       </div>
-      <GroupHeading>Support-Log (zweiter, schlanker Sink)</GroupHeading>
+      <GroupHeading>{t('logging.supportLogHeading')}</GroupHeading>
       <p className="text-xs text-on-surface-variant mb-2">
-        Schreibt eine schlanke Plain-Text-Datei <code>nodepilot-support-*.log</code> mit nur den
-        Support-relevanten Events (User-Log-Activity, Workflow-Lifecycle, Auth-Audits,
-        System-Boot). Änderungen erfordern einen API-Restart.
+        <Trans t={t} i18nKey="logging.supportLogIntro" components={{ code: <code /> }} />
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Toggle label={t('logging.supportLogEnabled')} checked={form.supportLog.enabled}
           onChange={(v) => set({ ...form, supportLog: { ...form.supportLog, enabled: v } })}
           configKey="Logging:SupportLog:Enabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
-        <Toggle label="DB-Projektion (Web-Viewer)" checked={form.supportLog.dbProjectionEnabled}
+        <Toggle label={t('logging.dbProjection')} checked={form.supportLog.dbProjectionEnabled}
           onChange={(v) => set({ ...form, supportLog: { ...form.supportLog, dbProjectionEnabled: v } })}
           configKey="Logging:SupportLog:DbProjectionEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
-        <TextInput label="Pfad (leer = neben Haupt-Log)" value={form.supportLog.path}
+        <TextInput label={t('logging.supportLogPath')} value={form.supportLog.path}
           onChange={(v) => set({ ...form, supportLog: { ...form.supportLog, path: v } })}
           configKey="Logging:SupportLog:Path" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
           placeholder="C:\\ProgramData\\NodePilot\\logs\\nodepilot-support-.log" />
-        <NumberInput label="Retention (Tage)" value={form.supportLog.retainedFileCountLimit} min={1} max={365}
+        <NumberInput label={t('logging.supportLogRetentionDays')} value={form.supportLog.retainedFileCountLimit} min={1} max={365}
           onChange={(v) => set({ ...form, supportLog: { ...form.supportLog, retainedFileCountLimit: v } })}
           configKey="Logging:SupportLog:RetainedFileCountLimit" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
         <NumberInput label={t('logging.maxFileSizeBytes')} value={form.supportLog.fileSizeLimitBytes} min={1024 * 1024} max={1024 * 1024 * 1024}
@@ -305,7 +303,7 @@ function OpenTelemetryCard() {
         <TextInput label={t('otel.prometheusQueryEndpoint')} value={form.prometheus.queryEndpoint}
           onChange={(v) => set({ ...form, prometheus: { ...form.prometheus, queryEndpoint: v } })}
           configKey="OpenTelemetry:Prometheus:QueryEndpoint" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
-        <TextInput label="Grafana Basis-URL (optionaler Drill-down)" value={form.grafanaBaseUrl}
+        <TextInput label={t('otel.grafanaBaseUrl')} value={form.grafanaBaseUrl}
           onChange={(v) => set({ ...form, grafanaBaseUrl: v })}
           configKey="OpenTelemetry:GrafanaBaseUrl" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
           placeholder="https://grafana.example.com" />

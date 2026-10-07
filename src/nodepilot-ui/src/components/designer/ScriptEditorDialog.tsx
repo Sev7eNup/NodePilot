@@ -877,7 +877,7 @@ export function ScriptEditorDialog({
                       </div>
                     )}
                     {!testResult.output && !testResult.errorOutput && !testResult.errorMessage && Object.keys(testResult.outputParameters).length === 0 && (
-                      <div className="text-on-surface-variant font-label italic">Kein Output.</div>
+                      <div className="text-on-surface-variant font-label italic">{t('editor:noOutput')}</div>
                     )}
                   </div>
                 )}

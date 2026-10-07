@@ -21,6 +21,12 @@ namespace NodePilot.Engine.Security;
 /// </summary>
 public static class NetworkGuard
 {
+    /// <summary>
+    /// Test seam for the DNS lookup in <see cref="ValidateUrl"/>. Null in production, where the
+    /// system resolver is used. Async-local so a test's override stays inside that test.
+    /// </summary>
+    internal static readonly AsyncLocal<Func<string, IPAddress[]>?> HostResolverOverride = new();
+
     /// <param name="requireAllAddresses">
     /// Set when a forward proxy will carry the request. The proxy resolves the destination
     /// itself, so <see cref="EnforceConnect"/> never sees the destination addresses and this
@@ -44,7 +50,7 @@ public static class NetworkGuard
         }
         else
         {
-            try { addresses = Dns.GetHostAddresses(uri.Host); }
+            try { addresses = (HostResolverOverride.Value ?? Dns.GetHostAddresses)(uri.Host); }
             catch (Exception ex)
             {
                 throw new InvalidOperationException($"REST API: host '{uri.Host}' could not be resolved: {ex.Message}");

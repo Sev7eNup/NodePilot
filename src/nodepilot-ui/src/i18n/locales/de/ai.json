@@ -33,6 +33,8 @@
     "reviewWarning": "KI-Output bitte vor dem Speichern lesen. Schadhafte Anweisungen können in Upstream-Daten eingeschleust sein."
   },
   "workflowDialog": {
+    "fieldName": "Name",
+    "fieldActivities": "Aktivitäten",
     "title": "Workflow per KI generieren",
     "promptLabel": "Beschreibe den Workflow",
     "promptPlaceholder": "z. B. „Täglich um 6 Uhr eine PowerShell ausführen, das Ergebnis per E-Mail senden, bei Fehler Operations-Channel benachrichtigen.\"",

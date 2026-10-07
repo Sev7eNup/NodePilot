@@ -43,7 +43,7 @@ public sealed class ConfigSetCommand : AsyncCommand<ConfigSetSettings>
                     && !ClientSessionSecurity.HasSameServerOrigin(entry.Server, settings.Value))
                 {
                     entry.TlsThumbprint = null;
-                    writer.Warning("Gespeicherter TLS-Pin entfernt: er galt für den bisherigen Server.");
+                    writer.Warning("Removed the stored TLS pin: it belonged to the previous server.");
                 }
 
                 entry.Server = settings.Value;
@@ -65,12 +65,12 @@ public sealed class ConfigSetCommand : AsyncCommand<ConfigSetSettings>
                 cfg.DefaultProfile = settings.Value;
                 break;
             default:
-                writer.Error($"Unbekannter Key '{settings.Key}'. Erlaubt: server | tls-thumbprint | default-profile.");
+                writer.Error($"Unknown key '{settings.Key}'. Allowed: server | tls-thumbprint | default-profile.");
                 return Task.FromResult(ExitCodes.Error);
         }
 
         _config.Save(cfg);
-        writer.Success($"Gespeichert: {settings.Key} = {settings.Value} (profile '{profile}')");
+        writer.Success($"Saved: {settings.Key} = {settings.Value} (profile '{profile}')");
         return Task.FromResult(ExitCodes.Success);
     }
 }

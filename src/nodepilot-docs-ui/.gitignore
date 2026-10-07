@@ -4,6 +4,7 @@ node_modules/
 dist/
 dist-site/
 _site/
+_pages-redirects/
 *.log
 .DS_Store
 

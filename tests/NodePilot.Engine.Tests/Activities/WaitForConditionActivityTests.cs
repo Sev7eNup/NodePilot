@@ -202,6 +202,53 @@ public sealed class WaitForConditionActivityTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_LocalScriptCondition_RunsInWindowsPowerShellLikeARemoteStep()
+    {
+        // A free-form condition is user code: it must see the same modules as on a target machine.
+        var activity = CreateActivity();
+        var ctx = new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "wait-step" };
+        var config = ParseConfig("{\"script\":\"$PSVersionTable.PSEdition -eq 'Desktop'\",\"intervalSeconds\":1,\"timeoutSeconds\":10}");
+
+        var result = await activity.ExecuteAsync(ctx, config, CancellationToken.None);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+    }
+
+    [Theory]
+    [InlineData("{\"script\":\"$true\",\"intervalSeconds\":1,\"timeoutSeconds\":5}", "powershell")]
+    [InlineData("{\"conditionType\":\"script\",\"script\":\"$true\",\"intervalSeconds\":1,\"timeoutSeconds\":5}", "powershell")]
+    [InlineData("{\"script\":\"$true\",\"engine\":\"runspace\",\"intervalSeconds\":1,\"timeoutSeconds\":5}", "runspace")]
+    [InlineData("{\"script\":\"$true\",\"engine\":\"pwsh\",\"intervalSeconds\":1,\"timeoutSeconds\":5}", "pwsh")]
+    [InlineData("{\"conditionType\":\"pathExists\",\"path\":\"C:\\\\\",\"engine\":\"pwsh\",\"intervalSeconds\":1,\"timeoutSeconds\":5}", "runspace")]
+    [InlineData("{\"conditionType\":\"pathExists\",\"path\":\"C:\\\\\",\"intervalSeconds\":1,\"timeoutSeconds\":5}", "runspace")]
+    [InlineData("{\"conditionType\":\"serviceRunning\",\"serviceName\":\"W32Time\",\"intervalSeconds\":1,\"timeoutSeconds\":5}", "runspace")]
+    public async Task ExecuteAsync_Local_ScriptConditionsUseTheUserEngineTypedProbesThePool(string json, string expectedEngine)
+    {
+        var used = new List<string>();
+        var factory = new PowerShellEngineFactory(
+            new RecordingEngine("pwsh", used), new RecordingEngine("powershell", used), new RecordingEngine("runspace", used));
+        var activity = new WaitForConditionActivity(_sessionFactory.Object, _credentialStore.Object, _db, factory, _configuration);
+        var ctx = new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "wait-step" };
+
+        var result = await activity.ExecuteAsync(ctx, ParseConfig(json), CancellationToken.None);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        used.Should().Equal(expectedEngine);
+    }
+
+    private sealed class RecordingEngine(string engineType, List<string> used) : IPowerShellExecutionEngine
+    {
+        public string EngineType => engineType;
+        public bool IsAvailable => true;
+
+        public Task<PowerShellExecutionResult> ExecuteAsync(PowerShellExecutionRequest request, CancellationToken ct)
+        {
+            used.Add(engineType);
+            return Task.FromResult(new PowerShellExecutionResult { Success = true, Output = "###NODEPILOT_COND:True###" });
+        }
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WrapsUserScriptWithMarkerEmission()
     {
         // The script-wrapping logic matters: the wrapper must emit the ###NODEPILOT_COND:<bool>###
@@ -218,6 +265,37 @@ public sealed class WaitForConditionActivityTests : IDisposable
         wrapped.Should().Contain("Test-Path 'C:/foo'");
         wrapped.Should().Contain("try {");
         wrapped.Should().Contain("[bool]");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_LocalConditionThatCannotParse_FailsAtOnceWithTheError()
+    {
+        // The ternary operator does not exist in Windows PowerShell 5.1.
+        var activity = CreateActivity();
+        var ctx = new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "wait-step" };
+        var config = ParseConfig("{\"script\":\"$true ? 1 : 0\",\"intervalSeconds\":1,\"timeoutSeconds\":30}");
+
+        var result = await activity.ExecuteAsync(ctx, config, CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().StartWith("The condition could not be evaluated:");
+        result.OutputParameters["attempts"].Should().Be("1");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RemoteErrorWithoutMarker_KeepsPollingAndNamesTheErrorOnTimeout()
+    {
+        _session
+            .Setup(s => s.ExecuteScriptAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, int?, CancellationToken>((_, _, _) => _invocationCount++)
+            .ReturnsAsync(() => new RemoteExecutionResult { Success = false, Output = "", ErrorOutput = "connection reset" });
+
+        var result = await CreateActivity().ExecuteAsync(
+            CreateContext(), ParseConfig("{\"script\":\"$true\",\"intervalSeconds\":1,\"timeoutSeconds\":3}"), CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        _invocationCount.Should().BeGreaterThanOrEqualTo(2);
+        result.ErrorOutput.Should().Contain("Timeout after 3s").And.Contain("Last error: connection reset");
     }
 
     [Fact]

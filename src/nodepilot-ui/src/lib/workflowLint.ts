@@ -11,7 +11,7 @@ import { authoredParamNames, typeDerivedParamNames } from './upstreamVariables';
 const HYBRID_LOCAL_ACTIVITY_TYPES = new Set(['runScript', 'waitForCondition']);
 
 // Cmdlets and patterns that internally spawn `Start-Job` or another background-job worker.
-// The in-process runspace (engine: "auto" / "runspace") has no co-located pwsh.exe, so
+// The in-process runspace (engine: "runspace") has no co-located pwsh.exe, so
 // Start-Job fails there. Lint warns the author instead of letting the step fail at runtime.
 // `Wait-Job` and `Receive-Job` are not listed: without a preceding Start-Job they are valid
 // operations on job objects from other sources.
@@ -19,6 +19,17 @@ const STARTJOB_HOSTED_INCOMPATIBLE: Array<{ pattern: RegExp; cmdletName: string 
   { pattern: /(^|[\s|;&])Start-Job\b/i, cmdletName: 'Start-Job' },
   { pattern: /\bGet-WindowsUpdateLog\b/i, cmdletName: 'Get-WindowsUpdateLog' },
   { pattern: /\bInvoke-Command\b[^\r\n]*-AsJob\b/i, cmdletName: 'Invoke-Command -AsJob' },
+];
+
+// PowerShell 7 forms that do not parse in Windows PowerShell 5.1, where engine auto/powershell
+// runs a script locally and on a target machine. Mirrors WorkflowAnalyzer.PowerShell7OnlySyntax.
+// `&&` and `||` are left out: they are ordinary text inside `cmd /c "a && b"`.
+const POWERSHELL7_ONLY_SYNTAX: Array<{ pattern: RegExp; construct: string }> = [
+  { pattern: /\?\?/, construct: '??' },
+  { pattern: /(\$[\w:]+|\)|'|"|\d)\s+\?\s+[^\s{][^\r\n]*?\s:\s/, construct: '? :' },
+  { pattern: /\$\{[^}\r\n]+\}\?[.[]/, construct: '${x}?.' },
+  { pattern: /(^|[\s|;(])(ForEach-Object|%)\s[^\r\n|]*-Parallel\b/i, construct: 'ForEach-Object -Parallel' },
+  { pattern: /\bConvertFrom-Json\b[^\r\n|]*-AsHashtable\b/i, construct: 'ConvertFrom-Json -AsHashtable' },
 ];
 
 export type LintSeverity = 'error' | 'warning';
@@ -379,18 +390,19 @@ export function lintWorkflow(
   }
 
   // ---- runScript: Start-Job / background jobs in the in-process engine -------
-  // The in-process runspace (engine: "auto" or "runspace") runs inside the API process and has
-  // no co-located pwsh.exe, so any cmdlet that internally calls `Start-Job` fails. This is by
+  // The in-process runspace (engine: "runspace") runs inside the API process and has no
+  // co-located pwsh.exe, so any cmdlet that internally calls `Start-Job` fails. This is by
   // design for hosted PowerShell. `-EA SilentlyContinue` hides the error only while transcript
   // wrapping is off, because Start-Transcript bypasses the error-stream interception. The
-  // author either sets engine: "pwsh" or uses a job-free alternative.
+  // author switches to a process engine ("auto" = Windows PowerShell 5.1, or "pwsh") or uses a
+  // job-free alternative. "auto" itself runs in a process and is not affected.
   for (const n of liveNodes) {
     const d = (n.data as Record<string, unknown>) ?? {};
     if ((d.disabled as boolean) === true) continue;
     if ((d.activityType as string) !== 'runScript') continue;
     const cfg = (d.config as Record<string, unknown>) ?? {};
     const engine = ((cfg.engine as string) || 'auto').toLowerCase();
-    if (engine !== 'auto' && engine !== 'runspace') continue;
+    if (engine !== 'runspace') continue;
     const script = (cfg.script as string) || '';
     if (!script) continue;
     const hit = STARTJOB_HOSTED_INCOMPATIBLE.find((p) => p.pattern.test(script));
@@ -400,6 +412,30 @@ export function lintWorkflow(
       nodeId: n.id,
       code: 'startjob-in-runspace',
       message: i18n.t('lint:issues.startJobInRunspace', { label: getLabel(n), cmdlet: hit.cmdletName, engine }),
+    });
+  }
+
+  // ---- runScript / waitForCondition: PowerShell 7 syntax in Windows PowerShell -------
+  for (const n of liveNodes) {
+    const d = (n.data as Record<string, unknown>) ?? {};
+    if ((d.disabled as boolean) === true) continue;
+    const type = d.activityType as string;
+    const cfg = (d.config as Record<string, unknown>) ?? {};
+    if (type === 'waitForCondition') {
+      const conditionType = typeof cfg.conditionType === 'string' ? cfg.conditionType.trim().toLowerCase() : 'script';
+      if (conditionType !== 'script') continue;
+    } else if (type !== 'runScript') continue;
+    const engine = ((typeof cfg.engine === 'string' ? cfg.engine.trim() : '') || 'auto').toLowerCase();
+    if (engine !== 'auto' && engine !== 'powershell') continue;
+    const script = typeof cfg.script === 'string' ? cfg.script : '';
+    if (!script.trim()) continue;
+    const hit = POWERSHELL7_ONLY_SYNTAX.find((p) => p.pattern.test(script));
+    if (!hit) continue;
+    warnings.push({
+      severity: 'warning',
+      nodeId: n.id,
+      code: 'ps7-syntax-in-windows-powershell',
+      message: i18n.t('lint:issues.ps7SyntaxInWindowsPowerShell', { label: getLabel(n), construct: hit.construct, engine }),
     });
   }
 

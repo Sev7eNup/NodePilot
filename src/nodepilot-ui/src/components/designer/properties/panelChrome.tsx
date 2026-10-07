@@ -415,6 +415,27 @@ function compactEditorTheme(fontSize: number) {
 /** Inline CodeMirror wrapper with variable autocomplete on `{{` and the same
  *  picker buttons as VariableInsertField. `onOpenFullscreen` hands off to the
  *  ScriptEditorDialog. */
+/**
+ * `{{…}}` completions for CodeField. closeBrackets has usually inserted `}}` after the cursor
+ * when the user typed `{{`; the replaced range covers those closers so a pick does not end in `}}}}`.
+ */
+export function variableCompletions(
+  ctx: CompletionContext,
+  refs: readonly { expression: string; label: string }[],
+): CompletionResult | null {
+  const match = ctx.matchBefore(/\{\{[\w.-]*/);
+  if (!match) return null;
+  if (match.from === match.to && !ctx.explicit) return null;
+  if (refs.length === 0) return null;
+  const closers = /^\}{1,2}/.exec(ctx.state.sliceDoc(ctx.pos, ctx.pos + 2))?.[0].length ?? 0;
+  return {
+    from: match.from,
+    to: ctx.pos + closers,
+    options: refs.map((v) => ({ label: v.expression, detail: v.label, type: 'variable' })),
+    validFor: /^\{\{[\w.-]*$/,
+  };
+}
+
 export function CodeField({
   language, value, onChange, upstreamVars, upstreamRefs,
   minLines = 12, fontSize = 12, onOpenFullscreen, fullscreenLabel,
@@ -442,17 +463,10 @@ export function CodeField({
 
   // Shape the completion source from the live refs list. Memoised so CodeMirror
   // doesn't tear down/rebuild the autocomplete plugin on every keystroke.
-  const completionSource = useCallback((ctx: CompletionContext): CompletionResult | null => {
-    const match = ctx.matchBefore(/\{\{[\w.-]*/);
-    if (!match) return null;
-    if (match.from === match.to && !ctx.explicit) return null;
-    if (refs.length === 0) return null;
-    return {
-      from: match.from,
-      options: refs.map((v) => ({ label: v.expression, detail: v.label, type: 'variable' })),
-      validFor: /^\{\{[\w.-]*$/,
-    };
-  }, [refs]);
+  const completionSource = useCallback(
+    (ctx: CompletionContext): CompletionResult | null => variableCompletions(ctx, refs),
+    [refs],
+  );
 
   const extensions = useMemo(() => {
     const ext: ReturnType<typeof EditorView.theme>[] = [

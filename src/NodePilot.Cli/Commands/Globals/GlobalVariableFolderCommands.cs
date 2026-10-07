@@ -66,13 +66,13 @@ public sealed class GlobalsFolderCreateCommand : BaseCommand<GlobalsFolderCreate
     {
         if (string.IsNullOrWhiteSpace(settings.Name))
         {
-            writer.Error("--name ist Pflicht.");
+            writer.Error("--name is required.");
             return ExitCodes.Error;
         }
         var api = ClientFactory.Create(session);
         var parentId = await FolderResolver.ResolveAsync(api, settings.Parent, ct);
         var folder = await api.CreateGlobalVariableFolderAsync(new CreateGlobalVariableFolderRequest(parentId, settings.Name), ct);
-        writer.Success($"Ordner angelegt: [bold]{Markup.Escape(folder.Path)}[/].");
+        writer.Success($"Folder created: [bold]{Markup.Escape(folder.Path)}[/].");
         return ExitCodes.Success;
     }
 }
@@ -94,12 +94,12 @@ public sealed class GlobalsFolderRenameCommand : BaseCommand<GlobalsFolderRename
     {
         if (string.IsNullOrWhiteSpace(settings.Name))
         {
-            writer.Error("--name ist Pflicht.");
+            writer.Error("--name is required.");
             return ExitCodes.Error;
         }
         var api = ClientFactory.Create(session);
         await api.RenameGlobalVariableFolderAsync(settings.Id, new UpdateGlobalVariableFolderRequest(settings.Name), ct);
-        writer.Success($"Ordner umbenannt: [bold]{Markup.Escape(settings.Name)}[/].");
+        writer.Success($"Folder renamed: [bold]{Markup.Escape(settings.Name)}[/].");
         return ExitCodes.Success;
     }
 }
@@ -123,7 +123,7 @@ public sealed class GlobalsFolderMoveCommand : BaseCommand<GlobalsFolderMoveSett
         var api = ClientFactory.Create(session);
         var parentId = await FolderResolver.ResolveAsync(api, settings.Parent, ct);
         await api.MoveGlobalVariableFolderAsync(settings.Id, new MoveGlobalVariableFolderRequest(parentId), ct);
-        writer.Success("Ordner verschoben.");
+        writer.Success("Folder moved.");
         return ExitCodes.Success;
     }
 }
@@ -134,11 +134,11 @@ public sealed class GlobalsFolderDeleteSettings : GlobalSettings
     public Guid Id { get; set; }
 
     [CommandOption("--recursive")]
-    [Description("Löscht den Ordner samt Unterordnern und den darin liegenden Variablen.")]
+    [Description("Delete the folder together with its subfolders and the variables in them.")]
     public bool Recursive { get; set; }
 
     [CommandOption("--yes")]
-    [Description("Bestätigt ein --recursive-Löschen ohne Rückfrage (für nicht-interaktive Läufe erforderlich).")]
+    [Description("Confirm a --recursive delete without prompting (required for non-interactive runs).")]
     public bool Yes { get; set; }
 }
 
@@ -152,29 +152,29 @@ public sealed class GlobalsFolderDeleteCommand : BaseCommand<GlobalsFolderDelete
         // folders server-side, so it never destroys anything unattended without an explicit flag.
         if (settings.Recursive && !settings.Yes && Console.IsInputRedirected)
         {
-            writer.Error("Rekursives Löschen ist destruktiv — in nicht-interaktiven Läufen mit --yes bestätigen.");
+            writer.Error("A recursive delete is destructive. Confirm with --yes in non-interactive runs.");
             return ExitCodes.Error;
         }
 
         if (!settings.Yes && !Console.IsInputRedirected)
         {
             var prompt = settings.Recursive
-                ? $"Ordner [red]{settings.Id}[/] samt Unterordnern UND enthaltenen Variablen löschen? (unwiderruflich)"
-                : $"Ordner [red]{settings.Id}[/] wirklich löschen? (muss leer sein)";
+                ? $"Delete folder [red]{settings.Id}[/] with its subfolders AND the variables in them? (cannot be undone)"
+                : $"Delete folder [red]{settings.Id}[/]? (it must be empty)";
             var ok = await AnsiConsole.ConfirmAsync(prompt, defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
 
         var api = ClientFactory.Create(session);
         if (settings.Recursive)
         {
             var result = await api.DeleteGlobalVariableFolderRecursiveAsync(settings.Id, ct);
-            writer.Success($"{result.DeletedFolders} Ordner und {result.DeletedVariables} Variablen gelöscht.");
+            writer.Success($"Deleted {result.DeletedFolders} folder(s) and {result.DeletedVariables} variable(s).");
             return ExitCodes.Success;
         }
 
         await api.DeleteGlobalVariableFolderAsync(settings.Id, ct);
-        writer.Success("Ordner gelöscht.");
+        writer.Success("Folder deleted.");
         return ExitCodes.Success;
     }
 }
@@ -198,7 +198,7 @@ public sealed class GlobalsMoveVariableCommand : BaseCommand<GlobalsMoveVariable
         var api = ClientFactory.Create(session);
         var folderId = await FolderResolver.ResolveAsync(api, settings.Folder, ct) ?? GlobalVariableFolderIds.Root;
         await api.MoveGlobalVariableToFolderAsync(settings.Id, folderId, ct);
-        writer.Success("Variable verschoben.");
+        writer.Success("Variable moved.");
         return ExitCodes.Success;
     }
 }

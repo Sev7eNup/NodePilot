@@ -219,13 +219,23 @@ try {
     Set-RestrictedSettingsAcl -Path $settingsPath -ServiceAccount $svcAccount
     $settingsBytes = [IO.File]::ReadAllBytes($settingsPath)
 
+    # The service refuses to read its JWT key when the data directory grants write access to a
+    # principal it does not trust. Same check and repair as the installer, before anything changes.
+    if (Test-Path -LiteralPath $DataPath -PathType Container) {
+        Assert-ServiceDirectoryAclUsable -Path $DataPath -ServiceAccount $svcAccount `
+            -SkipServiceRule:($svcAccount -eq 'NT AUTHORITY\SYSTEM') -Label "The data directory '$DataPath'"
+    }
+
     # Health-probe port: the installed configuration is authoritative. Probing the 443 parameter
     # default against an installation that listens elsewhere (any host where IIS owns 443, such
     # as SCCM or WSUS) fails the post-restart probe and rolls back a healthy upgrade. An explicit
     # -HttpsPort still wins.
     if (-not $PSBoundParameters.ContainsKey('HttpsPort')) {
         try {
-            $installedSettings = [Text.Encoding]::UTF8.GetString($settingsBytes) | ConvertFrom-Json
+            # UTF-8 configuration written by Windows PowerShell 5.1 commonly has a BOM. The
+            # byte decoder preserves it, while ConvertFrom-Json rejects it as an invalid token.
+            $installedSettings = [Text.Encoding]::UTF8.GetString($settingsBytes).TrimStart([char]0xFEFF) |
+                ConvertFrom-Json
             $httpsSection = $null
             if ($installedSettings.PSObject.Properties.Name -contains 'Kestrel') {
                 $kestrelSection = $installedSettings.Kestrel
@@ -475,6 +485,14 @@ try {
             if ($installTouched) {
                 Write-Host "[update] Rolling back from $backupDir" -ForegroundColor Yellow
                 Stop-ServiceAndVerify -Name $ServiceName
+                # The SCM can report Stopped before the process releases mapped DLLs. Treat the
+                # rollback wipe like the forward update, or an access-denied error leaves a
+                # half-restored installation behind.
+                $rollbackLockers = @(Wait-NodePilotProcessesUnderPath -Path $InstallPath -TimeoutSeconds 30 -Force)
+                if ($rollbackLockers.Count -gt 0) {
+                    $names = ($rollbackLockers | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ', '
+                    throw "Processes still hold files under ${InstallPath} during rollback: $names"
+                }
                 if (Test-Path -LiteralPath $InstallPath) {
                     Get-ChildItem -LiteralPath $InstallPath -Force |
                         Remove-Item -Recurse -Force -ErrorAction Stop

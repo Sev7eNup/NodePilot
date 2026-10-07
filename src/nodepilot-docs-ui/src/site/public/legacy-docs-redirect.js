@@ -5,7 +5,7 @@
 // is still in <head>.
 // The list repeats SITE_ROUTE_SEGMENTS from src/site/router.ts; legacy-redirect.test.ts keeps both equal.
 (function () {
-  var siteRoutes = ['walkthrough', 'product', 'blog', 'impressum', 'datenschutz'];
+  var siteRoutes = ['walkthrough', 'product', 'tutorials', 'blog', 'impressum', 'datenschutz', 'powershell-automation', 'scorch-alternative', 'self-hosted-automation'];
   var languages = ['en', 'de'];
   var renamed = { erleben: 'walkthrough', produkt: 'product', 'warum-nodepilot': 'why-nodepilot' };
   var hash = location.hash;

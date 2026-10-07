@@ -30,6 +30,7 @@ const SHELL = [
   '    <link rel="alternate" hreflang="en" href="https://x.test/docs/en/" />',
   '    <link rel="alternate" hreflang="de" href="https://x.test/docs/de/" />',
   '    <link rel="alternate" hreflang="x-default" href="https://x.test/docs/en/" />',
+  '    <meta name="robots" content="index, follow, max-image-preview:large" />',
   '    <meta name="np-docs-base" content="./" />',
   '    <script src="./legacy-hash-redirect.js"></script>',
   '    <script type="module" src="./assets/index.js"></script>',
@@ -73,9 +74,25 @@ describe('prerenderDocs', () => {
 
   it('gives every page its own title and description', () => {
     const cli = read('en/cli/index.html')
-    expect(cli).toContain('<title>CLI (np) — NodePilot Docs</title>')
+    expect(cli).toContain('<title>CLI (np) — NodePilot Documentation</title>')
     expect(cli).not.toContain('content="shell"')
     expect(read('de/cli/index.html')).toContain('<title>CLI (np) — NodePilot Dokumentation</title>')
+    // Even the shortest navigation title names the product in full, so no title reads as a stub.
+    for (const lang of LANGUAGES) {
+      for (const page of allPages) {
+        const title = read(`${lang}/${page.path}/index.html`).match(/<title>([^<]*)<\/title>/)[1]
+        expect(title.length, `${lang}/${page.path}`).toBeGreaterThanOrEqual(30)
+      }
+    }
+  })
+
+  it('ships the actual chapter with heading anchors and links before JavaScript runs', () => {
+    const page = read('de/getting-started/quickstart/index.html')
+    expect(page).toContain('<h1 id="schnelleinstieg">Schnelleinstieg</h1>')
+    expect(page).toContain('hostInfo')
+    expect(page).toContain('href="../../../de/getting-started/installation/"')
+    expect(page).toContain('"@type":"TechArticle"')
+    expect(page).not.toContain('<div id="root"></div>')
   })
 
   it('points each page at itself and at its translation', () => {
@@ -101,9 +118,15 @@ describe('prerenderDocs', () => {
   })
 
   it('leaves the entry pages out of the index, because they only forward', () => {
-    const entry = read('en/index.html')
-    expect(entry).not.toContain('rel="canonical"')
-    expect(entry).not.toContain('og:url')
+    for (const file of ['en/index.html', 'index.html']) {
+      const entry = read(file)
+      expect(entry).not.toContain('rel="canonical"')
+      expect(entry).not.toContain('og:url')
+      // One robots tag: the shell's own is replaced, not contradicted by a second one.
+      expect(entry.match(/name="robots"/g)).toHaveLength(1)
+      expect(entry).toContain('content="noindex, follow"')
+    }
+    expect(read('en/cli/index.html')).toContain('content="index, follow, max-image-preview:large"')
   })
 
   it('lists every page of every language in the sitemap, and nothing else', () => {

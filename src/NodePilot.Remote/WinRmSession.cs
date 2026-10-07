@@ -89,10 +89,13 @@ public class WinRmSession : IRemoteSession
         if (timeoutSeconds is { } secs && secs > 0)
             cts.CancelAfter(TimeSpan.FromSeconds(secs));
 
+        // Own output buffer: it keeps what the script wrote before a terminating error, which
+        // EndInvoke's return value would lose when it throws.
+        using var results = new PSDataCollection<PSObject>();
         IAsyncResult asyncResult;
         try
         {
-            asyncResult = ps.BeginInvoke();
+            asyncResult = ps.BeginInvoke<PSObject, PSObject>(null, results);
         }
         catch (Exception ex)
         {
@@ -117,7 +120,7 @@ public class WinRmSession : IRemoteSession
 
         try
         {
-            var results = await Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
+            await Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
 
             foreach (var result in results)
                 output.AppendLine(result?.ToString());
@@ -149,7 +152,9 @@ public class WinRmSession : IRemoteSession
                 Duration = sw.Elapsed
             };
         }
-        catch (PipelineStoppedException) when (cts.IsCancellationRequested)
+        // Once our Stop has fired, whatever the pipeline throws is that stop: a remote pipeline
+        // does not always report it as PipelineStoppedException.
+        catch (Exception) when (cts.IsCancellationRequested)
         {
             Volatile.Write(ref _poisoned, 1);
             sw.Stop();
@@ -181,9 +186,13 @@ public class WinRmSession : IRemoteSession
             activity?.SetTag("exception.type", ex.GetType().FullName);
             RemoteMetrics.ScriptDuration.Record(sw.Elapsed.TotalMilliseconds,
                 new KeyValuePair<string, object?>("result", "fail"));
+            // A script that throws still published its output markers before the throw.
+            foreach (var result in results)
+                output.AppendLine(result?.ToString());
             return new RemoteExecutionResult
             {
                 Success = false,
+                Output = output.ToString().TrimEnd(),
                 ErrorOutput = ex.Message,
                 Duration = sw.Elapsed
             };

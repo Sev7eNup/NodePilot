@@ -27,6 +27,9 @@ export const DEMO_USER = {
   role: 'Admin' as const,
 };
 
+/** ExternalIdentity.ActiveDirectoryAuthority: AD users carry this, not a domain name. */
+const AD_AUTHORITY = 'urn:nodepilot:identity:active-directory';
+
 export const DEMO_HOST = {
   machineName: 'NP-DEMO',
   fqdn: 'np-demo.contoso.example',
@@ -258,7 +261,7 @@ export function buildMaintenanceWindows(now: number): DemoMaintenanceWindow[] {
       ...base,
       id: demoId('maintenance-window:patch-night'),
       name: 'Patch night',
-      description: 'No scheduled runs while the monthly patch ring is applied.',
+      description: 'No scheduled runs during the weekly patch window.',
       isEnabled: true,
       mode: 'Blackout',
       scopeKind: 'Folders',
@@ -307,7 +310,7 @@ export function buildUsers(now: number): UserRow[] {
       isActive: true,
       createdAt: iso(-75 * DAY, now),
       provider: 'Ldap',
-      authority: 'contoso.example',
+      authority: AD_AUTHORITY,
     },
     {
       id: demoId('user:bob'),
@@ -316,7 +319,7 @@ export function buildUsers(now: number): UserRow[] {
       isActive: true,
       createdAt: iso(-40 * DAY, now),
       provider: 'Ldap',
-      authority: 'contoso.example',
+      authority: AD_AUTHORITY,
     },
   ];
 }

@@ -69,9 +69,13 @@
   "shortcutsTooltip": "Tastaturkürzel (?)",
   "cancelRunning": "Laufende Ausführung abbrechen",
   "cancelButton": "Abbrechen",
-  "testRun": "Test-Run",
+  "testRun": "Ausführen",
   "debugRun": "Debug-Run — pausiert an Breakpoints",
-  "lintTooltip": "{{errors}} Fehler, {{warnings}} Warnungen",
+  "lintTooltip": "{{errors}}, {{warnings}}",
+  "lintErrors_one": "{{count}} Fehler",
+  "lintErrors_other": "{{count}} Fehler",
+  "lintWarnings_one": "{{count}} Warnung",
+  "lintWarnings_other": "{{count}} Warnungen",
   "machineColoringOn": "Machine-Coloring an — Klick zum Deaktivieren",
   "machineColoringOff": "Nodes nach Ziel-Maschine einfärben",
   "failureHeatmapOn": "Failure-Heatmap an — Klick zum Deaktivieren",
@@ -152,7 +156,7 @@
   },
   "lintPanel": {
     "title": "Workflow-Validierung",
-    "counts": "{{errors}} Fehler · {{warnings}} Warnungen",
+    "counts": "{{errors}} · {{warnings}}",
     "close": "Schließen"
   },
   "prePublish": {
@@ -182,6 +186,9 @@
     "swap": "Quelle ↔ Ziel tauschen",
     "addControlPoints": "Form anpassen",
     "detachTarget": "Ziel lösen"
+  },
+  "connection": {
+    "duplicate": "Diese Verbindung existiert bereits. Bearbeite die bestehende Edge oder passe deren Bedingung an."
   },
   "edgeDetach": {
     "hint": "„{{edge}}\" hängt am Cursor — klicke den Ziel-Node an. Esc bricht ab.",
@@ -423,7 +430,7 @@
     "rollbackFailed": "Rollback fehlgeschlagen",
     "restoring": "Stelle wieder her...",
     "restoreVersion": "v{{version}} wiederherstellen",
-    "compareAgainst": "Aktuellen Entwurf vergleichen mit...",
+    "compareAgainst": "Aktuellen Workflow vergleichen mit...",
     "version": "Version {{version}}",
     "pickVersion": "Wähle links eine Version, um den Diff zu sehen",
     "noHistory": "Keine History — dieser Workflow wurde noch nicht editiert.",
@@ -541,7 +548,7 @@
     "origTitle": "Originallayout wiederherstellen",
     "origSubtitle": "Zum Layout vor dem ersten Auto-Anordnen zurückkehren",
     "diffTitle": "Diff gegen Version…",
-    "diffSubtitle": "Aktuellen Entwurf mit einer früheren Version vergleichen",
+    "diffSubtitle": "Aktuellen Workflow mit einer früheren Version vergleichen",
     "simClearTitle": "Dry-Run-Simulation aufheben",
     "simRunTitle": "Dry-Run-Simulation starten",
     "simClearSubtitle": "Erreichbar/Übersprungen-Hervorhebungen zurücksetzen",

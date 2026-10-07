@@ -115,7 +115,8 @@ public sealed class ConfigStoreTests : IDisposable
         var resolved = store.ResolveTlsThumbprint(null, "default", "https://other.example", cfg);
 
         resolved.Value.Should().BeNull();
-        resolved.IgnoredReason.Should().Contain("https://np.example");
+        resolved.IgnoredReason.Should().Be(
+            "Ignored the profile pin: it belongs to https://np.example, not https://other.example.");
     }
 
     [Fact]
@@ -125,7 +126,8 @@ public sealed class ConfigStoreTests : IDisposable
 
         var act = () => store.ResolveTlsThumbprint(new string('A', 40), "default", "https://np.example", new CliConfig());
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*SHA-256*");
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("--tls-thumbprint expects a SHA-256 fingerprint (64 hex characters), but got the SHA-1 thumbprint*");
     }
 
     [Fact]
@@ -137,7 +139,8 @@ public sealed class ConfigStoreTests : IDisposable
 
         var act = () => store.ResolveTlsThumbprint(null, "default", "https://np.example", cfg);
 
-        act.Should().Throw<InvalidOperationException>();
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("The TLS pin in * is not a SHA-256 fingerprint (expected 64 hex characters).");
     }
 
     [Fact]

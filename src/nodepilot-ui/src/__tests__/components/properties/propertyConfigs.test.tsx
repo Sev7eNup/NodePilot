@@ -36,7 +36,31 @@ describe('RunScriptConfig', () => {
     wrap(<RunScriptConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
 
     // Engine select defaults to "auto" — visible label as option text.
-    expect(screen.getByText('Auto (PS7 → PS5.1)')).toBeInTheDocument();
+    expect(screen.getByText('Default – Windows PowerShell 5.1 (same as remote)')).toBeInTheDocument();
+  });
+
+  it('engineSelect_offersTheInProcessEngine', () => {
+    wrap(<RunScriptConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
+
+    const values = Array.from((screen.getByRole('combobox') as HTMLSelectElement).options).map((o) => o.value);
+    expect(values).toEqual(['auto', 'pwsh', 'powershell', 'runspace']);
+  });
+
+  it('engineSelect_runspaceWhileIsolated_turnsIsolationOffInTheSamePatch', () => {
+    const onUpdate = vi.fn();
+    wrap(<RunScriptConfig config={{ engine: 'auto', isolated: true }} onUpdate={onUpdate} upstreamVars={[]} />);
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'runspace' } });
+
+    expect(onUpdate).toHaveBeenCalledWith({ engine: 'runspace', isolated: false });
+  });
+
+  it('isolatedCheckbox_disabledForTheInProcessEngine', () => {
+    wrap(<RunScriptConfig config={{ engine: 'runspace' }} onUpdate={vi.fn()} upstreamVars={[]} />);
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Process isolation' }) as HTMLInputElement;
+    expect(checkbox.disabled).toBe(true);
+    expect(screen.getByText('In-process runs inside the NodePilot process itself and cannot be isolated.')).toBeInTheDocument();
   });
 
   it('engineSelect_changesEmitPartialPatch', () => {

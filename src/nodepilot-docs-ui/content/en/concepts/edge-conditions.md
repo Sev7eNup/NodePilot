@@ -1,6 +1,6 @@
 # Edge conditions
 
-An edge connects two nodes. A condition determines when the target node is executed.
+An edge connects two nodes. A condition determines when the target node is executed: on success, on failure, always, or after comparing values.
 
 ## Setting a condition
 

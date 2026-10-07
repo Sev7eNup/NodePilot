@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { buildTraceUrl, useObservabilityConfig } from '../api/observability';
 import { formatDate, formatDuration, formatRelative } from '../lib/format';
 import { parseOutputParametersJson } from '../lib/outputParameters';
+import { rawStatusLabelKey } from '../lib/statusTokens';
 import { useRole } from '../lib/rbac';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { toast } from '../stores/toastStore';
@@ -65,8 +66,8 @@ export function ExecutionsPage() {
   const isMobile = useIsMobile();
   const [searchParams] = useSearchParams();
   // Dashboard's "Recent runs" navigates here with `?id=<execId>` so the matching row
-  // expands and scrolls into view. Initial render reads the param once; manual toggling
-  // afterwards still works because expandedId is plain state.
+  // expands and scrolls into view. Follow a changed deep link while keeping manual
+  // expansion and filtering independent between navigations.
   const [expandedId, setExpandedId] = useState<string | null>(() => searchParams.get('id'));
   const initialIdRef = useRef<string | null>(searchParams.get('id'));
 
@@ -83,6 +84,17 @@ export function ExecutionsPage() {
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState<ColKey>('started');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const requestedExecutionId = searchParams.get('id');
+  useEffect(() => {
+    if (!requestedExecutionId) return;
+    initialIdRef.current = requestedExecutionId;
+    setExpandedId(requestedExecutionId);
+    setSearch(requestedExecutionId);
+    setDebouncedSearch(requestedExecutionId);
+    setStatusFilter('all');
+    setWorkflowFilter('all');
+    setPage(1);
+  }, [requestedExecutionId]);
 
   useEffect(() => {
     const timer = globalThis.setTimeout(() => {
@@ -803,6 +815,11 @@ function ExecutionDetail({ execution, steps, traceUrl, traceBackendName }: Reado
     Cancelled: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
     Skipped: 'bg-surface-container text-on-surface-variant',
   };
+  // Same labels as the row badge; unknown statuses show the raw value.
+  const stepStatusLabel = (status: string) => {
+    const key = rawStatusLabelKey(status);
+    return key ? t(`executions:status.${key}`) : status;
+  };
 
   return (
     <div className="border-t border-outline-variant/15 bg-surface-low/30 px-4 pb-4">
@@ -844,7 +861,7 @@ function ExecutionDetail({ execution, steps, traceUrl, traceBackendName }: Reado
               const hasOutput = Boolean(step.errorOutput || step.output || step.traceOutput || outputParametersJsonText);
 
               return (
-                <tr key={step.id} className="border-t border-outline/40">
+                <tr key={step.id} data-step-id={step.stepId} className="border-t border-outline/40">
                   <td className="py-2 align-top">
                     <span className="font-mono text-xs text-on-surface">{step.stepId}</span>
                     {step.stepName && step.stepName !== step.stepId && (
@@ -854,7 +871,7 @@ function ExecutionDetail({ execution, steps, traceUrl, traceBackendName }: Reado
                   <td className="py-2 text-on-surface-variant align-top">{step.stepType}</td>
                   <td className="py-2 align-top">
                     <span className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-semibold ${statusColors[step.status] ?? 'bg-surface-high text-on-surface-variant'}`}>
-                      {step.status}
+                      {stepStatusLabel(step.status)}
                     </span>
                   </td>
                   <td className="py-2 text-xs max-w-md space-y-1.5 align-top">

@@ -760,12 +760,12 @@ Assert-TextMatches -Name 'that verification runs before the artifact is extracte
     -Text $installerScript `
     -Pattern '(?s)Assert-ServiceDirectoryAclUsable -Path \$DataPath[\s\S]{0,4000}Write-Step "Extracting artifact"'
 # Repair-then-recheck, not repair-and-hope: the second verdict is what decides.
-$assertFunctionStart = $installerScript.IndexOf('function Assert-ServiceDirectoryAclUsable')
-$assertFunctionEnd = $installerScript.IndexOf('function Assert-SafeInstallRoot', $assertFunctionStart)
+$assertFunctionStart = $artifactSecurityRaw.IndexOf('function Assert-ServiceDirectoryAclUsable')
+$assertFunctionEnd = $artifactSecurityRaw.IndexOf('function Assert-NodePilotInstallRootHardened', $assertFunctionStart)
 if ($assertFunctionStart -lt 0 -or $assertFunctionEnd -le $assertFunctionStart) {
-    throw 'Deployment template check failed: could not delimit Assert-ServiceDirectoryAclUsable in the installer.'
+    throw 'Deployment template check failed: could not delimit Assert-ServiceDirectoryAclUsable in ArtifactSecurity.ps1.'
 }
-$assertFunction = $installerScript.Substring($assertFunctionStart, $assertFunctionEnd - $assertFunctionStart)
+$assertFunction = $artifactSecurityRaw.Substring($assertFunctionStart, $assertFunctionEnd - $assertFunctionStart)
 Assert-TextMatches -Name 'the ACL repair is re-verified and gives up loudly' `
     -Text $assertFunction `
     -Pattern '(?s)Set-DirectoryAclForService[\s\S]{0,600}Test-ServiceDirectoryAclTrust[\s\S]{0,600}throw'
@@ -773,9 +773,16 @@ Assert-TextMatches -Name 'the ACL repair is re-verified and gives up loudly' `
 # blesses a directory the service then rejects - the exact failure this whole check exists for.
 foreach ($trustedSid in @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-0', 'S-1-3-4')) {
     Assert-TextMatches -Name "the installer's trusted set carries $trustedSid, like the API's" `
-        -Text $installerScript `
+        -Text $artifactSecurityRaw `
         -Pattern ([regex]::Escape($trustedSid))
 }
+
+# The updater is the other route onto a host with a stale ACE, and it used to repair only the
+# install directory. It has to run the same check on the data directory, before it extracts or
+# stops anything.
+Assert-TextMatches -Name 'the updater verifies the data directory before it extracts the artifact' `
+    -Text $updateScript `
+    -Pattern '(?s)Assert-ServiceDirectoryAclUsable -Path \$DataPath[\s\S]{0,6000}Write-Step ''Extracting artifact'''
 
 # The privileged service image directory must reject untrusted writes. Validate its location,
 # apply a protected DACL, and verify it after copying files.
@@ -1306,6 +1313,17 @@ Assert-TextMatches -Name 'the remediation area cannot be typed into' `
     -Text $readinessPageCode -Pattern 'RemediationBox\.ReadOnly := True'
 Assert-TextMatches -Name 'the remediation area can reach text taller than itself' `
     -Text $readinessPageCode -Pattern 'RemediationBox\.ScrollBars := ssVertical'
+# The page does not scroll: when the rows do not fit, passing/warning rows are cut to one line and
+# the full text moves into the instructions box instead of rows vanishing behind it.
+Assert-TextMatches -Name 'rows are shortened when they do not fit the page' `
+    -Text $serverIss -Pattern '(?s)procedure ApplyRowDensity.*?CheckLabels\[I\]\.WordWrap := False'
+Assert-TextMatches -Name 'a shortened row shows its full text when selected' `
+    -Text $serverIss -Pattern '(?s)if CheckCompact\[Index\] then\s+RemediationText := CheckLabels\[Index\]\.Caption'
+# With many failing rows, cutting the other rows is not enough; failing rows are cut last.
+Assert-TextMatches -Name 'failing rows are shortened as the last step' `
+    -Text $serverIss -Pattern '(?s)procedure ApplyRowDensity.*?or \(Level >= 3\)'
+Assert-TextMatches -Name 'the layout reaches the failing-row step' `
+    -Text $serverIss -Pattern 'while \(Level < 3\) and'
 
 # --- certificate picker ---------------------------------------------------------------------------
 # The thumbprint of a certificate already installed on the machine is otherwise only reachable

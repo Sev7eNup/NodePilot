@@ -349,7 +349,102 @@ try {
         Write-Host '  OK  an untrusted install-root ACE is repaired and re-checked' -ForegroundColor DarkGray
     }
 
-    Write-Host 'Artifact security checks passed (manifest, tamper detection, staging ACL, atomic file ACL and signature verification).' -ForegroundColor Green
+    # The data directory holds the JWT key, and the service refuses to read it when the directory
+    # grants write access to a principal it does not trust. Both the installer and the updater run
+    # this check, so it is tested here once, against real ACLs.
+    function Write-Warn { param([string]$Text) }
+    function Write-Info { param([string]$Text) }
+    function New-DataDirectory {
+        param([Parameter(Mandatory)][string]$Name, [object[]]$ExtraRule = @())
+        $path = Join-Path $testRoot $Name
+        New-Item -ItemType Directory -Path $path -Force | Out-Null
+        $acl = Get-Acl -LiteralPath $path
+        $acl.SetAccessRuleProtection($true, $false)
+        foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
+        # The service also rejects a directory whose owner it does not trust.
+        $acl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
+        foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
+            $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+                (New-Object System.Security.Principal.SecurityIdentifier($sid)),
+                'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+        }
+        foreach ($rule in $ExtraRule) { $acl.AddAccessRule($rule) }
+        Set-Acl -LiteralPath $path -AclObject $acl
+        return $path
+    }
+    function New-UserRule {
+        param([Parameter(Mandatory)][string]$Rights)
+        return New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $me.User, $Rights, 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+    }
+    function Test-UserAceRemains {
+        param([Parameter(Mandatory)][string]$Path)
+        foreach ($rule in @((Get-Acl -LiteralPath $Path).Access)) {
+            if ($rule.IdentityReference.Translate(
+                    [System.Security.Principal.SecurityIdentifier]).Value -eq $me.User.Value) { return $true }
+        }
+        return $false
+    }
+
+    if (-not $elevated) {
+        Write-Host '  SKIP data-directory checks (setting the owner to Administrators needs elevation)' -ForegroundColor DarkGray
+    } else {
+        $cleanData = New-DataDirectory -Name 'data-clean'
+        $cleanVerdict = Test-ServiceDirectoryAclTrust -Path $cleanData -ServiceAccount 'NT AUTHORITY\SYSTEM' -SkipServiceRule
+        if (-not $cleanVerdict.IsSecure) {
+            throw "A data directory holding only SYSTEM and Administrators was rejected: $($cleanVerdict.Reason)"
+        }
+        Write-Host '  OK  a data directory with only trusted principals is accepted' -ForegroundColor DarkGray
+
+        $leftoverData = New-DataDirectory -Name 'data-leftover' -ExtraRule @(New-UserRule -Rights 'Modify')
+        $leftoverVerdict = Test-ServiceDirectoryAclTrust -Path $leftoverData -ServiceAccount 'NT AUTHORITY\SYSTEM' -SkipServiceRule
+        if ($leftoverVerdict.IsSecure) {
+            throw 'A data directory granting Modify to an untrusted account was accepted.'
+        }
+        if ($leftoverVerdict.Reason -notlike "*$($me.User.Value)*") {
+            throw "The verdict does not name the offending account, so an operator cannot remove it: $($leftoverVerdict.Reason)"
+        }
+        Write-Host '  OK  an untrusted write ACE on the data directory is rejected and named' -ForegroundColor DarkGray
+
+        $readOnlyData = New-DataDirectory -Name 'data-readonly' -ExtraRule @(New-UserRule -Rights 'ReadAndExecute')
+        if (-not (Test-ServiceDirectoryAclTrust -Path $readOnlyData -ServiceAccount 'NT AUTHORITY\SYSTEM' -SkipServiceRule).IsSecure) {
+            throw 'A read-only ACE for another account was rejected; only write rights make a principal untrusted.'
+        }
+        Write-Host '  OK  a read-only ACE on the data directory is accepted' -ForegroundColor DarkGray
+
+        Assert-ServiceDirectoryAclUsable -Path $leftoverData -ServiceAccount 'NT AUTHORITY\SYSTEM' `
+            -SkipServiceRule -Label 'The data directory'
+        if (Test-UserAceRemains -Path $leftoverData) {
+            throw 'The repair left the untrusted ACE on the data directory.'
+        }
+        if (-not (Test-ServiceDirectoryAclTrust -Path $leftoverData -ServiceAccount 'NT AUTHORITY\SYSTEM' -SkipServiceRule).IsSecure) {
+            throw 'The repaired data directory is still rejected by the service rule.'
+        }
+        Write-Host '  OK  an untrusted data-directory ACE is repaired and re-checked' -ForegroundColor DarkGray
+
+        # A directory that is already fine must come out the way it went in.
+        $beforeSddl = (Get-Acl -LiteralPath $cleanData).Sddl
+        Assert-ServiceDirectoryAclUsable -Path $cleanData -ServiceAccount 'NT AUTHORITY\SYSTEM' `
+            -SkipServiceRule -Label 'The data directory'
+        if ((Get-Acl -LiteralPath $cleanData).Sddl -ne $beforeSddl) {
+            throw 'The check rewrote the ACL of a data directory that needed no repair.'
+        }
+        Write-Host '  OK  a sound data directory is left untouched' -ForegroundColor DarkGray
+
+        # A service account that does not resolve must stop the update, not pass it.
+        $orphanData = New-DataDirectory -Name 'data-orphan'
+        $gaveUp = $false
+        try {
+            Assert-ServiceDirectoryAclUsable -Path $orphanData -ServiceAccount 'NODEPILOT-TEST\no-such-account$' `
+                -Label 'The data directory'
+        } catch { $gaveUp = $true }
+        if (-not $gaveUp) {
+            throw 'An unresolvable service account was accepted for the data directory.'
+        }
+        Write-Host '  OK  an unresolvable service account stops the check instead of passing it' -ForegroundColor DarkGray
+    }
+
+    Write-Host 'Artifact security checks passed (manifest, tamper detection, staging ACL, atomic file ACL, signature verification and directory ACL repair).' -ForegroundColor Green
 }
 finally {
     if ($stagingPath -and (Test-Path -LiteralPath $stagingPath)) {

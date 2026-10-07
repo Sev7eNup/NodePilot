@@ -628,7 +628,7 @@ function WorkflowsCell({
   count, t,
 }: Readonly<{ count: number; t: (k: string, opts?: Record<string, unknown>) => string }>) {
   if (count === 0) {
-    return <span className="text-xs text-outline" title={t('machines:workflowsZeroTitle')}>{t('common:dash')}</span>;
+    return <span className="text-xs text-outline" title={t('machines:workflowsZeroTitle')}>0</span>;
   }
   return (
     <div

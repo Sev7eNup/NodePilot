@@ -430,10 +430,16 @@ export function CustomActivitiesPage() {
               <Labeled label={t('customActivities:fields.engine')}>
                 {/* `bg-surface-lowest` like the Globals folder picker: a native select paints its
                     own closed-state background and would otherwise stay UA-grey on a light skin. */}
-                <select value={form.engine} onChange={(e) => setForm({ ...form, engine: e.target.value })} className={`${FIELD} w-full bg-surface-lowest`}>
-                  <option value="auto">Auto (PS7 → PS5.1)</option>
-                  <option value="pwsh">PowerShell 7</option>
-                  <option value="powershell">Windows PS 5.1</option>
+                {/* The in-process pool cannot be isolated (the backend rejects it), so picking it clears isolation. */}
+                <select
+                  value={form.engine}
+                  onChange={(e) => setForm({ ...form, engine: e.target.value, isolated: e.target.value === 'runspace' ? false : form.isolated })}
+                  className={`${FIELD} w-full bg-surface-lowest`}
+                >
+                  <option value="auto">{t('customActivities:fields.engineAuto')}</option>
+                  <option value="pwsh">{t('customActivities:fields.enginePwsh')}</option>
+                  <option value="powershell">{t('customActivities:fields.enginePowerShell')}</option>
+                  <option value="runspace">{t('customActivities:fields.engineRunspace')}</option>
                 </select>
               </Labeled>
               <Labeled label={t('customActivities:fields.defaultTimeout')}>
@@ -446,8 +452,11 @@ export function CustomActivitiesPage() {
                 <input type="checkbox" className="rounded" checked={form.runsRemote} onChange={(e) => setForm({ ...form, runsRemote: e.target.checked })} /> {t('customActivities:fields.runsRemote')}
               </label>
               <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer">
-                <input type="checkbox" className="rounded" checked={form.isolated} onChange={(e) => setForm({ ...form, isolated: e.target.checked })} /> {t('customActivities:fields.isolated')}
+                <input type="checkbox" className="rounded" checked={form.isolated} disabled={form.engine === 'runspace'} onChange={(e) => setForm({ ...form, isolated: e.target.checked })} /> {t('customActivities:fields.isolated')}
               </label>
+              {form.engine === 'runspace' && (
+                <p className="text-xs text-on-surface-variant w-full">{t('customActivities:fields.runspaceIsolatedHint')}</p>
+              )}
               <Labeled label={t('customActivities:fields.successExitCodes')}>
                 <input value={form.successExitCodes} onChange={(e) => setForm({ ...form, successExitCodes: e.target.value })} placeholder="0,1" className={`${FIELD} w-28 font-mono`} />
               </Labeled>

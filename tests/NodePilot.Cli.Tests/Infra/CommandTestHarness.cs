@@ -20,7 +20,7 @@ namespace NodePilot.Cli.Tests.Infra;
 /// — the same method <c>Program.cs</c> calls — so any new <c>np</c> verb is reachable from
 /// tests without a parallel registration to keep in sync.</para>
 /// </summary>
-public sealed class CommandTestHarness : IDisposable
+public sealed partial class CommandTestHarness : IDisposable
 {
     private readonly bool _autoAllowInsecure;
     public WireMockServer Server { get; }
@@ -117,9 +117,16 @@ public sealed class CommandTestHarness : IDisposable
 
         return new RunResult(
             inner.ExitCode,
-            inner.Output + stdoutCapture.ToString(),
-            stderrCapture.ToString());
+            StripAnsi(inner.Output + stdoutCapture.ToString()),
+            StripAnsi(stderrCapture.ToString()));
     }
+
+    // Spectre turns ANSI on when it detects a CI runner such as GitHub Actions, so markup like
+    // [bold] would put escape codes between the words the tests assert on.
+    private static string StripAnsi(string text) => AnsiEscape().Replace(text, "");
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\x1B\[[0-9;?]*[A-Za-z]")]
+    private static partial System.Text.RegularExpressions.Regex AnsiEscape();
 }
 
 /// <summary>

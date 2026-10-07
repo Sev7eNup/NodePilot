@@ -10,7 +10,7 @@ const signalRMock = vi.hoisted(() => ({
   handlers: {} as Record<string, ((payload: unknown) => void)[]>,
   connection: null as { stop: ReturnType<typeof vi.fn>; invoke: ReturnType<typeof vi.fn> } | null,
 }));
-const toPngMock = vi.hoisted(() => vi.fn(() => Promise.resolve('data:image/png;base64,')));
+const toBlobMock = vi.hoisted(() => vi.fn(() => Promise.resolve(new Blob(['png'], { type: 'image/png' }))));
 const autoLayoutElkMock = vi.hoisted(() => vi.fn());
 
 // Mock SignalR before the page imports it - the editor opens a hub connection on mount
@@ -41,7 +41,7 @@ vi.mock('@microsoft/signalr', () => {
 // `html-to-image` (used by the PNG-export button) tries to read CSS that jsdom doesn't
 // provide. The button is never clicked during smoke tests, but the static import must
 // not blow up at module-load time.
-vi.mock('html-to-image', () => ({ toPng: toPngMock }));
+vi.mock('html-to-image', () => ({ toBlob: toBlobMock }));
 
 // Real lint, wrapped so tests can count how often the editor runs it. It walks every edge
 // against every node, so it must not run per frame of a drag.
@@ -182,7 +182,7 @@ beforeEach(() => {
   signalRMock.connection = null;
   useDesignStore.setState({ designerMode: 'expert' });
   useToastStore.setState({ toasts: [] });
-  toPngMock.mockReset().mockResolvedValue('data:image/png;base64,');
+  toBlobMock.mockReset().mockResolvedValue(new Blob(['png'], { type: 'image/png' }));
   autoLayoutElkMock.mockReset();
 });
 
@@ -287,7 +287,7 @@ describe('WorkflowEditorPage — smoke + toolbar', () => {
   it('renders Test and Debug execution buttons for an Admin user', async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Debug/ })).toBeInTheDocument();
     });
   });
@@ -363,7 +363,7 @@ describe('WorkflowEditorPage — RBAC', () => {
   it('Operator sees Test + Save + Publish (same edit affordances as Admin)', async () => {
     renderPage('Operator');
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument();
       expect(screen.getByTitle(/Save in place|Zwischen-Speichern/i)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Republish|Publish/ })).toBeInTheDocument();
     });
@@ -453,19 +453,39 @@ describe('WorkflowEditorPage — Workflow data variations', () => {
   });
 
   it('does not download a PNG rendered for the previous authentication context', async () => {
-    let finishRender!: (dataUrl: string) => void;
-    toPngMock.mockReturnValue(new Promise<string>((resolve) => { finishRender = resolve; }));
+    let finishRender!: (blob: Blob) => void;
+    toBlobMock.mockReturnValue(new Promise<Blob>((resolve) => { finishRender = resolve; }));
     const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     renderPage();
     await waitForCanvasReady();
     await openToolsMenu();
 
     fireEvent.click(screen.getByTitle('Export as PNG'));
-    await waitFor(() => expect(toPngMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(toBlobMock).toHaveBeenCalledTimes(1));
     clearLocalAuthBoundary();
-    await act(async () => { finishRender('data:image/png;base64,user-a'); });
+    await act(async () => { finishRender(new Blob(['user-a'], { type: 'image/png' })); });
 
     expect(anchorClick).not.toHaveBeenCalled();
+  });
+
+  it('downloads PNG through a blob URL accepted by the desktop shell', async () => {
+    const blob = new Blob(['png'], { type: 'image/png' });
+    toBlobMock.mockResolvedValue(blob);
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:https://localhost:47000/test');
+    const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.href).toBe('blob:https://localhost:47000/test');
+      expect(this.download).toBe('Smoke Workflow.png');
+    });
+    renderPage();
+    await waitForCanvasReady();
+    await openToolsMenu();
+
+    fireEvent.click(screen.getByTitle('Export as PNG'));
+
+    await waitFor(() => expect(anchorClick).toHaveBeenCalledTimes(1));
+    expect(createUrl).toHaveBeenCalledWith(blob);
+    expect(revokeUrl).toHaveBeenCalledWith('blob:https://localhost:47000/test');
   });
 });
 
@@ -960,10 +980,10 @@ describe('WorkflowEditorPage — Replay banner', () => {
       }, { status: 202 })),
     );
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument());
 
     await waitForCanvasReady();
-    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
     await waitFor(() => expect(signalRMock.connection?.invoke).toHaveBeenCalledWith('JoinWorkflow', 'wf-smoke-1'));
 
     act(() => {
@@ -1040,10 +1060,10 @@ describe('WorkflowEditorPage — Replay banner', () => {
 
     // Phase 1 — real timers: render and click Test so MSW / React Query play nicely.
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument());
 
     await waitForCanvasReady();
-    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
     await waitFor(() =>
       expect(signalRMock.connection?.invoke).toHaveBeenCalledWith('JoinWorkflow', 'wf-smoke-1'),
     );
@@ -1147,10 +1167,10 @@ describe('WorkflowEditorPage — Lock-State Banners', () => {
     await waitFor(() => expect(screen.getByText(/You are editing/i)).toBeInTheDocument());
   });
 
-  it('Unlocked + productive workflow shows yellow "running productive" banner', async () => {
+  it('Unlocked + productive workflow shows yellow "is live" banner', async () => {
     server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_PRODUCTIVE)));
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByText(/running productive/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/workflow is live/i)).toBeInTheDocument());
   });
 
   it('Unlocked + disabled workflow shows yellow "Workflow is disabled" banner', async () => {
@@ -1694,10 +1714,10 @@ describe('WorkflowEditorPage — RunWorkflowDialog (manualTrigger params)', () =
       http.get(/\/api\/executions\?workflowId/, () => HttpResponse.json([])),
     );
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument());
 
     await waitForCanvasReady();
-    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
 
     // RunWorkflowDialog renders the trigger title + parameter inputs.
     await waitFor(() => expect(screen.getByText(/Run with params/)).toBeInTheDocument());
@@ -1721,10 +1741,10 @@ describe('WorkflowEditorPage — RunWorkflowDialog (manualTrigger params)', () =
       }),
     );
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument());
 
     await waitForCanvasReady();
-    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
 
     await waitFor(() => expect(executeCalled).toBe(true));
     expect(putCalled).toBe(false);
@@ -1738,10 +1758,10 @@ describe('WorkflowEditorPage — RunWorkflowDialog (manualTrigger params)', () =
     server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(wfLockedDisabled)));
 
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument());
 
     await waitForCanvasReady();
-    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
 
     await waitFor(() =>
       expect(useToastStore.getState().toasts.some((toast) => /disabled/i.test(toast.message))).toBe(true));
@@ -1852,11 +1872,11 @@ describe('WorkflowEditorPage — characterization (autosave + run + unload)', ()
       http.get(/\/api\/executions\?workflowId/, () => HttpResponse.json([])),
     );
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument());
 
     await waitForCanvasReady();
     fireEvent.change(screen.getByDisplayValue('Smoke Workflow'), { target: { value: 'Renamed' } });
-    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
 
     await waitFor(() => expect(order).toEqual(['put', 'execute']));
   });
@@ -1874,7 +1894,7 @@ describe('WorkflowEditorPage — characterization (autosave + run + unload)', ()
       http.get(/\/api\/executions\?workflowId/, () => HttpResponse.json([])),
     );
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument());
 
     await waitForCanvasReady();
     fireEvent.change(screen.getByDisplayValue('Smoke Workflow'), { target: { value: 'Renamed' } });
@@ -1893,11 +1913,11 @@ describe('WorkflowEditorPage — characterization (autosave + run + unload)', ()
       http.get(/\/api\/executions\?workflowId/, () => HttpResponse.json([])),
     );
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument());
 
     await waitForCanvasReady();
     fireEvent.change(screen.getByDisplayValue('Smoke Workflow'), { target: { value: 'Renamed' } });
-    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
 
     await waitFor(() =>
       expect(useToastStore.getState().toasts.some((toast) => toast.kind === 'error')).toBe(true));
@@ -2048,9 +2068,9 @@ describe('WorkflowEditorPage — run-dialog prefill from the last run', () => {
 
   async function openRunDialog() {
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Run$/ })).toBeInTheDocument());
     await waitForCanvasReady();
-    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
     await waitFor(() => expect(screen.getByText(/Run with params/)).toBeInTheDocument());
   }
 

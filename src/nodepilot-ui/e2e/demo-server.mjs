@@ -1,10 +1,8 @@
 /**
  * Static server for the demo smoke test.
  *
- * It serves `dist-demo` under a sub-path rather than at the root, because that is where the
- * failures live: `base: './'` does not rewrite URLs held in JavaScript strings, so a
- * root-absolute literal works at the root and breaks everywhere else. Testing at the root
- * would pass while the published site is broken.
+ * Serves the built demo under /demo/ with the same page fallback as Apache.
+ * Asset misses remain 404 so deep-link tests detect an incorrect asset base.
  */
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -12,7 +10,7 @@ import { extname, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)), 'dist-demo')
-const PREFIX = '/NodePilot/demo'
+const PREFIX = '/demo'
 const PORT = Number(process.env.DEMO_PORT ?? 4180)
 
 const TYPES = {
@@ -30,19 +28,23 @@ const server = createServer((request, response) => {
   const { pathname } = new URL(request.url, `http://localhost:${PORT}`)
 
   // A sibling of the demo, so the in-app documentation link has somewhere real to point.
-  if (pathname === '/NodePilot/docs/' || pathname === '/NodePilot/docs') {
+  if (pathname === '/docs/' || pathname === '/docs') {
     response.writeHead(200, { 'content-type': TYPES['.html'] })
     response.end('<!doctype html><title>Docs</title><h1>Documentation</h1>')
     return
   }
 
-  if (!pathname.startsWith(PREFIX)) {
+  if (pathname !== PREFIX && !pathname.startsWith(`${PREFIX}/`)) {
     response.writeHead(404).end('not found')
     return
   }
 
   const relative = pathname.slice(PREFIX.length) || '/'
-  const candidate = join(ROOT, normalize(relative === '/' ? '/index.html' : relative))
+  let candidate = join(ROOT, normalize(relative === '/' ? '/index.html' : relative))
+  // Mirrors the Apache demo fallback: asset misses never receive the HTML shell.
+  if (!existsSync(candidate) && !relative.includes('.') && !relative.startsWith('/assets/')) {
+    candidate = join(ROOT, 'index.html')
+  }
   if (!candidate.startsWith(ROOT) || !existsSync(candidate) || !statSync(candidate).isFile()) {
     response.writeHead(404).end('not found')
     return

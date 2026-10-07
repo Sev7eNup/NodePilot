@@ -132,6 +132,11 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
     internal static bool IsModuleLoadRace(string? error) =>
         error is not null && error.Contains("Collection was modified", StringComparison.OrdinalIgnoreCase);
 
+    // Stop() cannot interrupt a blocking .NET call inside the script, and on a RunspacePool-backed
+    // BeginInvoke it can occasionally never take effect at all (e.g. PowerShell/PowerShell#17250).
+    // After cancellation, the caller waits at most this long before the pipeline is abandoned.
+    internal TimeSpan StopGracePeriod { get; init; } = TimeSpan.FromSeconds(60);
+
     private async Task<PowerShellExecutionResult> ExecuteOnceAsync(PowerShellExecutionRequest request, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
@@ -140,7 +145,11 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
         var warnings = new StringBuilder();
         var verbose = new StringBuilder();
 
-        using var ps = System.Management.Automation.PowerShell.Create();
+        if (ct.IsCancellationRequested)
+            throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+
+        // ps and results are disposed by hand: an abandoned pipeline may still be writing to them.
+        var ps = System.Management.Automation.PowerShell.Create();
         ps.RunspacePool = _pool;
         ps.AddScript(PowerShellScriptWrapper.Wrap(request.ScriptText, request.Parameters, _logger, request.OutputCaptureAllowlist));
 
@@ -148,19 +157,20 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
         if (request.Timeout is { } configuredTimeout)
             cts.CancelAfter(configuredTimeout);
 
-        if (ct.IsCancellationRequested)
-            throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
-
         // BeginInvoke queues work without parking a ThreadPool worker. Stop can complete a
         // queued invocation without throwing, so both EndInvoke and the terminal state matter.
+        // Own output buffer: it keeps what the script wrote before a terminating error.
+        var results = new PSDataCollection<PSObject>();
         IAsyncResult asyncResult;
         try
         {
-            asyncResult = ps.BeginInvoke();
+            asyncResult = ps.BeginInvoke<PSObject, PSObject>(null, results);
         }
         catch (Exception ex)
         {
             sw.Stop();
+            ps.Dispose();
+            results.Dispose();
             return new PowerShellExecutionResult
             {
                 Success = false,
@@ -170,14 +180,24 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             };
         }
 
+        // Stop() blocks until the pipeline stops. Token callbacks run one after another on the
+        // cancelling thread, so it runs on its own task to keep the grace timer below responsive.
+        Task? stopTask = null;
         using var ctRegistration = cts.Token.Register(() =>
+            stopTask = Task.Run(() => { try { ps.Stop(); } catch { /* pipeline may already be torn down */ } }));
+
+        var invokeTask = Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
+        using (var waitDone = new CancellationTokenSource())
         {
-            try { ps.Stop(); } catch { /* best-effort: pipeline may already be torn down */ }
-        });
+            var finished = await Task.WhenAny(invokeTask, GraceElapsedAfterCancelAsync(cts.Token, waitDone.Token));
+            waitDone.Cancel();
+            if (finished != invokeTask && !invokeTask.IsCompleted)
+                return AbandonPipeline(request, ct, ps, results, invokeTask, stopTask, sw);
+        }
 
         try
         {
-            var results = await Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
+            await invokeTask;
             var invocationState = ps.InvocationStateInfo;
             if (invocationState.State == PSInvocationState.Stopped)
                 throw new PipelineStoppedException();
@@ -215,29 +235,81 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             // Caller cancellation reaches StepRunner as Cancelled; an internal timeout is Failed.
             if (ct.IsCancellationRequested)
                 throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
-            var timedOut = cts.IsCancellationRequested && request.Timeout.HasValue;
-            return new PowerShellExecutionResult
-            {
-                Success = false,
-                ExitCode = -1,
-                TimedOut = timedOut,
-                Error = timedOut
-                    ? $"Script timed out after {request.Timeout!.Value.TotalSeconds:0}s"
-                    : "Script execution stopped before completion",
-                Duration = sw.Elapsed,
-            };
+            return StoppedResult(request, cts.IsCancellationRequested, sw.Elapsed);
         }
         catch (Exception ex)
         {
             sw.Stop();
+            // A script that throws still published its output markers before the throw.
+            foreach (var r in results)
+                output.AppendLine(SafeToString(r));
             return new PowerShellExecutionResult
             {
                 Success = false,
                 ExitCode = -1,
+                Output = output.ToString().TrimEnd(),
                 Error = ex.Message,
                 Duration = sw.Elapsed,
             };
         }
+        finally
+        {
+            ps.Dispose();
+            results.Dispose();
+        }
+    }
+
+    // Reports the outcome as if Stop() had taken effect (Cancelled or TimedOut) and leaves the
+    // pipeline to finish in the background. ps.Dispose() could block on the same stuck pipeline,
+    // so disposal waits for the pipeline to end, which also returns its runspace to the pool.
+    private PowerShellExecutionResult AbandonPipeline(
+        PowerShellExecutionRequest request, CancellationToken ct, System.Management.Automation.PowerShell ps,
+        PSDataCollection<PSObject> results, Task invokeTask, Task? stopTask, Stopwatch sw)
+    {
+        sw.Stop();
+        _logger.LogError(
+            "PowerShell pipeline did not stop within {GracePeriod} of cancellation (Stop() call " +
+            "{StopState}); reporting it stopped and leaving it to finish in the background. Its " +
+            "runspace stays busy until then.",
+            StopGracePeriod, stopTask is { IsCompleted: true } ? "returned" : "still blocked");
+
+        var abandonedAt = Stopwatch.StartNew();
+        _ = invokeTask.ContinueWith(t =>
+        {
+            _ = t.Exception;
+            ps.Dispose();
+            results.Dispose();
+            _logger.LogWarning("Abandoned PowerShell pipeline ended {Elapsed} after it was abandoned.",
+                abandonedAt.Elapsed);
+        }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+
+        if (ct.IsCancellationRequested)
+            throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+        return StoppedResult(request, stopRequested: true, sw.Elapsed);
+    }
+
+    private static PowerShellExecutionResult StoppedResult(PowerShellExecutionRequest request, bool stopRequested, TimeSpan duration)
+    {
+        var timedOut = stopRequested && request.Timeout.HasValue;
+        return new PowerShellExecutionResult
+        {
+            Success = false,
+            ExitCode = -1,
+            TimedOut = timedOut,
+            Error = timedOut
+                ? $"Script timed out after {request.Timeout!.Value.TotalSeconds:0}s"
+                : "Script execution stopped before completion",
+            Duration = duration,
+        };
+    }
+
+    /// <summary>Completes once <paramref name="cancel"/> fired and <see cref="StopGracePeriod"/> passed.</summary>
+    private async Task GraceElapsedAfterCancelAsync(CancellationToken cancel, CancellationToken stopWaiting)
+    {
+        var cancelled = new TaskCompletionSource();
+        using (cancel.Register(() => cancelled.TrySetResult()))
+            await cancelled.Task.WaitAsync(stopWaiting);
+        await Task.Delay(StopGracePeriod, stopWaiting);
     }
 
     public void Dispose()

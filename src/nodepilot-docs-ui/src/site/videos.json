@@ -1,0 +1,529 @@
+{
+  "episodes": [
+    {
+      "number": 0,
+      "slug": "00-intro",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Was ist NodePilot?",
+          "video": "media/training/00-intro-de.eb1649be8e.mp4",
+          "poster": "training/00-intro-de.253e998e5f.webp",
+          "bytes": 15817132,
+          "duration": 116
+        },
+        "en": {
+          "title": "What is NodePilot?",
+          "video": "media/training/00-intro-en.e93750904f.mp4",
+          "poster": "training/00-intro-en.be40aa9327.webp",
+          "bytes": 15642942,
+          "duration": 116
+        }
+      }
+    },
+    {
+      "number": 1,
+      "slug": "01-dashboard",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Dashboard",
+          "video": "media/training/01-dashboard-de.41f6ae425c.mp4",
+          "poster": "training/01-dashboard-de.5bd54c73d7.webp",
+          "bytes": 14776780,
+          "duration": 99
+        },
+        "en": {
+          "title": "Dashboard",
+          "video": "media/training/01-dashboard-en.06b91a86f0.mp4",
+          "poster": "training/01-dashboard-en.167b21cb50.webp",
+          "bytes": 14288415,
+          "duration": 99
+        }
+      }
+    },
+    {
+      "number": 2,
+      "slug": "02-first-workflow",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Der erste Workflow",
+          "video": "media/training/02-first-workflow-de.e3b5979e13.mp4",
+          "poster": "training/02-first-workflow-de.04e4c199e5.webp",
+          "bytes": 16391240,
+          "duration": 99
+        },
+        "en": {
+          "title": "Your first workflow",
+          "video": "media/training/02-first-workflow-en.ed523d1b50.mp4",
+          "poster": "training/02-first-workflow-en.0fc996f115.webp",
+          "bytes": 15888102,
+          "duration": 99
+        }
+      }
+    },
+    {
+      "number": 3,
+      "slug": "03-edit-publish",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Bearbeiten & Veröffentlichen",
+          "video": "media/training/03-edit-publish-de.48db48a092.mp4",
+          "poster": "training/03-edit-publish-de.1fff6d2fbc.webp",
+          "bytes": 17902475,
+          "duration": 101
+        },
+        "en": {
+          "title": "Edit & publish",
+          "video": "media/training/03-edit-publish-en.5d993479e4.mp4",
+          "poster": "training/03-edit-publish-en.3499462a12.webp",
+          "bytes": 17175526,
+          "duration": 101
+        }
+      }
+    },
+    {
+      "number": 4,
+      "slug": "04-run-live",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Starten & live zuschauen",
+          "video": "media/training/04-run-live-de.e177aededc.mp4",
+          "poster": "training/04-run-live-de.2bc7c19644.webp",
+          "bytes": 11571275,
+          "duration": 89
+        },
+        "en": {
+          "title": "Run & watch live",
+          "video": "media/training/04-run-live-en.7973c12c8f.mp4",
+          "poster": "training/04-run-live-en.6c67029948.webp",
+          "bytes": 11476219,
+          "duration": 89
+        }
+      }
+    },
+    {
+      "number": 5,
+      "slug": "05-machines",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Maschinen & Zugangsdaten",
+          "video": "media/training/05-machines-de.bb06cbe891.mp4",
+          "poster": "training/05-machines-de.05d3d28db3.webp",
+          "bytes": 11940436,
+          "duration": 95
+        },
+        "en": {
+          "title": "Machines & credentials",
+          "video": "media/training/05-machines-en.872aadd5e6.mp4",
+          "poster": "training/05-machines-en.7f7ee14c32.webp",
+          "bytes": 11738443,
+          "duration": 95
+        }
+      }
+    },
+    {
+      "number": 6,
+      "slug": "06-data",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Daten weitergeben",
+          "video": "media/training/06-data-de.1a91375f30.mp4",
+          "poster": "training/06-data-de.21ecfc8162.webp",
+          "bytes": 13793102,
+          "duration": 100
+        },
+        "en": {
+          "title": "Passing data",
+          "video": "media/training/06-data-en.74d5de7b6b.mp4",
+          "poster": "training/06-data-en.6d06b23cd7.webp",
+          "bytes": 13516215,
+          "duration": 100
+        }
+      }
+    },
+    {
+      "number": 7,
+      "slug": "07-decisions",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Entscheidungen & Parallelität",
+          "video": "media/training/07-decisions-de.fa908779b8.mp4",
+          "poster": "training/07-decisions-de.92aabbe3bb.webp",
+          "bytes": 19191167,
+          "duration": 101
+        },
+        "en": {
+          "title": "Decisions & parallel paths",
+          "video": "media/training/07-decisions-en.623e3f3950.mp4",
+          "poster": "training/07-decisions-en.71d5813ae7.webp",
+          "bytes": 18595433,
+          "duration": 101
+        }
+      }
+    },
+    {
+      "number": 8,
+      "slug": "08-activities",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Der Activity-Baukasten",
+          "video": "media/training/08-activities-de.16aefb322c.mp4",
+          "poster": "training/08-activities-de.e8b8388163.webp",
+          "bytes": 17753156,
+          "duration": 103
+        },
+        "en": {
+          "title": "The activity toolbox",
+          "video": "media/training/08-activities-en.37524fdbef.mp4",
+          "poster": "training/08-activities-en.59a252e679.webp",
+          "bytes": 17388755,
+          "duration": 103
+        }
+      }
+    },
+    {
+      "number": 9,
+      "slug": "09-triggers",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Automatisch starten",
+          "video": "media/training/09-triggers-de.d6c7f3ca7f.mp4",
+          "poster": "training/09-triggers-de.e03b60ca1e.webp",
+          "bytes": 15716109,
+          "duration": 101
+        },
+        "en": {
+          "title": "Starting automatically",
+          "video": "media/training/09-triggers-en.8c7a15f030.mp4",
+          "poster": "training/09-triggers-en.791a1ea290.webp",
+          "bytes": 15313236,
+          "duration": 101
+        }
+      }
+    },
+    {
+      "number": 10,
+      "slug": "10-failures",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Wenn etwas schiefgeht",
+          "video": "media/training/10-failures-de.8afe69b966.mp4",
+          "poster": "training/10-failures-de.37d7f8a067.webp",
+          "bytes": 16856464,
+          "duration": 99
+        },
+        "en": {
+          "title": "When something fails",
+          "video": "media/training/10-failures-en.3b46c3546f.mp4",
+          "poster": "training/10-failures-en.1b4a6e1018.webp",
+          "bytes": 16195975,
+          "duration": 99
+        }
+      }
+    },
+    {
+      "number": 11,
+      "slug": "11-debugger",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Der Schritt-Debugger",
+          "video": "media/training/11-debugger-de.426a82a02e.mp4",
+          "poster": "training/11-debugger-de.6a3c032c42.webp",
+          "bytes": 14096076,
+          "duration": 100
+        },
+        "en": {
+          "title": "The step debugger",
+          "video": "media/training/11-debugger-en.cf1b33aa4d.mp4",
+          "poster": "training/11-debugger-en.9d6607e8b3.webp",
+          "bytes": 13706836,
+          "duration": 100
+        }
+      }
+    },
+    {
+      "number": 12,
+      "slug": "12-team-alerts",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Alarme",
+          "video": "media/training/12-team-alerts-de.8ed4da07ba.mp4",
+          "poster": "training/12-team-alerts-de.2034fd2067.webp",
+          "bytes": 15541277,
+          "duration": 101
+        },
+        "en": {
+          "title": "Alerts",
+          "video": "media/training/12-team-alerts-en.4c1ed73bbb.mp4",
+          "poster": "training/12-team-alerts-en.81325015d3.webp",
+          "bytes": 14569372,
+          "duration": 101
+        }
+      }
+    },
+    {
+      "number": 13,
+      "slug": "13-import-export",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Umzug & Austausch",
+          "video": "media/training/13-import-export-de.83130ddf0d.mp4",
+          "poster": "training/13-import-export-de.0ed4865cff.webp",
+          "bytes": 15099530,
+          "duration": 101
+        },
+        "en": {
+          "title": "Moving & sharing",
+          "video": "media/training/13-import-export-en.1632f66c14.mp4",
+          "poster": "training/13-import-export-en.90b341c161.webp",
+          "bytes": 14594832,
+          "duration": 101
+        }
+      }
+    },
+    {
+      "number": 14,
+      "slug": "14-ai",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Der KI-Assistent",
+          "video": "media/training/14-ai-de.8eda45e4c9.mp4",
+          "poster": "training/14-ai-de.f0aac5c059.webp",
+          "bytes": 16253554,
+          "duration": 102
+        },
+        "en": {
+          "title": "The AI assistant",
+          "video": "media/training/14-ai-en.f01ccf7182.mp4",
+          "poster": "training/14-ai-en.5476306908.webp",
+          "bytes": 15658020,
+          "duration": 102
+        }
+      }
+    },
+    {
+      "number": 15,
+      "slug": "15-subworkflows",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Sub-Workflows & ForEach",
+          "video": "media/training/15-subworkflows-de.ccdfd59a72.mp4",
+          "poster": "training/15-subworkflows-de.496e59b875.webp",
+          "bytes": 17165732,
+          "duration": 104
+        },
+        "en": {
+          "title": "Sub-workflows & ForEach",
+          "video": "media/training/15-subworkflows-en.d430472847.mp4",
+          "poster": "training/15-subworkflows-en.126b162673.webp",
+          "bytes": 16845520,
+          "duration": 104
+        }
+      }
+    },
+    {
+      "number": 16,
+      "slug": "16-custom-nodes",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Eigene Activities: Custom Nodes",
+          "video": "media/training/16-custom-nodes-de.4037b84cb1.mp4",
+          "poster": "training/16-custom-nodes-de.456e7c63d1.webp",
+          "bytes": 12729383,
+          "duration": 100
+        },
+        "en": {
+          "title": "Your own activities: Custom Nodes",
+          "video": "media/training/16-custom-nodes-en.606fe170e2.mp4",
+          "poster": "training/16-custom-nodes-en.2ba227dfd2.webp",
+          "bytes": 12404945,
+          "duration": 100
+        }
+      }
+    },
+    {
+      "number": 17,
+      "slug": "17-metrics-log",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Metriken & Log",
+          "video": "media/training/17-metrics-log-de.a7ed0d3704.mp4",
+          "poster": "training/17-metrics-log-de.b6b760b275.webp",
+          "bytes": 16880984,
+          "duration": 100
+        },
+        "en": {
+          "title": "Metrics & log",
+          "video": "media/training/17-metrics-log-en.6431056867.mp4",
+          "poster": "training/17-metrics-log-en.73095ef923.webp",
+          "bytes": 16166854,
+          "duration": 100
+        }
+      }
+    },
+    {
+      "number": 18,
+      "slug": "18-trigger-api",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Von außen starten: Trigger-API",
+          "video": "media/training/18-trigger-api-de.05b185d70f.mp4",
+          "poster": "training/18-trigger-api-de.785466d81a.webp",
+          "bytes": 16155805,
+          "duration": 100
+        },
+        "en": {
+          "title": "Starting from outside: the trigger API",
+          "video": "media/training/18-trigger-api-en.656d7ff276.mp4",
+          "poster": "training/18-trigger-api-en.ee5b977f5e.webp",
+          "bytes": 15650622,
+          "duration": 100
+        }
+      }
+    },
+    {
+      "number": 19,
+      "slug": "19-users",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Benutzer & Rechte",
+          "video": "media/training/19-users-de.bce5e565b4.mp4",
+          "poster": "training/19-users-de.0a5d488232.webp",
+          "bytes": 15206950,
+          "duration": 102
+        },
+        "en": {
+          "title": "Users & permissions",
+          "video": "media/training/19-users-en.68ac5f67fe.mp4",
+          "poster": "training/19-users-en.b25727d344.webp",
+          "bytes": 14884364,
+          "duration": 102
+        }
+      }
+    },
+    {
+      "number": 20,
+      "slug": "20-ldap-sso",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "LDAP & Single Sign-on",
+          "video": "media/training/20-ldap-sso-de.1d400cac7e.mp4",
+          "poster": "training/20-ldap-sso-de.f41e30a28e.webp",
+          "bytes": 14374138,
+          "duration": 102
+        },
+        "en": {
+          "title": "LDAP & single sign-on",
+          "video": "media/training/20-ldap-sso-en.96b150027a.mp4",
+          "poster": "training/20-ldap-sso-en.649de238e4.webp",
+          "bytes": 14067264,
+          "duration": 102
+        }
+      }
+    },
+    {
+      "number": 21,
+      "slug": "21-audit",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Das Audit-Log",
+          "video": "media/training/21-audit-de.23656afe90.mp4",
+          "poster": "training/21-audit-de.d61e6603c5.webp",
+          "bytes": 19216929,
+          "duration": 102
+        },
+        "en": {
+          "title": "The audit log",
+          "video": "media/training/21-audit-en.9eb41bc118.mp4",
+          "poster": "training/21-audit-en.52bdf32b63.webp",
+          "bytes": 18673683,
+          "duration": 102
+        }
+      }
+    },
+    {
+      "number": 22,
+      "slug": "22-backup",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Konfigurations-Backup",
+          "video": "media/training/22-backup-de.c28023b302.mp4",
+          "poster": "training/22-backup-de.bb9aa28f53.webp",
+          "bytes": 13725364,
+          "duration": 103
+        },
+        "en": {
+          "title": "Configuration backup",
+          "video": "media/training/22-backup-en.52168db7f4.mp4",
+          "poster": "training/22-backup-en.2842717871.webp",
+          "bytes": 12984620,
+          "duration": 103
+        }
+      }
+    },
+    {
+      "number": 23,
+      "slug": "23-cli",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "Die Kommandozeile: np",
+          "video": "media/training/23-cli-de.e58e00ba2d.mp4",
+          "poster": "training/23-cli-de.d0aec1a487.webp",
+          "bytes": 14166488,
+          "duration": 101
+        },
+        "en": {
+          "title": "The command line: np",
+          "video": "media/training/23-cli-en.bc452d16f6.mp4",
+          "poster": "training/23-cli-en.a0d4d182c3.webp",
+          "bytes": 13820124,
+          "duration": 101
+        }
+      }
+    },
+    {
+      "number": 24,
+      "slug": "24-mcp",
+      "publishedAt": "2026-09-27",
+      "text": {
+        "de": {
+          "title": "KI-Agenten per MCP",
+          "video": "media/training/24-mcp-de.7697c5b9fb.mp4",
+          "poster": "training/24-mcp-de.ee47027fac.webp",
+          "bytes": 14642666,
+          "duration": 95
+        },
+        "en": {
+          "title": "AI agents via MCP",
+          "video": "media/training/24-mcp-en.0b4a9ccbdf.mp4",
+          "poster": "training/24-mcp-en.a2794481f6.webp",
+          "bytes": 14554889,
+          "duration": 95
+        }
+      }
+    }
+  ]
+}

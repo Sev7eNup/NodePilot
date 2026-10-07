@@ -79,6 +79,7 @@
       "configuration/performance": "Performance-Dimensionierung",
       "deployment/overview": "Betriebsarten",
       "deployment/production": "Windows-Server",
+      "deployment/database-tls": "Datenbank-Zertifikate",
       "deployment/desktop": "Desktop-App",
       "deployment/av-exclusions": "Antiviren-Ausschlüsse",
       "deployment/logs": "Logs & Diagnose",

@@ -83,6 +83,21 @@ describe('WaitForConditionConfig', () => {
     expect(onUpdate).toHaveBeenCalledWith({ script: expect.stringContaining('Get-Service') });
   });
 
+  it('scriptMode_offersTheRunScriptEngines', () => {
+    const onUpdate = vi.fn();
+    wrap(<WaitForConditionConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
+
+    const engine = screen.getByDisplayValue('Default – Windows PowerShell 5.1 (same as remote)') as HTMLSelectElement;
+    expect(Array.from(engine.options).map((o) => o.value)).toEqual(['auto', 'pwsh', 'powershell', 'runspace']);
+    fireEvent.change(engine, { target: { value: 'runspace' } });
+    expect(onUpdate).toHaveBeenCalledWith({ engine: 'runspace' });
+  });
+
+  it('typedMode_hasNoEngineChoice', () => {
+    wrap(<WaitForConditionConfig config={{ conditionType: 'pathExists' }} onUpdate={vi.fn()} upstreamVars={[]} />);
+    expect(screen.queryByDisplayValue('Default – Windows PowerShell 5.1 (same as remote)')).toBeNull();
+  });
+
   it('intervalSeconds_negativeInput_clampedToOneMinimum', () => {
     // A negative value is raised to 1, so a typo cannot persist an interval below 1 and turn
     // the poll loop into a tight loop. A typed "0" takes a different path: the `|| 5` fallback
@@ -299,6 +314,14 @@ describe('StartWorkflowConfig', () => {
     expect(screen.getByText(/Fire-and-forget/i)).toBeInTheDocument();
   });
 
+  it('renders_translatedLabels', () => {
+    wrap(<StartWorkflowConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
+    expect(screen.getByRole('button', { name: /^Preview$/ })).toBeInTheDocument();
+    expect(screen.getByText('Workflow (name or GUID)')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('e.g. Rollback runbook')).toBeInTheDocument();
+    expect(screen.getByText('Wait for completion')).toBeInTheDocument();
+  });
+
   it('libraryPickerButton_callsCallback', () => {
     const onPicker = vi.fn();
     wrap(<StartWorkflowConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} onOpenWorkflowPicker={onPicker} />);
@@ -335,6 +358,12 @@ describe('ForEachConfig', () => {
 });
 
 describe('FileHashConfig', () => {
+  it('renders_outputHintWithTemplateReferences', () => {
+    wrap(<FileHashConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
+    expect(screen.getByText('{{step.param.hash}}')).toBeInTheDocument();
+    expect(screen.getByText(/empty when no expected hash is set/)).toBeInTheDocument();
+  });
+
   it('defaultsToSha256', () => {
     wrap(<FileHashConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.getByDisplayValue('SHA256')).toBeInTheDocument();
@@ -349,6 +378,14 @@ describe('FileHashConfig', () => {
 });
 
 describe('ZipOperationConfig', () => {
+  it('sourceLabel_followsOperation', () => {
+    const { unmount } = wrap(<ZipOperationConfig config={{ operation: 'compress' }} onUpdate={vi.fn()} upstreamVars={[]} />);
+    expect(screen.getByText('Source (file, folder or glob)')).toBeInTheDocument();
+    unmount();
+    wrap(<ZipOperationConfig config={{ operation: 'extract' }} onUpdate={vi.fn()} upstreamVars={[]} />);
+    expect(screen.getByText('Source (ZIP archive)')).toBeInTheDocument();
+  });
+
   it('compressMode_showsCompressionLevel', () => {
     wrap(<ZipOperationConfig config={{ operation: 'compress' }} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.getByText('Compression Level')).toBeInTheDocument();
@@ -684,6 +721,12 @@ describe('RegistryConfig', () => {
 });
 
 describe('WmiQueryConfig', () => {
+  it('renders_translatedModeOptions', () => {
+    wrap(<WmiQueryConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
+    expect(screen.getByRole('option', { name: 'Class query (Get-CimInstance)' })).toBeInTheDocument();
+    expect(screen.getByText('Filter (optional, WHERE clause)')).toBeInTheDocument();
+  });
+
   it('defaultsToCimv2Namespace', () => {
     wrap(<WmiQueryConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.getByDisplayValue('root\\cimv2')).toBeInTheDocument();

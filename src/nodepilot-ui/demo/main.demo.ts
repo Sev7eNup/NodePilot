@@ -9,8 +9,8 @@
  * This file is also why the demo cannot reach the product bundle: `index.html` never names
  * it, so it is not an input to the product build. Reachability, not dead-code elimination.
  */
-// First, and deliberately: it seeds the language and skin keys that i18n and the theme
-// store read while they initialise.
+// Normalize bookmarks before preferences, i18n and the theme store read the address.
+import './boot/legacyRoute';
 import './boot/preferences';
 import { isolateAuthBoundaryTransport } from '../src/security/authBoundary';
 import { setExecutionHubFactory } from '../src/lib/hubConnection';
@@ -37,16 +37,13 @@ function bootstrap(): void {
   installAnchorGuard();
   setExecutionHubFactory(createFakeHubConnection);
 
-  // On GitHub Pages the documentation sits beside the demo, not above it.
-  setDocsHref('../docs/');
-
-  // The world is per-tab and in memory, so a reload is the reset. Doing it this way also
-  // clears the query cache, which rebuilding the world in place would not.
-  const tour = mountTour();
-  mountDemoBanner(() => { globalThis.location.reload(); }, () => tour.start());
+  setDocsHref('/docs/');
 }
 
 void (async () => {
   bootstrap();
   await import('../src/main.tsx');
+  const { router } = await import('../src/App');
+  const tour = mountTour(router);
+  mountDemoBanner(() => { globalThis.location.reload(); }, () => tour.start());
 })();

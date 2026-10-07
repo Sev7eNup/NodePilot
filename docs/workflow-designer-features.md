@@ -133,13 +133,14 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
 
 ## 7. Properties panel
 
-- **Sections:** execution context, input variables, configuration, timeout, test & debug — collapsible with a variable counter.
+- **Sections:** execution context, input variables, configuration, timeout, retry policy, test & debug — collapsible with a variable counter.
 - **Header:** activity icon, inline edit for name and description, close.
 - **Common node fields:**
   - **Label** and **output variable** (falling back to the step ID; downstream `{{var.output}}`).
   - **Description** (lazy "+ add description").
   - **Target machine** and **credential** (for remote activities) as a `DynamicTargetField` — GUID, variable or literal, with a resolved label and a test-connection button.
   - **Timeout** (`config.timeoutSeconds`, only for types that support it).
+  - **Retry policy** (`config.retry`: max attempts 2–20 including the first, backoff fixed/linear/exponential, initial and max delay; not for triggers, junction, decision, return data). Switching it off removes the key.
   - **Disable toggle** and **breakpoint** (plus an optional breakpoint condition, Expert).
 - **Read-only mode:** without write permission the whole fieldset is disabled.
 - **Clone-config button (Expert):** copies configuration from a step of the same type — either completely or just machine plus credential (it never copies label, output or body).
@@ -210,9 +211,10 @@ Each activity type has its own config component (`properties/activities/`, regis
 
 ## 11. Running from the designer
 
-- **Test run** (`Ctrl+Enter`): starts immediately, or opens the parameter dialog for a `manualTrigger` that declares parameters (prefilled with the values last used).
+- **Run** (`Ctrl+Enter`): starts immediately, or opens the parameter dialog for a `manualTrigger` that declares parameters (prefilled with the values last used).
 - **Debug run** (Expert, `Ctrl+Shift+Enter`): runs with `debug: true` → breakpoints are active.
 - **Auto-save before a run:** unsaved changes are saved first when you have write permission.
+- **Without the edit lock** a run executes the saved definition, so the parameter dialog asks for the parameters of the saved `manualTrigger`, not for the canvas you are looking at.
 - **Cancel run** (`Ctrl+Shift+X`): aborts the running execution.
 - **Canvas pinning:** a started execution is pinned → nodes and paths colour live; a snapshot keeps it after the 30 s SignalR TTL.
 
@@ -265,7 +267,7 @@ Each activity type has its own config component (`properties/activities/`, regis
 - **Rules detected (excerpt):**
   - **Errors (block publishing):** `no-trigger`, `isolated-node`, `dup-output-variable`, `duplicate-edge`, `missing-required-config`, `missing-target-machine`.
   - **Warning `dup-published-param`:** two activities on one path publish the same name. A published value has exactly one owner, so the unqualified `$name` is not bound at all — reference it as `{{stepA.param.name}}`. Reported only when at least one publisher named the value itself; names that follow from the activity type (`exitCode` on every `runScript`, a `registryOperation`'s operation-shaped outputs, a `wmiQuery`'s `count`) collide by construction and cannot be renamed, so a clash between two of those is not flagged.
-  - **Warnings:** `orphan-root`, `unreachable-node`, `unknown-template-ref`, `startjob-in-runspace`, `unknown-workflow-ref`, `edge-to-disabled`, `disabled-with-downstream`, `edge-occluded`, `edge-crowded`.
+  - **Warnings:** `orphan-root`, `unreachable-node`, `unknown-template-ref`, `startjob-in-runspace`, `ps7-syntax-in-windows-powershell`, `unknown-workflow-ref`, `edge-to-disabled`, `disabled-with-downstream`, `edge-occluded`, `edge-crowded`.
 - **Pre-publish checklist modal:** shown before publishing — blocked on errors (publish disabled), "publish anyway" on warnings, straight through when clean; every issue is clickable to its node or edge.
 
 ## 17. Editor chrome
@@ -276,7 +278,7 @@ Seven clusters with a proximity-driven colour glow (purely cosmetic, prefers-red
 2. **Layout** (with write permission): tidy (Expert shows the algorithm), restore original layout (Expert).
 3. **Inspect:** search, find & replace (Expert), zoom to selection (Expert), diff (Expert), simulation (Expert), shortcuts (Expert), hidden-types pill.
 4. **View** (Expert): the **"appearance" settings dialog** (settings icon, `role="dialog"`) — it gathers every canvas display option (node style, icon view, ports/auto-hide, edge animation/routing/width, node and label size, premium canvas, snap grid) as labelled card rows with a switch, segmented control or stepper; plus the activity type filter.
-5. **Run:** test run, debug run (Expert), cancel, lint pill, and the **"view" popover** (Expert, an eye icon with an active counter): it gathers the overlay switches — machine colouring, failure heatmap, data flow, coverage, critical path — as switch rows.
+5. **Run:** run, debug run (Expert), cancel, lint pill, and the **"view" popover** (Expert, an eye icon with an active counter): it gathers the overlay switches — machine colouring, failure heatmap, data flow, coverage, critical path — as switch rows.
 6. **Lifecycle** (with role write permission): edit-lock toggle, save (with a dirty dot), publish/disable/enable.
 7. **Export** (Expert): JSON, PNG. In standard mode these live in the more menu.
 
@@ -407,7 +409,7 @@ Every display setting lives in the **`designStore`** (Zustand plus persist, key 
 | `Ctrl+Z` / `Ctrl+Y` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+A` | Select all |
 | `Ctrl+E` / `Ctrl+U` | Lock / unlock |
-| `Ctrl+Enter` / `Ctrl+Shift+Enter` | Test run / debug run |
+| `Ctrl+Enter` / `Ctrl+Shift+Enter` | Run / debug run |
 | `Delete` / `Backspace` | Delete |
 
 ### Expert mode (in addition)

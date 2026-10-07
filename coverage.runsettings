@@ -8,10 +8,9 @@
 -->
 <RunSettings>
   <!--
-    Run the test assemblies in parallel. VSTest starts up to MaxCpuCount testhost processes,
-    one per test container; 0 means one per logical core. Without this the six assemblies run
-    one after another and each pays its own start-up cost (process launch, JIT, coverlet
-    instrumentation, discovery) with nothing overlapping it.
+    Bound VSTest containers within each invocation. At solution level the six assemblies run
+    in separate MSBuild projects: CI also passes -maxcpucount:2 to dotnet test to cap those
+    projects. MaxCpuCount here alone does not limit that project-level concurrency.
 
     This does not weaken the six CollectionDefinitions in the repo. Those guard process-global
     state (Serilog's Log.Logger, Console.SetOut, environment variables, static hub and Quartz

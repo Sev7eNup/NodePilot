@@ -275,7 +275,7 @@ describe('MachinesPage', () => {
     expect(screen.queryByText('DB-01')).not.toBeInTheDocument();
   });
 
-  it('workflowsCell_rendersCountWhenUsed_andDashWhenZero', async () => {
+  it('workflowsCell_rendersCountIncludingZero', async () => {
     server.use(http.get(`${BASE}/api/machines`, () => HttpResponse.json(MACHINES)));
     server.use(http.get(`${BASE}/api/credentials`, () => HttpResponse.json([])));
     renderPage();
@@ -283,11 +283,10 @@ describe('MachinesPage', () => {
     await waitFor(() => expect(screen.getByText('Web-01')).toBeInTheDocument());
     // Web-01 is used by 4 workflows — count surfaces as plain text in the cell.
     expect(screen.getByText('4')).toBeInTheDocument();
-    // DB-01 has 0 references -> cell should NOT render a "0", it renders a dash
-    // (we check by counting Boxes icons: only the used machine gets one).
+    // Zero references is a known count, not missing data.
     const db01Row = screen.getByText('DB-01').closest('tr');
     expect(db01Row).toBeTruthy();
-    expect(within(db01Row!).queryByText('0')).not.toBeInTheDocument();
+    expect(within(db01Row!).getByText('0')).toBeInTheDocument();
   });
 
   it('activityCell_rendersSuccessRatio_andDashWhenNoData', async () => {

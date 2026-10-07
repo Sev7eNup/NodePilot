@@ -1,4 +1,4 @@
-import type { BrowserWindow, Session } from 'electron';
+import type { BrowserWindow, DownloadItem, Session, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 
 import { hardenSession, hardenWindow } from './security';
@@ -43,7 +43,7 @@ type VerifyProc = (
 
 function fakeSession() {
   let verifyProc: VerifyProc | undefined;
-  const listeners = new Map<string, (event: { preventDefault: () => void }) => void>();
+  const listeners = new Map<string, (event: { preventDefault: () => void }, item?: DownloadItem, contents?: WebContents) => void>();
 
   const sess = {
     setCertificateVerifyProc: vi.fn((proc: VerifyProc) => { verifyProc = proc; }),
@@ -116,6 +116,44 @@ describe('hardenSession — certificate pinning', () => {
     const preventDefault = vi.fn();
     listeners.get('will-download')!({ preventDefault });
     expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['blob:https://localhost:5001/export', 'https://localhost:5001/workflows', 'app', true],
+    ['https://localhost:5001/api/audit/export', 'https://localhost:5001/audit', 'app', true],
+    ['blob:https://evil.example/export', 'https://localhost:5001/workflows', 'app', false],
+    ['https://localhost:5002/api/export', 'https://localhost:5001/workflows', 'app', false],
+    ['data:text/plain,export', 'https://localhost:5001/workflows', 'app', false],
+    ['file:///C:/export.json', 'https://localhost:5001/workflows', 'app', false],
+    ['not a URL', 'https://localhost:5001/workflows', 'app', false],
+    ['blob:https://localhost:5001/export', 'https://localhost:5001/docs', 'docs', false],
+    ['blob:https://localhost:5001/export', 'https://evil.example', 'app', false],
+  ] as const)('download %s from %s (%s): allowed=%s', (url, pageUrl, scope, allowed) => {
+    const { sess, listeners } = fakeSession();
+    hardenSession(sess, TEST_CERT_SHA256);
+    const contents = { on: vi.fn(), setWindowOpenHandler: vi.fn(), getURL: () => pageUrl };
+    hardenWindow({ webContents: contents } as unknown as BrowserWindow, 'https://localhost:5001', { scope });
+    const item = { getURL: () => url, getURLChain: () => [url] } as unknown as DownloadItem;
+    const preventDefault = vi.fn();
+    listeners.get('will-download')!({ preventDefault }, item, contents as unknown as WebContents);
+    expect(preventDefault).toHaveBeenCalledTimes(allowed ? 0 : 1);
+  });
+
+  it('blocks downloads redirected through a foreign origin and unregistered windows', () => {
+    const { sess, listeners } = fakeSession();
+    hardenSession(sess, TEST_CERT_SHA256);
+    const contents = { on: vi.fn(), setWindowOpenHandler: vi.fn(), getURL: () => 'https://localhost:5001/workflows' };
+    const url = 'https://localhost:5001/api/export';
+    const chain = [url];
+    const item = { getURL: () => url, getURLChain: () => chain } as unknown as DownloadItem;
+    const preventDefault = vi.fn();
+    const download = () => listeners.get('will-download')!({ preventDefault }, item, contents as unknown as WebContents);
+    download();
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    hardenWindow({ webContents: contents } as unknown as BrowserWindow, 'https://localhost:5001');
+    chain.unshift('https://evil.example/redirect');
+    download();
+    expect(preventDefault).toHaveBeenCalledTimes(2);
   });
 });
 

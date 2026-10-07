@@ -9,8 +9,6 @@ export const messages: Record<Lang, Messages> = { de, en }
 // The static markup in index.html is German.
 let current: Lang = 'de'
 
-const listeners: Array<(lang: Lang) => void> = []
-
 export function currentLang(): Lang {
   return current
 }
@@ -55,15 +53,9 @@ export function docsHref(lang: Lang, page = ''): string {
   return `${basePrefix}docs/${lang}/${page ? `${page}/` : ''}`
 }
 
-/** Registers a callback that re-renders texts set from script, such as the current route. */
-export function onLanguageChange(listener: (lang: Lang) => void): void {
-  listeners.push(listener)
-}
-
 /**
  * Switches every translated text in the document to `lang`: the data-i18n* attributes, the
- * language-aware docs links, the page language and description. Registered listeners then
- * re-render what script sets.
+ * language-aware docs links, the page language and description.
  */
 export function applyLanguage(lang: Lang): void {
   current = lang
@@ -92,8 +84,6 @@ export function applyLanguage(lang: Lang): void {
     link.setAttribute('href', docsHref(lang, link.getAttribute('data-docs-path') ?? ''))
   }
   document.querySelector('meta[name="description"]')?.setAttribute('content', dictionary.meta.description)
-
-  for (const listener of listeners) listener(lang)
 }
 
 /** Remembers an explicit language choice for the website and the docs. */

@@ -9,6 +9,7 @@ import { availablePages } from './lib/content'
 import { navTitleKey, pageByPath } from './data/nav'
 import { detectLang, LANG_STORAGE_KEY, parseLocation } from './i18n/languages'
 import { docPath } from './lib/docPath'
+import { updateDocsHead } from './lib/docs-head'
 
 const FALLBACK_HOME = 'getting-started/introduction'
 
@@ -46,7 +47,7 @@ export default function App() {
   // page has to keep that true, or the tab and any bookmark keep the title of the page before.
   useEffect(() => {
     if (!lang) return
-    document.title = pageByPath(page) ? `${t(navTitleKey(page))}${t('meta.titleSuffix')}` : t('meta.title')
+    updateDocsHead(lang, page, pageByPath(page) ? `${t(navTitleKey(page))}${t('meta.titleSuffix')}` : t('meta.title'))
   }, [lang, page, t])
 
   // Close mobile drawer on navigation.

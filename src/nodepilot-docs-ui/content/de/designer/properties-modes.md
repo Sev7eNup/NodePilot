@@ -11,6 +11,7 @@ Nach Auswahl eines Nodes zeigt das Panel die für diesen Activity-Typ verfügbar
 - **Beschreibung:** optionale Erläuterung zum Schritt
 - **Zielmaschine und Zugangsdaten:** Ausführungsziel für Remote-Activities
 - **Timeout:** maximale Laufzeit des Schritts
+- **Retry-Policy:** wiederholt einen fehlgeschlagenen Schritt (Versuche inklusive des ersten, Backoff, Verzögerung); dauerhafte Remote-Fehler wie ein abgelehnter Logon werden nicht wiederholt
 - **Deaktiviert:** überspringt den Schritt bei der Ausführung
 - **Breakpoint:** pausiert einen Debug-Lauf vor diesem Schritt; nur im Expertenmodus
 
@@ -69,14 +70,14 @@ Auch Trigger werden über das Eigenschaften-Panel eingerichtet.
 Für die Prüfung eines Workflows stehen mehrere Ebenen zur Verfügung:
 
 - **Step Test:** führt nur den ausgewählten Schritt mit Testdaten aus.
-- **Test Run:** führt den Workflow als Test aus. Parameter eines manuellen Triggers werden vor dem Start abgefragt.
+- **Ausführen:** führt den Workflow aus. Parameter eines manuellen Triggers werden vor dem Start abgefragt.
 - **Debug Run:** führt den Workflow mit Breakpoints aus; nur im Expertenmodus.
 - **Simulation:** zeigt den möglichen Ablauf, ohne Activities auszuführen; nur im Expertenmodus.
 - **Lint:** zeigt fehlende Pflichtangaben, nicht erreichbare Nodes und weitere Probleme.
 
 Fehler aus der Lint-Prüfung verhindern die Veröffentlichung. Warnungen müssen vor der Veröffentlichung bestätigt werden.
 
-Ungespeicherte Änderungen werden vor einem Test- oder Debug-Lauf gespeichert. Ein laufender Test kann abgebrochen werden.
+Mit gehaltener Bearbeitungssperre werden ungespeicherte Änderungen vor einer Ausführung oder einem Debug-Lauf gespeichert. Ohne Sperre läuft die gespeicherte Fassung, und abgefragt werden deren Parameter. Eine laufende Ausführung kann abgebrochen werden.
 
 ## Lauf überwachen
 
@@ -120,7 +121,7 @@ Der Workflow kann als JSON exportiert werden. Eine PNG-Datei bildet die aktuelle
 | `Ctrl+Shift+S` | veröffentlichen, aktivieren oder deaktivieren |
 | `Ctrl+E` | Bearbeitungs-Lock anfordern |
 | `Ctrl+U` | Bearbeitungs-Lock freigeben |
-| `Ctrl+Enter` | Testlauf starten |
+| `Ctrl+Enter` | Ausführung starten |
 | `Ctrl+Shift+X` | laufende Ausführung abbrechen |
 | `Ctrl+Z` | Änderung rückgängig machen |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Änderung wiederholen |

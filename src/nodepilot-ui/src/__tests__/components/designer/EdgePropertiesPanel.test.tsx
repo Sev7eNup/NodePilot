@@ -147,6 +147,14 @@ describe('EdgePropertiesPanel', () => {
     expect((patch.data as Record<string, unknown>).condition).toBe('');
   });
 
+  it('modeToggle_activeButton_usesInverseTokenPairForReadableText', () => {
+    render(<EdgePropertiesPanel {...defaultProps({ edge: makeEdge('e1', 'step-1', 'step-2', { condition: 'step-1.success' }) })} />);
+    // text-white on bg-inverse-surface is white on white in dark skins.
+    const active = screen.getByText('Simple');
+    expect(active.className).toContain('text-inverse-on-surface');
+    expect(active.className).not.toContain('text-white');
+  });
+
   it('switchToSimple_clearsConditionExpression_andHidesBuilder', () => {
     const props = defaultProps({
       edge: makeEdge('e1', 'step-1', 'step-2', {

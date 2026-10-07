@@ -11,9 +11,15 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { MemoryRouter } from 'react-router'
+import DocMarkdown from '../src/components/DocMarkdown.tsx'
+import { SOURCE_ORIGIN } from './site-origin.mjs'
 import { summarize } from '../src/lib/markdown-summary.ts'
 import {
   applyMeta,
+  escapeText,
   pageUrl,
   rewriteRelativeUrls,
   setAlternates,
@@ -77,7 +83,7 @@ export function prerenderDocs(outDir, origin) {
     const locale = locales[page.lang]
     const navTitle = locale.nav.pages[page.path]
     if (page.listed && !navTitle) throw new Error(`No navigation title for ${page.lang}/${page.path}.`)
-    const markdown = page.listed ? readFileSync(join(contentDir, page.lang, `${page.path}.md`), 'utf8') : ''
+    const markdown = page.listed ? readFileSync(join(contentDir, page.lang, `${page.path}.md`), 'utf8').replaceAll(SOURCE_ORIGIN, origin) : ''
     // One level for the language segment, one per path segment; the shell is written for the
     // documentation root. Consumed while the document parses and once more at boot, never after
     // a navigation, so it cannot go stale the way a relative href would.
@@ -102,6 +108,25 @@ export function prerenderDocs(outDir, origin) {
     html = setMeta(html, 'np-docs-base', prefix)
     html = rewriteRelativeUrls(html, prefix)
 
+    // The actual chapter is readable before React loads, using the exact same Markdown
+    // renderer as DocPage (tables, code highlighting, heading anchors and cross-links).
+    if (page.listed) {
+      let content = renderToStaticMarkup(createElement(MemoryRouter, null,
+        createElement(DocMarkdown, { markdown, lang: page.lang, path: page.path })))
+      content = content.replace(/href="\/(en|de)\//g, `href="${prefix}$1/`)
+      const home = `${prefix}${page.lang}/getting-started/introduction/`
+      const navigation = corpusPaths(contentDir, page.lang).map(path =>
+        `<li><a href="${prefix}${page.lang}/${path}/">${escapeText(locale.nav.pages[path])}</a></li>`).join('')
+      const body = `<div class="np-shell min-h-screen text-on-surface"><main class="mx-auto max-w-3xl px-6 py-8"><nav aria-label="Breadcrumb"><a href="${home}">NodePilot ${page.lang === 'de' ? 'Dokumentation' : 'Documentation'}</a></nav><article class="np-prose">${content}</article><details><summary>${page.lang === 'de' ? 'Alle Kapitel' : 'All chapters'}</summary><ul>${navigation}</ul></details></main></div>`
+      html = html.replace('<div id="root"></div>', `<div id="root">${body}</div>`)
+      const url = pageUrl(origin, address(page.lang, page.path), true)
+      const schema = JSON.stringify({ '@context': 'https://schema.org', '@type': 'TechArticle', headline: navTitle, description: summarize(markdown), inLanguage: page.lang, url, mainEntityOfPage: url }).replace(/</g, '\\u003c')
+      html = html.replace('</head>', `<script type="application/ld+json" data-docs-schema>${schema}</script></head>`)
+    } else {
+      html = setMeta(html, 'robots', 'noindex, follow')
+      html = html.replace('<div id="root"></div>', `<div id="root"><a href="${prefix}${page.lang}/getting-started/introduction/">NodePilot ${page.lang === 'de' ? 'Dokumentation' : 'Documentation'}</a></div>`)
+    }
+
     const target = join(root, page.file)
     mkdirSync(dirname(target), { recursive: true })
     writeFileSync(target, html)
@@ -111,8 +136,15 @@ export function prerenderDocs(outDir, origin) {
     join(root, 'sitemap.xml'),
     sitemapXml(
       origin,
-      pages.filter((page) => page.listed).map((page) => address(page.lang, page.path)),
+      pages.filter((page) => page.listed).map((page) => ({ path: address(page.lang, page.path) })),
     ),
   )
+  // The documentation entry is a language chooser without JavaScript, and the app redirects
+  // it when enhanced. Do not offer it as a duplicate of the introduction chapter.
+  let entry = applyMeta(shell, { title: 'NodePilot Documentation', description: 'NodePilot documentation in English and German.', url: '' })
+  entry = setAlternates(entry, {})
+  entry = setMeta(entry, 'robots', 'noindex, follow')
+  entry = entry.replace('<div id="root"></div>', '<div id="root"><main><h1>NodePilot Documentation</h1><a href="en/getting-started/introduction/" lang="en">English</a> · <a href="de/getting-started/introduction/" lang="de">Deutsch</a></main></div>')
+  writeFileSync(join(root, 'index.html'), entry)
   return pages.length
 }

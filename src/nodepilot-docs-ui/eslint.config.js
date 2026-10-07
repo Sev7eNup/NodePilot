@@ -10,6 +10,7 @@ export default defineConfig([
     'dist',
     'dist-site',
     '_site',
+    '_pages-redirects',
     'vite.config.js',
     'vite.config.d.ts',
     'vite.site.config.js',

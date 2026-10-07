@@ -591,12 +591,10 @@ public sealed class NodePilotApiClientTests : IDisposable
                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
                {
                    fires = new[] { DateTime.UtcNow, DateTime.UtcNow.AddHours(1), DateTime.UtcNow.AddHours(2) },
-                   summary = "every hour",
                }));
 
         var resp = await _client.CronNextFiresAsync("0 0 * * * ?", 3, CancellationToken.None);
         resp.Fires.Should().HaveCount(3);
-        resp.Summary.Should().Be("every hour");
     }
 
     [Fact]

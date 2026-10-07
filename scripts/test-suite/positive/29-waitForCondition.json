@@ -5,7 +5,7 @@
   "workflows": [
     {
       "name": "[TestSuite] waitForCondition",
-      "description": "All five condition types. The port and URL probes target the API's own listener, discovered at run time, so the workflow is not tied to one port.",
+      "description": "All five condition types. The port probe targets the API's own listener, discovered at run time; the URL probe targets NP_TESTSUITE_PROBE_URL, because an installed instance cannot probe itself by its own name.",
       "definition": {
         "nodes": [
           {
@@ -89,9 +89,9 @@
               "label": "Discover the API's own listening port",
               "activityType": "runScript",
               "config": {
-                "engine": "auto",
+                "engine": "runspace",
                 "timeoutSeconds": 30,
-                "script": "\n# waitForCondition probes must target something that is genuinely listening. The script\n# runs inside the API process, so the process itself is the only reliable fixture.\n$ownPid = [System.Diagnostics.Process]::GetCurrentProcess().Id\n$listener = Get-NetTCPConnection -State Listen -OwningProcess $ownPid -ErrorAction SilentlyContinue |\n  Sort-Object LocalPort | Select-Object -First 1\nif (-not $listener) { throw 'could not discover a listening port for the API process' }\n$selfPort = $listener.LocalPort.ToString()\n"
+                "script": "\n# waitForCondition probes must target something that is genuinely listening. The in-process\n# engine runs the script inside the API process, so the process itself is the only reliable\n# fixture; the default engine would run it in a separate powershell.exe without a listener.\n$ownPid = [System.Diagnostics.Process]::GetCurrentProcess().Id\n$listener = Get-NetTCPConnection -State Listen -OwningProcess $ownPid -ErrorAction SilentlyContinue |\n  Sort-Object LocalPort | Select-Object -First 1\nif (-not $listener) { throw 'could not discover a listening port for the API process' }\n$selfPort = $listener.LocalPort.ToString()\n"
               },
               "outputVariable": "disc",
               "targetMachineId": "localhost"
@@ -190,7 +190,7 @@
               "activityType": "waitForCondition",
               "config": {
                 "conditionType": "httpOk",
-                "url": "{{globals.NP_TESTSUITE_SELF_URL}}",
+                "url": "{{globals.NP_TESTSUITE_PROBE_URL}}",
                 "intervalSeconds": 1,
                 "timeoutSeconds": 15
               },

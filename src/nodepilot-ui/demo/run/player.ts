@@ -17,6 +17,8 @@ import { runtimeId } from '../state/ids';
 import { emitExecutionStatus, emitStepEvent } from '../hub/fakeHub';
 import { outcomeFor } from './outcomes';
 import { FILE_DEFAULTS, FILE_WORKFLOW_ID, fileOutcome, publishFileOutcome } from './fileScenario';
+import { missionOutcome, missionPlan } from './missionScenarios';
+import { MISSION_WORKFLOW_IDS } from '../seed/missionFixtures';
 
 /** Real step durations would make a run take a minute; the demo compresses them. */
 const MIN_STEP_MS = 320;
@@ -28,13 +30,15 @@ function pacedDuration(realMs: number): number {
 
 interface ActiveRun {
   executionId: string;
-  timer: ReturnType<typeof setTimeout> | null;
+  timers: Set<ReturnType<typeof setTimeout>>;
   cancelled: boolean;
 }
 
 const active = new Map<string, ActiveRun>();
 
 function finalize(run: ActiveRun, status: string, errorMessage: string | null): void {
+  for (const timer of run.timers) globalThis.clearTimeout(timer);
+  run.timers.clear();
   const world = getWorld();
   const execution = world.executions.find((e) => e.id === run.executionId);
   if (!execution) return;
@@ -94,6 +98,8 @@ export function startRun(workflowId: string, triggeredBy = 'manual', parameters:
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const order = simulateWorkflow(nodes, edges).order;
   const inputs = workflowId === FILE_WORKFLOW_ID ? { ...FILE_DEFAULTS, ...parameters } : parameters;
+  const scenarioGroups = missionPlan(workflowId, nodes, edges, inputs);
+  const groups = scenarioGroups ?? order.map(id => [id]);
   const bus: Record<string, string> = {};
 
   const executionId = runtimeId('execution');
@@ -113,7 +119,7 @@ export function startRun(workflowId: string, triggeredBy = 'manual', parameters:
     startedByUsername: null,
     parentExecutionId: null,
     parentWorkflowName: null,
-    stepsTotal: order.length,
+    stepsTotal: groups.reduce((count, group) => count + group.length, 0),
     stepsCompleted: 0,
     failedSteps: [],
   };
@@ -121,7 +127,7 @@ export function startRun(workflowId: string, triggeredBy = 'manual', parameters:
   world.executions.unshift(execution);
   world.steps.set(executionId, []);
 
-  const run: ActiveRun = { executionId, timer: null, cancelled: false };
+  const run: ActiveRun = { executionId, timers: new Set(), cancelled: false };
   active.set(executionId, run);
   notifyWorld();
 
@@ -129,26 +135,53 @@ export function startRun(workflowId: string, triggeredBy = 'manual', parameters:
 
   // A graph with no enabled trigger reaches nothing — the engine fails the run rather than
   // succeeding with zero steps, and so does the demo.
-  if (order.length === 0) {
-    run.timer = globalThis.setTimeout(() => {
+  if ([MISSION_WORKFLOW_IDS.decision, MISSION_WORKFLOW_IDS.parallel, MISSION_WORKFLOW_IDS.service].includes(workflowId) && !scenarioGroups) {
+    schedule(() => finalize(run, 'Failed', 'The guided graph has changed. Reset the demo to restore this example.'), 400);
+    return execution;
+  }
+  if (groups.length === 0) {
+    schedule(() => {
       finalize(run, 'Failed', 'The workflow has no enabled trigger, so it has no entry point.');
     }, 400);
     return execution;
   }
 
-  let index = 0;
+  function schedule(callback: () => void, delayMs: number): void {
+    const timer = globalThis.setTimeout(() => {
+      run.timers.delete(timer);
+      if (!run.cancelled) callback();
+    }, delayMs);
+    run.timers.add(timer);
+  }
 
-  const startStep = () => {
+  let groupIndex = 0;
+  const startGroup = () => {
     if (run.cancelled) return;
-    const node: GraphNode | undefined = nodeById.get(order[index]);
+    const group = groups[groupIndex];
+    let remaining = group.length;
+    for (const id of group) startStep(id, () => {
+      remaining -= 1;
+      if (remaining > 0 || run.cancelled) return;
+      groupIndex += 1;
+      if (groupIndex >= groups.length) schedule(() => finalize(run, 'Succeeded', null), 260);
+      else schedule(startGroup, 160);
+    });
+  };
+
+  const startStep = (id: string, onComplete: () => void) => {
+    if (run.cancelled) return;
+    const node: GraphNode | undefined = nodeById.get(id);
     const activityType = node?.data?.activityType;
-    const outcome = workflowId === FILE_WORKFLOW_ID && node ? fileOutcome(node, inputs, bus) ?? outcomeFor(activityType) : outcomeFor(activityType);
+    const guidedOutcome = node && missionOutcome(workflowId, node, inputs);
+    const outcome = guidedOutcome
+      || workflowId === FILE_WORKFLOW_ID && node && fileOutcome(node, inputs, bus)
+      || outcomeFor(activityType);
     const error = 'error' in outcome ? outcome.error as string | undefined : undefined;
     const stepStartedAt = new Date().toISOString();
 
     const row: StepExecution = {
       id: runtimeId('step'),
-      stepId: order[index],
+      stepId: id,
       stepName: node?.data?.label ?? null,
       stepType: activityType ?? 'unknown',
       targetMachine: node?.data?.targetMachineId ?? null,
@@ -176,13 +209,16 @@ export function startRun(workflowId: string, triggeredBy = 'manual', parameters:
       },
     });
 
-    run.timer = globalThis.setTimeout(() => {
+    // The cancellation exercise waits for the learner, not a countdown.
+    if (workflowId === MISSION_WORKFLOW_IDS.live && id === 'wait' && activityType === 'waitForCondition') return;
+    const duration = guidedOutcome ? Math.max(1000, guidedOutcome.durationMs) : pacedDuration(outcome.durationMs);
+    schedule(() => {
       if (!error && node) publishFileOutcome(bus, node, outcome);
-      completeStep(row, outcome.output, outcome.outputParameters, error);
-    }, pacedDuration(outcome.durationMs));
+      completeStep(row, outcome.output, outcome.outputParameters, error, onComplete);
+    }, duration);
   };
 
-  const completeStep = (row: StepExecution, output: string, params: Record<string, string>, error?: string) => {
+  const completeStep = (row: StepExecution, output: string, params: Record<string, string>, error: string | undefined, onComplete: () => void) => {
     if (run.cancelled) return;
     const completedAt = new Date().toISOString();
     row.status = error ? 'Failed' : 'Succeeded';
@@ -218,15 +254,10 @@ export function startRun(workflowId: string, triggeredBy = 'manual', parameters:
 
     if (error) { finalize(run, 'Failed', error); return; }
 
-    index += 1;
-    if (index >= order.length) {
-      run.timer = globalThis.setTimeout(() => finalize(run, 'Succeeded', null), 260);
-      return;
-    }
-    run.timer = globalThis.setTimeout(startStep, 160);
+    onComplete();
   };
 
-  run.timer = globalThis.setTimeout(startStep, 320);
+  schedule(startGroup, 320);
   return execution;
 }
 
@@ -235,7 +266,8 @@ export function cancelRun(executionId: string): boolean {
   const run = active.get(executionId);
   if (!run) return false;
   run.cancelled = true;
-  if (run.timer !== null) globalThis.clearTimeout(run.timer);
+  for (const timer of run.timers) globalThis.clearTimeout(timer);
+  run.timers.clear();
 
   const world = getWorld();
   for (const row of world.steps.get(executionId) ?? []) {
@@ -252,7 +284,8 @@ export function cancelRun(executionId: string): boolean {
 export function stopAllRuns(): void {
   for (const run of [...active.values()]) {
     run.cancelled = true;
-    if (run.timer !== null) globalThis.clearTimeout(run.timer);
+    for (const timer of run.timers) globalThis.clearTimeout(timer);
+    run.timers.clear();
     active.delete(run.executionId);
   }
 }

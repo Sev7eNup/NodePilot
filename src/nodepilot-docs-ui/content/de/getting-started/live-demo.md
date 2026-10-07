@@ -1,6 +1,6 @@
 # Live-Demo
 
-Die [Live-Demo](https://sev7enup.github.io/NodePilot/demo/) ist die echte NodePilot-Oberfläche mit
+Die [Live-Demo](https://www.nodepilot.run/demo/) ist die echte NodePilot-Oberfläche mit
 Beispieldaten, vollständig im Browser. Nichts wird installiert, kein Konto angelegt, und keine Daten
 verlassen Ihren Rechner.
 

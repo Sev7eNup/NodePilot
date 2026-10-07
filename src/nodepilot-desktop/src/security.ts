@@ -1,10 +1,21 @@
 import { X509Certificate } from 'node:crypto';
-import type { BrowserWindow, Session } from 'electron';
+import type { BrowserWindow, Session, WebContents } from 'electron';
+
+const downloadOrigins = new WeakMap<WebContents, string>();
+
+function isDownloadUrl(url: string, origin: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (parsed.protocol === 'https:' || parsed.protocol === 'blob:') && parsed.origin === origin;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Pins the loopback server certificate by SHA-256 fingerprint and locks the session down
- * (no permissions, no downloads). No system root CA is installed, so this is the only place
- * where trust is decided.
+ * (no permissions, downloads only from the app's origin). No system root CA is installed,
+ * so this is the only place where trust is decided.
  */
 export function hardenSession(sess: Session, pinnedSha256: string): void {
   sess.setCertificateVerifyProc((request, callback) => {
@@ -26,7 +37,15 @@ export function hardenSession(sess: Session, pinnedSha256: string): void {
 
   sess.setPermissionRequestHandler((_wc, _permission, done) => done(false));
   sess.setPermissionCheckHandler(() => false);
-  sess.on('will-download', (event) => event.preventDefault());
+  sess.on('will-download', (event, item, contents) => {
+    const origin = contents && downloadOrigins.get(contents);
+    if (!origin || !isDownloadUrl(contents.getURL(), origin)
+      || !isDownloadUrl(item.getURL(), origin)
+      || !item.getURLChain().every((url) => isDownloadUrl(url, origin))) {
+      event.preventDefault();
+    }
+    // Electron's native Save As dialog chooses the destination; no renderer-supplied path.
+  });
 }
 
 /** Request path the API serves the bundled documentation SPA under. */
@@ -90,6 +109,8 @@ export function hardenWindow(
   options: HardenWindowOptions = {},
 ): void {
   const { scope = 'app', openExternal } = options;
+  if (scope === 'app') downloadOrigins.set(win.webContents, allowedOrigin);
+  else downloadOrigins.delete(win.webContents);
 
   const sameOrigin = (url: string): boolean => {
     try {

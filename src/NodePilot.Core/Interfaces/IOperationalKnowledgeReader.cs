@@ -41,5 +41,4 @@ public sealed record ScheduledFireForecast(
     Guid WorkflowId,
     string WorkflowName,
     string CronExpression,
-    string? CronSummary,
     IReadOnlyList<DateTime> NextFiresUtc);

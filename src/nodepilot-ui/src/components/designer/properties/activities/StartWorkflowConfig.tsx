@@ -49,17 +49,17 @@ export function StartWorkflowConfig({ config, onUpdate, upstreamVars = [], onOpe
           data-testid="subworkflow-preview-button"
         >
           <View size={13} />
-          Vorschau
+          {t('config.startWorkflow.preview')}
         </button>
       </div>
       <VariableInsertField
-        label="Workflow (Name oder GUID)"
+        label={t('config.startWorkflow.workflowNameOrId')}
         value={workflowNameOrId}
         onChange={(v) => onUpdate({ workflowNameOrId: v })}
         upstreamVars={upstreamVars}
-        placeholder="z. B. Rollback-Runbook"
+        placeholder={t('config.startWorkflow.workflowNameOrIdPlaceholder')}
       />
-      <Field label="Auf Abschluss warten">
+      <Field label={t('config.startWorkflow.waitForCompletion')}>
         <label className="flex items-start gap-2 cursor-pointer select-none py-1">
           <input
             type="checkbox"
@@ -100,7 +100,7 @@ export function StartWorkflowConfig({ config, onUpdate, upstreamVars = [], onOpe
       ) : (
         <>
           {isNotFound && (
-            <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+            <div className="text-[11px] text-on-warning-container bg-warning-container/60 border border-warning/40 rounded px-2 py-1.5">
               {t('config.startWorkflow.contract.workflowNotFound', { name: workflowNameOrId })}
             </div>
           )}

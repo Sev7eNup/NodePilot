@@ -58,6 +58,50 @@ public sealed class WrapperScopeAndExitCodeTests : IDisposable
         result.Params["exitCode"].Should().Be("7");
     }
 
+    // --- Early exit still publishes what the script assigned ------------------------
+
+    [Theory]
+    [InlineData("$x = 'a'; exit 0")]
+    [InlineData("$x = 'a'; exit 5")]
+    public async Task EarlyExit_AssignedVariable_IsStillPublished(string script)
+    {
+        var result = await RunAsync(script);
+
+        result.Success.Should().BeTrue();
+        result.Params.Should().ContainKey("x").WhoseValue.Should().Be("a");
+        result.Params.Should().NotContainKey("exitCode",
+            "after an early exit the engine's own exit code decides, not a wrapper marker");
+    }
+
+    [Fact]
+    public async Task Throw_AssignedVariableAndEarlierOutput_AreStillPublished()
+    {
+        var result = await RunAsync("$x = 'a'\nWrite-Output 'before'\nthrow 'boom'");
+
+        result.Success.Should().BeFalse();
+        result.Output.Should().Contain("before");
+        result.Params.Should().ContainKey("x").WhoseValue.Should().Be("a");
+    }
+
+    [Fact]
+    public async Task TopLevelReturn_AfterAFailedNativeCommand_ReportsItsExitCode()
+    {
+        var result = await RunAsync("$x = 'a'; cmd /c exit 3; return");
+
+        result.Success.Should().BeTrue();
+        result.Params["x"].Should().Be("a");
+        result.Params["exitCode"].Should().Be("3", "a return ends the script normally, so its native exit code counts");
+    }
+
+    [Fact]
+    public async Task EarlyExit_ScriptVariableNamedExitCode_IsNotPublished()
+    {
+        var result = await RunAsync("$exitCode = 0; $x = 'a'; exit 5");
+
+        result.Params.Should().ContainKey("x");
+        result.Params.Should().NotContainKey("exitCode");
+    }
+
     // --- Defect 2: injected parameters are not this step's output -------------------
 
     [Fact]

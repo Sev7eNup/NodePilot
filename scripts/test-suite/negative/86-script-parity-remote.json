@@ -1,0 +1,238 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite-Neg] script parity remote",
+      "description": "The reference failures over WinRM: native stderr, throw with its values kept, a non-terminating error, a program timeout and an unrunnable condition.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 7/30 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 7/30 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "n0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "remote runScript: native stderr",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "cmd /c \"echo parity-native-warn 1>&2\"\n$after = 'y'\n"
+              },
+              "outputVariable": "n0",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "n1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "remote runScript: throw",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "$x = 'kept'\nthrow 'parity-boom'\n"
+              },
+              "outputVariable": "n1",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "n2",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "remote runScript: non-terminating error",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "$ErrorActionPreference = 'Continue'\nGet-Item C:\\nope-np-parity\n$x = '1'\n"
+              },
+              "outputVariable": "n2",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "n3",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "remote startProgram: timeout",
+              "activityType": "startProgram",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\PING.EXE",
+                "arguments": "-n 30 127.0.0.1",
+                "timeoutSeconds": 3
+              },
+              "outputVariable": "n3",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "n4",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "remote waitForCondition: condition cannot run",
+              "activityType": "waitForCondition",
+              "config": {
+                "conditionType": "script",
+                "script": "$true ? 1 : 0",
+                "intervalSeconds": 1,
+                "timeoutSeconds": 8
+              },
+              "outputVariable": "n4",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "chk",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "Check: what the failures left behind",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "if ('{{n0.param.after}}' -eq 'y') { throw 'native stderr did not stop the remote script' }\nif ({{n1.param.x}} -ne 'kept') { throw 'remote throw lost the assigned value' }\nif (({{n1.error}}).Trim() -ne 'parity-boom') { throw \"remote throw error text: '{{n1.error}}'\" }\nif ({{n3.param.stdout}} -notmatch '127\\.0\\.0\\.1') { throw 'remote program timeout lost the output' }\n$checked = 'ok'\n"
+              },
+              "outputVariable": "chk",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "contract": "negative",
+                  "area": "script parity remote"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-n0",
+            "source": "trg",
+            "target": "n0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n0-n1",
+            "source": "n0",
+            "target": "n1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n1-n2",
+            "source": "n1",
+            "target": "n2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n2-n3",
+            "source": "n2",
+            "target": "n3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n3-n4",
+            "source": "n3",
+            "target": "n4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n4-chk",
+            "source": "n4",
+            "target": "chk",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-chk-ret",
+            "source": "chk",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Node, Edge } from '@xyflow/react';
-import { WORKFLOW_SNIPPETS, insertSnippet } from '../../lib/workflowSnippets';
+import { WORKFLOW_SNIPPETS, getWorkflowSnippets, insertSnippet } from '../../lib/workflowSnippets';
+import i18n from '../../i18n';
 
 /**
  * Pins two contracts of the quick-start snippet catalog:
@@ -191,5 +192,19 @@ describe('insertSnippet', () => {
     const alwaysEdge = result.edges.find((e) => (e.data as { label: string }).label === '');
     expect(alwaysEdge).toBeDefined();
     expect((alwaysEdge!.data as { condition: string }).condition).toBe('');
+  });
+});
+
+describe('getWorkflowSnippets labels', () => {
+  it('nodeAndEdgeLabels_followTheCurrentLanguage', async () => {
+    const original = i18n.language;
+    try {
+      await i18n.changeLanguage('de');
+      const tryCatch = getWorkflowSnippets().find((s) => s.id === 'try-catch-script')!;
+      expect(tryCatch.nodes.map((n) => n.label)).toContain('Skript ausführen');
+      expect(tryCatch.edges.map((e) => e.label)).toContain('Bei Erfolg');
+    } finally {
+      await i18n.changeLanguage(original);
+    }
   });
 });

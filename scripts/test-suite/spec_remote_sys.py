@@ -515,10 +515,11 @@ def wait_for_condition_workflow():
     steps = [
         janitor(), cid(), mkrun(),
         Step("disc", "Discover the API's own listening port", "runScript",
-             {"engine": "auto", "timeoutSeconds": 30,
+             {"engine": "runspace", "timeoutSeconds": 30,
               "script": """
-# waitForCondition probes must target something that is genuinely listening. The script
-# runs inside the API process, so the process itself is the only reliable fixture.
+# waitForCondition probes must target something that is genuinely listening. The in-process
+# engine runs the script inside the API process, so the process itself is the only reliable
+# fixture; the default engine would run it in a separate powershell.exe without a listener.
 $ownPid = [System.Diagnostics.Process]::GetCurrentProcess().Id
 $listener = Get-NetTCPConnection -State Listen -OwningProcess $ownPid -ErrorAction SilentlyContinue |
   Sort-Object LocalPort | Select-Object -First 1
@@ -552,11 +553,11 @@ $selfPort = $listener.LocalPort.ToString()
              cases=[{"id": "waitForCondition.conditionType.portOpen",
                      "dimension": "waitForCondition.conditionType", "value": "portOpen"}]),
         Step("v4", "wait: httpOk", "waitForCondition",
-             {"conditionType": "httpOk", "url": "{{globals.NP_TESTSUITE_SELF_URL}}",
+             {"conditionType": "httpOk", "url": "{{globals.NP_TESTSUITE_PROBE_URL}}",
               "intervalSeconds": 1, "timeoutSeconds": 15}, target_machine=LOCAL,
              cases=[{"id": "waitForCondition.conditionType.httpOk",
                      "dimension": "waitForCondition.conditionType", "value": "httpOk",
-                     "requires": ["globals:NP_TESTSUITE_SELF_URL"]}]),
+                     "requires": ["globals:NP_TESTSUITE_PROBE_URL"]}]),
         cleanup(),
         assert_step("""
 $scriptAttempts = {{v0.param.attempts}}
@@ -579,10 +580,11 @@ $assertOk = 'waitForCondition'
     ]
     return Workflow(
         29, "waitForCondition", "[TestSuite] waitForCondition",
-        "All five condition types. The port and URL probes target the API's own "
-        "listener, discovered at run time, so the workflow is not tied to one port.",
+        "All five condition types. The port probe targets the API's own listener, "
+        "discovered at run time; the URL probe targets NP_TESTSUITE_PROBE_URL, because an "
+        "installed instance cannot probe itself by its own name.",
         "positive", "continuous", "A", steps, max_runtime=120,
-        requires=["globals:NP_TESTSUITE_SELF_URL"])
+        requires=["globals:NP_TESTSUITE_PROBE_URL"])
 
 
 def power_management_workflow():

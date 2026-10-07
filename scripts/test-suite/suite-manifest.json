@@ -258,7 +258,7 @@
       "maxRuntimeSeconds": 120,
       "judgeBy": "run",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ]
     },
     {
@@ -355,12 +355,36 @@
       ]
     },
     {
+      "name": "[TestSuite] script parity",
+      "file": "positive/37-script-parity.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 1/5 * * * ? *",
+      "maxRuntimeSeconds": 150,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] script parity remote",
+      "file": "positive/38-script-parity-remote.json",
+      "contract": "positive",
+      "profile": "integration",
+      "tier": "C",
+      "cron": "0 22/30 * * * ? *",
+      "maxRuntimeSeconds": 600,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ]
+    },
+    {
       "name": "[TestSuite] trigger: schedule",
       "file": "positive/50-trigger-schedule.json",
       "contract": "positive",
       "profile": "continuous",
       "tier": "A",
-      "cron": "0 1/5 * * * ? *",
+      "cron": "0 2/5 * * * ? *",
       "maxRuntimeSeconds": 45,
       "judgeBy": "cadence",
       "requires": []
@@ -411,7 +435,7 @@
       "maxRuntimeSeconds": 45,
       "judgeBy": "cadence",
       "requires": [
-        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+        "config:Trigger:Database:Connections:np-testsuite-sentinel set to Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite"
       ]
     },
     {
@@ -433,7 +457,7 @@
       "contract": "positive",
       "profile": "continuous",
       "tier": "A",
-      "cron": "0 2/5 * * * ? *",
+      "cron": "0 3/5 * * * ? *",
       "maxRuntimeSeconds": 90,
       "judgeBy": "run",
       "requires": []
@@ -444,7 +468,7 @@
       "contract": "positive",
       "profile": "continuous",
       "tier": "A",
-      "cron": "0 3/5 * * * ? *",
+      "cron": "0 4/5 * * * ? *",
       "maxRuntimeSeconds": 60,
       "judgeBy": "run",
       "requires": [
@@ -471,7 +495,7 @@
       "contract": "positive",
       "profile": "integration",
       "tier": "C",
-      "cron": "0 22/30 * * * ? *",
+      "cron": "0 7/30 * * * ? *",
       "maxRuntimeSeconds": 180,
       "judgeBy": "run",
       "requires": [
@@ -510,8 +534,7 @@
       "maxRuntimeSeconds": 90,
       "judgeBy": "run",
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ]
     },
     {
@@ -526,18 +549,42 @@
       "requires": []
     },
     {
+      "name": "[TestSuite-Neg] script parity",
+      "file": "negative/84-script-parity.json",
+      "contract": "negative",
+      "profile": "continuous",
+      "tier": "B",
+      "cron": "0 10/15 * * * ? *",
+      "maxRuntimeSeconds": 180,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
       "name": "[TestSuite-Neg] production guards",
       "file": "negative/85-hardening.json",
       "contract": "negative",
       "profile": "integration",
       "tier": "C",
-      "cron": "0 7/30 * * * ? *",
+      "cron": "0 22/30 * * * ? *",
       "maxRuntimeSeconds": 90,
       "judgeBy": "run",
       "requires": [
         "config:FileSystemOperation:RejectTraversal=true",
         "config:StartProgram:DisallowShellExecute=true",
         "config:SqlActivity:RequireConnectionRef=true"
+      ]
+    },
+    {
+      "name": "[TestSuite-Neg] script parity remote",
+      "file": "negative/86-script-parity-remote.json",
+      "contract": "negative",
+      "profile": "integration",
+      "tier": "C",
+      "cron": "0 7/30 * * * ? *",
+      "maxRuntimeSeconds": 300,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
       ]
     },
     {
@@ -2631,7 +2678,7 @@
       "nodeId": "v0",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -2645,7 +2692,7 @@
       "nodeId": "v0",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -2659,7 +2706,7 @@
       "nodeId": "v1",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -2673,7 +2720,7 @@
       "nodeId": "v2",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -2687,7 +2734,7 @@
       "nodeId": "v3",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -2701,7 +2748,7 @@
       "nodeId": "v4",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -3319,6 +3366,298 @@
       "workflow": "[TestSuite] custom activity"
     },
     {
+      "id": "parity.local.template.word",
+      "dimension": "runScript.template",
+      "value": "anywhere in a word, one argument",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.roundtrip",
+      "dimension": "runScript.encoding",
+      "value": "upstream umlauts, New-Guid, Get-FileHash, Start-Job",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.output",
+      "dimension": "runScript.output",
+      "value": "ToString per object, no host/warning/information lines",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.return",
+      "dimension": "runScript.exitCode",
+      "value": "last native code after a top-level return",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.exit",
+      "dimension": "runScript.exitCode",
+      "value": "exit N in the 5.1 process",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.isolated-exit",
+      "dimension": "runScript.exitCode",
+      "value": "exit N in an isolated process",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.cwd",
+      "dimension": "runScript.workingDirectory",
+      "value": "the host's directory, as in the pool",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p6",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.tempfile",
+      "dimension": "runScript.tempScript",
+      "value": "deleted as soon as PowerShell read it",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p8",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.background",
+      "dimension": "runScript.background",
+      "value": "a program started without a window does not hold the step",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p9",
+      "assertedBy": "assert",
+      "assertedVia": "p10",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.stderr-merged",
+      "dimension": "runScript.stderr",
+      "value": "cmd /c \"tool 2>&1\" keeps the step green",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p11",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.progress",
+      "dimension": "runScript.error",
+      "value": "no serialized progress in the error text",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "p12",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.s.startProgram.oem-cmd",
+      "dimension": "startProgram.stdout",
+      "value": "umlauts from cmd (OEM code page)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "sc",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.s.startProgram.oem-powershell",
+      "dimension": "startProgram.stdout",
+      "value": "umlauts from Windows PowerShell (OEM)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "sp",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.s.startProgram.utf8",
+      "dimension": "startProgram.stdout",
+      "value": "umlauts from a program that writes UTF-8",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "su",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.local.waitForCondition",
+      "dimension": "waitForCondition.engine",
+      "value": "script conditions run in Windows PowerShell 5.1",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity",
+      "nodeId": "w0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 150
+    },
+    {
+      "id": "parity.remote.template.word",
+      "dimension": "runScript.template",
+      "value": "anywhere in a word, over WinRM",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity remote",
+      "nodeId": "r0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 600
+    },
+    {
+      "id": "parity.remote.roundtrip",
+      "dimension": "runScript.encoding",
+      "value": "upstream umlauts and Windows modules over WinRM",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity remote",
+      "nodeId": "r1",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 600
+    },
+    {
+      "id": "parity.remote.output",
+      "dimension": "runScript.output",
+      "value": "the reference the local output is held to",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity remote",
+      "nodeId": "r2",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 600
+    },
+    {
+      "id": "parity.remote.return",
+      "dimension": "runScript.exitCode",
+      "value": "last native code after a top-level return",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity remote",
+      "nodeId": "r3",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 600
+    },
+    {
+      "id": "parity.t.startProgram.oem-cmd",
+      "dimension": "startProgram.stdout",
+      "value": "umlauts from cmd (OEM code page)",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity remote",
+      "nodeId": "tc",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 600
+    },
+    {
+      "id": "parity.t.startProgram.oem-powershell",
+      "dimension": "startProgram.stdout",
+      "value": "umlauts from Windows PowerShell (OEM)",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity remote",
+      "nodeId": "tp",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 600
+    },
+    {
+      "id": "parity.t.startProgram.utf8",
+      "dimension": "startProgram.stdout",
+      "value": "umlauts from a program that writes UTF-8",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity remote",
+      "nodeId": "tu",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 600
+    },
+    {
+      "id": "parity.remote.databus",
+      "dimension": "runScript.template",
+      "value": "a remote program's output read back in the local pool",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity remote",
+      "nodeId": "l0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 600
+    },
+    {
+      "id": "parity.remote.waitForCondition",
+      "dimension": "waitForCondition.engine",
+      "value": "script condition over WinRM",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] script parity remote",
+      "nodeId": "w0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 600
+    },
+    {
       "id": "scheduleTrigger.cronExpression",
       "dimension": "scheduleTrigger.cronExpression",
       "value": "7-field Quartz cron",
@@ -3491,7 +3830,7 @@
       "nodeId": "read",
       "assertedBy": "assert",
       "requires": [
-        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+        "config:Trigger:Database:Connections:np-testsuite-sentinel set to Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite"
       ],
       "maxRuntimeSeconds": 45
     },
@@ -3505,7 +3844,7 @@
       "nodeId": "read",
       "assertedBy": "assert",
       "requires": [
-        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+        "config:Trigger:Database:Connections:np-testsuite-sentinel set to Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite"
       ],
       "maxRuntimeSeconds": 45
     },
@@ -3519,7 +3858,21 @@
       "nodeId": "read",
       "assertedBy": "assert",
       "requires": [
-        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+        "config:Trigger:Database:Connections:np-testsuite-sentinel set to Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "databaseTrigger.connectionRef",
+      "dimension": "databaseTrigger.connectionRef",
+      "value": "named connection",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: database",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Trigger:Database:Connections:np-testsuite-sentinel set to Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite"
       ],
       "maxRuntimeSeconds": 45
     },
@@ -3534,10 +3887,10 @@
       "workflow": "[TestSuite] trigger: database"
     },
     {
-      "id": "databaseTrigger.connectionRef",
-      "dimension": "databaseTrigger.connectionRef",
-      "value": "named connection",
-      "reason": "Needs Trigger:Database:Connections:<name> in the host's configuration; the suite ships with the inline form that development permits.",
+      "id": "databaseTrigger.connectionString",
+      "dimension": "databaseTrigger.connectionString",
+      "value": "inline connection string",
+      "reason": "Production rejects it (Trigger:Database:RequireConnectionRef), so the suite polls through the named connection that every host accepts.",
       "coveredBy": "tests/NodePilot.Engine.Tests",
       "profile": "excluded",
       "expectedOutcome": "excluded",
@@ -4262,8 +4615,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4280,8 +4632,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4298,8 +4649,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4316,8 +4666,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4334,8 +4683,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4352,8 +4700,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4370,8 +4717,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4388,8 +4734,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4406,8 +4751,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4468,6 +4812,132 @@
       "maxRuntimeSeconds": 120
     },
     {
+      "id": "parity.local.fail.non-terminating",
+      "dimension": "runScript.success",
+      "value": "any error record fails the step",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity",
+      "nodeId": "n0",
+      "expectedFailure": {
+        "stepId": "n0",
+        "errorContains": "nope-np-parity"
+      },
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "parity.local.fail.write-error",
+      "dimension": "runScript.success",
+      "value": "Write-Error under Continue",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity",
+      "nodeId": "n1",
+      "expectedFailure": {
+        "stepId": "n1",
+        "errorContains": "parity-soft-error"
+      },
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "parity.local.fail.native-stderr",
+      "dimension": "runScript.stderr",
+      "value": "native stderr ends the script",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity",
+      "nodeId": "n2",
+      "expectedFailure": {
+        "stepId": "n2",
+        "errorContains": "parity-native-warn"
+      },
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "parity.local.fail.throw",
+      "dimension": "runScript.success",
+      "value": "throw, values still published",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity",
+      "nodeId": "n3",
+      "expectedFailure": {
+        "stepId": "n3",
+        "errorContains": "parity-boom"
+      },
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "parity.local.fail.parse",
+      "dimension": "runScript.success",
+      "value": "the script never runs",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity",
+      "nodeId": "n4",
+      "expectedFailure": {
+        "stepId": "n4",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "parity.local.fail.return-exit",
+      "dimension": "runScript.successExitCodes",
+      "value": "the native code survives a return",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity",
+      "nodeId": "n5",
+      "expectedFailure": {
+        "stepId": "n5",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "parity.local.fail.quoted-word",
+      "dimension": "runScript.template",
+      "value": "a word starting with a template may not add its own quotes",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity",
+      "nodeId": "n6",
+      "expectedFailure": {
+        "stepId": "n6",
+        "errorContains": "contains quotes"
+      },
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "parity.local.fail.condition",
+      "dimension": "waitForCondition.script",
+      "value": "fails at once, not after the timeout",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity",
+      "nodeId": "n7",
+      "expectedFailure": {
+        "stepId": "n7",
+        "errorContains": "could not be evaluated"
+      },
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "parity.local.fail.program-timeout",
+      "dimension": "startProgram.timeoutSeconds",
+      "value": "reported by the script with partial output",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity",
+      "nodeId": "n8",
+      "expectedFailure": {
+        "stepId": "n8",
+        "errorContains": "timed out"
+      },
+      "maxRuntimeSeconds": 180
+    },
+    {
       "id": "fileOperation.guard.traversal",
       "dimension": "fileOperation.path",
       "value": "traversal rejected",
@@ -4523,6 +4993,91 @@
         "config:SqlActivity:RequireConnectionRef=true"
       ],
       "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "parity.remote.fail.native-stderr",
+      "dimension": "runScript.stderr",
+      "value": "native stderr ends the script over WinRM",
+      "profile": "integration",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity remote",
+      "nodeId": "n0",
+      "expectedFailure": {
+        "stepId": "n0",
+        "errorContains": "parity-native-warn"
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "parity.remote.fail.throw",
+      "dimension": "runScript.success",
+      "value": "throw over WinRM, values still published",
+      "profile": "integration",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity remote",
+      "nodeId": "n1",
+      "expectedFailure": {
+        "stepId": "n1",
+        "errorContains": "parity-boom"
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "parity.remote.fail.non-terminating",
+      "dimension": "runScript.success",
+      "value": "any error record fails the step over WinRM",
+      "profile": "integration",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity remote",
+      "nodeId": "n2",
+      "expectedFailure": {
+        "stepId": "n2",
+        "errorContains": "nope-np-parity"
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "parity.remote.fail.program-timeout",
+      "dimension": "startProgram.timeoutSeconds",
+      "value": "reported by the script, not by a stopped pipeline",
+      "profile": "integration",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity remote",
+      "nodeId": "n3",
+      "expectedFailure": {
+        "stepId": "n3",
+        "errorContains": "timed out"
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "parity.remote.fail.condition",
+      "dimension": "waitForCondition.script",
+      "value": "keeps polling and names the last error",
+      "profile": "integration",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] script parity remote",
+      "nodeId": "n4",
+      "expectedFailure": {
+        "stepId": "n4",
+        "errorContains": "Last error"
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_REMOTE_MACHINE"
+      ],
+      "maxRuntimeSeconds": 300
     },
     {
       "id": "serviceManagement.action.create",

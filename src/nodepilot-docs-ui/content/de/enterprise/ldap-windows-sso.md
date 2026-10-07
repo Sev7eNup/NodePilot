@@ -56,7 +56,7 @@ Anschließend unter Admin-Einstellungen → *Authentication*: LDAP aktivieren, *
 angeben (`dc1.corp.example.com:636`), dazu `BaseDn`, `UpnSuffix`, Service-Bind-DN samt Passwort, die
 SID von `NodePilot-Users` als erlaubte Gruppe und die SID von `NodePilot-Admins` auf die Rolle
 `Admin` gemappt. Der eingebaute Test prüft TLS-Vertrauen, Service-Bind, Search Base und
-Gruppenauflösung gegen den ungespeicherten Entwurf, bevor du ihn übernimmst.
+Gruppenauflösung gegen den ungespeicherten Entwurf, vor der Übernahme.
 
 **Genau einen Endpunkt konfigurieren**, solange nicht jeder aufgeführte DC dauerhaft erreichbar ist.
 Der Verzeichniszugriff arbeitet mit All-DC-Konsens, nicht mit Failover — ein zweiter, zeitweise

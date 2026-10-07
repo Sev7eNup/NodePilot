@@ -54,7 +54,7 @@ test.describe('Designer Status-Banner (Teil 62)', () => {
     // EditorStatusBanners "disabledTitle" copy.
     await expect(page.getByText(/workflow is disabled/i).first()).toBeVisible({ timeout: 15_000 });
     // The disabled banner replaces the productive one.
-    await expect(page.getByText(/running productive/i)).toHaveCount(0);
+    await expect(page.getByText(/workflow is live/i)).toHaveCount(0);
     // The toolbar exposes the "Edit" button: an Admin has roleCanWrite and the lock is free.
     await expect(page.getByRole('button', { name: /bearbeiten|^edit$/i }).first()).toBeVisible();
   });

@@ -254,6 +254,16 @@ describe('PropertiesPanel — sections & gating', () => {
     expect(screen.getByRole('button', { name: /Open Editor/i })).toBeInTheDocument();
   });
 
+  it('PropertiesPanel_ActivityStep_ShowsRetryPolicySection', () => {
+    renderPanel({ node: makeNode('runScript') });
+    expect(screen.getByText('Retry policy')).toBeInTheDocument();
+  });
+
+  it('PropertiesPanel_Junction_HidesRetryPolicySection', () => {
+    renderPanel({ node: makeNode('junction') });
+    expect(screen.queryByText('Retry policy')).not.toBeInTheDocument();
+  });
+
   it('does not render runScript-specific config for a different activity type', () => {
     renderPanel({ node: makeNode('delay', { config: { seconds: 5 } }) });
     expect(screen.queryByText('PowerShell Script')).not.toBeInTheDocument();

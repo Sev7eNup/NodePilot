@@ -56,6 +56,16 @@ describe('ScriptEditorDialog', () => {
     expect(onRun).toHaveBeenCalled();
   });
 
+  it('RunResult_Empty_ShowsTranslatedNoOutputText', async () => {
+    const onRun = vi.fn().mockResolvedValue({
+      success: true, output: '', errorOutput: null, outputParameters: {}, durationMs: 3,
+    });
+    render(<ScriptEditorDialog value="$x" onChange={() => {}} onClose={() => {}} onRun={onRun} />);
+    fireEvent.click(screen.getByRole('button', { name: /^run$/i }));
+    expect(await screen.findByText('No output')).toBeInTheDocument();
+    expect(screen.queryByText('Kein Output.')).toBeNull();
+  });
+
   it('renders the variables sidebar when availableVars are passed', () => {
     render(
       <ScriptEditorDialog

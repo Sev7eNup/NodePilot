@@ -167,8 +167,12 @@ tmp_*
 !src/nodepilot-docs-ui/src/assets/*.png
 # Docs site favicon (served from its public/ folder)
 !src/nodepilot-docs-ui/public/*.png
+# Website logo for structured data (served from its public/ folder)
+!src/nodepilot-docs-ui/src/site/public/*.png
 # Pages-only marketing poster
 !src/nodepilot-docs-ui/pages-media/*.png
+# Training videos: copied from out/ by `npm run site:videos`, uploaded by the site publisher
+src/nodepilot-docs-ui/pages-media/training/
 # README screenshots (public repo landing page)
 !docs/images/*.png
 
@@ -197,17 +201,27 @@ src/nodepilot-ui/coverage-sonar/
 # Codex CLI scratch artifacts
 .codex-artifacts/
 
+# Local blog article drafts and their images
+/docs/blogarticle/
+
+# Marketing film, training videos and Workflow Flight: sources and design notes stay local
+/scripts/marketing-film/*
+/design/
+
 # Local investigation output (CM1 reviews, gcdumps, log pulls) - never part of the repo
 .artifacts/
 
 # Scratch bodies handed to `gh pr create --body-file` — never part of the repo
 /pr*-body.md
 
-# Local presentations / slide decks (not part of the repo)
-presentations/
+# Local presentations, slide decks and Workflow Flight HTML (not part of the repo)
+presentations/*
 
 # Local AI agent skills and notes (not part of the repo)
 .agents/
 
 # Web host credentials for deploy/Publish-Site.ps1 - see site-publish.example.json
 deploy/site-publish.local.json
+
+# Personal notes (not part of the repo)
+ideenAusFeedback.txt

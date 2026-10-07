@@ -15,11 +15,9 @@
       content="NodePilot documentation: agentless workflow orchestration for Windows over WinRM — an open, modern replacement for Microsoft System Center Orchestrator."
     />
 
-    <!-- One generic link-preview card for the whole site: routes live in the URL fragment
-         (#/en/cli), which never reaches the server, so every page returns this same HTML and
-         crawlers cannot see per-page tags. For the same reason there is no hreflang pair and
-         no sitemap. og:url and canonical carry no fragment. og:image must be an absolute
-         https URL; a relative one yields no card image on most platforms. -->
+    <!-- Defaults for the shell. scripts/prerender-docs.mjs rewrites title, description,
+         canonical, hreflang and robots per page. og:image must be an absolute https URL;
+         a relative one yields no card image on most platforms. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="NodePilot Docs" />
     <meta property="og:title" content="NodePilot Documentation" />
@@ -27,8 +25,8 @@
       property="og:description"
       content="Agentless workflow orchestration for Windows over WinRM — an open replacement for System Center Orchestrator."
     />
-    <meta property="og:url" content="https://sev7enup.github.io/NodePilot/docs/" />
-    <meta property="og:image" content="https://sev7enup.github.io/NodePilot/docs/og-image.png" />
+    <meta property="og:url" content="https://www.nodepilot.run/docs/" />
+    <meta property="og:image" content="https://www.nodepilot.run/docs/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="NodePilot — agentless Windows workflow orchestration" />
@@ -37,10 +35,10 @@
          are omitted. -->
     <meta name="twitter:card" content="summary_large_image" />
 
-    <link rel="canonical" href="https://sev7enup.github.io/NodePilot/docs/" />
-    <link rel="alternate" hreflang="en" href="https://sev7enup.github.io/NodePilot/docs/en/" />
-    <link rel="alternate" hreflang="de" href="https://sev7enup.github.io/NodePilot/docs/de/" />
-    <link rel="alternate" hreflang="x-default" href="https://sev7enup.github.io/NodePilot/docs/en/" />
+    <link rel="canonical" href="https://www.nodepilot.run/docs/" />
+    <link rel="alternate" hreflang="en" href="https://www.nodepilot.run/docs/en/" />
+    <link rel="alternate" hreflang="de" href="https://www.nodepilot.run/docs/de/" />
+    <link rel="alternate" hreflang="x-default" href="https://www.nodepilot.run/docs/en/" />
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <!-- How far the documentation root is from this file. The prerenderer writes the right depth
          into every page it emits; main.tsx resolves it once into the router's base path, so the

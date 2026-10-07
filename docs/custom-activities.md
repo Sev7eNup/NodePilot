@@ -11,8 +11,10 @@ script engine and no new backend execution path.
 ## Concepts
 
 - **Definition** (`CustomActivityDefinition`): the reusable template — name, immutable `Key`, icon,
-  optional accent colour, PowerShell `ScriptTemplate`, engine, remote/isolation flags, default
-  timeout, success exit codes, declared input/output parameters.
+  optional accent colour, PowerShell `ScriptTemplate`, engine (`auto`/`powershell` = Windows
+  PowerShell 5.1, `pwsh`, `runspace` = in-process pool, same meaning as on `runScript`;
+  `runspace` cannot be combined with isolation), remote/isolation flags, default timeout, success
+  exit codes, declared input/output parameters.
 - **Activity type**: a node referencing a definition carries `activityType = "custom:<Key>"`
   end-to-end. The definition is linked via `config.__customDefinitionId` (authoritative) plus
   `config.__customKey` (drift cross-check).
@@ -42,6 +44,9 @@ script engine and no new backend execution path.
 - Declared **inputs** (`string | number | boolean | select | multiline`) are resolved against the
   databus (`{{...}}` / `{{globals.X}}`) and injected as `$name` PowerShell variables. Author the
   script using `$ServiceName`, not `{{ServiceName}}`.
+- **Globals resolve inside the definition, not just in the node's config:** a `{{globals.X}}` that
+  appears only in the `ScriptTemplate` or in an input's default value is resolved for the run. One
+  that does not exist, or cannot be decrypted on this host, fails the step before the script runs.
 - Declared **outputs** are surfaced downstream as `{{node.param.<name>}}`. The PowerShell wrapper
   runs in a **capture allow-list** mode for custom activities: it captures **only** the declared
   output variables (plus the always-present `exitCode`). Injected inputs and undeclared helper

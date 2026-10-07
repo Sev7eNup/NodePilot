@@ -1,13 +1,33 @@
 import { expect, test } from '@playwright/test';
 
+for (const lang of ['de', 'en']) {
+  test(`task overview navigation works from both tour panels in ${lang}`, async ({ page }) => {
+    const overviewPath = lang === 'de' ? '/walkthrough/' : '/en/walkthrough/';
+    // The demo-only test server does not host the website. Serve its destination here
+    // so this checks an actual document navigation rather than only the link's href.
+    await page.route(`**${overviewPath}`, route => route.fulfill({ contentType: 'text/html', body: '<h1>Task overview</h1>' }));
+    for (const mode of ['diagnose', 'machine']) {
+      await page.goto(`./?tour=${mode}&lang=${lang}`);
+      if (mode === 'diagnose') await page.locator('[data-tour-action="permission"]').click();
+      else {
+        await page.locator('#root input[type="text"]').first().fill('LAB01');
+        await page.locator('[data-tour-action="none"]').click();
+      }
+      await page.getByRole('link', { name: lang === 'de' ? 'Alle zehn Aufgaben' : 'All ten tasks', exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`${overviewPath}$`));
+      await expect(page.getByRole('heading', { name: 'Task overview' })).toBeVisible();
+    }
+  });
+}
+
 test('runs the guided file task through the real dialog and investigates the failed copy', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('./?tour=file&lang=de');
   await expect(page.locator('.np-tour')).toHaveAttribute('data-stage', 'start');
-  await expect(page.getByRole('button', { name: 'Test-Run', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Ausführen', exact: true })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('guided-start.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Test-Run', exact: true }).click();
+  await page.getByRole('button', { name: 'Ausführen', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await dialog.getByPlaceholder('30', { exact: true }).fill('60');
@@ -18,7 +38,8 @@ test('runs the guided file task through the real dialog and investigates the fai
   await expect(page.locator('#root')).toContainText('"pollIntervalSeconds": 60');
   await expect(page.locator('#root')).toContainText('C:\\Apps\\FileWorker\\Test\\config\\settings.json');
   await page.screenshot({ path: test.info().outputPath('guided-result.png'), fullPage: true });
-  await page.locator('[data-tour-action="next"]').click();
+  await expect(page.locator('.np-tour [role="status"]')).toHaveText('✓ Aufgabe abgeschlossen');
+  await expect(page.locator('[data-tour-action="next-task"]')).toHaveAttribute('href', /tour=decision/);
   await page.locator('[data-tour-action="failure"]').click();
   await expect(page.locator('#root')).toContainText('Access denied');
   await expect(page.locator('#root')).toContainText('File Copy: configuration');
@@ -36,11 +57,13 @@ test('runs the guided file task through the real dialog and investigates the fai
 test('opens the diagnosis directly in English, survives navigation and resets on reload', async ({ page }) => {
   await page.goto('./?tour=diagnose&lang=en');
   await expect(page.locator('.np-tour')).toContainText('Find the cause');
+  await expect(page.locator('.np-tour h2')).toHaveText('Find the cause');
   await expect(page.locator('#root')).toContainText('Access denied');
-  await page.evaluate(() => { location.hash = '#/'; });
+  await page.getByRole('link', { name: 'Workspace', exact: true }).click();
   await page.locator('[data-tour-action="resume"]').click();
   await expect(page.locator('#root')).toContainText('Access denied');
   await page.locator('[data-tour-action="permission"]').click();
+  await expect(page.locator('.np-tour')).not.toContainText('You started a workflow');
   await page.reload();
   await expect(page.locator('.np-tour')).toHaveAttribute('data-stage', 'diagnose');
   await page.locator('[data-tour-action="close"]').click();

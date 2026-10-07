@@ -88,6 +88,15 @@ const getDialog = () =>
     .parentElement as HTMLElement;
 
 describe('MaintenanceWindowsPage', () => {
+  it.each([
+    [23 * 60, 2 * 60, 'Sat 23:00 – Sun 02:00 (UTC)'],
+    [8 * 60, 8 * 60, 'Sat 08:00 – Sun 08:00 (UTC)'],
+    [8 * 60, 10 * 60, 'Sat 08:00 – 10:00 (UTC)'],
+  ])('shows the correct end day for weekly windows (%s to %s)', async (start, end, label) => {
+    seed({ windows: [mw({ weeklyDaysMask: 64, weeklyStartMinuteOfDay: start, weeklyEndMinuteOfDay: end })] });
+    renderPage();
+    expect(await screen.findByText(label)).toBeInTheDocument();
+  });
   it('rendersLoadingState', () => {
     seed({ windows: null });
     renderPage();

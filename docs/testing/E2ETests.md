@@ -5023,51 +5023,48 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 81: Custom Activities (81.1 — 81.9)
 [ ] Teil 82: Datenbank-Ausfall zur Laufzeit (82.1 — 82.4)
 [ ] Teil 83: Live-Ops Mission Control (83.1 — 83.15)
-[ ] Teil 84: Skript-Editor gegen das minifizierte Bundle (84.1 — 84.2)
 ```
 
 ---
 
 ## Teil 84: Skript-Editor gegen das minifizierte Bundle
 
-> Der Prod-Build minifiziert das CSS mit Lightning CSS, und der kürzt Farben **innerhalb** von
-> Custom-Properties (`#ffffff` wird zu `#fff`). Monaco akzeptiert für Token-Farben nur sechs oder
-> acht Hex-Ziffern und wirft sonst — der Wurf riss über die Error-Boundary die ganze
-> Designer-Seite mit. Der Dev-Server minifiziert nicht, deshalb ist das **nur** in dieser
-> Konstellation reproduzierbar: `playwright.config.ts` baut das echte Bundle und serviert es.
-> Auslösender Skin ist `dark-bank`, dessen `--color-on-surface` reines Weiß ist.
+**Automatisiert** in `src/nodepilot-ui/e2e/script-editor.spec.ts`, Aufruf `npm run test:e2e`.
 
-### Test 84.1 — Editor öffnet unter `dark-bank`
-1. Workflow mit einem `runScript`-Node öffnen, Skin auf `dark-bank` stellen.
-2. Node anwählen, im Properties-Panel „Open Editor" klicken.
-- [ ] Der Dialog erscheint und Monaco rendert (`.monaco-editor` sichtbar).
-- [ ] Keine Fehlerseite „Editor konnte nicht geladen werden".
-- [ ] Keine unbehandelte Exception (`pageerror`).
-- [ ] Keine Konsolen-Warnung „skin colors rejected by Monaco" — die bedeutet, dass das Netz
-      gegriffen hat und der Editor in Monacos Standardfarben statt im Skin läuft.
+`playwright.config.ts` baut das echte Bundle und serviert es. Nur dort kürzt Lightning CSS
+Farben innerhalb von Custom-Properties (`#ffffff` wird zu `#fff`), und Monaco lehnt solche
+Token-Farben ab. Der Dev-Server minifiziert nicht und kann das nicht reproduzieren.
 
-### Test 84.2 — Gegenprobe unter `dark`
-1. Dasselbe unter dem Standard-Dark-Skin, dessen Tokens nicht verkürzbar sind.
-- [ ] Gleiches Ergebnis; der Unterschied liegt allein am Token-Wert, nicht am Editor.
+Geprüft wird:
 
-Automatisiert: `e2e/script-editor.spec.ts`.
+1. **Editor öffnet unter fünf Skins** (`dark-bank`, `dark`, `light-minimal`, `dark-minimal`,
+   `dark-ion`) ohne unbehandelte Exception und ohne Konsolen-Warnung „skin colors rejected by
+   Monaco".
+2. **Palette folgt dem Skin-Wechsel** — ein offener Monaco-Editor unter `light` bzw. `dark`
+   übernimmt beim Wechsel auf die Minimal-Variante deren Kommentarfarbe und Editorfläche und
+   kehrt beim Zurückwechseln zur Ausgangspalette zurück.
+3. **Monaco und CodeMirror überstehen Dark ⇄ ION ⇄ Minimal** — beide Editoren bleiben montiert,
+   behalten ihren Inhalt und zeigen jeweils die Code-Palette des aktiven Skins.
 
 ---
 
 ## Teil 85: Browser-Demo gegen das veröffentlichte Bundle
 
-**Automatisiert** in `src/nodepilot-ui/e2e-demo/demo-smoke.spec.ts`, eigene Config
-(`playwright.demo.config.ts`), Aufruf `npm run test:e2e:demo`.
+**Automatisiert** in `src/nodepilot-ui/e2e-demo/demo-smoke.spec.ts` und
+`src/nodepilot-ui/e2e-demo/routing.spec.ts`, eigene Config (`playwright.demo.config.ts`),
+Aufruf `npm run test:e2e:demo`.
 
 Die Demo ist dieselbe SPA gegen ein In-Memory-Backend, veröffentlicht unter `/demo/`. Der Test
-fährt gegen das **gebaute** `dist-demo` und serviert es unter einem **Unterpfad** — an der Wurzel
-fielen genau die Basis-Pfad-Fehler nicht auf, weil `base: './'` URLs in JavaScript-Strings nicht
-umschreibt.
+fährt gegen das **gebaute** `dist-demo` und serviert es unter `/demo/` mit demselben
+Seiten-Fallback wie Apache: Seitenpfade liefern die Demo-Startdatei, fehlende Assets bleiben 404.
+Die Assets sind root-absolut (`base: '/demo/'`), damit ein Deep-Link sie unabhängig von der
+aktuellen Route auflöst; ein Asset-Miss, der die HTML-Hülle bekäme, würde eine falsche
+Asset-Basis verdecken.
 
 Geprüft wird:
 
-1. **Start unter Unterpfad** — Dashboard rendert, Marken-Logo lädt (root-absolute Icon-Pfade),
-   Doku-Link zeigt auf `../docs/` statt `/docs/`.
+1. **Start unter `/demo/`** — Dashboard rendert, jedes Bild lädt (root-absolute Marken-Pfade),
+   Doku-Link zeigt auf `/docs/`, also auf die Website neben der Demo.
 2. **Jede erreichbare Route** — null Konsolenfehler, null `[demo] unhandled`-Zeilen **und keine
    gerenderte Error-Boundary**. Die dritte Zusicherung ist nachgerüstet: React reicht einen
    Render-Fehler an die Boundary statt ans Fenster, `pageerror` feuert nicht, und der Durchlauf
@@ -5084,6 +5081,53 @@ Geprüft wird:
 7. **Reload stellt die Seed-Welt wieder her.**
 8. **Zwei Tabs desselben Browsers stören sich nicht** — Tab B öffnen und neu laden darf Tab A weder
    Caches leeren noch remounten lassen.
+9. **Saubere Pfade statt Hash-Routen** (`routing.spec.ts`) — ein Workflow-Detail wie
+   `/demo/workflows/<id>` lässt sich direkt aufrufen und neu laden, die Adresse behält keinen
+   Hash, die Demo bleibt `noindex`.
+10. **Alte Hash-Links werden umgeschrieben** — `/demo/?lang=de&id=old#/executions?id=new` landet auf
+    `/demo/executions?lang=de&id=new`; Sprache und Query der Hash-Route gewinnen, und der Reload
+    bleibt dort.
+11. **Browser-Historie statt Neuaufbau** — Klick auf eine Geschwister-Route sowie `goBack`/`goForward`
+    behalten dieselbe In-Memory-Welt.
+12. **Seiten-Fallback trennt Seiten von Assets** — ein unbekannter Seitenpfad antwortet 200 `text/html`,
+    ein fehlendes Asset 404.
+
+---
+
+## Teil 86: Geführte Aufgaben der Browser-Demo
+
+**Automatisiert** in `src/nodepilot-ui/e2e-demo/guided-tour.spec.ts` (Aufgaben `file` und `diagnose`)
+und `src/nodepilot-ui/e2e-demo/additional-tours.spec.ts` (die acht weiteren), gleiche Config und
+gleicher Aufruf wie Teil 85.
+
+Die Demo bietet zehn geführte Aufgaben, gestartet über `?tour=<id>`. Jede Aufgabe wird über die
+echte Oberfläche erledigt; das Panel `.np-tour` meldet seinen Fortschritt in `data-stage`, und die
+Tests prüfen diese Stufen statt Texte.
+
+Geprüft wird:
+
+1. **Direkter Einstieg** — jede der acht neuen Aufgaben öffnet per Link in Deutsch und Englisch,
+   ohne in den Reset-Zustand zu fallen. Die Aufgabenübersicht ist aus beiden Panels erreichbar.
+2. **Datei-Aufgabe (`file`)** — Ausführen über den echten Parameter-Dialog bis `success`, das
+   Ergebnis zeigt den geschriebenen Konfigurationswert; die anschließende Analyse findet den
+   fehlgeschlagenen Kopierschritt (`Access denied`). Danach ist der Tour-Parameter aus der Adresse
+   entfernt, ohne Konsolenfehler.
+3. **Diagnose (`diagnose`)** — öffnet direkt auf Englisch, übersteht Navigation und startet nach
+   einem Reload neu.
+4. **Entscheidung (`decision`)** — bei 8 GB läuft nur der kritische Zweig.
+5. **Parallel (`parallel`)** — beide Zweige enden vor dem `waitAll`, das Gantt-Diagramm zeigt sie.
+6. **Dienst (`service`)** — der Dienst wird gestartet und geprüft, bevor die Wiederherstellungs-Mail
+   rausgeht.
+7. **Live (`live`)** — ein laufender Lauf wird aus Live-Ops abgebrochen.
+8. **Versionen (`versions`)** — die Antwort zählt erst, wenn die ältere Version im Vergleich gewählt ist.
+9. **Maschine (`machine`)** und **Wartung (`maintenance`)** — Suche und Statusantwort bzw. das
+   Bearbeiten des Wartungsfensters schließen die Aufgabe ab.
+10. **Aufbauen (`build`)** — Kanten ziehen, speichern, veröffentlichen und ausführen; der
+    Fortschritt springt erst nach dem Lauf auf die nächste Aufgabe.
+11. **Navigation und Reload** — eine Aufgabe übersteht Navigation im Client (mit Fortsetzen-Knopf)
+    und beginnt nach einem Reload von vorn.
+12. **Breiten** — das Panel passt bei 390, 768 und 1440 px ohne horizontales Scrollen; auf dem
+    Telefon bietet die Datei-Aufgabe den nativen Ausführen-Dialog.
 
 ---
 
@@ -5107,6 +5151,6 @@ Geprüft wird:
 
 ---
 
-**Letzte Aktualisierung:** 2026-07-09 — Teile 77–78 erweitert (KI-Workflow-Assistent Threads/Persistenz/Export/Aktivität/Tool-Calling, Alerting Delivery-Ledger/Gauge-Scope-Gate/cancelledBy) und trigger-only/runScript-Isolation-Szenarien nachgezogen.
+**Letzte Aktualisierung:** 2026-10-03 — Teil 86 für die zehn geführten Aufgaben der Browser-Demo ergänzt.
 **Autor:** sev7enup
 **Projekt:** NodePilot E2E Test Suite

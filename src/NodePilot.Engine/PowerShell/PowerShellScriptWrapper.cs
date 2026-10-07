@@ -10,25 +10,26 @@ internal static class PowerShellScriptWrapper
     public const string ParamsMarker = "###NODEPILOT_PARAMS###";
 
     /// <summary>
-    /// Emitted to stdout by the wrapper's catch block when the user script raises a terminating
-    /// PowerShell error. Lets the out-of-process engine determine "did the script throw?" WITHOUT
-    /// relying on the process exit code — so an explicit `exit N` (which skips the catch) stays a
-    /// non-failure, consistent with the runspace/WinRM `!HadErrors` rule. Stripped from Output by
+    /// Tells the out-of-process engine that the script failed, which it cannot read from the exit
+    /// code: `exit N` must stay a non-failure. Written by the wrapper's catch on a terminating
+    /// error, and by the process engine's bootstrap for the first error record the script writes,
+    /// matching the runspace/WinRM `!HadErrors` rule. Stripped from Output by
     /// <c>PowerShellActivitySupport.ExtractMarkers</c>.
     /// </summary>
     public const string ErrorMarker = "###NODEPILOT_ERROR###";
 
     /// <summary>
-    /// Emitted (always, on normal completion) followed by the captured <c>$LASTEXITCODE</c>.
-    /// Kept separate from the user-variable PARAMS block so it never overrides a user-emitted
-    /// marker nor forces an otherwise-empty PARAMS block. Lifted into <c>param.exitCode</c>.
+    /// Emitted after a normal end or a top-level <c>return</c>, followed by <c>$LASTEXITCODE</c>.
+    /// Absent after <c>exit N</c> and after a throw, so the engine's own exit code stays
+    /// authoritative there. Kept separate from the PARAMS block so it never forces an
+    /// otherwise-empty one. Lifted into <c>param.exitCode</c>.
     /// </summary>
     public const string ExitCodeMarker = "###NODEPILOT_EXITCODE###";
 
     /// <summary>
     /// Emitted before any other statement, so an out-of-process engine can tell "the script never
-    /// ran" from "the script ran and exited". PowerShell parses a whole <c>-File</c> script before
-    /// executing its first statement, so a syntax error — a terminating error under the documented
+    /// ran" from "the script ran and exited". PowerShell parses the whole script before executing
+    /// its first statement, so a syntax error — a terminating error under the documented
     /// contract — leaves stdout empty and the catch block unreached. Its absence is therefore the
     /// only reliable "did not execute" signal; <see cref="ExitCodeMarker"/> cannot serve, since a
     /// plain <c>exit N</c> skips it too and must stay a success.
@@ -182,9 +183,8 @@ internal static class PowerShellScriptWrapper
 
         // try/catch stays in the OUTER scope: on a terminating error emit ErrorMarker (so the
         // process engine can detect a throw without the exit code) then re-throw (keeps
-        // runspace/WinRM HadErrors). An explicit `exit N` skips both the capture block AND the
-        // catch — no marker, no PARAMS — which is how `exit N` stays a non-failure under the
-        // error-based rule.
+        // runspace/WinRM HadErrors). An explicit `exit N` skips the catch, which is how it stays
+        // a non-failure under the error-based rule.
         scriptContent.AppendLine("try {");
         scriptContent.AppendLine("& {");
 
@@ -193,17 +193,18 @@ internal static class PowerShellScriptWrapper
         scriptContent.AppendLine("$__npBuiltinVars = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)");
         scriptContent.AppendLine("Get-Variable -Scope Local | ForEach-Object { $__npBuiltinVars.Add($_.Name) | Out-Null }");
 
+        // The capture runs in finally, so what the script assigned is published even when it
+        // leaves early through `exit N`, a top-level `return` or `throw`.
+        scriptContent.AppendLine("try {");
         scriptContent.AppendLine("# === USER SCRIPT ===");
         scriptContent.AppendLine(userScript);
         scriptContent.AppendLine();
+        scriptContent.AppendLine("}");
+        scriptContent.AppendLine("finally {");
 
         // Use the IDictionary base-count via psbase to avoid collisions with user variables
         // like $count that create a hashtable entry named "count".
         scriptContent.AppendLine("# === NODEPILOT OUTPUT CAPTURE ===");
-        // Capture $LASTEXITCODE (last native command's exit code; null when none ran) before any
-        // capture cmdlet — Get-Variable / ConvertTo-Json are cmdlets, not native, so they don't
-        // reset it. Surfaced as the reserved __npExitCode key -> {{step.param.exitCode}}.
-        scriptContent.AppendLine("$__npExit = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }");
         scriptContent.AppendLine("$__npOut = @{}");
         if (outputCaptureAllowlist is not null)
         {
@@ -217,7 +218,7 @@ internal static class PowerShellScriptWrapper
                 scriptContent.AppendLine($"$__npOutAllow.Add('{name}') | Out-Null");
             }
             scriptContent.AppendLine("Get-Variable -Scope Local -ErrorAction SilentlyContinue | Where-Object {");
-            scriptContent.AppendLine("    $__npOutAllow.Contains($_.Name)");
+            scriptContent.AppendLine("    $__npOutAllow.Contains($_.Name) -and $_.Name -ne 'exitCode'");
             scriptContent.AppendLine("} | ForEach-Object {");
             scriptContent.AppendLine("    $__npOut[$_.Name] = [string]$_.Value");
             scriptContent.AppendLine("}");
@@ -227,8 +228,10 @@ internal static class PowerShellScriptWrapper
             // $__npReserved is read from the parent scope. It carries the automatics that only
             // come into being while the script runs ($_, $foreach, $Matches, …) and are therefore
             // absent from the snapshot taken a few lines up.
+            // exitCode is never taken from a script variable: after an early exit there is no
+            // exit-code marker to override it, and it would replace the engine's real exit code.
             scriptContent.AppendLine("Get-Variable -Scope Local -ErrorAction SilentlyContinue | Where-Object {");
-            scriptContent.AppendLine("    -not $__npBuiltinVars.Contains($_.Name) -and -not $__npReserved.Contains($_.Name) -and $_.Name -notlike '__np*' -and $_.Name -ne 'Params'");
+            scriptContent.AppendLine("    -not $__npBuiltinVars.Contains($_.Name) -and -not $__npReserved.Contains($_.Name) -and $_.Name -notlike '__np*' -and $_.Name -ne 'Params' -and $_.Name -ne 'exitCode'");
             scriptContent.AppendLine("} | ForEach-Object {");
             scriptContent.AppendLine("    $__npOut[$_.Name] = [string]$_.Value");
             scriptContent.AppendLine("}");
@@ -237,12 +240,16 @@ internal static class PowerShellScriptWrapper
         scriptContent.AppendLine($"    Write-Output '{ParamsMarker}'");
         scriptContent.AppendLine("    Write-Output ($__npOut | ConvertTo-Json -Compress)");
         scriptContent.AppendLine("}");
-        // Always surface the captured exit code as its OWN marker (separate from the user-variable
-        // PARAMS block, so it never overrides a user-emitted marker nor forces an empty PARAMS).
-        scriptContent.AppendLine($"Write-Output '{ExitCodeMarker}'");
-        scriptContent.AppendLine("Write-Output ([string]$__npExit)");
-        // Close the inner user scope, then the try, then the outer injection scope.
+        // Close the finally and the inner user scope.
         scriptContent.AppendLine("}");
+        scriptContent.AppendLine("}");
+        // Reached after a normal end and after a top-level `return`, not after `exit N` or a throw:
+        // after `exit N` the engine's own exit code stays authoritative. $LASTEXITCODE is the last
+        // native command's code (null when none ran); the capture above uses cmdlets only, which
+        // leave it alone. Its own marker, so it never forces an otherwise-empty PARAMS block.
+        scriptContent.AppendLine($"Write-Output '{ExitCodeMarker}'");
+        scriptContent.AppendLine("Write-Output ([string]$(if ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }))");
+        // Close the outer try.
         scriptContent.AppendLine("}");
         scriptContent.AppendLine("catch {");
         scriptContent.AppendLine($"    Write-Output '{ErrorMarker}'");

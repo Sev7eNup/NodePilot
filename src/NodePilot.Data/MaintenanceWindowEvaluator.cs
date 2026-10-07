@@ -145,7 +145,7 @@ public sealed class MaintenanceWindowEvaluator : IMaintenanceWindowEvaluator
             {
                 try
                 {
-                    cron = new Quartz.CronExpression(w.CronExpression) { TimeZone = tz };
+                    cron = new Quartz.CronExpression(w.CronExpression, tz);
                 }
                 catch (Exception ex)
                 {
@@ -272,11 +272,10 @@ public sealed class MaintenanceWindowEvaluator : IMaintenanceWindowEvaluator
     }
 
     // A cron window is active during [fire, fire + duration) for every fire of its expression.
-    // GetTimeAfter(now - duration) returns the earliest fire strictly after that probe, i.e.
-    // the fires with fire + duration > now — so the window is active iff that fire already
+    // GetNextValidTimeAfter(now - duration) returns the earliest fire strictly after that probe,
+    // i.e. the fires with fire + duration > now — so the window is active iff that fire already
     // happened (fire <= now). At now == fire + duration the fire is no longer strictly after
-    // the probe, so the window correctly reads closed. The zone is baked into the compiled
-    // CronExpression via Quartz's TimeZone property.
+    // the probe, so the window correctly reads closed. The zone is compiled into the expression.
     private static bool TryCronActive(CompiledWindow w, DateTime nowUtc, out DateTime activeUntilUtc)
     {
         activeUntilUtc = default;
@@ -285,7 +284,7 @@ public sealed class MaintenanceWindowEvaluator : IMaintenanceWindowEvaluator
 
         var duration = TimeSpan.FromMinutes(minutes);
         var now = new DateTimeOffset(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc));
-        if (w.Cron.GetTimeAfter(now - duration) is { } fire && fire <= now)
+        if (w.Cron.GetNextValidTimeAfter(now - duration) is { } fire && fire <= now)
         {
             activeUntilUtc = (fire + duration).UtcDateTime;
             return true;
@@ -304,7 +303,7 @@ public sealed class MaintenanceWindowEvaluator : IMaintenanceWindowEvaluator
         // (hasLiveAllow && never insideAnyAllow). Misconfigured crons stay inert.
         MaintenanceRecurrenceKind.Cron => w.Cron is not null
             && w.CronDurationMinutes is { } minutes && minutes > 0
-            && w.Cron.GetTimeAfter(
+            && w.Cron.GetNextValidTimeAfter(
                 new DateTimeOffset(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc))
                     - TimeSpan.FromMinutes(minutes)) is not null,
         _ => false,

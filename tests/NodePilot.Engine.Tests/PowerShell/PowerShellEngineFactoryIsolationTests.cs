@@ -6,7 +6,7 @@ using NodePilot.Engine.Tests.Helpers;
 namespace NodePilot.Engine.Tests.PowerShell;
 
 /// <summary>
-/// Routing logic for the isolated overload <c>GetEngine(engineType, isolated)</c>. Uses the
+/// Engine routing of <c>GetEngine</c> (plain and isolated) and <c>GetBuiltInEngine</c>. Uses the
 /// internal test ctor with fake engines so "pwsh missing" / fallback behaviour can be asserted
 /// independently of what is installed on the test host. Isolation must NEVER resolve to the
 /// in-process runspace pool (which cannot contain a crash/leak) and must fail loudly rather than
@@ -22,26 +22,27 @@ public class PowerShellEngineFactoryIsolationTests
             new FakeEngine("runspace", runspace));
 
     [Fact]
-    public void GetEngine_IsolatedWithRunspaceRequest_ReturnsProcessEngineNotRunspace()
+    public void GetEngine_IsolatedWithRunspaceRequest_Throws()
     {
-        // engine:"runspace" + isolated is a category error (runspace is in-process). Isolation
-        // wins -> a process engine, never the pool.
-        var engine = Factory().GetEngine("runspace", isolated: true);
+        // The in-process pool cannot be isolated. Picking another engine silently would run the
+        // script under a PowerShell the author did not choose.
+        var act = () => Factory().GetEngine("runspace", isolated: true);
 
-        engine.EngineType.Should().Be("pwsh");
-        engine.EngineType.Should().NotBe("runspace");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*runspace*cannot run isolated*");
+    }
+
+    [Theory]
+    [InlineData("auto")]
+    [InlineData("somethingUnknown")]
+    public void GetEngine_IsolatedWithAuto_PrefersWindowsPowerShell(string engineType)
+    {
+        Factory().GetEngine(engineType, isolated: true).EngineType.Should().Be("powershell");
     }
 
     [Fact]
-    public void GetEngine_IsolatedWithAuto_PrefersPwsh()
+    public void GetEngine_IsolatedAutoWindowsPowerShellUnavailable_FallsBackToPwsh()
     {
-        Factory().GetEngine("auto", isolated: true).EngineType.Should().Be("pwsh");
-    }
-
-    [Fact]
-    public void GetEngine_IsolatedAutoPwshUnavailable_FallsBackToWindowsPowerShell()
-    {
-        Factory(pwsh: false).GetEngine("auto", isolated: true).EngineType.Should().Be("powershell");
+        Factory(windows: false).GetEngine("auto", isolated: true).EngineType.Should().Be("pwsh");
     }
 
     [Fact]
@@ -67,10 +68,51 @@ public class PowerShellEngineFactoryIsolationTests
     }
 
     [Fact]
-    public void GetEngine_IsolatedFalse_DelegatesToLegacyRouting()
+    public void GetEngine_IsolatedFalse_DelegatesToPlainRouting()
     {
-        // Non-isolated keeps the fast in-process pool for auto/runspace.
         Factory().GetEngine("runspace", isolated: false).EngineType.Should().Be("runspace");
-        Factory().GetEngine("auto", isolated: false).EngineType.Should().Be("runspace");
+        Factory().GetEngine("auto", isolated: false).EngineType.Should().Be("powershell");
+    }
+
+    // --- non-isolated routing ---------------------------------------------------------
+
+    [Theory]
+    [InlineData("auto")]
+    [InlineData("AUTO")]
+    [InlineData("somethingUnknown")]
+    public void GetEngine_Auto_IsWindowsPowerShellLikeARemoteStep(string engineType)
+    {
+        // A remote step runs in Windows PowerShell 5.1 on the target; a local one must see the
+        // same modules.
+        Factory().GetEngine(engineType).EngineType.Should().Be("powershell");
+    }
+
+    [Fact]
+    public void GetEngine_AutoWindowsPowerShellUnavailable_FallsBackToPwshThenRunspace()
+    {
+        Factory(windows: false).GetEngine("auto").EngineType.Should().Be("pwsh");
+        Factory(windows: false, pwsh: false).GetEngine("auto").EngineType.Should().Be("runspace");
+    }
+
+    [Theory]
+    [InlineData("pwsh", "pwsh")]
+    [InlineData("powershell", "powershell")]
+    [InlineData("runspace", "runspace")]
+    public void GetEngine_ExplicitEngine_IsHonoured(string engineType, string expected)
+    {
+        Factory().GetEngine(engineType).EngineType.Should().Be(expected);
+    }
+
+    [Fact]
+    public void GetBuiltInEngine_PrefersTheInProcessPool()
+    {
+        Factory().GetBuiltInEngine().EngineType.Should().Be("runspace");
+    }
+
+    [Fact]
+    public void GetBuiltInEngine_PoolUnavailable_FallsBackToAProcess()
+    {
+        Factory(runspace: false).GetBuiltInEngine().EngineType.Should().Be("pwsh");
+        Factory(runspace: false, pwsh: false).GetBuiltInEngine().EngineType.Should().Be("powershell");
     }
 }

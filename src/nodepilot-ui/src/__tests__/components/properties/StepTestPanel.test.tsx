@@ -80,6 +80,20 @@ describe('StepTestPanel', () => {
     expect(screen.queryByRole('button', { name: /Run test/i })).not.toBeInTheDocument();
   });
 
+  it('TestResultBlock_Result_UsesThemeStatusTokensNotFixedPalette', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      success: false, output: '', errorOutput: 'boom',
+      outputParameters: {}, durationMs: 5, errorMessage: 'failed',
+    }));
+    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveConfig={{}} canRun={true} />);
+    fireEvent.click(screen.getByRole('button', { name: /Run test/i }));
+
+    const block = (await screen.findByText('boom')).closest('div.rounded-md')!;
+    // Fixed light palette classes stayed light on dark skins and made the text unreadable.
+    expect(block.className).toContain('bg-error-container/40');
+    expect(block.className).not.toMatch(/bg-(red|green)-50/);
+  });
+
   it('Empty mode test sends configOverride + no mockVariables', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({
       success: true, output: 'OK', errorOutput: null,

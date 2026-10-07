@@ -45,7 +45,7 @@ internal static class PowerShellActivitySupport
         if (expressions.Count == 0)
             return script;
 
-        var contexts = AnalyzeTemplateContexts(script, expressions, out var coveringTokens, out var nestedStrings);
+        var contexts = AnalyzeTemplateContexts(script, expressions, out var coveringTokens, out var nestedStrings, out var wordEnds);
         var resolved = new StringBuilder(script);
         for (var i = expressions.Count - 1; i >= 0; i--)
         {
@@ -56,6 +56,12 @@ internal static class PowerShellActivitySupport
             // prevents a value containing a newline or comment terminator from becoming code.
             if (context == TemplateContext.Comment)
                 continue;
+
+            if (context == TemplateContext.WordStart)
+            {
+                i = ResolveWord(script, expressions, contexts, wordEnds, variables, i, resolved);
+                continue;
+            }
 
             if (context == TemplateContext.SingleQuotedString && nestedStrings[i])
             {
@@ -134,6 +140,58 @@ internal static class PowerShellActivitySupport
         DoubleQuotedHereString,
         ExpandableStringSubexpression,
         Comment,
+        // A template that starts a bareword (`{{x}}\app.txt`), or any template inside such a word.
+        WordStart,
+    }
+
+    /// <summary>
+    /// Rewrites a bareword that starts with a template as one double-quoted word, each template as
+    /// an encoded subexpression: `"$(…)\app.txt"`. A quoted value at the start of a word would end
+    /// that argument and turn the rest of the word into a second one. Returns the index of the
+    /// word's first template.
+    /// </summary>
+    private static int ResolveWord(
+        string script,
+        IReadOnlyList<TemplateExpression> expressions,
+        TemplateContext[] contexts,
+        int[] wordEnds,
+        IReadOnlyDictionary<string, string> variables,
+        int last,
+        StringBuilder resolved)
+    {
+        var wordEnd = wordEnds[last];
+        var first = last;
+        while (first > 0 && contexts[first - 1] == TemplateContext.WordStart && wordEnds[first - 1] == wordEnd)
+            first--;
+
+        var wordStart = expressions[first].Index;
+        var word = new StringBuilder("\"");
+        var cursor = wordStart;
+        var changed = false;
+        for (var k = first; k <= last; k++)
+        {
+            var expression = expressions[k];
+            word.Append(script, cursor, expression.Index - cursor);
+            var value = ResolveTemplateExpression(expression, variables, TemplateContext.ExpandableStringSubexpression);
+            if (value is null)
+            {
+                word.Append(expression.Match.Value);
+            }
+            else
+            {
+                word.Append("$(").Append(value).Append(')');
+                changed = true;
+            }
+            cursor = expression.Index + expression.Length;
+        }
+        word.Append(script, cursor, wordEnd - cursor).Append('"');
+
+        if (changed)
+        {
+            resolved.Remove(wordStart, wordEnd - wordStart);
+            resolved.Insert(wordStart, word.ToString());
+        }
+        return first;
     }
 
     private enum TemplateKind { Global, Manual, Step }
@@ -188,21 +246,22 @@ internal static class PowerShellActivitySupport
         return deduped;
     }
 
+    /// <summary>
+    /// Finds the parser context of every template in two passes over same-length surrogates, so
+    /// every source offset stays valid. Pass 1 fills each template with identifier characters,
+    /// which cannot open or close a string or comment, and classifies it. Pass 2 fills the code
+    /// templates with a quoted literal, which is what the real substitution inserts there, and
+    /// judges parse errors on that text: a bare word after a cast (<c>[int]xxxx</c>) is a parse
+    /// error, the substituted <c>[int]'50'</c> is not.
+    /// </summary>
     private static TemplateContext[] AnalyzeTemplateContexts(
         string script,
         IReadOnlyList<TemplateExpression> expressions,
         out Token[] coveringTokens,
-        out bool[] nestedStrings)
+        out bool[] nestedStrings,
+        out int[] wordEnds)
     {
-        var surrogate = script.ToCharArray();
-        foreach (var expression in expressions)
-        {
-            // A run of identifier characters is lexically neutral in code and cannot close
-            // strings/comments. Keeping the exact length preserves every source offset.
-            Array.Fill(surrogate, 'x', expression.Index, expression.Length);
-        }
-
-        _ = Parser.ParseInput(new string(surrogate), out var tokens, out var parseErrors);
+        _ = Parser.ParseInput(BuildSurrogate(script, expressions, quoted: null), out var tokens, out _);
         var contexts = new TemplateContext[expressions.Count];
         coveringTokens = new Token[expressions.Count];
         nestedStrings = new bool[expressions.Count];
@@ -213,23 +272,10 @@ internal static class PowerShellActivitySupport
             var expression = expressions[i];
             var end = expression.Index + expression.Length;
 
-            var overlappingError = parseErrors.FirstOrDefault(error =>
-                error.Extent.StartOffset < end && error.Extent.EndOffset > expression.Index);
-            if (overlappingError is not null)
-            {
-                throw new InvalidOperationException(
-                    $"PowerShell template at offset {expression.Index} has an unsafe or ambiguous syntax context: " +
-                    overlappingError.Message);
-            }
-
             // Prefer the narrowest covering token. Expandable strings can contain nested
             // subexpression tokens; a template in `$()` is code, while a direct template in
             // the surrounding string is string content.
-            var token = flattenedTokens
-                .Where(candidate => candidate.Extent.StartOffset <= expression.Index
-                                    && candidate.Extent.EndOffset >= end)
-                .OrderBy(candidate => candidate.Extent.EndOffset - candidate.Extent.StartOffset)
-                .FirstOrDefault();
+            var token = NarrowestCoveringToken(flattenedTokens, expression.Index, end);
 
             if (token is null)
             {
@@ -266,8 +312,179 @@ internal static class PowerShellActivitySupport
             coveringTokens[i] = token;
         }
 
+        var quoted = contexts
+            .Select(context => context is TemplateContext.Code or TemplateContext.ExpandableStringSubexpression)
+            .ToArray();
+        var substitutedAst = Parser.ParseInput(BuildSurrogate(script, expressions, quoted), out var substitutedTokens, out var parseErrors);
+        var flattenedSubstituted = FlattenTokens(substitutedTokens).ToArray();
+        wordEnds = MarkWordStarts(script, expressions, contexts, coveringTokens, substitutedAst);
+
+        for (var i = 0; i < expressions.Count; i++)
+        {
+            var expression = expressions[i];
+            var end = expression.Index + expression.Length;
+
+            var overlappingError = parseErrors.FirstOrDefault(error =>
+                error.Extent.StartOffset < end && error.Extent.EndOffset > expression.Index);
+            if (overlappingError is not null)
+            {
+                throw new InvalidOperationException(
+                    $"PowerShell template at offset {expression.Index} has an unsafe or ambiguous syntax context: " +
+                    overlappingError.Message);
+            }
+
+            // A word that starts with a template is re-emitted as a whole (ResolveWord).
+            if (contexts[i] == TemplateContext.WordStart)
+                continue;
+
+            // The substitution must not change how the script around the template parses: a
+            // quoted template stays exactly one string literal or a quoted part of its bareword,
+            // any other keeps its pass-1 token.
+            var token = NarrowestCoveringToken(flattenedSubstituted, expression.Index, end);
+            var unchanged = quoted[i]
+                ? (token is { Kind: TokenKind.StringLiteral }
+                   && token.Extent.StartOffset == expression.Index && token.Extent.EndOffset == end)
+                  || (contexts[i] == TemplateContext.Code && IsPlainBarewordPart(coveringTokens[i], token))
+                : token is not null
+                  && token.Kind == coveringTokens[i].Kind
+                  && token.Extent.StartOffset == coveringTokens[i].Extent.StartOffset
+                  && token.Extent.EndOffset == coveringTokens[i].Extent.EndOffset;
+            if (!unchanged)
+            {
+                throw new InvalidOperationException(
+                    $"PowerShell template at offset {expression.Index} has an unsafe or ambiguous syntax context: " +
+                    "the substituted value would change how the surrounding script parses.");
+            }
+        }
+
         return contexts;
     }
+
+    /// <summary>
+    /// Marks templates that start a bareword the quoted value would split: in the parse with
+    /// quoted templates the value stands as its own command argument, although without quotes
+    /// the word runs on (`{{x}}\app.txt`). A member access such as `{{x}}.Trim()` is left alone.
+    /// Every template inside such a word joins it. Returns each marked template's word end.
+    /// </summary>
+    private static int[] MarkWordStarts(
+        string script,
+        IReadOnlyList<TemplateExpression> expressions,
+        TemplateContext[] contexts,
+        Token[] coveringTokens,
+        Ast substitutedAst)
+    {
+        var wordEnds = new int[expressions.Count];
+        var literals = substitutedAst.FindAll(ast => ast is StringConstantExpressionAst, searchNestedScriptBlocks: true).ToArray();
+
+        for (var i = 0; i < expressions.Count; i++)
+        {
+            if (contexts[i] != TemplateContext.Code) continue;
+            var expression = expressions[i];
+            var end = expression.Index + expression.Length;
+            var word = coveringTokens[i];
+            if (word.Kind != TokenKind.Generic
+                || word.Extent.StartOffset != expression.Index
+                || word.Extent.EndOffset <= end)
+                continue;
+
+            var literal = literals.FirstOrDefault(ast => ast.Extent.StartOffset == expression.Index && ast.Extent.EndOffset == end);
+            if (!SplitsItsArgument(literal))
+                continue;
+
+            var wordEnd = word.Extent.EndOffset;
+            var members = Enumerable.Range(0, expressions.Count)
+                .Where(j => expressions[j].Index >= expression.Index && expressions[j].Index < wordEnd)
+                .ToArray();
+
+            // The word becomes one double-quoted string; its own quotes would change meaning there.
+            var cursor = expression.Index;
+            foreach (var j in members)
+            {
+                if (HasQuote(script, cursor, expressions[j].Index))
+                    throw new InvalidOperationException(
+                        $"PowerShell template at offset {expression.Index} has an unsafe or ambiguous syntax context: " +
+                        "the word it starts also contains quotes. Assign the value to a variable first.");
+                cursor = expressions[j].Index + expressions[j].Length;
+            }
+            if (HasQuote(script, cursor, wordEnd))
+                throw new InvalidOperationException(
+                    $"PowerShell template at offset {expression.Index} has an unsafe or ambiguous syntax context: " +
+                    "the word it starts also contains quotes. Assign the value to a variable first.");
+
+            foreach (var j in members)
+            {
+                contexts[j] = TemplateContext.WordStart;
+                wordEnds[j] = wordEnd;
+            }
+        }
+        return wordEnds;
+    }
+
+    /// <summary>
+    /// True when the quoted value is a command argument of its own (`'x'\app.txt` is two
+    /// arguments) or the target of a bare member name in argument position (`'x'.txt` reads a
+    /// property `txt`). A method call such as `'x'.ToUpper()` is meant as one.
+    /// </summary>
+    private static bool SplitsItsArgument(Ast? literal)
+        => literal?.Parent switch
+        {
+            CommandAst or CommandParameterAst => true,
+            MemberExpressionAst member and not InvokeMemberExpressionAst
+                => ReferenceEquals(member.Expression, literal)
+                   && member.Member is StringConstantExpressionAst
+                   && member.Parent is CommandAst or CommandParameterAst,
+            _ => false,
+        };
+
+    private static bool HasQuote(string script, int start, int end)
+        => script.IndexOfAny(QuoteCharacters, start, end - start) >= 0;
+
+    private static readonly char[] QuoteCharacters =
+        ['\'', '"', '‘', '’', '‚', '‛', '“', '”', '„'];
+
+    /// <summary>
+    /// True when a template sits inside a bareword such as <c>C:\t\{{x}}.txt</c> or
+    /// <c>$dir\f-{{x}}.txt</c> and the quoted value becomes one quoted part of that same word.
+    /// The word must hold no quote, backtick or <c>$(</c> of its own, so the template cannot sit
+    /// inside an existing quoted part or subexpression. A variable such as <c>$dir</c> is fine: a
+    /// template glued to it would make the variable token, not the word, the covering token.
+    /// </summary>
+    private static bool IsPlainBarewordPart(Token original, Token? substituted)
+        => original is { Kind: TokenKind.Generic }
+           && substituted is { Kind: TokenKind.Generic }
+           && substituted.Extent.StartOffset == original.Extent.StartOffset
+           && substituted.Extent.EndOffset == original.Extent.EndOffset
+           && original.Text.IndexOfAny(BarewordSpecialCharacters) < 0
+           && !original.Text.Contains("$(", StringComparison.Ordinal);
+
+    private static readonly char[] BarewordSpecialCharacters =
+        ['\'', '"', '`', '\u2018', '\u2019', '\u201a', '\u201b', '\u201c', '\u201d', '\u201e'];
+
+    /// <summary>
+    /// The script with every template replaced by a same-length run of <c>x</c>, or, where
+    /// <paramref name="quoted"/> is set, by a same-length single-quoted literal.
+    /// </summary>
+    private static string BuildSurrogate(string script, IReadOnlyList<TemplateExpression> expressions, bool[]? quoted)
+    {
+        var surrogate = script.ToCharArray();
+        for (var i = 0; i < expressions.Count; i++)
+        {
+            var expression = expressions[i];
+            Array.Fill(surrogate, 'x', expression.Index, expression.Length);
+            if (quoted?[i] == true)
+            {
+                surrogate[expression.Index] = '\'';
+                surrogate[expression.Index + expression.Length - 1] = '\'';
+            }
+        }
+        return new string(surrogate);
+    }
+
+    private static Token? NarrowestCoveringToken(Token[] tokens, int start, int end)
+        => tokens
+            .Where(candidate => candidate.Extent.StartOffset <= start && candidate.Extent.EndOffset >= end)
+            .OrderBy(candidate => candidate.Extent.EndOffset - candidate.Extent.StartOffset)
+            .FirstOrDefault();
 
     private static IEnumerable<Token> FlattenTokens(IEnumerable<Token> tokens)
     {
@@ -408,33 +625,27 @@ internal static class PowerShellActivitySupport
         var work = StripMarkerLine(output, ErrorMarker);
         work = StripMarkerLine(work, PowerShellScriptWrapper.StartMarker);
 
-        string? capturedExitCode = null;
-        var exitIdx = work.LastIndexOf(ExitCodeMarker, StringComparison.Ordinal);
-        if (exitIdx >= 0)
-        {
-            capturedExitCode = work[(exitIdx + ExitCodeMarker.Length)..].Trim();
-            work = work[..exitIdx].TrimEnd();
-        }
+        // A marker's value is the first following line of the expected shape, not everything
+        // after it: a program the script started without a new window can write into the same
+        // stream, before, between or after the wrapper's lines. Its lines stay ordinary output.
+        var lines = new List<string>(work.Split('\n'));
+        var capturedExitCode = TakeMarkerValue(lines, ExitCodeMarker, IsExitCodeLine);
+        var json = TakeMarkerValue(lines, ParamsMarker, line => line.StartsWith('{'));
+        work = string.Join('\n', lines).TrimEnd();
 
-        var paramsIdx = work.LastIndexOf(ParamsMarker, StringComparison.Ordinal);
-        if (paramsIdx >= 0)
+        if (!string.IsNullOrEmpty(json))
         {
-            var json = work[(paramsIdx + ParamsMarker.Length)..].Trim();
-            work = work[..paramsIdx].TrimEnd();
-            if (!string.IsNullOrEmpty(json))
+            try
             {
-                try
-                {
-                    using var doc = JsonDocument.Parse(json);
-                    foreach (var prop in doc.RootElement.EnumerateObject())
-                        parameters[prop.Name] = prop.Value.ToString();
-                }
-                catch (JsonException ex)
-                {
-                    logger.LogWarning(ex,
-                        "Failed to parse capture block for step {StepId} — output parameters unavailable. JSON length: {Length}",
-                        stepId, json.Length);
-                }
+                using var doc = JsonDocument.Parse(json);
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                    parameters[prop.Name] = prop.Value.ToString();
+            }
+            catch (JsonException ex)
+            {
+                logger.LogWarning(ex,
+                    "Failed to parse capture block for step {StepId} — output parameters unavailable. JSON length: {Length}",
+                    stepId, json.Length);
             }
         }
 
@@ -458,6 +669,29 @@ internal static class PowerShellActivitySupport
 
         return (work, transcript, parameters);
     }
+
+    /// <summary>
+    /// Removes the last line equal to <paramref name="marker"/> and the first line after it that
+    /// satisfies <paramref name="isValue"/>, and returns that value. Null when either is missing.
+    /// </summary>
+    private static string? TakeMarkerValue(List<string> lines, string marker, Func<string, bool> isValue)
+    {
+        var markerIdx = lines.FindLastIndex(line => line.Trim() == marker);
+        if (markerIdx < 0) return null;
+        lines.RemoveAt(markerIdx);
+        for (var i = markerIdx; i < lines.Count; i++)
+        {
+            var candidate = lines[i].Trim();
+            if (!isValue(candidate)) continue;
+            lines.RemoveAt(i);
+            return candidate;
+        }
+        return null;
+    }
+
+    private static bool IsExitCodeLine(string line)
+        => int.TryParse(line, System.Globalization.NumberStyles.AllowLeadingSign,
+            System.Globalization.CultureInfo.InvariantCulture, out _);
 
     private static string StripMarkerLine(string text, string marker)
     {

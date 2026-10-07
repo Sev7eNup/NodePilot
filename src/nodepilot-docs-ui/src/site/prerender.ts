@@ -1,14 +1,14 @@
 /**
  * Turns the single built shell into one file per website route. The string work itself lives in
  * ../lib/prerender-html.ts, which the documentation's prerenderer shares; what stays here is the
- * website's own vocabulary: its routes, its hidden page sections, its robots.txt.
+ * website's own vocabulary: its routes, its page sections, its robots.txt.
  *
- * Why at all: with client-side routing every address served the same HTML, so a crawler saw one
- * page with one title for the whole site. Each route now has its own file, its own title,
- * description and canonical URL, and its own entry in the sitemap.
+ * Each route gets its own file with only its own page section, title, description, canonical URL
+ * and sitemap entry, so a crawler sees one topic per address.
  */
+import { articleBySlug, visibleArticles } from './blog'
 import { pageUrl, setMeta, sitemapXml } from '../lib/prerender-html'
-import { ARTICLE_SLUGS, routePath, type SiteRoute } from './router'
+import { SOLUTION_SLUGS, localizedPath, type SiteRoute } from './router'
 
 export { applyMeta, pageUrl, rewriteRelativeUrls } from '../lib/prerender-html'
 export type { PageMeta } from '../lib/prerender-html'
@@ -16,6 +16,7 @@ export type { PageMeta } from '../lib/prerender-html'
 export interface RoutePage {
   /** Path relative to the site root, without a leading slash. '' is the home page. */
   path: string
+  lang: 'de' | 'en'
   /** File inside the build output. */
   file: string
   route: SiteRoute
@@ -23,28 +24,34 @@ export interface RoutePage {
   listed: boolean
 }
 
-export function routePages(): RoutePage[] {
+export function routePages(preview = false): RoutePage[] {
   const pages: SiteRoute[] = [
     { page: 'home' },
     { page: 'product' },
     { page: 'experience' },
+    { page: 'videos' },
     { page: 'blog' },
-    ...ARTICLE_SLUGS.map((slug) => ({ page: 'article', slug }) as SiteRoute),
+    ...visibleArticles(preview).map(({ slug }) => ({ page: 'article', slug }) as SiteRoute),
+    ...SOLUTION_SLUGS.map((slug) => ({ page: 'solution', slug }) as SiteRoute),
     { page: 'impressum' },
     { page: 'datenschutz' },
     { page: 'notfound' },
   ]
-  return pages.map((route) => {
-    const path = routePath(route)
-    const notFound = route.page === 'notfound'
-    return {
-      path,
-      // A 404 has to be one file at the root: that is what Apache's ErrorDocument and
-      // GitHub Pages both serve for an unknown address.
-      file: notFound ? '404.html' : path === '' ? 'index.html' : `${path}/index.html`,
-      route,
-      listed: !notFound,
-    }
+  return pages.flatMap((route) => {
+    const languages: Array<'de' | 'en'> = ['impressum', 'datenschutz', 'notfound'].includes(route.page) ? ['de'] : ['de', 'en']
+    return languages.map((lang) => {
+      const path = localizedPath(route, lang)
+      const notFound = route.page === 'notfound'
+      return {
+        path,
+        lang,
+        // A 404 has to be one file at the root: that is what Apache's ErrorDocument and
+        // GitHub Pages both serve for an unknown address.
+        file: notFound ? '404.html' : path === '' ? 'index.html' : `${path}/index.html`,
+        route,
+        listed: !notFound && (route.page !== 'article' || articleBySlug[route.slug].status === 'published'),
+      }
+    })
   })
 }
 
@@ -52,10 +59,7 @@ export function routePages(): RoutePage[] {
  * Path of the published origin: '/' on its own domain, '/NodePilot/' on GitHub Pages.
  *
  * Every page's URLs are written against it rather than against the file's own place in the
- * tree. A relative URL resolves against the *address*, not the file, and the address changes
- * under History API navigation: reached from the home page, `href="product/"` in that document
- * would resolve to /walkthrough/product/. The not-found page has the same problem for another
- * reason, being handed out for any address at any depth.
+ * tree, because the not-found page is handed out for any address at any depth.
  */
 export function originPrefix(origin: string): string {
   return `${new URL(origin).pathname.replace(/\/+$/, '')}/`
@@ -69,19 +73,25 @@ export function setBaseMeta(html: string, prefix: string): string {
   return setMeta(html, 'np-site-base', prefix || './')
 }
 
-/** Shows the route's own section, so the file carries its content without running any script. */
-export function revealPage(html: string, route: SiteRoute): string {
-  if (route.page === 'home') return html
-  const id = route.page === 'article' ? 'article-page' : `${route.page}-page`
-  return html
-    .replace(/(<[a-z]+ id="home-page"[^>]*)>/, '$1 hidden>')
-    .replace(new RegExp('(<[a-z]+ id="' + id + '"[^>]*?)\\s+hidden'), '$1')
+/**
+ * Keeps the route's own page section, visible, and removes every other one, so a file carries
+ * only its own topic. `[id]` spares the footer wrapper, which is a `.page` too.
+ */
+export function keepPage(doc: Document, route: SiteRoute): void {
+  for (const section of doc.querySelectorAll('main > .page[id]')) {
+    if (section.id === `${route.page}-page`) section.removeAttribute('hidden')
+    else section.remove()
+  }
 }
 
+/** Articles carry their real publication or update date; other pages get none rather than a guessed one. */
 export function sitemap(origin: string, pages: RoutePage[]): string {
   return sitemapXml(
     origin,
-    pages.filter((page) => page.listed).map((page) => page.path),
+    pages.filter((page) => page.listed).map((page) => {
+      const entry = page.route.page === 'article' ? articleBySlug[page.route.slug] : undefined
+      return { path: page.path, lastmod: entry?.modifiedAt ?? entry?.publishedAt ?? undefined }
+    }),
   )
 }
 
@@ -92,6 +102,20 @@ export function sitemap(origin: string, pages: RoutePage[]): string {
 export function robots(origin: string, sitemaps: readonly string[] = ['sitemap.xml', 'docs/sitemap.xml']): string {
   const lines = sitemaps.map((path) => `Sitemap: ${pageUrl(origin, path)}`).join('\n')
   return `User-agent: *\nAllow: /\n\n${lines}\n`
+}
+
+/** llms.txt: a short English index of the site and the documentation for AI assistants. */
+export function llmsTxt(origin: string, pages: RoutePage[]): string {
+  const links = pages
+    .filter((page) => page.listed && page.lang === 'en')
+    .map((page) => `- [${page.route.page === 'home' ? 'Home' : page.path.replace(/^en\//, '')}](${pageUrl(origin, page.path, true)})`)
+    .join('\n')
+  const docs = `- [Documentation](${pageUrl(origin, 'docs/en/getting-started/introduction/')})\n- [Documentation sitemap](${pageUrl(origin, 'docs/sitemap.xml')})`
+  return (
+    '# NodePilot\n\n' +
+    '> Self-hosted, agentless visual workflow automation for Windows and PowerShell, open source and free of charge.\n\n' +
+    `## Site\n\n${links}\n\n## Documentation\n\n${docs}\n`
+  )
 }
 
 /** The page keys the dictionaries carry a title and description for. */

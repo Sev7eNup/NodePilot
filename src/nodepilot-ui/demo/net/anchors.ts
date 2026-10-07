@@ -9,14 +9,10 @@
  * `/api/audit/export?format=…`), but this guards the class rather than that one page: any
  * same-origin link that would leave the demo's own directory is routed through the demo
  * instead, and a response that carries `Content-Disposition` is saved as a real download.
+ * The website's task overview is an intentional exit and remains normal navigation.
  */
 
 let detach: (() => void) | null = null;
-
-/** Directory the demo is served from, e.g. "/NodePilot/demo/". */
-function demoBasePath(): string {
-  return new URL('./', document.baseURI).pathname;
-}
 
 function isPlainLeftClick(event: MouseEvent): boolean {
   return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
@@ -64,8 +60,11 @@ export function installAnchorGuard(): void {
     if (anchor.target && anchor.target !== '_self') return;
 
     const resolved = new URL(anchor.href, document.baseURI);
+    // blob:/data: links are in-page downloads (workflow export); they never leave the demo.
+    if (resolved.protocol === 'blob:' || resolved.protocol === 'data:') return;
     if (resolved.origin !== globalThis.location.origin) return;
-    if (resolved.pathname.startsWith(demoBasePath())) return;
+    if (resolved.pathname === '/demo' || resolved.pathname.startsWith('/demo/')) return;
+    if (resolved.pathname === '/walkthrough/' || resolved.pathname === '/en/walkthrough/') return;
 
     void handleEscapingClick(event, resolved.toString());
   };

@@ -7,6 +7,7 @@ import { assertElectronRuntimeVersion } from '../scripts/assert-electron-runtime
 
 interface PackageManifest {
   devDependencies: Record<string, string>;
+  '//types-node': string[];
 }
 
 interface PackageLock {
@@ -22,13 +23,21 @@ function readJson<T>(relativePath: string): T {
 }
 
 describe('desktop runtime dependency contract', () => {
-  it('pins Electron 43.4.1 consistently in the manifest and lockfile', () => {
+  it('pins Electron 44.4.5 consistently in the manifest and lockfile', () => {
     const manifest = readJson<PackageManifest>('../package.json');
     const lock = readJson<PackageLock>('../package-lock.json');
 
-    expect(manifest.devDependencies.electron).toBe('43.4.1');
-    expect(lock.packages[''].devDependencies?.electron).toBe('43.4.1');
-    expect(lock.packages['node_modules/electron'].version).toBe('43.4.1');
+    expect(manifest.devDependencies.electron).toBe('44.4.5');
+    expect(lock.packages[''].devDependencies?.electron).toBe('44.4.5');
+    expect(lock.packages['node_modules/electron'].version).toBe('44.4.5');
+  });
+
+  // The embedded Node major changes with Electron majors. Naming the pinned version in the note
+  // makes a bump fail here until someone has checked the Node release behind the new one.
+  it('names the pinned Electron in the embedded-Node note', () => {
+    const manifest = readJson<PackageManifest>('../package.json');
+
+    expect(manifest['//types-node'].join(' ')).toContain(`Electron ${manifest.devDependencies.electron} bundles Node`);
   });
 
   it('uses Electron vendor extraction without the vulnerable extract-zip package', () => {

@@ -1,0 +1,411 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite-Neg] script parity",
+      "description": "Failures a local script step shares with a remote one: any error record, native stderr, throw with its values kept, parse errors, the exit code after return, a quoted word, an unrunnable condition and a program timeout.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 10/15 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 10/15 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "janitor",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Janitor: stale run residue",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n"
+              },
+              "outputVariable": "janitor",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "n0",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: non-terminating error",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$ErrorActionPreference = 'Continue'\nGet-Item C:\\nope-np-parity\n$x = '1'\n"
+              },
+              "outputVariable": "n0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n1",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: Write-Error -ErrorAction Continue",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Write-Error 'parity-soft-error' -ErrorAction Continue\n$x = 'a'\n"
+              },
+              "outputVariable": "n1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n2",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: native stderr",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "cmd /c \"echo parity-native-warn 1>&2\"\n$after = 'y'\n"
+              },
+              "outputVariable": "n2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n3",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: throw",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$x = 'kept'\nthrow 'parity-boom'\n"
+              },
+              "outputVariable": "n3",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n4",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: parse error",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$x = 'ran'\nif (\n"
+              },
+              "outputVariable": "n4",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n5",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "runScript: return after exit 3, only 0 accepted",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "successExitCodes": "0",
+                "script": "cmd /c exit 3\nreturn\n"
+              },
+              "outputVariable": "n5",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n6",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "runScript: quoted word after a template",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "Write-Output {{cid.param.text}}\\'x'\n"
+              },
+              "outputVariable": "n6",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n7",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "waitForCondition: condition cannot run",
+              "activityType": "waitForCondition",
+              "config": {
+                "conditionType": "script",
+                "script": "$true ? 1 : 0",
+                "intervalSeconds": 1,
+                "timeoutSeconds": 60
+              },
+              "outputVariable": "n7"
+            }
+          },
+          {
+            "id": "n8",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "startProgram: timeout",
+              "activityType": "startProgram",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\PING.EXE",
+                "arguments": "-n 30 127.0.0.1",
+                "timeoutSeconds": 3
+              },
+              "outputVariable": "n8",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "chk",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "Check: what the failures left behind",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "if ({{n0.error}} -match 'nodepilot_|At C:') { throw 'error text carries the wrapper' }\nif ({{n3.param.x}} -ne 'kept') { throw 'throw lost the assigned value' }\nif (({{n3.error}}).Trim() -ne 'parity-boom') { throw \"throw error text: '{{n3.error}}'\" }\nif ('{{n2.param.after}}' -eq 'y') { throw 'native stderr did not stop the script' }\nif ({{n7.param.attempts}} -ne '1') { throw 'the condition was polled more than once' }\nif ({{n8.param.stdout}} -notmatch '127\\.0\\.0\\.1') { throw 'program timeout lost the output' }\n$checked = 'ok'\n"
+              },
+              "outputVariable": "chk",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "contract": "negative",
+                  "area": "script parity"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-janitor",
+            "source": "trg",
+            "target": "janitor",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-janitor-cid",
+            "source": "janitor",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-n0",
+            "source": "cid",
+            "target": "n0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n0-n1",
+            "source": "n0",
+            "target": "n1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n1-n2",
+            "source": "n1",
+            "target": "n2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n2-n3",
+            "source": "n2",
+            "target": "n3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n3-n4",
+            "source": "n3",
+            "target": "n4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n4-n5",
+            "source": "n4",
+            "target": "n5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-n5-n6",
+            "source": "n5",
+            "target": "n6",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n6-n7",
+            "source": "n6",
+            "target": "n7",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n7-n8",
+            "source": "n7",
+            "target": "n8",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n8-chk",
+            "source": "n8",
+            "target": "chk",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-chk-ret",
+            "source": "chk",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

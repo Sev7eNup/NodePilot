@@ -72,7 +72,7 @@ export function ServiceManagementConfig({ config, onUpdate, upstreamVars = [] }:
             value={(config.displayName as string) || ''}
             onChange={(v) => onUpdate({ displayName: v })}
             upstreamVars={upstreamVars}
-            placeholder="Mein Service"
+            placeholder={t('config.serviceManagement.displayNamePlaceholder')}
           />
           <VariableInsertField
             label={t('config.serviceManagement.description')}

@@ -53,7 +53,7 @@ public sealed class UserCreateCommand : BaseCommand<UserCreateSettings>
     {
         if (string.IsNullOrWhiteSpace(settings.Username) || string.IsNullOrWhiteSpace(settings.Role))
         {
-            writer.Error("--username und --role sind Pflicht.");
+            writer.Error("--username and --role are required.");
             return ExitCodes.Error;
         }
 
@@ -62,14 +62,14 @@ public sealed class UserCreateCommand : BaseCommand<UserCreateSettings>
             pw = (await Console.In.ReadToEndAsync(ct)).TrimEnd('\r', '\n');
         if (string.IsNullOrEmpty(pw))
         {
-            writer.Error("Passwort fehlt — entweder --password oder --password-stdin.");
+            writer.Error("Password missing. Pass --password or --password-stdin.");
             return ExitCodes.Error;
         }
 
         var api = ClientFactory.Create(session);
         var u = await api.CreateUserAsync(
             new CreateUserRequest(settings.Username, pw, settings.Role, settings.IsBreakGlass), ct);
-        writer.Success($"User angelegt: [bold]{Markup.Escape(u.Username)}[/] ({u.Role}).");
+        writer.Success($"User created: [bold]{Markup.Escape(u.Username)}[/] ({u.Role}).");
         return ExitCodes.Success;
     }
 }
@@ -100,7 +100,7 @@ public sealed class UserUpdateCommand : BaseCommand<UserUpdateSettings>
         if (settings.Role is null && settings.Active is null && string.IsNullOrEmpty(pw)
             && settings.IsBreakGlass is null)
         {
-            writer.Error("Mindestens eine Änderung angeben (--role / --active / --password / --break-glass).");
+            writer.Error("Pass at least one change (--role / --active / --password / --break-glass).");
             return ExitCodes.Error;
         }
 
@@ -108,7 +108,7 @@ public sealed class UserUpdateCommand : BaseCommand<UserUpdateSettings>
         await api.UpdateUserAsync(settings.Id,
             new UpdateUserRequest(settings.Role, settings.Active,
                 string.IsNullOrEmpty(pw) ? null : pw, settings.IsBreakGlass), ct);
-        writer.Success($"User {settings.Id} aktualisiert.");
+        writer.Success($"User {settings.Id} updated.");
         return ExitCodes.Success;
     }
 }
@@ -121,12 +121,12 @@ public sealed class UserDeleteCommand : BaseCommand<UserIdSettings>
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = await AnsiConsole.ConfirmAsync($"User [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            var ok = await AnsiConsole.ConfirmAsync($"Delete user [red]{settings.Id}[/]?", defaultValue: false);
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);
         await api.DeleteUserAsync(settings.Id, ct);
-        writer.Success("User gelöscht.");
+        writer.Success("User deleted.");
         return ExitCodes.Success;
     }
 }

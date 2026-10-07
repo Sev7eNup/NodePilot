@@ -1,0 +1,13 @@
+<p>A mature SCOrch runbook holds a lot of work: the right order, error handling, conditions and data passed from one activity to the next. That is exactly what nobody should have to rebuild by hand during a migration.</p>
+<h2>Start from the existing export</h2>
+<p>NodePilot reads SCOrch exports in the <code>.ois_export</code> format. You can start the import from the web UI or the CLI:</p>
+<pre><code>np workflow import-scorch --file .\runbooks.ois_export</code></pre>
+<p>Supported activities are translated into matching NodePilot activities. Links, conditions, global variables and published data references are carried over as well. The folder structure can come along too.</p>
+<h2>The import report is part of the result</h2>
+<p>Not every activity and not every property translates without loss. An unsupported activity should therefore not simply disappear. NodePilot creates a disabled placeholder for it and lists the relevant details in the import report.</p>
+<p>Incomplete target system settings, data references that cannot be translated and schedules that carry over only approximately need attention as well. The result is a starting point for a review, not a promise that every automation runs unchanged.</p>
+<h2>Review, test, enable deliberately</h2>
+<p>Imported workflows start out disabled. Credentials are not reconstructed from the encrypted SCOrch data. Before enabling a workflow, check the items named in the report, the target systems, permissions and error paths.</p>
+<p>Then test it in a suitable test environment. Only when its behavior meets your requirements do you enable the workflow explicitly.</p>
+<div class="article-note">The migration decisions stay with you. What the import adds is the actual runbook and a report you can follow.</div>
+<p class="article-source">Background and current details: <a href="https://github.com/Sev7eNup/NodePilot#coming-from-system-center-orchestrator" target="_blank" rel="noopener noreferrer">SCOrch import in the NodePilot README</a>.</p>

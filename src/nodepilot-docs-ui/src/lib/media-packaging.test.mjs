@@ -9,17 +9,25 @@ import { assembleSite } from '../../scripts/assemble-site.mjs'
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url))
 const repoRoot = resolve(packageRoot, '../..')
 
-describe('Pages-only media packaging', () => {
-  it('keeps the tour available to Pages outside the installer public directory', () => {
+describe('public website media packaging', () => {
+  it('keeps the tour on the webspace and publishes only redirects to Pages', () => {
     for (const name of ['nodepilot-product-tour.mp4', 'product-tour-poster.png']) {
       expect(existsSync(join(packageRoot, 'pages-media', name))).toBe(true)
       expect(existsSync(join(packageRoot, 'public/media', name))).toBe(false)
     }
     const workflow = readFileSync(join(repoRoot, '.github/workflows/docs-pages.yml'), 'utf8')
-    expect(workflow).toContain('npm run assemble:site')
-    expect(workflow).toContain('path: src/nodepilot-docs-ui/_site')
+    expect(workflow).toContain('npm run build:pages-redirects')
+    expect(workflow).toContain('path: src/nodepilot-docs-ui/_pages-redirects')
+    expect(workflow).not.toContain('npm run assemble:site')
+    const publisher = readFileSync(join(repoRoot, 'deploy/Publish-Site.ps1'), 'utf8')
+    expect(publisher).toContain('assemble:site')
+    // Training videos go up first and stop the deploy on failure, before any page links to them.
+    expect(publisher).toContain(String.raw`src\site\videos.json`)
+    expect(publisher.indexOf("throw 'Training video upload failed")).toBeGreaterThan(-1)
+    expect(publisher.indexOf("throw 'Training video upload failed")).toBeLessThan(publisher.indexOf('foreach ($item in $relative)'))
     const { scripts } = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'))
     expect(scripts['assemble:site']).toBe('node scripts/assemble-site.mjs')
+    expect(scripts['site:videos']).toBe('node scripts/site-videos.mjs')
   })
 
   it('publishes pages-media under media/, where the tour URL points', () => {
@@ -35,6 +43,7 @@ describe('Pages-only media packaging', () => {
         'dist-site/index.html': 'SITE',
         '../nodepilot-ui/dist-demo/index.html': 'DEMO',
         'pages-media/nodepilot-product-tour.mp4': 'TOUR_VIDEO_SENTINEL',
+        'pages-media/training/00-intro-de.0123456789.mp4': 'TRAINING_VIDEO_SENTINEL',
         'public/og-image.png': 'OG',
       }
       for (const [path, content] of Object.entries(files)) {
@@ -46,6 +55,7 @@ describe('Pages-only media packaging', () => {
 
       expect(readFileSync(join(fixture, '_site/media/nodepilot-product-tour.mp4'), 'utf8'))
         .toBe('TOUR_VIDEO_SENTINEL')
+      expect(readFileSync(join(fixture, '_site/media/training/00-intro-de.0123456789.mp4'), 'utf8')).toBe('TRAINING_VIDEO_SENTINEL')
       expect(readFileSync(join(fixture, '_site/demo/index.html'), 'utf8')).toBe('DEMO')
     } finally {
       rmSync(workspace, { recursive: true, force: true })

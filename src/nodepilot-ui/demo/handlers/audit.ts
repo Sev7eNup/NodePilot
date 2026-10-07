@@ -60,23 +60,32 @@ function auditEntries(): DemoAuditEntry[] {
       JSON.stringify({ workflowName: workflow?.name ?? null, triggeredBy: execution.triggeredBy }));
   }
 
-  return entries.sort((a, b) => {
-    const delta = Date.parse(b.timestamp) - Date.parse(a.timestamp);
-    return delta !== 0 ? delta : b.id.localeCompare(a.id);
-  });
+  return entries.sort(compareNewestFirst);
 }
 
-/** Applies the filter parameters the page sends. */
+/** Newest first, ties by id descending: the server's ORDER BY. */
+function compareNewestFirst(a: { timestamp: string; id: string }, b: { timestamp: string; id: string }): number {
+  const delta = Date.parse(b.timestamp) - Date.parse(a.timestamp);
+  return delta !== 0 ? delta : b.id.localeCompare(a.id);
+}
+
+/** Applies the filter parameters the page sends, with AuditController's exact-match rules. */
 function applyFilters(entries: DemoAuditEntry[], query: URLSearchParams): DemoAuditEntry[] {
-  const match = (value: string | null, filter: string | null) =>
-    !filter || (value ?? '').toLowerCase().includes(filter.toLowerCase());
+  const exact = (value: string | null, filter: string | null) => !filter || value === filter;
+  // Guid parameters bind case-insensitively.
+  const guid = (value: string | null, filter: string | null) =>
+    !filter || (value ?? '').toLowerCase() === filter.toLowerCase();
+  const since = query.get('since');
+  const until = query.get('until');
 
   return entries.filter((entry) =>
-    match(entry.action, query.get('action'))
-    && match(entry.resourceType, query.get('resourceType'))
-    && match(entry.resourceId, query.get('resourceId'))
-    && match(entry.userId, query.get('userId'))
-    && match(entry.ipAddress, query.get('ipAddress')));
+    exact(entry.action, query.get('action'))
+    && exact(entry.resourceType, query.get('resourceType'))
+    && guid(entry.resourceId, query.get('resourceId'))
+    && guid(entry.userId, query.get('userId'))
+    && exact(entry.ipAddress, query.get('ipAddress'))
+    && (!since || Date.parse(entry.timestamp) >= Date.parse(since))
+    && (!until || Date.parse(entry.timestamp) < Date.parse(until)));
 }
 
 function csvCell(value: string | null): string {
@@ -107,19 +116,19 @@ export const auditRoutes: Route[] = [
 
   route('GET', '/audit', (ctx) => {
     const rows = applyFilters(auditEntries(), ctx.query);
-    const take = Math.max(1, Math.min(500, Number(ctx.query.get('take') ?? 50)));
+    const take = Math.max(1, Math.min(500, Number(ctx.query.get('take') ?? 100) || 100));
 
-    // Cursor paging, keyed the way the page reads it back: everything strictly older than the
-    // cursor, ties broken by id.
-    const cursorTimestamp = ctx.query.get('cursorTimestamp');
-    const cursorId = ctx.query.get('cursorId');
-    const start = cursorTimestamp
-      ? rows.findIndex((r) => r.timestamp === cursorTimestamp && r.id === cursorId) + 1
-      : 0;
+    // Cursor, as the page sends it: rows strictly older than (afterTs, afterId). The server
+    // ignores afterTs without afterId.
+    const afterTs = ctx.query.get('afterTs');
+    const afterId = ctx.query.get('afterId');
+    const older = afterTs && afterId
+      ? rows.filter((r) => compareNewestFirst({ timestamp: afterTs, id: afterId }, r) < 0)
+      : rows;
 
-    const items = rows.slice(start, start + take);
+    const items = older.slice(0, take);
     const last = items.at(-1);
-    const hasMore = start + take < rows.length;
+    const hasMore = older.length > take;
     return json({
       items,
       nextCursor: hasMore && last ? { timestamp: last.timestamp, id: last.id } : null,

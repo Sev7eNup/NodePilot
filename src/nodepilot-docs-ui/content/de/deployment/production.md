@@ -48,7 +48,7 @@ abbrechen lässt — behoben ab CU1. Der Installer prüft den Patchstand im Pref
 - Windows Server 2022 oder 2025
 - Domain-Mitgliedschaft
 - PowerShell 5.1 oder PowerShell 7
-- .NET Runtime und ASP.NET Core Runtime 10.0.11 oder neuer in der 10.x-Linie, beide x64 — zwei Downloads, und beide werden gebraucht: das ASP.NET-Core-Paket enthält nur Microsoft.AspNetCore.App und keine dotnet.exe. Das Hosting Bundle nur bei bewusstem IIS-Einsatz (es konfiguriert IIS um und startet W3SVC neu). Das `(x64)` ist verbindlich: NodePilot wird als `win-x64` ausgeliefert; der Preflight weist 32-Bit- und ältere verwundbare 10.x-Runtimes mit Pfad und Version zurück
+- .NET Runtime und ASP.NET Core Runtime 10.0.11 oder neuer, beide x64. Der Setup-Assistent bringt beide mit und installiert sie bei Bedarf. Für die Installation per Skript müssen beide vorab installiert sein, und zwar die eigenständigen Runtimes, nicht das Hosting Bundle
 - Netzwerkzugriff zur Datenbank
 - TLS-Zertifikat mit privatem Schlüssel in `LocalMachine\My`
 - Lokale Administratorrechte für die Installation
@@ -145,30 +145,8 @@ Users`) — Details unter [Remote-Execution](../configuration/remote-execution).
 
 ### SQL Server
 
-**Das TLS-Zertifikat.** SQL Server bietet ausschließlich Zertifikate an, die RSA mit
-`KeySpec=KeyExchange` sind. Der CNG-Standardschlüssel von `New-SelfSignedCertificate` ist für ihn
-unsichtbar — die beiden Provider-Angaben unten sind deshalb tragend und keine Zierde:
-
-```powershell
-New-SelfSignedCertificate -DnsName 'sql1.corp.example.com' `
-    -CertStoreLocation Cert:\LocalMachine\My `
-    -KeySpec KeyExchange `
-    -Provider 'Microsoft RSA SChannel Cryptographic Provider' `
-    -KeyLength 2048 -NotAfter (Get-Date).AddYears(5)
-```
-
-1. Dem SQL-Dienstkonto (standardmäßig `NT Service\MSSQLSERVER`) Leserecht auf den privaten
-   Schlüssel geben: `certlm.msc` → Eigene Zertifikate → Zertifikat → *Alle Aufgaben → Private
-   Schlüssel verwalten*.
-2. Im SQL Server Configuration Manager zuweisen: *Protokolle für MSSQLSERVER* → Reiter
-   *Zertifikat*. **Force Encryption bleibt auf No.** NodePilot verschlüsselt seine Verbindung
-   ohnehin selbst, und eine instanzweite Erzwingung bricht jeden anderen Client einer gemeinsam
-   genutzten Instanz, der dem Zertifikat nicht vertraut — etwa entfernte ConfigMgr-Standortsysteme.
-3. SQL-Server-Dienst neu starten und die ERRORLOG-Zeile bestätigen:
-   `The certificate ... was successfully loaded for encryption`.
-4. Bei selbstsignierten Zertifikaten zusätzlich den öffentlichen Teil **auf dem NodePilot-Server**
-   nach `LocalMachine\Root` importieren — die Laufzeit prüft die Kette
-   (`TrustServerCertificate=False`).
+**Das TLS-Zertifikat.** SQL Server braucht ein Zertifikat auf seinen FQDN, dem der
+NodePilot-Server vertraut. Erstellen, zuweisen und vertrauen: [Datenbank-Zertifikate](./database-tls#sql-server).
 
 **Datenbank und Login** für die Dienst-Identität, ausgeführt als `sysadmin`. Bei `LocalSystem`
 statt der gMSA das Computerkonto einsetzen (`CORP\APPHOST$`):
@@ -198,7 +176,9 @@ CREATE ROLE nodepilot WITH LOGIN PASSWORD '<strong-secret>';
 CREATE DATABASE nodepilot OWNER nodepilot;
 ```
 
-Der PostgreSQL-Server muss ein Zertifikat präsentieren, dessen Hostname und Vertrauenskette geprüft werden können. Die Root-CA wird dem Installer als PEM-Datei übergeben.
+Der PostgreSQL-Server muss ein Zertifikat präsentieren, dessen Hostname und Vertrauenskette geprüft werden können. Die Root-CA wird dem Installer als PEM-Datei übergeben. Ohne interne CA: [Datenbank-Zertifikate](./database-tls#postgresql).
+
+Der Dienst prüft zusätzlich online, ob das Zertifikat gesperrt ist. Der Pre-Flight des Installers prüft dasselbe und bricht mit `Aborted: Postgres pre-flight failed - certificate revocation could not be checked.` ab, wenn das Zertifikat gesperrt ist oder keine CRL erreichbar ist. `psql` prüft die Sperrung nicht, eine erfolgreiche Anmeldung mit `psql` sagt hier also nichts aus. Abhilfe: den im Zertifikat eingetragenen CRL-Verteilungspunkt vom NodePilot-Server aus erreichbar machen oder die CRL dort in den Speicher `LocalMachine\CA` importieren (`certutil -addstore CA <datei>.crl`).
 
 ## 3. HTTPS-Zertifikat importieren
 
@@ -442,7 +422,7 @@ Der Installer führt folgende Schritte aus:
 5. Produktionskonfiguration rendern.
 6. Dateisystem- und Zertifikats-ACLs setzen. Das Installationsverzeichnis bekommt dabei eine geschützte ACL: SYSTEM und Administratoren `FullControl`, das Dienstkonto nur `ReadAndExecute` — es führt die Binaries aus, es überschreibt sie nie. Ein abweichender `-InstallPath` wird vorher geprüft (lokal, NTFS oder ReFS, keine Junctions im Pfad) und nach dem Kopieren erneut verifiziert; sonst würde er die Rechte seines übergeordneten Verzeichnisses erben, was auf einem eigenen Volume schreibenden Zugriff für alle Benutzer bedeuten kann.
 7. HTTPS-Firewallregel anlegen.
-8. Windows-Dienst mit Auto Start und Recovery Actions registrieren (bei einem gMSA zusätzlich abhängig von Netlogon, damit der Logon nicht vor dem DC-Kontakt scheitert). Der Dienst startet also ohne feste Verzögerung und wartet stattdessen selbst auf die Datenbank — Obergrenze `Database:StartupWaitSeconds`, Standard 120 Sekunden.
+8. Windows-Dienst mit Auto Start und Recovery Actions registrieren (bei einem gMSA zusätzlich abhängig von Netlogon, damit der Logon nicht vor dem DC-Kontakt scheitert). Der Dienst startet also ohne feste Verzögerung und wartet stattdessen selbst auf die Datenbank — Obergrenze `Database:StartupWaitSeconds`, Standard 300 Sekunden.
 9. Dienst starten und Readiness prüfen.
 10. Admin-Setup-Token und External-Trigger-API-Key ausgeben.
 
@@ -475,7 +455,7 @@ np config set server https://nodepilot.contoso.local
 ```
 
 Bei einer Installation abseits von 443 kommt `:<HttpsPort>` dahinter. Auf `https://localhost` zu
-zeigen scheitert mit „Der Hostname steht nicht in den Zertifikatsnamen", weil dieser Name nicht im
+zeigen scheitert mit „The hostname is not among the certificate names", weil dieser Name nicht im
 Zertifikat steht.
 
 Schlägt eine der Prüfungen fehl, steht die Ursache im Anwendungslog unter `C:\ProgramData\NodePilot\logs\nodepilot-<Datum>.log`. Welche Datei bei welchem Störungsbild weiterhilft — inklusive des Setup-Transkripts unter `%TEMP%`, das ein Abbruch der Installation hinterlässt —, steht unter [Logs & Diagnose](logs).

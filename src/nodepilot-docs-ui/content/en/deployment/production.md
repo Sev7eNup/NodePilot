@@ -48,7 +48,7 @@ installer checks the patch level in the pre-flight; manually:
 - Windows Server 2022 or 2025
 - Domain membership
 - PowerShell 5.1 or PowerShell 7
-- .NET Runtime and ASP.NET Core Runtime 10.0.11 or newer in the 10.x line, both x64 — two downloads, and both are needed: the ASP.NET Core package carries only Microsoft.AspNetCore.App and no dotnet.exe. The Hosting Bundle only with deliberate IIS use (it reconfigures IIS and restarts W3SVC). The `(x64)` is binding: NodePilot ships as `win-x64`; the pre-flight rejects 32-bit and older vulnerable 10.x runtimes, naming the path and version
+- .NET Runtime and ASP.NET Core Runtime 10.0.11 or newer, both x64. The setup wizard carries both and installs them if missing. The script path needs both installed beforehand, the standalone runtimes and not the Hosting Bundle
 - Network access to the database
 - A TLS certificate with its private key in `LocalMachine\My`
 - Local administrator rights for the installation
@@ -144,28 +144,8 @@ machine's WinRM endpoint (local administrator or `Remote Management Users`) — 
 
 ### SQL Server
 
-**The TLS certificate.** SQL Server only offers certificates that are RSA with
-`KeySpec=KeyExchange`. The default CNG key of `New-SelfSignedCertificate` is invisible to it, so
-the two provider flags below are load-bearing rather than decoration:
-
-```powershell
-New-SelfSignedCertificate -DnsName 'sql1.corp.example.com' `
-    -CertStoreLocation Cert:\LocalMachine\My `
-    -KeySpec KeyExchange `
-    -Provider 'Microsoft RSA SChannel Cryptographic Provider' `
-    -KeyLength 2048 -NotAfter (Get-Date).AddYears(5)
-```
-
-1. Give the SQL service account (`NT Service\MSSQLSERVER` by default) read access to the private
-   key: `certlm.msc` → Personal → the certificate → *All Tasks → Manage Private Keys*.
-2. Assign it in SQL Server Configuration Manager → *Protocols for MSSQLSERVER* → *Certificate*.
-   Leave **Force Encryption = No.** NodePilot encrypts its own connection regardless, and forcing
-   it instance-wide breaks every other client of a shared instance that does not trust the
-   certificate — remote ConfigMgr site systems, for example.
-3. Restart the SQL Server service and confirm the ERRORLOG line
-   `The certificate ... was successfully loaded for encryption`.
-4. Self-signed certificates additionally need their public part imported into `LocalMachine\Root`
-   **on the NodePilot server** — the runtime verifies the chain (`TrustServerCertificate=False`).
+**The TLS certificate.** SQL Server needs a certificate for its FQDN that the NodePilot server
+trusts. Creating, assigning and trusting it: [Database certificates](./database-tls#sql-server).
 
 **Database and login** for the service identity, run as `sysadmin`. With `LocalSystem`, substitute
 the computer account (`CORP\APPHOST$`) for the gMSA:
@@ -195,7 +175,9 @@ CREATE ROLE nodepilot WITH LOGIN PASSWORD '<strong-secret>';
 CREATE DATABASE nodepilot OWNER nodepilot;
 ```
 
-The PostgreSQL server has to present a certificate whose host name and trust chain can be verified. The root CA is passed to the installer as a PEM file.
+The PostgreSQL server has to present a certificate whose host name and trust chain can be verified. The root CA is passed to the installer as a PEM file. Without an internal CA: [Database certificates](./database-tls#postgresql).
+
+The service also checks the certificate's revocation status online. The installer's pre-flight does the same and aborts with `Aborted: Postgres pre-flight failed - certificate revocation could not be checked.` when the certificate is revoked or no CRL is reachable. `psql` does not check revocation, so a successful `psql` login proves nothing here. Fix: make the CRL distribution point named in the certificate reachable from the NodePilot server, or import the CRL into the `LocalMachine\CA` store there (`certutil -addstore CA <file>.crl`).
 
 ## 3. Import the HTTPS certificate
 
@@ -442,7 +424,7 @@ The installer performs the following steps:
 5. Render the production configuration.
 6. Set the file-system and certificate ACLs. The installation directory gets a protected ACL: SYSTEM and Administrators `FullControl`, the service account only `ReadAndExecute` — it executes the binaries, it never overwrites them. A different `-InstallPath` is checked beforehand (local, NTFS or ReFS, no junctions in the path) and re-verified after the copy; otherwise it would inherit the permissions of its parent directory, which on a dedicated volume can mean write access for all users.
 7. Create the HTTPS firewall rule.
-8. Register the Windows service with automatic start and recovery actions (with a gMSA, additionally dependent on Netlogon, so that the logon does not fail before contact with a DC). The service therefore starts without a fixed delay and instead waits for the database itself — with `Database:StartupWaitSeconds` as the upper bound, 120 seconds by default.
+8. Register the Windows service with automatic start and recovery actions (with a gMSA, additionally dependent on Netlogon, so that the logon does not fail before contact with a DC). The service therefore starts without a fixed delay and instead waits for the database itself — with `Database:StartupWaitSeconds` as the upper bound, 300 seconds by default.
 9. Start the service and check readiness.
 10. Print the admin setup token and the external-trigger API key.
 
@@ -475,7 +457,7 @@ np config set server https://nodepilot.contoso.local
 ```
 
 Append `:<HttpsPort>` when the installation does not use 443. Pointing it at `https://localhost`
-fails with *Der Hostname steht nicht in den Zertifikatsnamen*, because that name is not on the
+fails with *The hostname is not among the certificate names*, because that name is not on the
 certificate.
 
 If one of the checks fails, the cause is in the application log under `C:\ProgramData\NodePilot\logs\nodepilot-<date>.log`. Which file helps with which failure mode — including the setup transcript under `%TEMP%` that an aborted installation leaves behind — is covered under [Logs & diagnostics](logs).

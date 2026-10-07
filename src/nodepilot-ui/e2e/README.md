@@ -14,13 +14,12 @@ npx playwright test <spec> --config=playwright.dev.config.ts
 ```
 
 **The browser demo has its own suite**, in `e2e-demo/` rather than here: it needs a different
-artifact (`dist-demo`) and a different server, and it is served from a sub-path on purpose —
-`base: './'` leaves URLs inside JavaScript strings alone, so a root-absolute literal passes at
-the origin root and breaks on the published site. It also does not mock anything: the demo ships
-its own in-memory backend, so the specs drive the real thing.
+artifact (`dist-demo`) and a server that mirrors the Apache page fallback under `/demo/`.
+Direct entries and reloads exercise routing and asset URLs. The suite does not mock APIs:
+the demo ships its own in-memory backend, so the specs drive the real thing.
 
 ```bash
-npm run test:e2e:demo     # builds dist-demo, serves it under /NodePilot/demo/ on :4180
+npm run test:e2e:demo     # builds dist-demo, serves it under /demo/ on :4180
 ```
 
 The nightly Task Scheduler job (`scripts/nightly-tests.ps1`) runs `npm run test:e2e`
@@ -165,7 +164,7 @@ every main screen into `__screens__/*.png`; it documents visuals, it asserts not
 | — (new) | Maintenance windows CRUD (Blackout / AllowOnly, weekly schedule, create/edit/delete, Admin-only gate) | `maintenance-windows.spec.ts` |
 | — (new) | Editor-header stacking-context regression: header popovers above canvas-local breadcrumb overlay | `designer-header-layering.spec.ts` |
 | — (new) | SPA smoke: unauthenticated redirect → /login, authenticated landing → dashboard | `smoke.spec.ts` |
-| — (new) | Script editor against the MINIFIED bundle: opens a runScript node's Monaco editor under `dark-bank`, `dark`, `light-minimal`, `dark-minimal` and `dark-ion` and asserts no uncaught error and no theme rejection; plus Monaco refresh when a base skin switches to Minimal and back, and Monaco/CodeMirror surviving Dark ⇄ ION ⇄ Minimal switches with the skin's code palette. Production CSS shortens token colors (`#ffffff` → `#fff`), which Monaco refuses — the dev-server config cannot reproduce it | `script-editor.spec.ts` |
+| 84 | Script editor against the MINIFIED bundle: opens a runScript node's Monaco editor under `dark-bank`, `dark`, `light-minimal`, `dark-minimal` and `dark-ion` and asserts no uncaught error and no theme rejection; plus Monaco refresh when a base skin switches to Minimal and back, and Monaco/CodeMirror surviving Dark ⇄ ION ⇄ Minimal switches with the skin's code palette. Production CSS shortens token colors (`#ffffff` → `#fff`), which Monaco refuses — the dev-server config cannot reproduce it | `script-editor.spec.ts` |
 
 ## Not covered as UI e2e (by design)
 

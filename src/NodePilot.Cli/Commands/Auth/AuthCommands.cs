@@ -74,7 +74,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
         var server = _config.ResolveServer(settings.Server, profile, cfg);
         if (string.IsNullOrWhiteSpace(server))
         {
-            writer.Error("Kein Server konfiguriert. `np config set server <URL>` oder --server angeben.");
+            writer.Error("No server configured. Run `np config set server <URL>` or pass --server.");
             return ExitCodes.Error;
         }
 
@@ -107,7 +107,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
                     response.Token, response.ExpiresAt, out var expiresAt)
                 || expiresAt <= DateTimeOffset.UtcNow)
             {
-                writer.Error("Login fehlgeschlagen: Serverantwort enthält keine gültige Token-Ablaufzeit.");
+                writer.Error("Login failed: the server response has no valid token expiry.");
                 return ExitCodes.Error;
             }
 
@@ -122,17 +122,17 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
             }, pinToStore);
 
             TlsNotices.WriteAfter(writer, presented);
-            writer.Success($"Eingeloggt als [bold]{response.Username}[/] ({response.Role}) → {server}");
+            writer.Success($"Logged in as [bold]{response.Username}[/] ({response.Role}) → {server}");
             return ExitCodes.Success;
         }
         catch (ApiException ex) when (ex.IsUnauthorized)
         {
-            writer.Error("Login fehlgeschlagen: ungültige Credentials.");
+            writer.Error("Login failed: invalid credentials.");
             return ExitCodes.AuthRequired;
         }
         catch (ApiException ex)
         {
-            writer.Error($"Login fehlgeschlagen: {Markup.Escape(ex.Message)}");
+            writer.Error($"Login failed: {Markup.Escape(ex.Message)}");
             return ExitCodes.Error;
         }
         catch (HttpRequestException ex)
@@ -168,7 +168,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
                 .GetAuthMethodsAsync(ct);
             if (!methods.Windows)
             {
-                writer.Error("Windows-Anmeldung nicht verfügbar: Der Server hat Authentication:Windows:Enabled nicht gesetzt.");
+                writer.Error("Windows sign-in is not available: the server does not have Authentication:Windows:Enabled set.");
                 return ExitCodes.AuthRequired;
             }
 
@@ -177,7 +177,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
             var token = sso.Cookies.GetCookies(sso.Api.BaseAddress!)[AuthCookieName]?.Value;
             if (string.IsNullOrEmpty(token))
             {
-                writer.Error("Windows-Anmeldung fehlgeschlagen: Der Server hat kein Sitzungs-Cookie gesetzt.");
+                writer.Error("Windows sign-in failed: the server did not set a session cookie.");
                 return ExitCodes.Error;
             }
 
@@ -186,7 +186,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
             if (!ClientSessionSecurity.TryResolveExpiration(token, advertisedExpiration: null, out var expiresAt)
                 || expiresAt <= DateTimeOffset.UtcNow)
             {
-                writer.Error("Windows-Anmeldung fehlgeschlagen: Token ohne gültige Ablaufzeit.");
+                writer.Error("Windows sign-in failed: the token has no valid expiry.");
                 return ExitCodes.Error;
             }
 
@@ -202,29 +202,29 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
 
             TlsNotices.WriteAfter(writer, presented);
             writer.Success(
-                $"Per Windows-Anmeldung eingeloggt als [bold]{identity.Username}[/] ({identity.Role}) → {server}");
+                $"Logged in with Windows sign-in as [bold]{identity.Username}[/] ({identity.Role}) → {server}");
             return ExitCodes.Success;
         }
         catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
-            writer.Error("Windows-Anmeldung nicht verfügbar: Der Server hat Authentication:Windows:Enabled nicht gesetzt.");
+            writer.Error("Windows sign-in is not available: the server does not have Authentication:Windows:Enabled set.");
             return ExitCodes.AuthRequired;
         }
         catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
         {
-            writer.Error($"Windows-Anmeldung nicht konfiguriert: {Markup.Escape(ex.Message)}");
+            writer.Error($"Windows sign-in is not configured: {Markup.Escape(ex.Message)}");
             return ExitCodes.AuthRequired;
         }
         catch (ApiException ex) when (ex.IsUnauthorized)
         {
             // No Kerberos ticket, missing SPN, or the server refused an NTLM fallback. The server
             // message names which, so it is passed through verbatim.
-            writer.Error($"Windows-Anmeldung abgelehnt: {Markup.Escape(ex.Message)}");
+            writer.Error($"Windows sign-in was rejected: {Markup.Escape(ex.Message)}");
             return ExitCodes.AuthRequired;
         }
         catch (ApiException ex)
         {
-            writer.Error($"Windows-Anmeldung fehlgeschlagen: {Markup.Escape(ex.Message)}");
+            writer.Error($"Windows sign-in failed: {Markup.Escape(ex.Message)}");
             return ExitCodes.Error;
         }
         catch (HttpRequestException ex)
@@ -264,7 +264,7 @@ public sealed class LogoutCommand : BaseCommand<GlobalSettings>
     {
         if (!session.HasSession)
         {
-            writer.Info("Keine aktive Session zum Abmelden.");
+            writer.Info("No active session to log out of.");
             return ExitCodes.Success;
         }
 
@@ -277,7 +277,7 @@ public sealed class LogoutCommand : BaseCommand<GlobalSettings>
         catch (HttpRequestException) { /* server unreachable; still wipe local */ }
 
         _tokens.Delete(session.Profile);
-        writer.Success($"Abgemeldet (Profil '{session.Profile}').");
+        writer.Success($"Logged out (profile '{session.Profile}').");
         return ExitCodes.Success;
     }
 }
@@ -310,7 +310,7 @@ public sealed class AuthMethodsCommand : AsyncCommand<GlobalSettings>
         var server = _config.ResolveServer(settings.Server, profile, cfg);
         if (string.IsNullOrWhiteSpace(server))
         {
-            writer.Error("Kein Server konfiguriert. `np config set server <URL>` oder --server angeben.");
+            writer.Error("No server configured. Run `np config set server <URL>` or pass --server.");
             return ExitCodes.Error;
         }
 
@@ -337,7 +337,7 @@ public sealed class AuthMethodsCommand : AsyncCommand<GlobalSettings>
         }
         catch (ApiException ex)
         {
-            writer.Error($"API-Fehler: {ex.Message}");
+            writer.Error($"API error: {ex.Message}");
             return ExitCodes.Error;
         }
         catch (HttpRequestException ex)
@@ -357,7 +357,7 @@ public sealed class WhoamiCommand : BaseCommand<GlobalSettings>
     {
         if (!session.HasSession)
         {
-            writer.Error("Nicht angemeldet.");
+            writer.Error("Not logged in.");
             return ExitCodes.AuthRequired;
         }
 

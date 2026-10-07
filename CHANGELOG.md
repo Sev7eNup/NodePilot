@@ -10,7 +10,192 @@ not a reprint.
 Entries were reconstructed from the published release notes, so they are condensed rather than
 exhaustive.
 
-## [Unreleased]
+## [1.4.4] - 2026-10-03
+
+### Added
+
+- A documentation page on creating the TLS certificates for PostgreSQL and SQL Server.
+- The website publishes an `llms.txt` at its root: a short English index of the site and the
+  documentation for AI assistants.
+
+### Changed
+
+- **Quartz 4.** Schedule triggers and cron maintenance windows run on Quartz 4.2. Two daylight saving
+  cases behave differently: a time that does not exist when clocks spring forward now fires at the
+  end of the gap (03:00 instead of 03:30 for a 02:30 schedule), and schedules that repeat every hour
+  or more often keep firing through the repeated hour when clocks fall back instead of skipping it.
+- Cron expressions with both day fields set to `*` (such as `0 0 2 * * *`) are now accepted. A
+  step width of 0 (`0/0`) and years after 2199 are rejected when a workflow is published.
+- `GET /api/triggers/schedule/next-fires`, `np cron next` and the MCP tool `validate_cron` no longer
+  return a `summary`. Quartz 4 dropped it; the next fire times are unchanged.
+- The desktop app runs on Electron 44.4.5 (Chromium 152, Node 24).
+
+### Fixed
+
+- The prerequisites page of the server setup no longer hides rows behind the instructions box when
+  many checks fail or warn. If space runs short, rows are shortened to one line and show their full
+  text when selected: passing rows first, then warning and skipped ones, failing rows only last.
+- **Output redaction could let secrets through.** A redaction pass that ran into its time limit was
+  skipped as a whole, so a heavily loaded host, or output with many unclosed PEM markers after a
+  private key, could pass a secret on unmasked. The built-in patterns now always run to completion.
+  Patterns you add under `Logging:Redaction:Patterns` keep their time limit and still fail open.
+- A step in the in-process PowerShell engine that ignores cancellation no longer holds the run
+  forever. After 60 seconds the step is reported as cancelled, or as timed out when its own limit
+  was reached; the statement it was running may keep going in the background, and the log says so.
+
+## [1.4.3] - 2026-09-30
+
+### Changed
+
+- **The `np` command line speaks English throughout.** Messages such as "Logged in as …",
+  "Execution started" or network errors used to be German while the help text was English.
+- The English interface says "Workflow is live" instead of "Workflow is running productive".
+- The browser demo uses ordinary paths such as `/demo/workflows`; old hash links still work.
+- GitHub Pages forwards old website, documentation and demo links to their matching pages on
+  `www.nodepilot.run`. Public links, canonical URLs and sitemaps use this single origin.
+
+### Fixed
+
+- Updated Electron and locked npm dependencies to patched versions after the release security audit.
+- Server upgrades now read UTF-8 configuration files with a byte-order mark correctly and wait for
+  service processes to release DLLs before a rollback.
+- Workflow exports and configuration backup downloads were blocked in the desktop app. They now
+  open the native Save As dialog.
+- PNG exports from the workflow designer now use the same desktop-compatible download path.
+- The backup page now confirms that the download has started instead of claiming the file was
+  saved before the download finishes.
+- Custom Nodes left global-variable references unresolved when they appeared only in the script
+  template or an input's default value. These references now resolve on both desktop and server;
+  missing or undecryptable values fail the step before the script runs.
+- The desktop tray menu now says "Quit NodePilot" instead of "Quit Electron".
+- The restore preview of a configuration backup always showed 0 for alert rules. It now counts new
+  rules and name conflicts the same way the restore does.
+- The folder counts on the Workflows page stayed outdated after an import.
+- Folder counts also stayed outdated after creating, duplicating or deleting workflows, including bulk deletion.
+- The German login showed the browser's English required-field tooltip; required fields now use the selected interface language.
+- Parts of the English interface showed German text, for example the settings of "Start Workflow",
+  the folder tree, several activity fields and the log details. Snippets placed in the designer now
+  use the interface language too.
+- German texts on the Alerting page were written without umlauts ("Ausfuehrung").
+- Counts read "1 errors" or "1 Workflows"; singular and plural are now correct.
+- The expanded step list of an execution showed the raw status ("Succeeded") in the German
+  interface.
+- The backup page showed raw keys instead of names for the Alerting and global-variable folder
+  sections.
+- In dark skins the connection test result, the sub-workflow input table and its warnings were hard
+  to read.
+
+## [1.4.2] - 2026-09-26
+
+Scripts that run on the NodePilot server itself now behave exactly like scripts on a target
+machine. This release also fixes umlauts and timeouts in `startProgram` and closes a few gaps in the
+designer. **If your workflows run scripts without a target machine, read "Check before upgrading"
+first.**
+
+### Check before upgrading
+
+Only script steps without a target machine are affected; remote steps behave as before.
+
+- **They now run in Windows PowerShell 5.1**, not PowerShell 7. A script that uses PowerShell 7
+  syntax (such as `? :` or `??`) or a module installed only for PowerShell 7 needs the engine set
+  to `pwsh` or `runspace`. The designer warns about such scripts.
+- **Errors count as on a target machine.** Every PowerShell error fails the step, and error output
+  from a program such as `git` or `robocopy` stops the script. If a program writes harmless text to
+  its error output, call it as `cmd /c "tool.exe 2>&1"`.
+- **`Write-Host` text is no longer part of the step output.**
+- **Relative paths** point to the NodePilot service folder instead of the temp folder.
+- **`Write-Output {{step.output}}.Length`** now writes the text followed by `.Length`, the way
+  `{{step.param.name}}.txt` becomes a file name. `{{step.output}}.Trim()` and
+  `$n = {{step.output}}.Length` work as before.
+
+### Added
+
+- **Retry settings for a single step** in the properties panel.
+- **A warning in the designer** when a script uses PowerShell 7 syntax but runs in Windows
+  PowerShell.
+- **Engine option "In-process"** (`runspace`): the previous fast engine with PowerShell 7, for
+  scripts that need neither Windows-only modules nor background jobs.
+
+### Fixed — PowerShell and scripts
+
+- `New-Guid`, `Get-FileHash` and similar commands were missing in scripts on the NodePilot server,
+  also when `startProgram` started PowerShell there.
+- Windows modules such as Defender, WindowsUpdate or WebAdministration and background jobs
+  (`Start-Job`, `Get-WindowsUpdateLog`) did not work in scripts on the NodePilot server.
+- A machine policy that allows only signed scripts (`AllSigned`) blocked scripts on the NodePilot
+  server.
+- A program started by a script in the background kept the step running until the program ended.
+- Umlauts were garbled in scripts on the NodePilot server.
+- Values a script had set were lost when it ended with `exit`, `return` or an error.
+- The exit code was reported as 0 when a script ended with `return` after a failed program.
+- A template inside a path such as `C:\logs\{{step.param.name}}.txt` or `$dir\{{step.param.name}}.txt`,
+  or at the start of one such as `{{step.param.dir}}\app.txt`, was rejected or split into two
+  arguments.
+- A template after a type such as `[int]{{step.param.count}}` was rejected.
+- A `waitForCondition` script that cannot run waited until the timeout instead of failing at once.
+- `startProgram` showed umlauts in the program output as garbled characters.
+- A `startProgram` timeout on a target machine showed "The remote pipeline has been stopped."
+  instead of the timeout and the output so far.
+
+### Fixed — designer
+
+- The condition builder and the script editor were partly untranslated in German.
+- Test results and the connection panel were hard to read in the Minimal Dark skin.
+- Variable autocomplete left an extra `}}` behind.
+- Exporting a workflow did not work in the browser demo.
+
+### Fixed — server
+
+- With SQL Server on the same machine, NodePilot could fail to start after a restart, because SQL
+  Server starts a few minutes later. NodePilot now waits up to five minutes.
+
+## [1.4.1] - 2026-09-23
+
+A server-setup release. Every identity/database combination (gMSA or LocalSystem, SQL Server or
+PostgreSQL) now installs unattended on a clean Windows Server 2025 and runs without an error in its
+log; the SQL Server combinations also update cleanly from 1.4.0. **Earlier releases carry the
+setup defects listed below; 1.4.1 replaces them.** WinRM no longer requires HTTPS by default.
+
+### Fixed — server setup
+
+- **Workflow dispatch stalled after an install or a user change.** SQL Server keeps a pooled
+  connection's isolation level, so a Serializable transaction (bootstrap admin, user creation, LDAP
+  sync) left the next outbox claim at Serializable, where `READPAST` is rejected. The dispatch loop
+  logged "could not poll the outbox" once a second and dispatched nothing until the connection left
+  the pool. The claim now sets `READ COMMITTED` itself.
+- **LocalSystem with SQL Server on the same host could not install.** The setup granted the computer
+  account (`DOMAIN\HOST$`), but a local SQL Server sees a LocalSystem service as
+  `NT AUTHORITY\SYSTEM`. The service never got a login, missed the 30-second start window, and the
+  installation rolled back. The login is now chosen by where SQL Server runs; the provisioning also
+  accepts the (localised) SYSTEM name. A remote SQL Server was not affected.
+- **PostgreSQL installations always failed.** Rendering the connection string rejected the root
+  certificate path, so no PostgreSQL installation could complete, through the setup or the ZIP route.
+- **The bundled psql client was never extracted,** so the setup could not create the PostgreSQL role
+  and database it offered to create. An omitted `postgresPort` also reached provisioning as port 0.
+- **The service gave up when the database was late.** The database wait (up to
+  `Database:StartupWaitSeconds`, 120 s) ran before the Windows service reported "running", and the
+  service control manager stops waiting after 30 s. It now runs after the service has started and
+  before the web server does; a boot failure still stops the service.
+- **"Waiting for the database" now says why.** Each wait line names the last connection error, such
+  as a rejected TLS certificate, instead of only counting seconds, and a database that is down no
+  longer logs an error with a stack trace on every poll.
+- **The pre-flight now checks the PostgreSQL certificate's revocation status.** The service checks
+  revocation; the pre-flight's `psql` login did not, so a certificate whose CRL could not be reached
+  passed the setup and failed at service start. The row now fails up front and says why.
+- **No error on the first start against an empty PostgreSQL database.** EF read the migration
+  history table before creating it and logged that as an error on every fresh install.
+- **Unattended provisioning keys work.** `installDotnetRuntime` installs the .NET runtime as well as
+  ASP.NET Core and is judged by re-running the readiness check; the database is created again with
+  a per-statement outcome; an expired Kestrel certificate warns instead of blocking.
+
+### Changed
+
+- **WinRM no longer requires HTTPS by default.** `Remote:RequireWinRmSsl` now defaults to `false`.
+  WinRM over HTTP keeps using Negotiate — Kerberos in a domain, NTLM in a workgroup — so domain
+  setups keep mutual authentication and message encryption without certificates. HTTPS stays
+  available per machine, and setting the flag to `true` still forbids HTTP everywhere.
+- **Documentation under real addresses.** Every docs page has its own URL (`/docs/<lang>/<page>/`)
+  instead of a hash route, in the product and on the website; old `#/` links are redirected.
 
 ### Added
 
@@ -18,9 +203,21 @@ exhaustive.
   English and German, and the documentation moves to <https://www.nodepilot.run/docs/>.
   Old documentation links are forwarded to their new address automatically; the product video link
   stays the same.
+- **ION dark skin** across the web UI and the workflow designer; the skin picker pairs each base
+  with its variants.
+- **Browser demo** of the web UI on the project website.
 
 ### Fixed
 
+- **Custom nodes survive an import.** Imported workflows relink custom nodes by their key; a key
+  without a definition on the target instance is reported instead of producing a node that fails
+  at run time.
+- **Failed actions are reported.** Mutations and downloads that the server refuses show the
+  server's reason instead of failing silently.
+- **Windows sign-in.** A handshake that SSPI rejects returns `401 WINDOWS_AUTHENTICATION_FAILED`
+  instead of a 500.
+- **English UI.** The remaining hard-coded German texts (performance settings, linter messages,
+  properties panel, workflow browser, pre-publish checks) are translated.
 - **Dashboard 1 h window.** The executions chart draws the same area chart as the other windows,
   from 30 two-minute buckets, instead of a single stacked bar. The 1 h figures (success rate, run
   status, retry share, failure causes) no longer include runs from up to an hour before the window.
@@ -1577,7 +1774,10 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.0...main
+[1.4.4]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.3...main
+[1.4.3]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.3
+[1.4.2]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.2
+[1.4.1]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.1
 [1.4.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.3.0
 [1.2.26]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.26

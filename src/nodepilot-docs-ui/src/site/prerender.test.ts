@@ -1,16 +1,19 @@
+import { articleBySlug, visibleArticles } from './blog'
+import { parseHTML } from 'linkedom'
 import { describe, expect, it } from 'vitest'
 import {
   applyMeta,
+  keepPage,
+  llmsTxt,
   originPrefix,
   pageUrl,
-  revealPage,
   rewriteRelativeUrls,
   robots,
   routePages,
   setBaseMeta,
   sitemap,
 } from './prerender'
-import { ARTICLE_SLUGS, resolveRoute } from './router'
+import { resolveRoute } from './router'
 
 const pages = routePages()
 
@@ -23,9 +26,9 @@ describe('routePages', () => {
     expect(files['404']).toBe('404.html')
   })
 
-  it('covers every article and leaves only the not-found page out of the sitemap', () => {
+  it('covers published articles and leaves drafts and the not-found page out of the sitemap', () => {
     const listed = pages.filter((page) => page.listed).map((page) => page.path)
-    for (const slug of ARTICLE_SLUGS) expect(listed).toContain(`blog/${slug}`)
+    for (const { slug } of visibleArticles()) expect(listed).toContain(`blog/${slug}`)
     expect(listed).not.toContain('404')
   })
 
@@ -82,24 +85,23 @@ describe('applyMeta', () => {
   })
 })
 
-describe('revealPage', () => {
+describe('keepPage', () => {
   const shell =
-    '<div id="home-page" class="page">home</div><div id="product-page" class="page" hidden>p</div>' +
-    '<article id="article-page" class="page article-page" hidden>a</article>'
+    '<main><div id="home-page" class="page">home</div><div id="product-page" class="page" hidden>p</div>' +
+    '<article id="article-page" class="page article-page" hidden>a</article><div class="page"><footer>f</footer></div></main>'
+  const sections = (route: Parameters<typeof keepPage>[1]) => {
+    const { document } = parseHTML(shell)
+    keepPage(document, route)
+    return document.querySelector('main')!.innerHTML
+  }
 
-  it('leaves the home page as the visible one', () => {
-    expect(revealPage(shell, { page: 'home' })).toBe(shell)
-  })
-
-  it('shows the route and hides the home page', () => {
-    const html = revealPage(shell, { page: 'product' })
-    expect(html).toContain('<div id="home-page" class="page" hidden>')
-    expect(html).toContain('<div id="product-page" class="page">')
+  it('keeps only the route, visible, and drops every other page', () => {
+    expect(sections({ page: 'product' })).toBe('<div id="product-page" class="page">p</div><div class="page"><footer>f</footer></div>')
   })
 
   it('finds a section whatever element carries it', () => {
-    const html = revealPage(shell, { page: 'article', slug: 'scorch-import' })
-    expect(html).toContain('<article id="article-page" class="page article-page">')
+    expect(sections({ page: 'article', slug: 'scorch-import' })).toContain('<article id="article-page" class="page article-page">a</article>')
+    expect(sections({ page: 'article', slug: 'scorch-import' })).not.toContain('home')
   })
 })
 
@@ -112,10 +114,25 @@ describe('sitemap and robots', () => {
     expect(xml.match(/<loc>/g)).toHaveLength(pages.filter((page) => page.listed).length)
   })
 
+  it('dates articles by their real change and leaves other pages undated', () => {
+    const xml = sitemap('https://x.test', pages)
+    const article = articleBySlug['scorch-import']
+    expect(xml).toContain(`<loc>https://x.test/blog/scorch-import/</loc><lastmod>${article.modifiedAt ?? article.publishedAt}</lastmod>`)
+    expect(xml).toContain('<loc>https://x.test/product/</loc></url>')
+  })
+
   it('points robots.txt at both sitemaps of the same origin', () => {
     expect(robots('https://x.test/')).toContain('Sitemap: https://x.test/sitemap.xml')
     // The documentation keeps its own; a robots.txt below the root would never be read.
     expect(robots('https://x.test/')).toContain('Sitemap: https://x.test/docs/sitemap.xml')
+  })
+
+  it('writes an English llms.txt with absolute links to the site and the documentation', () => {
+    const text = llmsTxt('https://x.test', pages)
+    expect(text.startsWith('# NodePilot\n')).toBe(true)
+    expect(text).toContain('- [product](https://x.test/en/product/)')
+    expect(text).toContain('(https://x.test/docs/en/getting-started/introduction/)')
+    expect(text).not.toContain('/datenschutz')
   })
 
   it('builds the address the server answers on', () => {

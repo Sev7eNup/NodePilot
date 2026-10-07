@@ -49,7 +49,7 @@ export function WaitForConditionConfig({ config, onUpdate, upstreamVars = [] }: 
           value={(config.path as string) || ''}
           onChange={(v) => onUpdate({ path: v })}
           upstreamVars={upstreamVars}
-          placeholder="C:\\path\\to\\flag.txt — oder {{prep.param.flagPath}}"
+          placeholder={t('config.waitForCondition.pathPlaceholder', { example: '{{prep.param.flagPath}}' })}
         />
       )}
       {conditionType === 'serviceRunning' && (
@@ -68,7 +68,7 @@ export function WaitForConditionConfig({ config, onUpdate, upstreamVars = [] }: 
             value={(config.host as string) || ''}
             onChange={(v) => onUpdate({ host: v })}
             upstreamVars={upstreamVars}
-            placeholder="db.internal — oder {{discover.param.host}}"
+            placeholder={t('config.waitForCondition.hostPlaceholder', { example: '{{discover.param.host}}' })}
           />
           <Field label={t('config.waitForCondition.port')}>
             <input
@@ -124,6 +124,19 @@ function ScriptModeFields({ config, onUpdate, upstreamVars = [] }: Readonly<Conf
 
   return (
     <>
+      {/* Same engines as runScript; only a local step uses it, a remote one runs in Windows PowerShell 5.1. */}
+      <Field label={t('config.runScript.engineLabel')}>
+        <select
+          value={(config.engine as string) || 'auto'}
+          onChange={(e) => onUpdate({ engine: e.target.value })}
+          className="input-field"
+        >
+          <option value="auto">{t('config.runScript.engineAuto')}</option>
+          <option value="pwsh">{t('config.runScript.enginePwsh')}</option>
+          <option value="powershell">{t('config.runScript.enginePowerShell')}</option>
+          <option value="runspace">{t('config.runScript.engineRunspace')}</option>
+        </select>
+      </Field>
       <VariableInsertField
         label={t('config.waitForCondition.conditionScriptLabel')}
         value={script}
@@ -135,8 +148,12 @@ function ScriptModeFields({ config, onUpdate, upstreamVars = [] }: Readonly<Conf
         placeholder={t('config.waitForCondition.conditionScriptPlaceholder')}
       />
       <p className="text-[11px] text-on-surface-variant -mt-2">
-        Templates wie <code className="font-mono">{'{{step.param.x}}'}</code> sind hier <strong>nicht</strong> erlaubt
-        — verwende die getypten Modi oben oder baue den Wert in einem vorgelagerten <em>runScript</em>-Step zusammen.
+        <Trans
+          t={t}
+          i18nKey="config.waitForCondition.noTemplatesHint"
+          values={{ example: '{{step.param.x}}' }}
+          components={{ code: <code className="font-mono" />, strong: <strong />, em: <em /> }}
+        />
       </p>
 
       <div className="flex flex-wrap gap-1.5">

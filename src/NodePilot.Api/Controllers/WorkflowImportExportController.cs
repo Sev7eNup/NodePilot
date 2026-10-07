@@ -179,9 +179,14 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         var takenWebhookKeys = await CollectWebhookPathsAsync(ct);
 
         // Custom-node references are instance-local ids; relink them by key to this instance.
-        var customActivityIdsByKey = await _db.CustomActivityDefinitions.AsNoTracking()
-            .Where(d => !d.IsDeleted)
-            .ToDictionaryAsync(d => d.Key, d => d.Id, StringComparer.Ordinal, ct);
+        // The schema does not enforce unique keys, so the oldest live definition wins a clash.
+        var customActivityIdsByKey = (await _db.CustomActivityDefinitions.AsNoTracking()
+                .Where(d => !d.IsDeleted)
+                .OrderBy(d => d.CreatedAt).ThenBy(d => d.Id)
+                .Select(d => new { d.Key, d.Id })
+                .ToListAsync(ct))
+            .GroupBy(d => d.Key, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal);
 
         var created = new List<ImportedWorkflowInfo>();
         var errors = new List<string>();
@@ -209,7 +214,7 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             }
             definitionJson = CustomActivityReferences.RemapByKey(definitionJson, customActivityIdsByKey, out var missingCustomKeys);
             foreach (var key in missingCustomKeys)
-                errors.Add($"workflows[{i}] ({item.Name}): custom node '{key}' does not exist on this instance. Import it under Custom Nodes first, then import the workflow again.");
+                errors.Add($"workflows[{i}] ({item.Name}): imported as DISABLED; it uses custom node '{key}', which does not exist on this instance, so that step fails at run time. Create or import custom node '{key}' under Custom Nodes, then replace the step in the designer with the node from the palette, or delete this workflow and import it again so the key is linked.");
             var hmacError = NodePilot.Api.Security.WebhookHmacSecurity.ValidateDefinition(definitionJson);
 
             var finalName = UniqueName(item.Name, takenNames);

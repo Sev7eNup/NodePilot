@@ -1206,35 +1206,83 @@ public class WorkflowImportExportControllerTests
         (await db.Workflows.AsNoTracking().SingleAsync()).MaxConcurrentExecutions.Should().BeNull();
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Import_CustomNode_IsRelinkedByKeyToThisInstance(bool keyExists)
+    // -------------------------------------------------- custom-node relink by key
+
+    private static readonly Guid SourceDefinitionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+    private static string CustomNodeDefinition(string key) => $$$$"""
+        {"nodes":[{"id":"step-1","type":"activity","data":{"label":"Check","activityType":"custom:{{{{key}}}}",
+          "config":{"drive":"C","__customDefinitionId":"{{{{SourceDefinitionId}}}}","__customKey":"{{{{key}}}}"}}}],
+         "edges":[]}
+        """;
+
+    private static JsonElement CustomConfigOf(Workflow workflow) =>
+        JsonDocument.Parse(workflow.DefinitionJson).RootElement
+            .GetProperty("nodes")[0].GetProperty("data").GetProperty("config").Clone();
+
+    [Fact]
+    public async Task Import_KnownCustomNodeKey_RewritesReferenceToLocalDefinition()
     {
         var db = CreateContext();
-        var local = new CustomActivityDefinition { Id = Guid.NewGuid(), Key = keyExists ? "disk-check" : "other", Name = "Disk Check" };
+        var local = new CustomActivityDefinition { Id = Guid.NewGuid(), Key = "disk_check", Name = "Disk Check" };
         db.CustomActivityDefinitions.Add(local);
-        db.CustomActivityDefinitions.Add(new CustomActivityDefinition { Id = Guid.NewGuid(), Key = "disk-check", Name = "Deleted", IsDeleted = true });
         await db.SaveChangesAsync();
-        var sourceId = Guid.NewGuid();
-        var definition = $$$$"""{"nodes":[{"id":"disk","type":"activity","data":{"activityType":"custom:disk-check","config":{"__customDefinitionId":"{{{{sourceId}}}}","__customKey":"disk-check"}}}],"edges":[]}""";
 
-        var result = await NewController(db).ImportExport.Import(EnvelopeWithSingle("Uses custom node", definition), null, CancellationToken.None);
+        var result = await NewController(db).ImportExport.Import(
+            EnvelopeWithSingle("Uses-Custom", CustomNodeDefinition("disk_check")),
+            null, CancellationToken.None);
 
-        var response = (ImportWorkflowsResponse)result.Result.Should().BeOfType<OkObjectResult>().Subject.Value!;
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ImportWorkflowsResponse>().Subject;
         response.Created.Should().Be(1);
+        response.Errors.Should().BeEmpty();
+        var config = CustomConfigOf(await db.Workflows.AsNoTracking().SingleAsync());
+        config.GetProperty("__customDefinitionId").GetString().Should().Be(local.Id.ToString());
+        config.GetProperty("__customKey").GetString().Should().Be("disk_check");
+        config.GetProperty("drive").GetString().Should().Be("C");
+    }
+
+    [Fact]
+    public async Task Import_MissingCustomNodeKey_CreatesDisabledWorkflowAndSaysSo()
+    {
+        var db = CreateContext();
+
+        var result = await NewController(db).ImportExport.Import(
+            EnvelopeWithSingle("Uses-Missing", CustomNodeDefinition("not_here"), enabled: true),
+            null, CancellationToken.None);
+
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ImportWorkflowsResponse>().Subject;
+        response.Created.Should().Be(1);
+        response.Errors.Should().ContainSingle().Which.Should()
+            .Contain("imported as DISABLED")
+            .And.Contain("'not_here'")
+            .And.Contain("replace the step in the designer")
+            .And.NotContain("Import it under Custom Nodes first");
         var saved = await db.Workflows.AsNoTracking().SingleAsync();
-        using var doc = JsonDocument.Parse(saved.DefinitionJson);
-        var id = doc.RootElement.GetProperty("nodes")[0].GetProperty("data").GetProperty("config").GetProperty("__customDefinitionId").GetString();
-        if (keyExists)
+        saved.IsEnabled.Should().BeFalse();
+        CustomConfigOf(saved).GetProperty("__customDefinitionId").GetString()
+            .Should().Be(SourceDefinitionId.ToString(), "an unknown key keeps the source reference");
+    }
+
+    [Fact]
+    public async Task Import_TwoLiveDefinitionsShareAKey_LinksTheOldest()
+    {
+        var db = CreateContext();
+        var oldest = new CustomActivityDefinition
         {
-            id.Should().Be(local.Id.ToString());
-            response.Errors.Should().BeEmpty();
-        }
-        else
-        {
-            id.Should().Be(sourceId.ToString());
-            response.Errors.Should().ContainSingle(e => e.Contains("custom node 'disk-check' does not exist on this instance"));
-        }
+            Id = Guid.NewGuid(), Key = "dup", Name = "Old", CreatedAt = DateTime.UtcNow.AddDays(-1),
+        };
+        var newer = new CustomActivityDefinition { Id = Guid.NewGuid(), Key = "dup", Name = "New" };
+        db.CustomActivityDefinitions.AddRange(newer, oldest);
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db).ImportExport.Import(
+            EnvelopeWithSingle("Dup-Key", CustomNodeDefinition("dup")),
+            null, CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        CustomConfigOf(await db.Workflows.AsNoTracking().SingleAsync())
+            .GetProperty("__customDefinitionId").GetString().Should().Be(oldest.Id.ToString());
     }
 }

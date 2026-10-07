@@ -8,7 +8,7 @@ type RunControlsProps = Pick<EditorHeaderProps,
   'roleCanWrite' | 'liveExecution' | 'handleRunClick' | 'lintResult' | 'setLintPanelOpen'
 > & {
   /** `cta` = the compact green "Run" call-to-action with a label; `icon` = the classic
-   *  icon-only Play square. The accessible name stays `editor:testRun` in both. */
+   *  icon-only Play square. Both variants use the same Run label. */
   variant: 'cta' | 'icon';
 };
 
@@ -39,8 +39,7 @@ export function RunControls({ variant, roleCanWrite, liveExecution, handleRunCli
         ) : (
           <>
             {variant === 'cta' ? (
-              // Primary CTA: the green "Run" button (skin-stable success token). Its accessible
-              // name stays "Test run" so existing tests keep resolving it.
+              // Primary CTA uses the same visible and accessible Run label.
               (<button
                 type="button"
                 onClick={() => handleRunClick(false)}
@@ -86,7 +85,10 @@ export function RunControls({ variant, roleCanWrite, liveExecution, handleRunCli
               ? 'bg-error-container text-on-error-container hover:brightness-110'
               : 'bg-warning-container text-on-warning-container hover:brightness-110'
           }`}
-          title={t('lintTooltip', { errors: lintResult.errors.length, warnings: lintResult.warnings.length })}
+          title={t('lintTooltip', {
+            errors: t('lintErrors', { count: lintResult.errors.length }),
+            warnings: t('lintWarnings', { count: lintResult.warnings.length }),
+          })}
         >
           <WarningAltFilled size={15} />
           {lintCount}

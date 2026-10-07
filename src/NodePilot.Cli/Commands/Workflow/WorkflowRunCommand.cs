@@ -53,7 +53,7 @@ public sealed class WorkflowRunCommand : BaseCommand<WorkflowRunSettings>
 
         var req = new ExecuteWorkflowRequest(parameters, settings.TimeoutSeconds, settings.Debug);
         var execution = await api.ExecuteWorkflowAsync(w.Id, req, ct);
-        writer.Info($"Execution gestartet: [bold]{execution.Id}[/]");
+        writer.Info($"Execution started: [bold]{execution.Id}[/]");
 
         if (!settings.Wait && !settings.Follow)
         {

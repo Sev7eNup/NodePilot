@@ -3,7 +3,8 @@ import { DEFAULT_LANG, isLang, type Lang } from '../i18n/languages'
 
 // Eager-import every Markdown file under content/ as a raw string.
 // Vite resolves this at build time into a map keyed like "de/getting-started/introduction".
-const modules = import.meta.glob('../../content/**/*.md', {
+// Blog sources are rendered by the website build and must never enter the docs/installer bundle.
+const modules = import.meta.glob(['../../content/de/**/*.md', '../../content/en/**/*.md'], {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -15,9 +16,9 @@ export const contentByLang: Record<Lang, Record<string, string>> = { en: {}, de:
 for (const [filePath, source] of Object.entries(modules)) {
   // Absolute links in the content name the Pages origin. A build for another host retargets
   // them; when the origins match this is a no-op.
-  const raw = __NP_SITE_ORIGIN__ === __NP_PAGES_ORIGIN__
+  const raw = __NP_SITE_ORIGIN__ === __NP_SOURCE_ORIGIN__
     ? source
-    : source.replaceAll(__NP_PAGES_ORIGIN__, __NP_SITE_ORIGIN__);
+    : source.replaceAll(__NP_SOURCE_ORIGIN__, __NP_SITE_ORIGIN__);
   // Turn ".../content/de/getting-started/introduction.md" into "de/getting-started/introduction".
   const key = filePath.replace(/^.*\/content\//, '').replace(/\.md$/, '')
   const slash = key.indexOf('/')

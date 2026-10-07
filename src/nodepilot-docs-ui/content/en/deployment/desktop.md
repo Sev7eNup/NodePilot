@@ -70,7 +70,8 @@ The window and tray icons follow the colour of the skin chosen in the interface.
 - Electron verifies the certificate's SHA-256 fingerprint.
 - The certificate is not installed as a global root CA.
 - Electron uses `contextIsolation`, `sandbox` and `webSecurity`.
-- Node integration, a preload bridge, external navigation, pop-ups, downloads and permission requests are disabled.
+- Node integration, a preload bridge, external navigation, pop-ups and permission requests are disabled.
+- Downloads are allowed only from the application's own origin; the native Save As dialog picks the destination.
 
 An ordinary browser may show a certificate warning for the local URL. The supported access route is the Electron shell.
 

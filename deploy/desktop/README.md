@@ -40,7 +40,7 @@ Waiting for the database before the migration bootstrap used to be listed here a
 relaxation. It is not one any more: `DatabaseReadinessGate` runs in **both** deployment modes,
 because both race the same way at boot — Desktop against the bundled Postgres service, Server
 against a remote database still recovering. The bound is `Database:StartupWaitSeconds` (default
-120 s). Only reachability is retried; a migration/schema error surfaces immediately.
+300 s). Only reachability is retried; a migration/schema error surfaces immediately.
 
 > **Runtime outages:** If the bundled `NodePilotDb` service stops or hangs, the API stays up and
 > answers `503 DATABASE_UNAVAILABLE`; `/healthz/ready` returns 503 while `/healthz/database` reports
@@ -86,8 +86,9 @@ service-environment value.
   trust store is modified, so an ordinary browser visiting the URL *may warn* — that is expected;
   Electron is the supported entry point.
 - **Electron hardening:** the SPA window has `contextIsolation`, `sandbox`, `webSecurity` on,
-  `nodeIntegration` off, and **no preload / no IPC**. Navigation off-origin, popups, downloads, and
-  permission requests are all blocked.
+  `nodeIntegration` off, and **no preload / no IPC**. Navigation off-origin, popups, and permission
+  requests are all blocked. Downloads are allowed only when the whole URL chain stays on the app's
+  own origin, and Electron's native Save As dialog picks the destination — no renderer-supplied path.
 - **First-run token never reaches the renderer.** See below.
 - **Minimal ACLs** on ProgramData, the service registry key, the cert key, `pgdata`, `secrets\`,
   `backups\`, and the per-user handoff file.
@@ -282,7 +283,7 @@ The `spa` component syncs two bundles, and the order matters: the SPA mirror run
 exclusion every sync would silently remove the documentation, and `/docs` would 404 long after the
 cause. `DocsSiteDeploymentTests` guards it.
 
-Quit the installed shell first (tray → *Quit Electron*) before `npm start`: both resolve to the same
+Quit the installed shell first (tray → *Quit NodePilot*) before `npm start`: both resolve to the same
 `productName`, so the single-instance lock makes the second one focus the first and exit. Shell
 changes reach the *installed* app only through a new installer — `app.asar` is not patchable.
 
@@ -294,7 +295,8 @@ Honest inventory so nobody assumes more coverage than exists:
   `npm run test:run` in `src/nodepilot-desktop` (vitest, node environment) covers `config.ts`
   (desktop.json handoff validation — origin, fingerprint, serviceName injection barrier),
   `security.ts` (certificate-pin match/mismatch/parse-failure, non-loopback rejection, permission
-  and download blocking, navigation containment), `skins.ts` (favicon → skin-icon resolution,
+  blocking, the download gate — same-origin allowed, foreign origins and unregistered windows
+  blocked — and navigation containment), `skins.ts` (favicon → skin-icon resolution,
   including the path-charset guard on the renderer-supplied id) and `setupFlow.ts` (setup page vs.
   app window, handling of a rejected setup token). What still needs a real Electron
   process — the setup-token IPC guard, the elevated `restartBackend` path, window lifecycle, and

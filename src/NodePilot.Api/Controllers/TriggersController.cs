@@ -40,6 +40,6 @@ public class TriggersController : ControllerBase
             fires.Add(cursor.Value.UtcDateTime);
         }
 
-        return Ok(new NextFiresResponse(fires, parsed.GetExpressionSummary()));
+        return Ok(new NextFiresResponse(fires));
     }
 }

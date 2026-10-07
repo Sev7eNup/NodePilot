@@ -1,10 +1,10 @@
-@import '@fontsource/ibm-plex-sans/400.css';
-@import '@fontsource/ibm-plex-sans/500.css';
-@import '@fontsource/ibm-plex-sans/600.css';
-@import '@fontsource/ibm-plex-sans/700.css';
-@import '@fontsource/ibm-plex-mono/400.css';
-@import '@fontsource/ibm-plex-mono/500.css';
-@import '@fontsource/ibm-plex-mono/600.css';
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/ibm-plex-sans/latin-700.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import '@fontsource/ibm-plex-mono/latin-600.css';
 /* NodePilot project website. It uses the product's visual vocabulary, not a separate brand theme:
    tokens from src/nodepilot-ui/src/index.css (np-shell), node shapes from preview/PreviewDesigner.tsx. */
 :root{
@@ -105,6 +105,8 @@ code,pre,.mono{font-family:var(--font-mono)}
 .eyebrow .icon{color:var(--primary);width:15px;height:15px}
 h1{font-size:clamp(38px,3.28vw,54px);line-height:1.13;letter-spacing:-1.7px;font-weight:500}
 .hero h1{margin-bottom:25px;text-wrap:balance}
+/* The English tagline is a few characters longer; slightly smaller keeps "run." on its line. */
+@media(min-width:761px){html[lang="en"] .hero h1{font-size:clamp(30px,3.1vw,51px)}}
 .hero h1>span{color:var(--muted)}
 .hero-lead{font-size:19px;line-height:1.7;max-width:390px;margin-bottom:12px;color:var(--text)}
 .hero-description{font-size:16px;line-height:1.85;color:var(--muted);max-width:405px}
@@ -308,8 +310,15 @@ h2{font-size:25px;line-height:1.28;letter-spacing:-.55px}
 /* Product pages retain the same native panels and table hierarchy. */
 .page-intro{padding-top:62px;padding-bottom:43px}
 .page-intro h1{margin-bottom:24px;max-width:800px}
+.videos-page>.page-intro h1,.blog-page>.page-intro h1{max-width:none}
 .page-intro>.section-kicker{margin-bottom:24px}
 .page-intro>p{max-width:575px;font-size:18px;line-height:1.8;color:var(--muted)}
+/* The feature list is the point of this page, so its intro stays compact. */
+.product-page>.page-intro{padding-top:28px;padding-bottom:28px}
+.product-page>.page-intro>.section-kicker{margin-bottom:14px}
+.product-page>.page-intro h1{margin-bottom:14px}
+.product-page>.page-intro>p{max-width:none;font-size:17px;line-height:1.6}
+@media(min-width:1100px){.product-page>.page-intro h1{max-width:none}.product-page>.page-intro h1 br{display:none}}
 .page-intro>.button{margin-top:28px}
 .product-layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:32px;align-items:start}
 .product-topic{display:flex;gap:14px;padding:18px 14px;width:100%;text-align:left;min-width:0;background:transparent;border:1px solid transparent;border-radius:6px;position:relative}
@@ -444,6 +453,33 @@ h2{font-size:25px;line-height:1.28;letter-spacing:-.55px}
 .gallery-footer{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 22px;font-size:11.5px;color:var(--outline);border-top:1px solid var(--line)}
 .gallery-footer .inline-link{font-size:11.5px}
 .gallery-footer .inline-link .icon{width:11px;height:11px}
+/* Training videos: poster grid, played in a large dialog. */
+.video-grid{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:34px 26px;padding:0 0 56px;margin:0}
+.video-card{display:flex;flex-direction:column;gap:9px;color:var(--text);text-decoration:none}
+.video-thumb{position:relative;display:block;aspect-ratio:16/9;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface-lowest);margin-bottom:5px}
+.video-thumb img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .2s ease-out}
+.video-play{position:absolute;left:10px;bottom:8px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(8,9,11,.72);color:#fff;border:1px solid rgba(255,255,255,.25);opacity:.85;transition:opacity .15s,background .15s}
+.video-play svg{width:17px;height:17px;margin-left:2px}
+.video-duration{position:absolute;right:8px;bottom:8px;padding:2px 7px;border-radius:4px;background:rgba(8,9,11,.82);color:#fff;font:11.5px var(--font-mono)}
+.video-episode{color:var(--primary);font:11px var(--font-mono);letter-spacing:1px;text-transform:uppercase}
+.video-title{font-size:17px;line-height:1.4;letter-spacing:-.2px;font-weight:600;margin:0}
+.video-card:hover .video-play,.video-card:focus-visible .video-play{opacity:1;background:var(--primary-container)}
+.video-card:hover .video-thumb img{transform:scale(1.03)}
+.video-card:hover .video-title{color:var(--primary)}
+.video-card:focus-visible{outline:none}
+.video-card:focus-visible .video-thumb{outline:2px solid var(--primary);outline-offset:3px}
+.video-dialog{width:min(1280px,calc(100vw - 32px));max-height:calc(100dvh - 24px)}
+.video-dialog .modal-header>span{min-width:0}
+.video-dialog #video-dialog-name{color:var(--text);font:600 14px var(--font-sans);letter-spacing:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.video-stage{position:relative;background:#000}
+.video-stage video{display:block;width:100%;aspect-ratio:16/9;max-height:calc(100dvh - 150px);background:#000}
+.video-error{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;text-align:center;background:var(--surface-lowest)}
+.video-error[hidden]{display:none}
+.video-footer{display:flex;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--line)}
+.video-footer:has(>a[hidden]){display:none}
+.video-footer .inline-link{font-size:12.5px}
+.video-footer .inline-link .icon{width:11px;height:11px}
+@media(max-width:760px){.video-grid{grid-template-columns:1fr;gap:28px;padding-bottom:40px}.video-dialog{width:calc(100vw - 16px)}.video-stage video{max-height:calc(100dvh - 130px)}}
 .toast{position:fixed;bottom:25px;left:calc(50% + var(--sidebar)/2);transform:translateX(-50%);background:var(--surface-container);color:var(--text);border:1px solid var(--line);border-left:3px solid var(--primary);padding:13px 20px;border-radius:5px;z-index:300;font-size:14px;box-shadow:0 4px 20px #0005;max-width:calc(100vw - 40px)}
 /* Responsive shell: full navigation on desktop, icon rail on compact laptops,
    native off-canvas navigation on phones. */
@@ -458,3 +494,23 @@ h2{font-size:25px;line-height:1.28;letter-spacing:-.55px}
 @media(max-width:350px){.page{padding-inline:15px}.header-actions{padding-right:10px;gap:7px}.brand{font-size:20px;padding-left:13px}.hero h1{font-size:34px}.hero-actions>.button-primary{width:100%;font-size:15px}.hero-footnote{margin-top:14px}.stage-caption{flex-direction:column;align-items:flex-start;gap:0}.inspector-bottom{flex-direction:column;align-items:flex-start}#inspector-code{max-width:100%;width:100%}.capability-line{font-size:11px}.heading-with-link{align-items:flex-start;flex-direction:column;gap:13px}.heading-with-link h2{max-width:none}.article-row{grid-template-columns:minmax(0,1fr) 13px;gap:7px}.page-intro h1{font-size:32px}.filter-group{gap:16px}.gallery-tabs{gap:15px}.gallery-tab{font-size:11.5px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}}
 @media print{.site-header,.sidebar,.nav-backdrop,.hero-actions,.hero-links,.workflow-stage,.product-bottom-actions,.modal,.toast,.article-back,.article-end,.blog-controls{display:none!important}.main{margin:0;padding:0}.page{padding:20px;color:#111}.article-body,.article-header>p,.page-intro>p{color:#333}body{background:#fff}.article-header h1,h1,h2,h3{color:#111}.article-body a{color:#222;text-decoration:underline}.article-meta{color:#333}.article-body code,.article-body pre{background:#eee;color:#111}.article-note{color:#111;background:#eee}}
+
+/* Article screenshots preserve their aspect ratio on narrow screens. */
+.article-body img{display:block;max-width:100%;height:auto;border-radius:6px}
+.topic-links{padding-bottom:32px}
+/* "Related" and "use case" link lists at the end of a page: a quiet footer, not more body text. */
+[data-related-articles],[data-topic-links]{margin-top:36px;padding-top:20px;border-top:1px solid var(--line);font-size:15px;line-height:1.6}
+[data-related-articles]+[data-topic-links]{margin-top:0;border-top:0}
+[data-related-articles] h2,[data-topic-links] h2{margin:0 0 10px;color:var(--outline);font:11px/1.5 var(--font-mono);letter-spacing:1.1px;text-transform:uppercase}
+[data-related-articles] ul,[data-topic-links] ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+[data-related-articles] a,[data-topic-links] a{text-decoration:none}
+[data-related-articles] a:hover,[data-topic-links] a:hover{text-decoration:underline}
+#solution-body>p:last-child{font-size:15px;line-height:1.7}
+#solution-body>p:last-child a{text-decoration:none}
+#solution-body>p:last-child a:hover{text-decoration:underline}
+.lang-option{text-decoration:none}
+
+.site-breadcrumbs{padding:24px 32px 0;color:var(--muted);font-size:13px;line-height:1.8;overflow-wrap:anywhere}.site-breadcrumbs a{color:inherit;text-underline-offset:3px}
+@media(max-width:767px){.site-breadcrumbs{padding-inline:24px}}
+
+.article-body figure{margin:28px 0}.article-body figcaption{font-size:13px;color:var(--muted);line-height:1.6;margin-top:10px}.article-body table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse}.article-body th,.article-body td{padding:10px;border:1px solid var(--line);min-width:140px;text-align:left}.article-meta{flex-wrap:wrap;line-height:1.7}
