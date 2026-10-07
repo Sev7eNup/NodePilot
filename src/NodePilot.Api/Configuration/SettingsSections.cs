@@ -75,6 +75,16 @@ public static class SettingsSectionAdapters
     {
         return new SettingsSectionAdapterRegistry(new ISettingsSectionAdapter[]
         {
+            new DelegateSettingsSectionAdapter<AgentSettingsDto>(
+                Descriptor("Agents"),
+                ["Agents:Enabled", "Agents:AllowServiceIdentity", "Agents:MaxConcurrentRuns", "Agents:SingleModelCalls",
+                    "Agents:SingleToolCalls", "Agents:SingleTimeoutSeconds", "Agents:TeamModelCalls", "Agents:TeamToolCalls",
+                    "Agents:TeamDelegations", "Agents:TeamMaxParallelMembers", "Agents:TeamTimeoutSeconds", "Agents:MaxContextCharacters",
+                    "Agents:ModelCallTimeoutSeconds", "Agents:ModelMaxOutputTokens",
+                    "Agents:MaxToolOutputCharacters", "Agents:MaxResultCharacters", "Agents:ReadOnlyMcpTools"],
+                () => configRoot.GetSection("Agents").Get<AgentSettingsDto>() ?? new(),
+                section => section?.Deserialize<AgentSettingsDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? new(),
+                (dto, _) => JsonSerializer.SerializeToNode(dto)!.AsObject()),
             new DelegateSettingsSectionAdapter<SmtpSettingsDto>(
                 Descriptor("Smtp"),
                 ["Smtp:Host", "Smtp:Port", "Smtp:Username", "Smtp:Password", "Smtp:From", "Smtp:EnableSsl"],

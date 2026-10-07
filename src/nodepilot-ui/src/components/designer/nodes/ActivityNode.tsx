@@ -1,5 +1,6 @@
 import { Chat, FolderTree, PauseFilled, PlayFilledAlt, Time, Timer, ViewOff } from '@carbon/icons-react';
 import { Handle, type NodeProps } from '@xyflow/react';
+import { AgentTeamNode } from './AgentTeamNode';
 import { useState, useRef, memo, createContext, useContext, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
@@ -65,7 +66,11 @@ const FAILED_GLOW_SHADOW = '0 0 14px color-mix(in srgb, var(--color-error) 55%, 
 /** Stable identity for config-less nodes — a fresh `{}` would defeat the config-keyed memos. */
 const EMPTY_CONFIG: Record<string, unknown> = Object.freeze({});
 
-function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, positionAbsoluteY, width, height }: NodeProps) {
+function ActivityNodeImpl(props: NodeProps) {
+  return props.data.activityType === 'aiAgentTeam' ? <AgentTeamNode {...props} /> : <StandardActivityNode {...props} />;
+}
+
+function StandardActivityNode({ data, selected, isConnectable, positionAbsoluteX, positionAbsoluteY, width, height }: NodeProps) {
   const { t } = useTranslation('designer');
   const nodeStyle = useDesignStore((s) => s.nodeStyle);
   const nodeIconStyle = useDesignStore((s) => s.nodeIconStyle);

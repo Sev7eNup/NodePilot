@@ -2,6 +2,7 @@ import type { Node, Edge } from '@xyflow/react';
 import type { MachineOption, Credential } from '../../types/api';
 import { ResizeHandle } from './library/NodeLibrary';
 import { PropertiesPanel } from './PropertiesPanel';
+import { AgentAuthoringContext } from './agents/AgentAuthoringContext';
 import { BulkEditPanel } from './BulkEditPanel';
 import { EdgePropertiesPanel } from './EdgePropertiesPanel';
 import { useDesignStore } from '../../stores/designStore';
@@ -84,6 +85,8 @@ export function EditorRightPanel({
     return (
       <>
         <ResizeHandle direction="horizontal" {...panelHandleProps} />
+        <AgentAuthoringContext.Provider value={{ data: selectedNode.data, machines, credentials,
+          update: (patch) => handleNodeDataUpdate(selectedNode.id, { ...selectedNode.data, ...patch }) }}>
         <PropertiesPanel
           node={selectedNode}
           allNodes={nodes}
@@ -98,6 +101,7 @@ export function EditorRightPanel({
           onVarHover={onVarHover}
           canWrite={canWrite}
         />
+        </AgentAuthoringContext.Provider>
       </>
     );
   }

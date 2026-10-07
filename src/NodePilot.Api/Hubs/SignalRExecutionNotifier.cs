@@ -159,6 +159,11 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier, I
         return EnqueueStepEventAsync(executionId, workflowId, new LiveEventBatchItem("StepResumed", evt), StepResumedTag).AsTask();
     }
 
+    public Task AgentEventAsync(Guid workflowId, NodePilot.Core.Agents.AgentEventNotification notification)
+        => EnqueueStepEventAsync(notification.ExecutionId, workflowId,
+            new LiveEventBatchItem("AgentEvent", notification with { Content = _redactor.Redact(notification.Content) ?? "" }),
+            new KeyValuePair<string, object?>("event_type", "AgentEvent")).AsTask();
+
     /// <summary>
     /// Enqueues a step-level event (StepStarted/StepCompleted/StepPaused/StepResumed).
     /// Only checks the per-execution subscriber count — if no client has called

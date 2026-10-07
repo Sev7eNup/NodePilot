@@ -712,6 +712,8 @@ public class WorkflowsController : WorkflowsControllerBase
 
     private async Task<IActionResult> SetEnabled(Workflow workflow, bool enabled, bool requireUnlocked, CancellationToken ct)
     {
+        if (enabled && NodePilot.Core.WorkflowDefinitions.WorkflowResourceReferences.UnresolvedError(workflow.DefinitionJson) is { } dependencyError)
+            return BadRequest(new { code = "unresolved_workflow_dependency", message = dependencyError });
         if (workflow.IsEnabled == enabled)
             return NoContent(); // already in desired state; don't audit a no-op
 

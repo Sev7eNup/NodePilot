@@ -90,7 +90,7 @@ NodePilot is agentless workflow orchestration for Windows, built in the browser 
 
 **Highlights**
 
-- **Visual designer**: drag-and-drop canvas with 27 activity types, 6 triggers and a visual condition builder.
+- **Visual designer**: drag-and-drop canvas with 29 activity types, 6 triggers and a visual condition builder.
 - **Custom Activities**: your own PowerShell-based activities, reusable from the palette like the built-in ones.
 - **Sub-workflows**: a workflow calls another with parameters and gets its return values back.
 - **Parallel engine**: branches really run in parallel and meet again at a junction.
@@ -100,8 +100,9 @@ NodePilot is agentless workflow orchestration for Windows, built in the browser 
 - **Alerting**: notification rules for run events and system conditions, delivered by email or signed webhook.
 - **AI-assisted authoring**: scripts and workflows are generated from natural language, also with local models.
 - **AI chat**: a read-only assistant that answers from documentation, operational data and, if enabled, the database.
+- **AI agent activities**: bounded agent/team workflow steps with evidence, reviews and a reserved final report on investigation model-budget exhaustion. Packaged CMD/Bash reads use checked commands. [Agent guide](docs/ai-agents.md).
 - **CLI (`np`)**: every operation from the command line, for scripts and pipelines.
-- **MCP server for AI agents**: `nodepilot-mcp` lets Claude Code and other MCP clients drive NodePilot — 102 tools over 10 groups, destructive operations gated.
+- **MCP server for AI agents**: `nodepilot-mcp` lets Claude Code and other MCP clients drive NodePilot — 112 tools over 11 groups, destructive operations gated.
 - **Observability**: OpenTelemetry, Prometheus and a Grafana stack with 10 dashboards.
 - **Edit lock**: a workflow is checked out by one user at a time and published atomically, as in SCOrch.
 - **Versioning**: every edit is saved as a version, which can be compared and rolled back.
@@ -303,7 +304,7 @@ Everything below the surface lives on the **[documentation site](https://www.nod
 | **Start here** | [Introduction](https://www.nodepilot.run/docs/en/getting-started/introduction/) · [Installation](https://www.nodepilot.run/docs/en/getting-started/installation/) · [Architecture](https://www.nodepilot.run/docs/en/getting-started/architecture/) |
 | **Building workflows** | [Workflows & activities](https://www.nodepilot.run/docs/en/concepts/workflows/) · [Data bus & variables](https://www.nodepilot.run/docs/en/concepts/data-bus/) · [Edge conditions](https://www.nodepilot.run/docs/en/concepts/edge-conditions/) · [Sub-workflows](https://www.nodepilot.run/docs/en/concepts/sub-workflows/) |
 | **The designer** | [Overview](https://www.nodepilot.run/docs/en/designer/overview/) · [Canvas, nodes & edges](https://www.nodepilot.run/docs/en/designer/canvas-nodes-edges/) · [Properties, modes & shortcuts](https://www.nodepilot.run/docs/en/designer/properties-modes/) |
-| **Reference** | [All 27 activities](https://www.nodepilot.run/docs/en/activities-reference/) · [Triggers](https://www.nodepilot.run/docs/en/triggers/) · [API endpoints](https://www.nodepilot.run/docs/en/api/endpoints/) · [`np` CLI](https://www.nodepilot.run/docs/en/cli/) · [MCP server](https://www.nodepilot.run/docs/en/mcp-server/) |
+| **Reference** | [All 29 activities](https://www.nodepilot.run/docs/en/activities-reference/) · [Triggers](https://www.nodepilot.run/docs/en/triggers/) · [API endpoints](https://www.nodepilot.run/docs/en/api/endpoints/) · [`np` CLI](https://www.nodepilot.run/docs/en/cli/) · [MCP server](https://www.nodepilot.run/docs/en/mcp-server/) |
 | **Running it** | [Windows Server](https://www.nodepilot.run/docs/en/deployment/production/) · [Desktop app](https://www.nodepilot.run/docs/en/deployment/desktop/) · [Antivirus exclusions](https://www.nodepilot.run/docs/en/deployment/av-exclusions/) · [Logs & diagnostics](https://www.nodepilot.run/docs/en/deployment/logs/) · [Configuration](https://www.nodepilot.run/docs/en/configuration/appsettings/) |
 | **Security** | [Security model](https://www.nodepilot.run/docs/en/security/overview/) · [Hardening flags](https://www.nodepilot.run/docs/en/security/hardening/) · [Audit log](https://www.nodepilot.run/docs/en/security/audit-log/) |
 | **Enterprise** | [High availability](https://www.nodepilot.run/docs/en/enterprise/high-availability/) · [Secret providers](https://www.nodepilot.run/docs/en/enterprise/secrets-providers/) · [AD SSO Preview](https://www.nodepilot.run/docs/en/enterprise/ldap-windows-sso/) · [Folder RBAC](https://www.nodepilot.run/docs/en/enterprise/folder-rbac/) |
@@ -328,7 +329,7 @@ src/
   NodePilot.Ai/           LLM stack: ILlmClient/OpenAI transport + SSRF guard, prompt catalog, script/workflow gen + chat assistant (Core-only; used by Api and Engine)
   NodePilot.Data/         EF Core DbContext, CredentialStore (DPAPI), provider-agnostic migrations
   NodePilot.Remote/       WinRM session factory + PowerShell SDK session
-  NodePilot.Engine/       WorkflowEngine, 27 activities, RetryPolicy, DebugCoordinator
+  NodePilot.Engine/       WorkflowEngine, 29 activities, RetryPolicy, DebugCoordinator
   NodePilot.Scheduler/    TriggerOrchestrator (Quartz.NET), 4 polling trigger sources + retention/cluster services
   NodePilot.Telemetry/    OpenTelemetry setup, Prometheus client, metric constants
   NodePilot.Api/          ASP.NET Core host, controllers, SignalR hub, security middleware

@@ -29,6 +29,7 @@ export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width
   const [retryBackoff, setRetryBackoff] = useState<'fixed' | 'linear' | 'exponential' | ''>('');
 
   const ids = selectedNodes.map((n) => n.id);
+  const includesAgent = selectedNodes.some(n => n.data.activityType === 'aiAgent' || n.data.activityType === 'aiAgentTeam');
   const activityCount = selectedNodes.filter((n) => n.type === 'activity').length;
   const nonActivityCount = selectedNodes.length - activityCount;
 
@@ -131,7 +132,7 @@ export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width
             </select>
           </div>
           <ApplyBtn
-            disabled={!retryAttempts || !retryBackoff}
+            disabled={includesAgent || !retryAttempts || !retryBackoff}
             onClick={() => apply({}, {
               retry: {
                 maxAttempts: Number(retryAttempts),

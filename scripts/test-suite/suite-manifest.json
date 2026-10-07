@@ -628,6 +628,21 @@
         "globals:NP_TESTSUITE_INVASIVE",
         "globals:NP_TESTSUITE_SERVICE_TARGET"
       ]
+    },
+    {
+      "name": "[TestSuite] AI agents",
+      "file": "positive/99-aiAgents.json",
+      "contract": "positive",
+      "profile": "integration",
+      "tier": "C",
+      "cron": "0 7/30 * * * ? *",
+      "maxRuntimeSeconds": 390,
+      "judgeBy": "run",
+      "requires": [
+        "config:Llm:Enabled=true",
+        "config:Llm:ActiveProfileId",
+        "globals:NP_TESTSUITE_AI_AGENTS"
+      ]
     }
   ],
   "cases": [
@@ -5559,6 +5574,54 @@
         "globals:NP_TESTSUITE_SERVICE_TARGET"
       ],
       "maxRuntimeSeconds": 240
+    },
+    {
+      "id": "aiAgent.json",
+      "dimension": "aiAgent.resultFormat",
+      "value": "json",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] AI agents",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Llm:Enabled=true",
+        "config:Llm:ActiveProfileId",
+        "globals:NP_TESTSUITE_AI_AGENTS"
+      ],
+      "maxRuntimeSeconds": 390
+    },
+    {
+      "id": "aiAgentTeam.delegate",
+      "dimension": "aiAgentTeam.members",
+      "value": "sequential delegation",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] AI agents",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Llm:Enabled=true",
+        "config:Llm:ActiveProfileId",
+        "globals:NP_TESTSUITE_AI_AGENTS"
+      ],
+      "maxRuntimeSeconds": 390
+    },
+    {
+      "id": "aiAgentTeam.parallel",
+      "dimension": "aiAgentTeam.maxParallelMembers",
+      "value": 2,
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] AI agents",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Llm:Enabled=true",
+        "config:Llm:ActiveProfileId",
+        "globals:NP_TESTSUITE_AI_AGENTS"
+      ],
+      "maxRuntimeSeconds": 390
     }
   ]
 }

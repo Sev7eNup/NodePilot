@@ -1,0 +1,127 @@
+[
+  {
+    "id": "case-01",
+    "team": false,
+    "question": "Pruefe, ob die behauptete Beschaedigung des Configuration-Manager-Clients belegt ist und was der aktuelle Zustand aussagt.",
+    "files": {
+      "initial.txt": "Synthetic CLIENT-A observation at 2026-09-19T12:00:00Z. Registry query HKLM\\SOFTWARE\\Microsoft\\SMS\\Mobile Client projected ClientVersion=null. Previous analyst conclusion: the installation is incomplete.\n",
+      "followup.txt": "CLIENT-A at 2026-09-19T12:00:00Z: registry ProductVersion=5.00.9141.1000. root/ccm SMS_Client query: exitCode=0, ClientVersion=5.00.9141.1011. CcmExec State=Running, StartMode=Auto. ChecksPerformed=registry,clientVersion,service. EndToEndDeploymentCheck=not_performed.\n",
+      "history.txt": "CcmEval.log: 2026-09-13T20:16:00Z DNS resolution error 12007.\n"
+    },
+    "expected": {"findingKind": "no_current_fault_proven", "installationDamageProven": false, "mechanismProven": false, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-02",
+    "team": true,
+    "question": "Warum arbeitet der Managementclient jetzt nicht? Pruefe auch, ob Verursacher oder Installationsschaden feststehen.",
+    "files": {
+      "initial.txt": "Synthetic CLIENT-B observation at 2026-09-19T12:00:00Z: CcmExec State=Stopped, StartMode=Disabled. Client activity unavailable. Previous analyst attributes the problem to installation corruption after an old DNS error.\n",
+      "followup.txt": "System event 7040 at 2026-09-19T11:59:00Z: SMS Agent Host start type changed from automatic to disabled. Actor=null, InitiatingProcess=null. SMS_Client version query succeeded. CcmExec.log at 2026-09-19T11:59:01Z records shutdown.\n",
+      "history.txt": "CcmEval.log: 2026-09-13T20:16:00Z DNS error 12007.\n"
+    },
+    "expected": {"findingKind": "service_unavailable", "installationDamageProven": false, "mechanismProven": true, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-03",
+    "team": true,
+    "question": "Ist hier WMI kaputt oder der Client deinstalliert? Stelle fest, was die Unterlagen tatsaechlich belegen.",
+    "files": {
+      "initial.txt": "Synthetic CLIENT-C. Previous analyst claims the WMI repository is corrupt because no client version was returned.\n",
+      "followup.txt": "root/ccm SMS_Client query: stdout='', stderr='Access denied', HRESULT=0x80070005, exitCode=1. Registry query: access denied. CcmExec service query: exitCode=0, State=Running.\n",
+      "search.txt": "Log excerpt search covered only the final 20 lines of one rotated file, query='install failed', returned no matches, truncated=true. No full installation log or complete time window was searched.\n"
+    },
+    "expected": {"findingKind": "undetermined", "installationDamageProven": false, "mechanismProven": false, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-04",
+    "team": true,
+    "question": "Untersuche, warum der Berichtsdienst keine Verbindung zum Backend bekommt. Leite die staerkste belegte Erklaerung ab.",
+    "files": {
+      "initial.txt": "Synthetic reporting app REPORT-A at 2026-09-19T12:00:00Z: connection refused to backend.example:8443. Earlier report suspects database failure because a database timeout occurred last week.\n",
+      "followup.txt": "Current runtime config: backend.example:8443. Verified deployment contract for this installation: backend port 443. Current listener inventory on that same backend: port 443 listening, no listener on 8443. Read-only connection observations from REPORT-A: 8443 refused, 443 successful. Backend health endpoint and current database read query both succeed. No change audit or actor information was supplied.\n",
+      "history.txt": "2026-09-12T10:00:00Z database timeout. ChecksPerformed=configuration,listeners,connection,backendHealth,databaseRead. EndToEndReportGeneration=not_performed.\n"
+    },
+    "expected": {"findingKind": "configuration_mismatch", "installationDamageProven": false, "mechanismProven": true, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-05",
+    "team": false,
+    "question": "Pruefe, ob die Installation des Demo-Dienstes unvollstaendig ist oder lediglich ein unpassendes Feld abgefragt wurde.",
+    "files": {
+      "initial.txt": "Synthetic APP-Z. The service cannot start. One observer says the missing executable may just be a wrong query.\n",
+      "followup.txt": "Verified package manifest for this exact installed version requires C:\\Program Files\\AppZ\\worker.exe. Service ImagePath matches that exact path. Authorized file inspection on the correct machine completed successfully: parent directory exists, worker.exe is absent. Deployment log for this package attempt: extraction of required worker.exe failed; installation terminated incomplete. System service-start event from the same attempt reports ERROR_FILE_NOT_FOUND (2) for that executable. No initiating actor was captured.\n"
+    },
+    "expected": {"findingKind": "incomplete_installation", "installationDamageProven": true, "mechanismProven": true, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-06",
+    "team": true,
+    "question": "Ist der Scan aktuell weiterhin als gestoert belegt? Beurteile den letzten nachgewiesenen Zustand und ob eine Reparatur begruendet ist.",
+    "files": {
+      "scan.log": "Synthetic CLIENT-F. 2026-09-20T10:03:00+02:00 operation=scan endpoint=updates.example:8530 result=connection_failed. 2026-09-20T08:04:00Z operation=scan endpoint=updates.example:8530 result=success scanJob=F2.\n",
+      "followup.txt": "Observation 2026-09-20T08:05:00Z on CLIENT-F. Complete scan log through observation time: last job F2 completed successfully; no later scan attempt recorded. Other deployment and installation functions were not tested.\n"
+    },
+    "expected": {"findingKind": "no_current_fault_proven", "installationDamageProven": false, "mechanismProven": false, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-07",
+    "team": true,
+    "question": "Ist der Fehler der Berichtserstellung durch den spaeteren Erfolg behoben? Bestimme die aktuelle belegte Ursache.",
+    "files": {
+      "events.log": "Synthetic REPORT-G. 2026-09-20T08:04:00Z operation=report target=reports.example:8443 result=connection_refused. 2026-09-20T08:05:00Z operation=inventory target=inventory.example:443 result=success.\n",
+      "configuration.txt": "Observed 2026-09-20T08:06:00Z: REPORT-G current report endpoint reports.example:8443. Verified report deployment contract requires reports.example:443. Listener inventory on reports.example completed: 443 listening, no listener on 8443. Read-only connection test from REPORT-G: 8443 refused; 443 connected. Report operation has no later successful completion. No change actor audit is available.\n"
+    },
+    "expected": {"findingKind": "configuration_mismatch", "installationDamageProven": false, "mechanismProven": true, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-08",
+    "team": false,
+    "question": "Belegt die zweite TCP-Abfrage eine aktuell kaputte Verbindung des Clients? Bewerte den untersuchten Scan.",
+    "files": {
+      "connections.txt": "Synthetic CLIENT-H. Query 2026-09-20T08:01:00Z: endpoint updates.example:8530, one TCP connection Established. Query 2026-09-20T08:02:00Z: same target/port, exitCode=0, results=[], truncated=false.\n",
+      "scan.log": "2026-09-20T08:01:30Z CLIENT-H scan job H1 endpoint=updates.example:8530 completed successfully. 2026-09-20T08:03:00Z CLIENT-H scan job H2 endpoint=updates.example:8530 completed successfully. Full scan log through 08:04:00Z contains no later failure. No other subsystem was checked.\n"
+    },
+    "expected": {"findingKind": "no_current_fault_proven", "installationDamageProven": false, "mechanismProven": false, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-09",
+    "team": true,
+    "question": "Ist eine lokale ausgehende Firewall-Blockregel fuer den fehlgeschlagenen Scan bewiesen? Ordne die Abfragen und den aktuellen Scanstatus ein.",
+    "files": {
+      "queries.txt": "Synthetic CLIENT-I at 2026-09-20T08:05:00Z. Filtered ActiveStore query for enabled outbound Block rules: exitCode=1, no matching rule objects, results=[]. Subsequent unfiltered ActiveStore enumeration: exitCode=0, truncated=false, 120 rule objects returned. Local filtering of those 120 objects for Enabled=True,Direction=Outbound,Action=Block returned count=0. Scope is local Windows Firewall ActiveStore only.\n",
+      "scan.log": "2026-09-20T07:55:00Z CLIENT-I scan failed. 2026-09-20T08:04:00Z CLIENT-I scan completed successfully against the same updates.example:8530 endpoint. No change history or upstream firewall data supplied. Other client functions not checked.\n"
+    },
+    "expected": {"findingKind": "no_current_fault_proven", "installationDamageProven": false, "mechanismProven": false, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-10",
+    "team": false,
+    "question": "Beweisen diese Quellen, dass der Scan nach dem Fehler wieder funktioniert? Klaere die Reihenfolge ohne eine Zeitzone zu erfinden.",
+    "files": {
+      "a.log": "Synthetic CLIENT-J scan against updates.example:8530 failed at 2026-09-20 10:03:00. The source timezone, offset and clock configuration are not recorded.\n",
+      "b.log": "Synthetic CLIENT-J scan against updates.example:8530 succeeded at 2026-09-20T08:04:00Z. Job identifier unavailable.\n",
+      "observation.txt": "Tool observation at 2026-09-20T08:05:00Z reports targetTimeZoneId=UTC. Source log A was copied from an earlier installation; its historical timezone is unavailable. No new scan was triggered or observed.\n"
+    },
+    "expected": {"findingKind": "undetermined", "installationDamageProven": false, "mechanismProven": false, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-11",
+    "team": true,
+    "question": "Belegen die beiden Metadaten-Flags einen aktuellen Defekt oder die Notwendigkeit einer Reparatur? Beruecksichtige den letzten Scan und die Bedeutung der Felder.",
+    "files": {
+      "metadata.txt": "Synthetic CLIENT-K. Site query at 2026-09-20T10:00:00Z returned CI_ID=501, IsLatest=True, IsSuperseded=True. Successful matching scan at 2026-09-20T09:59:00Z; complete scan history through observation has no later failure. Other system functions not examined.\n",
+      "property-contract.txt": "IsLatest concerns the latest version of the configuration item. IsSuperseded concerns replacement by a new configuration item. These are separate relationships. No change audit or installation integrity inspection supplied.\n"
+    },
+    "expected": {"findingKind": "no_current_fault_proven", "installationDamageProven": false, "mechanismProven": false, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  },
+  {
+    "id": "case-12",
+    "team": true,
+    "question": "Die Bereitstellung wird als Unknown angezeigt. Untersuche den aktuellen Update-Scan; findingKind und mechanismProven beziehen sich auf den Scanvorgang. Erklaere getrennt, was ueber den Unknown-Bereitstellungsstatus und die Einzelupdate-Compliance belegt ist. Empfiehl nur durch die Belege begruendete Massnahmen.",
+    "files": {
+      "site.txt": "Synthetic CLIENT-L. Observation 2026-09-20T10:00:00Z: assignment 77 targets CLIENT-L and contains only CI_ID=601. Deployment unknown asset row: AssignmentID=77, CI_ID=0. Individual update compliance row: CI_ID=601, Status=2 (Required), LastStatusCheckTime=2026-09-19T08:00:00Z. No newer individual compliance report received.\n",
+      "client.txt": "CLIENT-L current assignment 77 is present. Latest scan against updates.example:8530 failed at 2026-09-20T09:58:00Z. No later successful scan. Current DNS maps updates.example to 10.20.30.40; a valid route exists. Effective Windows Firewall rule Outbound-17 is enabled, action Block, direction Outbound, all active profiles, TCP remote port 8530, remote address 10.20.30.40, application/service Any. No audit identifies the rule's creator or change time. No packet trace or post-repair scan supplied.\n"
+    },
+    "expected": {"findingKind": "configuration_mismatch", "installationDamageProven": false, "mechanismProven": true, "initiatingActorKnown": false, "wholeSystemHealthyProven": false}
+  }
+]

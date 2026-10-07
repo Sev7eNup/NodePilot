@@ -13,7 +13,7 @@ namespace NodePilot.Mcp.Api;
 /// non-2xx becomes <see cref="ApiException"/>. Copied/adapted from the CLI's client and grown
 /// per phase. Authentication is a Bearer header (accepted alongside the SPA's httpOnly cookie).
 /// </summary>
-public sealed class NodePilotApiClient
+public sealed partial class NodePilotApiClient
 {
     public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {

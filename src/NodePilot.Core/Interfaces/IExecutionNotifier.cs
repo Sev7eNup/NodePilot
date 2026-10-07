@@ -4,6 +4,7 @@ namespace NodePilot.Core.Interfaces;
 
 public interface IExecutionNotifier
 {
+    Task AgentEventAsync(Guid workflowId, NodePilot.Core.Agents.AgentEventNotification notification) => Task.CompletedTask;
     Task StepStartedAsync(Guid executionId, Guid workflowId, string stepId, string? stepName, string stepType, DateTime startedAt);
     /// <param name="outputVariable">
     /// Producing node's <c>data.outputVariable</c> alias, or null when not set. The live UI

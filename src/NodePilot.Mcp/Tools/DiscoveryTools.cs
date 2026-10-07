@@ -119,5 +119,7 @@ public sealed class DiscoveryTools
         "delete_global_variable_folder",
         "delete_alerting_rule",
         "delete_system_alert_policy",
+        "delete_agent_mcp_server",
+        "delete_agent_skill",
     ];
 }

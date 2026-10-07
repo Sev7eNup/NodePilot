@@ -16,4 +16,9 @@ public sealed record ReencryptResult(
     int WorkflowVersionsRewritten,
     int WorkflowVersionsSkipped,
     IReadOnlyList<ReencryptionSkip> WorkflowVersionSkipDetails,
-    bool PartialSuccess);
+    bool PartialSuccess)
+{
+    public int AgentMcpSecretsRewritten { get; init; }
+    public int AgentMcpSecretsSkipped { get; init; }
+    public IReadOnlyList<ReencryptionSkip> AgentMcpSecretSkipDetails { get; init; } = [];
+}

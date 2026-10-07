@@ -333,6 +333,9 @@ type ReencryptResult = {
   workflowVersionsRewritten: number;
   workflowVersionsSkipped: number;
   workflowVersionSkipDetails: ReencryptionSkip[];
+  agentMcpSecretsRewritten?: number;
+  agentMcpSecretsSkipped?: number;
+  agentMcpSecretSkipDetails?: ReencryptionSkip[];
   partialSuccess: boolean;
 };
 
@@ -359,6 +362,11 @@ function ReencryptResultSummary({ result }: Readonly<{ result: ReencryptResult }
       key: 'workflowVersions', label: t('sec.reencryptScopeWorkflowVersions'),
       rewritten: result.workflowVersionsRewritten, skipped: result.workflowVersionsSkipped,
       details: result.workflowVersionSkipDetails,
+    },
+    {
+      key: 'agentMcp', label: t('agents:mcpServers'),
+      rewritten: result.agentMcpSecretsRewritten ?? 0, skipped: result.agentMcpSecretsSkipped ?? 0,
+      details: result.agentMcpSecretSkipDetails ?? [],
     },
   ];
 
@@ -408,8 +416,8 @@ function SecretsReencryptCard() {
       // partial sweeps as an error toast so skipped rows can't slip by unnoticed.
       if (r.partialSuccess) {
         toast.error(t('sec.reencryptPartial', {
-          rewritten: r.credentialsRewritten + r.globalSecretsRewritten + r.workflowVersionsRewritten,
-          skipped: r.credentialsSkipped + r.globalSecretsSkipped + r.workflowVersionsSkipped,
+          rewritten: r.credentialsRewritten + r.globalSecretsRewritten + r.workflowVersionsRewritten + (r.agentMcpSecretsRewritten ?? 0),
+          skipped: r.credentialsSkipped + r.globalSecretsSkipped + r.workflowVersionsSkipped + (r.agentMcpSecretsSkipped ?? 0),
         }));
       } else {
         toast.success(t('sec.reencryptDone', {

@@ -461,6 +461,10 @@ public class WorkflowEditingController : WorkflowsControllerBase
 
         var sizeError = ValidateDefinitionJson(request.DefinitionJson);
         if (sizeError is not null) return sizeError;
+        if (NodePilot.Core.WorkflowDefinitions.WorkflowResourceReferences.UnresolvedError(request.DefinitionJson) is { } dependencyError)
+            return BadRequest(new { code = "unresolved_workflow_dependency", message = dependencyError });
+        if (NodePilot.Api.Security.AgentPublishValidation.ValidateDefinition(request.DefinitionJson) is { } agentError)
+            return BadRequest(new { code = "invalid_agent_configuration", message = agentError });
         if (NodePilot.Api.Security.WebhookHmacSecurity.ValidateDefinition(request.DefinitionJson) is { } hmacError)
         {
             return BadRequest(new

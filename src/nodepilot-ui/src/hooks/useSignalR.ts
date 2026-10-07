@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue } f
 import type { HubConnection } from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { agentRunsKey, agentEventsKey } from './useAgentRuns';
+import type { AgentEventNotification } from '../types/agents';
 import { getAllPages } from '../api/paging';
 import { createExecutionHubConnection } from '../lib/hubConnection';
 import {
@@ -543,6 +545,14 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     connection.on('LiveEventsBatch', (batch: LiveEventsBatch) => {
       const items = Array.isArray(batch) ? batch : (batch.events ?? batch.Events ?? []);
       for (const item of items) {
+        if ((item.type ?? item.Type) === 'AgentEvent') {
+          const notification = (item.event ?? item.Event ?? item.evt) as unknown as AgentEventNotification;
+          if (notification?.executionId && notification.agentRunId) {
+            void queryClient.invalidateQueries({ queryKey: agentRunsKey(notification.executionId) });
+            void queryClient.invalidateQueries({ queryKey: agentEventsKey(notification.agentRunId) });
+          }
+          continue;
+        }
         const event = normalizeBatchItem(item);
         if (!event) continue;
         enqueueLiveEvent(event);
@@ -576,6 +586,8 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
         if (!mountedRef.current) return;
         setConnected(true);
         await reconcileSubscriptions(workflowId);
+        void queryClient.invalidateQueries({ queryKey: ['agent-runs'] });
+        void queryClient.invalidateQueries({ queryKey: ['agent-events'] });
       },
       () => {
         // The automatic-reconnect policy gave up, so the indicator must stop claiming
@@ -614,7 +626,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
       connection.stop();
       setConnected(false);
     };
-  }, [enqueueLiveEvent, workflowId, hydrateActive, hydrateStepsForExecution, reconcileSubscriptions, scheduleQueryInvalidate]);
+  }, [enqueueLiveEvent, workflowId, hydrateActive, hydrateStepsForExecution, reconcileSubscriptions, scheduleQueryInvalidate, queryClient]);
 
   return { liveExecution, liveExecutions, liveActiveCount, connected, clearLive, joinExecution, leaveExecution };
 }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodePilot.Core.Models;
+using NodePilot.Core.Agents;
 
 namespace NodePilot.Data;
 
@@ -14,6 +15,10 @@ public class NodePilotDbContext : DbContext
     public DbSet<TriggerDeliveryReceipt> TriggerDeliveryReceipts => Set<TriggerDeliveryReceipt>();
     public DbSet<TriggerDeliveryCheckpoint> TriggerDeliveryCheckpoints => Set<TriggerDeliveryCheckpoint>();
     public DbSet<StepExecution> StepExecutions => Set<StepExecution>();
+    public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
+    public DbSet<AgentRunEvent> AgentRunEvents => Set<AgentRunEvent>();
+    public DbSet<AgentMcpServer> AgentMcpServers => Set<AgentMcpServer>();
+    public DbSet<AgentSkillPackage> AgentSkillPackages => Set<AgentSkillPackage>();
     public DbSet<ManagedMachine> ManagedMachines => Set<ManagedMachine>();
     public DbSet<Credential> Credentials => Set<Credential>();
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
@@ -53,6 +58,7 @@ public class NodePilotDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        AgentModelConfiguration.Configure(modelBuilder);
         const string sqlServerExactIdentityCollation = "Latin1_General_100_BIN2";
         var exactIdentityCollation = Database.IsSqlServer()
             ? sqlServerExactIdentityCollation

@@ -159,8 +159,8 @@ export type LiveEvent =
   | { type: 'StepResumed'; evt: StepResumedEvent };
 
 export type LiveEventBatchItem = {
-  type?: LiveEvent['type'];
-  Type?: LiveEvent['type'];
+  type?: LiveEvent['type'] | 'AgentEvent';
+  Type?: LiveEvent['type'] | 'AgentEvent';
   event?: StepStartedEvent | StepCompletedEvent | ExecutionUpdate | StepPausedEvent | StepResumedEvent;
   Event?: StepStartedEvent | StepCompletedEvent | ExecutionUpdate | StepPausedEvent | StepResumedEvent;
   evt?: StepStartedEvent | StepCompletedEvent | ExecutionUpdate | StepPausedEvent | StepResumedEvent;

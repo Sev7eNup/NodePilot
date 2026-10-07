@@ -57,13 +57,14 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         var workflows = await query
             .OrderBy(w => w.Name)
             .ToListAsync(ct);
+        var portability = await NodePilot.Api.Services.WorkflowPortability.LoadAsync(_db, _authz, User, ct);
 
         var envelope = new WorkflowExportEnvelope(
             Schema: "nodepilot-workflow-export/v1",
             ExportVersion: 1,
             ExportedAt: DateTime.UtcNow,
             Workflow: null,
-            Workflows: workflows.Select(ToExportItem).ToList());
+            Workflows: workflows.Select(w => ToExportItem(w, portability)).ToList());
 
         sw.Stop();
         ApiMetrics.ImportExportOperations.Add(1,
@@ -97,12 +98,13 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         var workflow = await _db.Workflows.AsNoTracking().FirstOrDefaultAsync(w => w.Id == id, ct);
         if (workflow is null) return NotFound();
         if (await RequireWorkflowAccessAsync(workflow, NodePilot.Core.Interfaces.ResourceOp.Read, ct) is { } d) return d;
+        var portability = await NodePilot.Api.Services.WorkflowPortability.LoadAsync(_db, _authz, User, ct);
 
         var envelope = new WorkflowExportEnvelope(
             Schema: "nodepilot-workflow-export/v1",
             ExportVersion: 1,
             ExportedAt: DateTime.UtcNow,
-            Workflow: ToExportItem(workflow),
+            Workflow: ToExportItem(workflow, portability),
             Workflows: null);
 
         sw.Stop();
@@ -160,6 +162,12 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         const int MaxImportItems = 500;
         if (items.Count > MaxImportItems)
             return BadRequest(new { error = $"Too many workflows in one import (got {items.Count}, max {MaxImportItems})." });
+        if (items.Any(x => x is null)) return BadRequest(new { error = "Workflow entries cannot be null." });
+        if (items.Any(x => x.SourceId == Guid.Empty)
+            || items.Where(x => x.SourceId.HasValue).GroupBy(x => x.SourceId).Any(g => g.Count() > 1))
+            return BadRequest(new { error = "Empty or duplicate workflow sourceId values in import." });
+        if (items.Any(x => x.Dependencies?.Count > 20_000))
+            return BadRequest(new { error = "Too many dependency declarations." });
 
         var existingNames = await _db.Workflows.AsNoTracking()
             .Select(w => w.Name).ToListAsync(ct);
@@ -182,6 +190,7 @@ public class WorkflowImportExportController : WorkflowsControllerBase
 
         var created = new List<ImportedWorkflowInfo>();
         var errors = new List<string>();
+        var pending = new List<(Workflow Workflow, WorkflowExportItem Item, int Index)>();
 
         for (int i = 0; i < items.Count; i++)
         {
@@ -265,13 +274,27 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             };
             PopulateComputedColumns(workflow);
             _db.Workflows.Add(workflow);
+            pending.Add((workflow, item, i));
             created.Add(new ImportedWorkflowInfo(
                 workflow.Id, finalName,
                 finalName == item.Name ? null : item.Name));
         }
 
         if (created.Count > 0)
+        {
+            var portability = await NodePilot.Api.Services.WorkflowPortability.LoadAsync(_db, _authz, User, ct);
+            var importedIds = items.Where(x => x.SourceId.HasValue)
+                .ToDictionary(x => x.SourceId!.Value, _ => Guid.Empty);
+            foreach (var entry in pending.Where(x => x.Item.SourceId.HasValue))
+                importedIds[entry.Item.SourceId!.Value] = entry.Workflow.Id;
+            foreach (var entry in pending)
+            {
+                entry.Workflow.DefinitionJson = portability.Remap(entry.Workflow.DefinitionJson,
+                    entry.Item.Dependencies, importedIds, errors, $"workflows[{entry.Index}] ({entry.Item.Name})");
+                PopulateComputedColumns(entry.Workflow);
+            }
             await _db.SaveChangesAsync(ct);
+        }
 
         sw.Stop();
         ApiMetrics.ImportExportOperations.Add(1,
@@ -874,7 +897,7 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         }
     }
 
-    private static WorkflowExportItem ToExportItem(Workflow w)
+    private static WorkflowExportItem ToExportItem(Workflow w, NodePilot.Api.Services.WorkflowPortability portability)
     {
         JsonElement definition;
         try
@@ -893,7 +916,8 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             definition = doc.RootElement.Clone();
         }
         return new WorkflowExportItem(w.Name, w.Description, definition,
-            IsEnabled: w.IsEnabled, MaxConcurrentExecutions: w.MaxConcurrentExecutions);
+            IsEnabled: w.IsEnabled, MaxConcurrentExecutions: w.MaxConcurrentExecutions,
+            SourceId: w.Id, Dependencies: portability.Describe(definition.GetRawText()));
     }
 
     private sealed record ScorchImportAttempt(

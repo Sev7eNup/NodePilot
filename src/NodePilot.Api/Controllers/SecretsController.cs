@@ -25,19 +25,22 @@ public class SecretsController : ControllerBase
     private readonly NodePilotDbContext _db;
     private readonly WorkflowVersionDefinitionProtector _workflowVersions;
     private readonly IAuditWriter _audit;
+    private readonly ISecretProtector _protector;
 
     public SecretsController(
         ICredentialStore credentials,
         IGlobalVariableStore globals,
         NodePilotDbContext db,
         WorkflowVersionDefinitionProtector workflowVersions,
-        IAuditWriter audit)
+        IAuditWriter audit,
+        ISecretProtector protector)
     {
         _credentials = credentials;
         _globals = globals;
         _db = db;
         _workflowVersions = workflowVersions;
         _audit = audit;
+        _protector = protector;
     }
 
     /// <summary>
@@ -58,8 +61,9 @@ public class SecretsController : ControllerBase
         var creds = await _credentials.ReencryptAllCredentialsAsync(ct);
         var globals = await _globals.ReencryptAllSecretsAsync(ct);
         var versions = await _workflowVersions.ReencryptAllAsync(_db, ct);
+        var mcp = await AgentMcpSecretRotation.ReencryptAsync(_db, _protector, ct);
 
-        var partial = creds.Skipped > 0 || globals.Skipped > 0 || versions.Skipped > 0;
+        var partial = creds.Skipped > 0 || globals.Skipped > 0 || versions.Skipped > 0 || mcp.Skipped > 0;
         var result = new ReencryptResult(
             CredentialsRewritten: creds.Rewritten,
             CredentialsSkipped: creds.Skipped,
@@ -70,7 +74,8 @@ public class SecretsController : ControllerBase
             WorkflowVersionsRewritten: versions.Rewritten,
             WorkflowVersionsSkipped: versions.Skipped,
             WorkflowVersionSkipDetails: versions.SkippedDetails,
-            PartialSuccess: partial);
+            PartialSuccess: partial)
+        { AgentMcpSecretsRewritten = mcp.Rewritten, AgentMcpSecretsSkipped = mcp.Skipped, AgentMcpSecretSkipDetails = mcp.SkippedDetails };
 
         await _audit.LogAsync(AuditActions.SecretsReencrypted, "Secrets", null,
             AuditDetails.Json(
@@ -80,6 +85,8 @@ public class SecretsController : ControllerBase
                 ("globalsSkipped", globals.Skipped),
                 ("workflowVersionsRewritten", versions.Rewritten),
                 ("workflowVersionsSkipped", versions.Skipped),
+                ("agentMcpSecretsRewritten", mcp.Rewritten),
+                ("agentMcpSecretsSkipped", mcp.Skipped),
                 ("partialSuccess", partial)),
             ct);
 

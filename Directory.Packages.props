@@ -164,6 +164,14 @@
          package; the test harness needs this alongside the plain console test helpers. -->
     <PackageVersion Include="Spectre.Console.Cli.Testing" Version="0.55.0" />
     <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageVersion Include="ModelContextProtocol.Core" Version="2.2.0" />
+    <PackageVersion Include="Microsoft.Agents.AI" Version="1.21.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.10.0" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.4.0" />
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+    <!-- JsonSchema.Net uses Humanizer.Core 3.x; align WireMock's localization family. -->
+    <PackageVersion Include="Humanizer" Version="3.0.10" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
 

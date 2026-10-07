@@ -84,6 +84,9 @@ public static class SettingsSchema
             // Settings-UI save (source toggles, root paths) takes effect without a restart.
             IsHotReloadable: true,
             AuditCode: AuditActions.SettingsAiKnowledgeUpdated),
+        new SettingsSectionDescriptor("Agents", "KI-Agenten", typeof(NodePilot.Core.Agents.AgentOptions),
+            typeof(AgentSettingsDto), ImmutableArray<string>.Empty,
+            false, AuditActions.SettingsAgentsUpdated),
         new SettingsSectionDescriptor(
             SectionPath: "Retention",
             DisplayName: "Retention",

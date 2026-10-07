@@ -8,6 +8,12 @@ Umfassende Test-Anleitung für den Workflow Designer mit Playwright MCP. Diese D
 
 ## Vorbereitung & Setup
 
+Backend-Regressionen für Agenten (07.10.2026): `AgentRuntimeTests` prüft den
+reservierten Abschluss bei paralleler Modellbudget-Erschöpfung, erhaltene Befunde
+und offene Reviews ohne Werkzeugwiederholung. `AgentSkillTests` prüft die tatsächliche
+CMD/Bash-Dispatch-Befehlsform bei gleichnamigen Paketdateien; die ungeprüfte Paketdatei
+wird im Test nicht ausgeführt. Diese Sicherheits-/Runtime-Prüfungen sind keine UI-Mocks.
+
 ### 1. Umgebung starten
 
 ```bash

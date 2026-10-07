@@ -365,6 +365,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<NodePilot.Api.Hubs
 // NodePilot.Engine.ServiceCollectionExtensions.AddNodePilotActivities.
 builder.Services.AddNodePilotActivities();
 builder.Services.AddNodePilotEngineOptions(builder.Configuration);
+builder.Services.AddHostedService<NodePilot.Api.Services.AgentRecoveryService>();
 
 // Retention sweeper settings — bound once, consumed by three BackgroundServices via IOptions.
 builder.Services.Configure<NodePilot.Scheduler.Options.RetentionOptions>(

@@ -311,6 +311,82 @@ export const ACTIVITY_CATALOG = [
     "telemetryParameters": ["model"]
   },
   {
+    "type": "aiAgent",
+    "category": "action",
+    "labelKey": "aiAgent",
+    "icon": "psychology",
+    "isRemote": false,
+    "isExternalTrigger": false,
+    "timeout": "always",
+    "outputParameters": [
+      {
+        "name": "agentRunId",
+        "type": "string"
+      },
+      { "name": "outcome", "type": "string" },
+      { "name": "outcomeReason", "type": "string" },
+      {
+        "name": "modelCalls",
+        "type": "number"
+      },
+      {
+        "name": "toolCalls",
+        "type": "number"
+      },
+      {
+        "name": "delegations",
+        "type": "number"
+      },
+      {
+        "name": "promptTokens",
+        "type": "number"
+      },
+      {
+        "name": "completionTokens",
+        "type": "number"
+      }
+    ],
+    "telemetryParameters": []
+  },
+  {
+    "type": "aiAgentTeam",
+    "category": "action",
+    "labelKey": "aiAgentTeam",
+    "icon": "groups",
+    "isRemote": false,
+    "isExternalTrigger": false,
+    "timeout": "always",
+    "outputParameters": [
+      {
+        "name": "agentRunId",
+        "type": "string"
+      },
+      { "name": "outcome", "type": "string" },
+      { "name": "outcomeReason", "type": "string" },
+      {
+        "name": "modelCalls",
+        "type": "number"
+      },
+      {
+        "name": "toolCalls",
+        "type": "number"
+      },
+      {
+        "name": "delegations",
+        "type": "number"
+      },
+      {
+        "name": "promptTokens",
+        "type": "number"
+      },
+      {
+        "name": "completionTokens",
+        "type": "number"
+      }
+    ],
+    "telemetryParameters": []
+  },
+  {
     "type": "log",
     "category": "logic",
     "labelKey": "log",
@@ -523,6 +599,8 @@ export const ACTIVITY_TYPES = {
   TEXT_FILE_EDIT: "textFileEdit",
   GENERATE_TEXT: "generateText",
   LLM_QUERY: "llmQuery",
+  AI_AGENT: "aiAgent",
+  AI_AGENT_TEAM: "aiAgentTeam",
   LOG: "log",
   DELAY: "delay",
   JUNCTION: "junction",

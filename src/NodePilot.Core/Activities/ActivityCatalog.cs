@@ -226,6 +226,13 @@ public static class ActivityCatalog
             // Telemetry records the model only, never the prompt, baseUrl or apiKey.
             telemetry: ["model"]),
 
+        Action("aiAgent", "aiAgent", "psychology", timeout: ActivityTimeoutKind.Always,
+            outputs: [Output("agentRunId", "string"), Output("outcome", "string"), Output("outcomeReason", "string"), Output("modelCalls", "number"), Output("toolCalls", "number"),
+                Output("delegations", "number"), Output("promptTokens", "number"), Output("completionTokens", "number")]),
+        Action("aiAgentTeam", "aiAgentTeam", "groups", timeout: ActivityTimeoutKind.Always,
+            outputs: [Output("agentRunId", "string"), Output("outcome", "string"), Output("outcomeReason", "string"), Output("modelCalls", "number"), Output("toolCalls", "number"),
+                Output("delegations", "number"), Output("promptTokens", "number"), Output("completionTokens", "number")]),
+
         Logic("log", "log", "note_add",
             outputs:
             [

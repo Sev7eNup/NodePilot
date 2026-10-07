@@ -1478,7 +1478,8 @@ describe('WorkflowsPage — bulk actions', () => {
       schema: 'nodepilot-workflow-export/v1',
       exportVersion: 1,
       exportedAt: '2026-04-26T10:00:00Z',
-      workflow: { name: params.id === 'wf-1' ? 'Alpha' : 'Beta' },
+      workflow: { name: params.id === 'wf-1' ? 'Alpha' : 'Beta', sourceId: params.id,
+        dependencies: [{ kind: 'skill', sourceId: 'skill-source', name: 'diagnose', version: '1', sha256: 'abc' }] },
     })));
 
     const blobs: Blob[] = [];
@@ -1497,6 +1498,10 @@ describe('WorkflowsPage — bulk actions', () => {
     // One v1 envelope carrying both workflows — exactly what POST /workflows/import accepts.
     expect(envelope.schema).toBe('nodepilot-workflow-export/v1');
     expect(envelope.workflows.map((w: { name: string }) => w.name)).toEqual(['Alpha', 'Beta']);
+    expect(envelope.workflows.map((w: { sourceId: string }) => w.sourceId)).toEqual(['wf-1', 'wf-2']);
+    expect(envelope.workflows[0].dependencies).toEqual([
+      { kind: 'skill', sourceId: 'skill-source', name: 'diagnose', version: '1', sha256: 'abc' },
+    ]);
     expect(envelope.workflow).toBeUndefined();
   });
 });

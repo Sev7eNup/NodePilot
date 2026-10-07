@@ -111,7 +111,7 @@ Large free-text fields (stdout/stderr, return data, audit details, diagnostics) 
 
 ## Tool catalog
 
-92 default tools across 10 groups, plus 10 gated destructive tools (102 total). (Roles refer to the
+100 default tools across 11 groups, plus 12 gated destructive tools (112 total). (Roles refer to the
 authenticated user.)
 
 ### Discovery
@@ -210,6 +210,18 @@ harmless casts against these secret tables; explicitly named, unprotected column
 `delete_machine` (Admin) · `delete_credential` (Admin) · `delete_global_variable` (Admin) ·
 `delete_global_variable_folder` (Admin, `recursive=true` nimmt Unterordner + Variablen mit) ·
 `delete_alerting_rule` (Admin) · `delete_system_alert_policy` (Admin)
+
+## Agent activities and registries
+
+`list_agent_runs(executionId)` and `get_agent_events(runId, after, pageSize)` read durable
+agent history with the owning workflow's read permission. Registry tools are
+`list_agent_mcp_servers`, `discover_agent_mcp_tools`, `save_agent_mcp_server`,
+`list_agent_skills`, `import_agent_skill`, `set_agent_skill_enabled`,
+`delete_agent_mcp_server` and `delete_agent_skill`. Lists/discovery require Admin or
+Operator; changes require Admin. Deletes additionally require the destructive-tool gate.
+Discovery can start the fixed registered stdio executable. Credentials are write-only.
+This MCP server remains stdio; the separate agent MCP client supports stdio and
+Streamable HTTP. See [agent activities](ai-agents.md).
 
 ## Resources
 

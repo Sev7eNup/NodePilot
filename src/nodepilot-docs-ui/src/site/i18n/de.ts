@@ -35,7 +35,7 @@ export const de = {
       'NodePilot verbindet PowerShell und Windows-Aktivitäten zu visuellen Workflows. Agentenlos, selbst gehostet, quelloffen und kostenlos.',
     descriptions: {
       home: 'NodePilot verbindet PowerShell und Windows-Aktivitäten zu visuellen Workflows. Agentenlos, selbst gehostet, quelloffen und kostenlos.',
-      product: 'Designer, Schritt-Debugger, Live Ops, Auslöser, Alarmierung und KI-Unterstützung in einem Werkzeug. 27 Aktivitätstypen von PowerShell bis SQL.',
+      product: 'Designer, Schritt-Debugger, Live Ops, Auslöser, Alarmierung und KI-Unterstützung in einem Werkzeug. 29 Aktivitätstypen von PowerShell bis SQL.',
       experience: 'NodePilot im Browser ausprobieren: zehn geführte Aufgaben von Workflow-Design und Live Ops bis Wartungsfenster. Ohne Anmeldung oder Installation.',
       videos: 'NodePilot Media: 25 kurze Video-Tutorials zu PowerShell- und Windows-Automatisierung, Workflow-Designer, Debugger, Live Ops, CLI und KI.',
       blog: 'Praxis und Hintergründe zu PowerShell-Workflows, Windows-Automatisierung und dem Import von System Center Orchestrator in NodePilot.',
@@ -223,7 +223,7 @@ export const de = {
     title: 'Ein Ablauf. <br>Von der Idee bis zum Log.',
     intro: 'Designer, Debugger und Live Ops gehören in denselben Arbeitsbereich statt in drei verschiedene Werkzeuge.',
     designerTitle: 'Workflows entwerfen',
-    designerText: '27 Aktivitätstypen: PowerShell, Dateien und Ordner, Dienste, Registry, WMI, geplante Aufgaben, REST-Aufrufe und SQL, verbunden mit Bedingungen und parallelen Pfaden auf einem Canvas.',
+    designerText: '29 Aktivitätstypen: PowerShell, Dateien und Ordner, Dienste, Registry, WMI, geplante Aufgaben, REST-Aufrufe und SQL, verbunden mit Bedingungen und parallelen Pfaden auf einem Canvas.',
     logsTitle: 'Fehler nachvollziehen',
     logsText: 'Ausgaben und strukturierte Support-Ereignisse direkt im Produkt lesen.',
     aiTitle: 'No-Code',
