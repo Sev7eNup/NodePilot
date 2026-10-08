@@ -10,6 +10,17 @@ namespace NodePilot.Ai.Tests;
 public sealed class AgentContextTests
 {
     [Fact]
+    public async Task SourceTruncationRemainsVisibleOutsideTheEvidenceExcerpt()
+    {
+        var store = new AgentEvidenceStore((_, _) => Task.CompletedTask);
+        var source = JsonSerializer.Serialize(new { stdout = new string('x', 20000), truncated = true, exitCode = 0 });
+        using var result = JsonDocument.Parse(await store.CaptureAsync(new() { Id = "reader" }, "powershell", "query", source, 4096, TestContext.Current.CancellationToken));
+        Assert.True(result.RootElement.GetProperty("sourceTruncated").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("excerptTruncated").GetBoolean());
+        Assert.Contains("narrow", result.RootElement.GetProperty("notice").GetString());
+    }
+
+    [Fact]
     public async Task BoardDeliversPeerEvidenceOnceWithoutMutatingHistoryOrToolFreeCalls()
     {
         var board = new TeamBoard();
@@ -390,7 +401,8 @@ public sealed class AgentContextTests
         var budget = new AgentBudget(30, 30, 0);
         var events = new List<AgentProgress>();
         var adapter = new LlmChatClientAdapter(client.Object, budget, new() { MaxContextCharacters = 12_000 },
-            (e, _) => { events.Add(e); return Task.CompletedTask; }, "reader");
+            (e, _) => { events.Add(e); return Task.CompletedTask; }, "reader",
+            hostState: () => "{\"approvedReviews\":[\"review-current\"],\"reviewRequired\":[]}");
         var history = new List<ChatMessage> { new(ChatRole.User, "Investigate all sources; preserve uncertainties.") };
         for (var i = 0; i < 12; i++)
         {
@@ -402,6 +414,7 @@ public sealed class AgentContextTests
         Assert.True(requests.Count > 1);
         Assert.Equal(requests.Count, budget.ModelCalls);
         var final = requests.Last();
+        Assert.Contains("review-current", final.SystemPrompt);
         Assert.Equal(history[0].Text, final.Conversation![0].Content);
         Assert.True(final.SystemPrompt.Length + final.Conversation.Sum(m => m.Content.Length) < 12_000);
         foreach (var result in final.Conversation.Where(m => m.Role == "tool"))

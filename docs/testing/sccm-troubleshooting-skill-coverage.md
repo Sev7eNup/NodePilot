@@ -1,5 +1,16 @@
 # SCCM troubleshooting skill: coverage and validation
 
+Current source/package: **1.0.1**, adding exact active DeploymentType identity,
+separate revision mapping and narrower queries after source truncation.
+Artifact: `samples/agent-skills/sccm-troubleshooting-1.0.1.zip` (32,003 bytes).
+SHA-256: `a2d871f922bd2287039508a848023d2bb909b7e106774010fbe633f2b4517f06`.
+`AgentSkillTests.ShippedSccmRevisionMatchesItsValidatedSourceFiles` validates the
+ZIP with the production archive reader and checks every file against source.
+The original import/live validation records below concern **1.0.0**. Version 1.0.1
+was subsequently deployed on CM1: the physical DP-content and active detection-path
+retests both passed with normal completed reports. See
+[the live regression results](ai-agent-hardcore-regressions.md#live-retest-on-cm1-2026-10-08-europeberlin).
+
 Skill: `samples/agent-skills/sccm-troubleshooting`, version 1.0.0.
 This is a new opt-in instruction package, not a change to the generic runtime or
 the existing windows-diagnostics skill. It includes fault descriptions, discriminating

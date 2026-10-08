@@ -54,6 +54,15 @@ that a claimed fulfillment is true. Existing run events carry this metadata, so
 no new storage table or schema migration is needed. A durable initial report
 draft survives failed finalization and is clearly labeled preliminary.
 
+Before and after that draft, bounded journal checkpoints retain member findings,
+stable investigation checks and recent tool results. They are not final assessments.
+Current host review state is injected independently of compacted model history;
+identical submissions reuse only still-current approvals. A per-member structural
+progress watch warns after 12 unchanged turns and stops investigation tools after 24,
+including in Power mode. Stopped investigations cannot be assessed as completed.
+Source truncation remains distinct from snapshot excerpt truncation in evidence
+envelopes and recall. These safeguards do not certify model-authored diagnoses.
+
 Working-summary output truncation permits one shorter, tool-free summary request
 against the same retained exchanges, within the shared budget. Partial notes never
 enter the session. This does not retry agent activities or external tool actions.

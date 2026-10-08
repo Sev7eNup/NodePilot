@@ -18,6 +18,16 @@ internal sealed class AgentEvidenceStore(Func<AgentProgress, CancellationToken, 
     internal bool ContainsOriginal(string id) { lock (_sync) return _observations.Any(o => o.Id == id); }
     private Observation[] Observations() { lock (_sync) return _observations.ToArray(); }
     private Analysis[] Analyses() { lock (_sync) return _analyses.ToArray(); }
+    private static bool SourceTruncated(string result)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(result);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("truncated", out var flag) && flag.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+    }
     private sealed record Observation(string Id, string MemberId, Guid? TargetMachineId, string Tool,
         string Input, DateTimeOffset ObservedAt, string Text);
     private sealed record Analysis(string Id, string EvidenceId, int Start, int End, string Question, string WorkingNotes);
@@ -68,6 +78,8 @@ internal sealed class AgentEvidenceStore(Func<AgentProgress, CancellationToken, 
                 memberId = member.Id,
                 targetMachineId = member.TargetMachineId,
                 totalCharacters = result.Length,
+                sourceTruncated = SourceTruncated(result),
+                excerptTruncated = false,
                 offset = 0,
                 nextOffset = (int?)null,
                 text = result
@@ -82,11 +94,15 @@ internal sealed class AgentEvidenceStore(Func<AgentProgress, CancellationToken, 
             memberId = member.Id,
             targetMachineId = member.TargetMachineId,
             totalCharacters = result.Length,
+            sourceTruncated = SourceTruncated(result),
+            excerptTruncated = true,
             offset = 0,
             nextOffset = take,
             excerpt = result[..take],
             tail = new { offset = result.Length - take, text = result[^take..] },
-            notice = "Separate beginning/end excerpts; the middle is omitted. Read from nextOffset through the gap with evidence_read or evidence_analyze before making coverage claims. Snapshot recall is not a fresh system read."
+            notice = SourceTruncated(result)
+                ? "The source operation truncated its output. Snapshot paging cannot recover missing source data. Issue a narrower query by exact object ID/version and selected properties before assessing identity or absence."
+                : "Separate beginning/end excerpts; the middle is omitted. Read from nextOffset through the gap with evidence_read or evidence_analyze before making coverage claims. Snapshot recall is not a fresh system read."
         });
         while (Envelope().Length > outputLimit && take > 0) take /= 2;
         return Envelope();
@@ -130,6 +146,7 @@ internal sealed class AgentEvidenceStore(Func<AgentProgress, CancellationToken, 
                     tool = o.Tool,
                     observedAt = o.ObservedAt,
                     totalCharacters = o.Text.Length,
+                    sourceTruncated = SourceTruncated(o.Text),
                     sourceQuery = Excerpt(o.Input, 60),
                     analysisCount = analysisSnapshot.Count(a => a.EvidenceId == o.Id)
                 });
@@ -185,6 +202,7 @@ internal sealed class AgentEvidenceStore(Func<AgentProgress, CancellationToken, 
                     offset,
                     matchOffset,
                     totalCharacters = sourceText.Length,
+                    sourceTruncated = SourceTruncated(observation.Text),
                     nextOffset = offset + content.Length < sourceText.Length ? (int?)(offset + content.Length) : null,
                     text = content
                 });

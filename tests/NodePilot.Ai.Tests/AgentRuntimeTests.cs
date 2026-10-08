@@ -9,6 +9,50 @@ namespace NodePilot.Ai.Tests;
 
 public sealed class AgentRuntimeTests
 {
+    [Fact]
+    public async Task PowerModeStopsRepeatedReadsAndProducesPartialReport()
+    {
+        var events = new List<AgentProgress>();
+        var reads = 0;
+        var runtime = Create(request => request.Tools is { Count: > 0 }
+            ? new("", "test", ToolCalls: [new(Guid.NewGuid().ToString(), "read", "{}")])
+            : new("Repeated observation; remaining cause unresolved", "test"));
+        var tool = new AgentTool("read", "Read", JsonSerializer.SerializeToElement(new { type = "object" }),
+            (_, _) => { reads++; return Task.FromResult("Same observation"); });
+        var result = await runtime.RunAsync(new() { Task = "Investigate" }, false,
+            new Dictionary<string, IReadOnlyList<AgentTool>> { ["agent"] = [tool] }, new(0, 0, 0, unlimited: true), new(),
+            (e, _) => { events.Add(e); return Task.CompletedTask; }, s => s, TestContext.Current.CancellationToken);
+        Assert.InRange(reads, 12, 26);
+        Assert.Equal("partial", result.Outcome);
+        Assert.Contains(events, e => e.Kind == "progress_warning");
+        Assert.Contains(events, e => e.Kind == "progress_stopped");
+        Assert.Contains(events, e => e.Kind == "run_conclusion");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReusesCurrentReviewOnlyForTheSameSubmission(bool changedSubmission)
+    {
+        var lead = 0;
+        var reviews = 0;
+        var events = new List<AgentProgress>();
+        var runtime = Create(request =>
+        {
+            if (request.SystemPrompt.Contains("Role: Quality"))
+            {
+                reviews++;
+                return new("""{"status":"completed","content":"Verified","verdict":"approved","openChecks":[]}""", "test");
+            }
+            if (++lead <= 2) return Delegate("review", changedSubmission && lead == 2 ? "Review changed remedy" : "Review finding");
+            Assert.Contains("approvedReviews", request.SystemPrompt);
+            return new("Final", "test");
+        });
+        await RunTeam(runtime, true, events);
+        Assert.Equal(changedSubmission ? 2 : 1, reviews);
+        Assert.Equal(changedSubmission ? 0 : 1, events.Count(e => e.Kind == "review_reused"));
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
@@ -665,7 +709,7 @@ public sealed class AgentRuntimeTests
             return new("Result with original ev-00001; no new system measurement was made for recall.", "test");
         });
         var tool = new AgentTool("read", "Read a bounded source", JsonSerializer.SerializeToElement(new { type = "object" }),
-            (_, _) => { reads++; return Task.FromResult("original-first-observation private-value " + new string('x', 12_000)); })
+            (_, _) => { reads++; return Task.FromResult("original-first-observation private-value " + reads + new string('x', 12_000)); })
             { Skills = [new(Guid.NewGuid(), "example", "1", "hash", "PINNED_SKILL_MIDDLE", [], _ => Task.CompletedTask)] };
         var budget = new AgentBudget(100, 100, 0);
         await runtime.RunAsync(new() { Task = "Compare the observations, preserve uncertainties" }, false,

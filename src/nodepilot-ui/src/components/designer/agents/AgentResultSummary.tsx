@@ -12,11 +12,14 @@ export function AgentResultSummary({ run, events, loading, unavailable }: {
   const coverage = assessed && !unavailable ? agentRunCoverage(events) : null;
   return <section aria-label={t('summary.title')} data-testid="agent-result-summary"
     className="rounded-lg border border-outline-variant bg-surface-low p-3 space-y-3 min-w-0">
+    <p data-testid="agent-execution-status"><span className="font-semibold">{t('summary.executionStatus')}: </span>{t(`status.${run.status}`)}</p>
     <div data-testid="agent-task-outcome" className="space-y-1">
+      <p className="text-on-surface-variant">{t('taskOutcome.label')}</p>
       <h4 className="font-semibold text-sm">{running ? t('summary.running') : t(`taskOutcome.${outcome}`)}</h4>
       {assessed && run.outcomeReason && <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{run.outcomeReason}</p>}
       <p className="text-on-surface-variant">{t(running ? 'summary.runningHint' : assessed ? 'taskOutcome.hint' : 'summary.unassessedHint')}</p>
     </div>
+    {!assessed && run.result && <p className="text-on-surface-variant">{t('summary.checkpointAvailable')}</p>}
     {coverage ? <div className="space-y-3 max-h-64 overflow-y-auto">
       {(['unresolved', 'fulfilled'] as const).map(status => {
         const items = coverage.filter(item => item.status === status);

@@ -86,6 +86,9 @@
       "model_failed": "Model request failed",
       "context_compacted": "Context compacted – original evidence retained",
       "context_summary_retry": "Incomplete summary discarded – requesting shorter notes",
+      "progress_warning": "No new evidence – change the investigation approach",
+      "progress_stopped": "Investigation stopped without further progress",
+      "review_reused": "Current review retained",
       "model_output_truncated": "Model output incomplete – content discarded",
       "evidence_snapshot": "Original evidence stored",
       "evidence_analyzed": "Section analyzed – working notes saved",
@@ -248,6 +251,8 @@
   "loadMore": "Load earlier events",
   "sequence": "Sequence",
   "summary": {
+    "executionStatus": "Technical execution",
+    "checkpointAvailable": "An intermediate report is available below. It preserves findings and open questions, not a final assessment.",
     "title": "Result summary",
     "running": "Work in progress",
     "runningHint": "The task assessment will appear when the run finishes.",

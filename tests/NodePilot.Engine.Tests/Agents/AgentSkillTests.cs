@@ -141,6 +141,22 @@ public sealed class AgentSkillTests
     }
 
     [Fact]
+    public void ShippedSccmRevisionMatchesItsValidatedSourceFiles()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, "samples", "agent-skills"))) root = root.Parent;
+        Assert.NotNull(root);
+        var directory = Path.Combine(root.FullName, "samples", "agent-skills");
+        var skill = AgentSkillArchive.Read(File.ReadAllBytes(Path.Combine(directory, "sccm-troubleshooting-1.0.1.zip")));
+        Assert.Equal("sccm-troubleshooting", skill.Name);
+        var source = Path.Combine(directory, "sccm-troubleshooting");
+        var files = Directory.GetFiles(source, "*", SearchOption.AllDirectories);
+        Assert.Equal(files.Length, skill.Files.Count);
+        foreach (var file in files)
+            Assert.Equal(File.ReadAllBytes(file), skill.Files[Path.GetRelativePath(source, file).Replace('\\', '/')]);
+    }
+
+    [Fact]
     public void Skill_ParsesStandardYamlAndImmutableIntegrityHash()
     {
         var bytes = Package(("SKILL.md", Instructions), ("scripts/check.ps1", "Write-Output 'ok'"));

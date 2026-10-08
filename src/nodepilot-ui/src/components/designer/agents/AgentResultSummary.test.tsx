@@ -16,6 +16,16 @@ const show = (patch: Partial<AgentRun> = {}, journal = events, loading = false, 
   render(<AgentResultSummary run={{ ...run, ...patch }} events={journal} loading={loading} unavailable={unavailable} />);
 
 describe('AgentResultSummary', () => {
+  it('separates technical completion from a partial task assessment', () => {
+    show();
+    expect(screen.getByTestId('agent-execution-status')).toHaveTextContent('Technical execution: Completed');
+    expect(screen.getByTestId('agent-task-outcome')).toHaveTextContent('Partially completed');
+  });
+  it('labels retained findings after cancellation as an intermediate report', () => {
+    show({ status: 'Cancelled' });
+    expect(screen.getByText(/An intermediate report is available/)).toBeVisible();
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
   it('puts unresolved deliverables first with their actual limitations', () => {
     show();
     expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Verify connectivityClient unavailable.');

@@ -12,9 +12,11 @@ public sealed class LlmChatClientAdapter(
     ILlmClient client, AgentBudget budget, AgentOptions limits,
     Func<AgentProgress, CancellationToken, Task> progress, string memberId,
     Action<LlmException>? failRun = null, ILlmClient? summaryClient = null,
-    Func<string, string>? sanitize = null, Func<int>? evidenceCount = null, TeamBoard? board = null) : IChatClient
+    Func<string, string>? sanitize = null, Func<int>? evidenceCount = null, TeamBoard? board = null,
+    Func<string>? hostState = null, Func<string>? progressSignature = null) : IChatClient
 {
     private readonly AgentContextManager _context = new();
+    private readonly AgentProgressWatch _progressWatch = new();
     public async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
         ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -35,12 +37,21 @@ public sealed class LlmChatClientAdapter(
                 .Select(c => new LlmToolCall(c.CallId, c.Name, JsonSerializer.Serialize(c.Arguments))).ToArray();
             conversation.Add(new LlmMessage(message.Role.Value, message.Text, ToolCalls: calls.Length == 0 ? null : calls));
         }
+        if (hostState is not null) system += "\nHost completion state (retained across context compaction): " + hostState()
+            + "\nReuse approved reviews while current. Follow-up delegation must address a concrete unresolved question, changed evidence or explicit material correction; do not restart completed investigations because their history was compacted.";
+        var progressNotice = options?.ToolMode != ChatToolMode.None && progressSignature is not null
+            ? _progressWatch.Check(progressSignature()) : "";
+        if (progressNotice.Length > 0)
+        {
+            system += "\n" + progressNotice;
+            await progress(new AgentProgress(_progressWatch.Stopped ? "progress_stopped" : "progress_warning", progressNotice, memberId), cancellationToken);
+        }
         var baseSystem = system;
         string BudgetStatus() => budget.Unlimited
             ? "\nPower mode: model calls, tool calls and delegations have no run budget. Stop when the requested outcome is supported or further permitted checks cannot distinguish the alternatives. Do not repeat checks without new evidence. Permissions and individual request limits still apply."
             : $"\nHost budget before this call (shared across the team): {budget.RemainingModelCalls} model calls, {budget.MaxToolCalls - budget.ToolCalls} tool calls, {budget.MaxDelegations - budget.Delegations} delegations remaining. The host separately reserves one final-report call during investigation. Use available calls for concrete checks that could change the answer; do not defer such a check merely to finish early. Reserve calls for required reviews. Stop when the requested outcome is supported or further permitted checks cannot distinguish the alternatives; never repeat reads just to spend budget. A budget limit is not evidence that an unresolved finding is proved.";
         system += BudgetStatus();
-        var tools = options?.ToolMode == ChatToolMode.None || budget.LastModelCall || (!budget.Unlimited && budget.ToolCalls >= budget.MaxToolCalls) ? null
+        var tools = _progressWatch.Stopped || options?.ToolMode == ChatToolMode.None || budget.LastModelCall || (!budget.Unlimited && budget.ToolCalls >= budget.MaxToolCalls) ? null
             : options?.Tools?.OfType<AIFunctionDeclaration>()
                 .Select(t => new LlmToolDefinition(t.Name, t.Description, t.JsonSchema)).ToArray();
         var schemaCharacters = tools?.Sum(t => (long)t.Parameters.GetRawText().Length + t.Description.Length + t.Name.Length + 32) ?? 0;

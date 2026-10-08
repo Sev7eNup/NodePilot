@@ -18,6 +18,41 @@ namespace NodePilot.Engine.Tests.Agents;
 [Collection("AgentDeadlines")]
 public sealed class AgentActivityRunnerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InterruptedJournalRetainsMemberFindingAndOpenChecks(bool afterDraft)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = TestDbFactory.Create();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "checkpoint", DefinitionJson = "{}" };
+        var execution = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id, Workflow = workflow };
+        db.WorkflowExecutions.Add(execution);
+        await db.SaveChangesAsync(ct);
+        using var database = new AgentRunDatabase(db);
+        var journal = new AgentRunJournal(database, Mock.Of<IExecutionNotifier>(), new OutputRedactor(null), NullLogger<AgentRunJournal>.Instance);
+        await journal.StartAsync(new StepExecutionContext { WorkflowExecutionId = execution.Id, StepId = "team" }, ct);
+        if (afterDraft) await journal.AppendAsync(new("report_draft", "Early draft; pending reviewer", "lead"), ct);
+        await journal.AppendAsync(new("member_completed", """{"status":"completed","content":"Physical payload differs; ev-00001. Redistribute only after approval."}""", "server"), ct);
+        await journal.AppendAsync(new("investigation_updated", """{"check":{"id":"signer","status":"open","nextCheck":"Verify expected signer"}}""", "client"), ct);
+        await journal.AppendAsync(new("investigation_updated", """{"check":{"id":"revision","status":"open","nextCheck":"Verify active revision"}}""", "client"), ct);
+        await journal.AppendAsync(new("member_completed", "42", "lead"), ct);
+        await journal.FinishAsync("Cancelled", null, "Timeout", new(10, 10, 10), ct);
+        db.ChangeTracker.Clear();
+        var saved = await db.AgentRuns.SingleAsync(ct);
+        Assert.Equal("Cancelled", saved.Status);
+        Assert.Contains("INTERMEDIATE FINDINGS", saved.Result);
+        Assert.Contains("Physical payload differs", saved.Result);
+        Assert.Contains("Verify expected signer", saved.Result);
+        Assert.Contains("Verify active revision", saved.Result);
+        Assert.DoesNotContain(await db.AgentRunEvents.ToListAsync(ct), e => e.Kind == "run_conclusion");
+        await journal.StartAsync(new StepExecutionContext { WorkflowExecutionId = execution.Id, StepId = "retry" }, ct);
+        await journal.AppendAsync(new("tool_failed", "Denied new query", "reader", "read"), ct);
+        Assert.Contains("Denied new query", journal.Run!.Result);
+        Assert.DoesNotContain("Physical payload differs", journal.Run.Result);
+        Assert.DoesNotContain("Early draft", journal.Run.Result);
+    }
+
     [Fact]
     public async Task ParallelJournalAppendsCommitContiguousSequencesAndUsage()
     {

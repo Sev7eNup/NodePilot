@@ -11,10 +11,10 @@ are included. See [SKILL.md](sccm-troubleshooting/SKILL.md) and the
 [coverage record](../../docs/testing/sccm-troubleshooting-skill-coverage.md).
 
 Package with forward-slash entry names and **SKILL.md at the ZIP root**; import as
-version `1.0.0` in Settings → AI agents, then select it on the desired agent/member.
+version `1.0.1` in Settings → AI agents, then select it on the desired agent/member.
 The folder itself is also usable by other Agent Skills-compatible hosts.
-The ready-to-import [version 1.0.0 ZIP](sccm-troubleshooting-1.0.0.zip) contains the
-same Markdown files; its checksum and validation are in the coverage record.
+The ready-to-import [version 1.0.1 ZIP](sccm-troubleshooting-1.0.1.zip) contains the
+same Markdown files. Version 1.0.0 remains available for existing pinned references.
 
 ## Windows diagnostics example
 

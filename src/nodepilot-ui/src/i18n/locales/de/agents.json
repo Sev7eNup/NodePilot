@@ -86,6 +86,9 @@
       "model_failed": "Modellanfrage fehlgeschlagen",
       "context_compacted": "Kontext verdichtet – Originalbelege bleiben erhalten",
       "context_summary_retry": "Unvollständige Zusammenfassung verworfen – kürzere Fassung anfordern",
+      "progress_warning": "Keine neuen Belege – Prüfstrategie ändern",
+      "progress_stopped": "Untersuchung ohne weiteren Fortschritt beendet",
+      "review_reused": "Aktuelle Prüfung beibehalten",
       "model_output_truncated": "Modellausgabe unvollständig – Inhalt verworfen",
       "evidence_snapshot": "Originalbeleg gespeichert",
       "evidence_analyzed": "Abschnitt analysiert – Arbeitsnotiz gespeichert",
@@ -248,6 +251,8 @@
   "loadMore": "Frühere Ereignisse laden",
   "sequence": "Sequenz",
   "summary": {
+    "executionStatus": "Technischer Laufstatus",
+    "checkpointAvailable": "Unten steht ein Zwischenbericht mit bisherigen Befunden und offenen Fragen. Er ist keine abschließende Bewertung.",
     "title": "Ergebnisübersicht",
     "running": "Bearbeitung läuft",
     "runningHint": "Die Ergebnisbewertung erscheint nach Abschluss des Laufs.",

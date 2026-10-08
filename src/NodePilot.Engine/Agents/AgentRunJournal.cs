@@ -11,6 +11,7 @@ public sealed class AgentRunJournal(AgentRunDatabase database, IExecutionNotifie
 {
     private long _sequence;
     private Guid _workflowId;
+    private AgentRunCheckpoint _checkpoint = new();
     public AgentRun? Run { get; private set; }
 
     public async Task StartAsync(StepExecutionContext context, CancellationToken ct)
@@ -18,6 +19,7 @@ public sealed class AgentRunJournal(AgentRunDatabase database, IExecutionNotifie
         await database.UseAsync(async db =>
         {
             _sequence = 0;
+            _checkpoint = new();
             _workflowId = await db.WorkflowExecutions.Where(x => x.Id == context.WorkflowExecutionId).Select(x => x.WorkflowId).SingleAsync(ct);
             Run = new AgentRun { Id = Guid.NewGuid(), WorkflowExecutionId = context.WorkflowExecutionId, StepId = context.StepId };
             db.AgentRuns.Add(Run);
@@ -33,7 +35,8 @@ public sealed class AgentRunJournal(AgentRunDatabase database, IExecutionNotifie
         {
             var content = AgentContentRedactor.Redact(progress.Content, redactor);
             if (content.Length > 64_000) content = content[..64_000] + "\n[truncated]";
-            if (progress.Kind == "report_draft") run.Result = content;
+            if (_checkpoint.Update(progress with { Content = content }) is { } checkpoint)
+                run.Result = checkpoint;
             if (budget is not null) ApplyUsage(budget.Snapshot());
             var saved = new AgentRunEvent
             {

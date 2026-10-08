@@ -3,7 +3,7 @@ name: sccm-troubleshooting
 description: Diagnoses Microsoft Configuration Manager (SCCM/MECM), WSUS, Windows Update, application, content and task-sequence failures using correlated client and server evidence. Use when scans fail, compliance is Unknown, required updates do not install, policies or content are missing, hashes or detection fail, or a targeted remediation and verification plan is needed. Diagnose von SCCM-, WSUS-, Update- und Verteilproblemen mit gezielter Behebungsanleitung.
 compatibility: Instruction-only skill. Requires supplied evidence or authorized read tools for Windows clients and relevant ConfigMgr/WSUS servers. Works with NodePilot aiAgent and aiAgentTeam; no scripts, credentials or fixed site names are included.
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # SCCM-Troubleshooting

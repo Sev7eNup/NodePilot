@@ -1,0 +1,46 @@
+{
+  "baselineDate": "2026-10-07",
+  "kind": "skill-assisted-native-lab-regression",
+  "cases": [
+    {
+      "id": "missing-cache-file",
+      "prompt": "Die Tasksequenz scheitert beim aktuellen Versuch an der Inhaltsprüfung. Untersuche Ursache und gezielte Behebung.",
+      "inject": "Remove required.txt only from the owned test package's current client cache; retain exact bytes for restoration.",
+      "requirements": ["Identify exact current cache/version", "Prove required.txt absent by exact path and full inventory", "Compare complete source and DP file inventories and counterpart hashes", "Recommend scoped cache recovery, not unrelated source changes"],
+      "restoreAndVerify": "Restore exact file; rerun same native task sequence successfully.",
+      "baselineExecutionId": "b86fe12f-234a-45e7-adfa-c3270d64740e"
+    },
+    {
+      "id": "cache-manifest",
+      "prompt": "Die Tasksequenz scheitert erneut an der Inhaltsprüfung. Grenze den aktuellen Fehler anhand der Originalbelege ein.",
+      "inject": "Replace only the owned cached manifest.sha256 contents with 64 zeroes; preserve original bytes.",
+      "requirements": ["Identify modified manifest in actual cache", "Distinguish manifest digest from payload digest", "Verify remaining files and source/DP counterparts", "Finish with specific cache remedy and verification"],
+      "restoreAndVerify": "Restore manifest bytes; rerun same native task sequence successfully.",
+      "baselineExecutionId": "b584fa40-a840-4e5b-9862-18fa1fda3ea3"
+    },
+    {
+      "id": "physical-dp-payload",
+      "prompt": "Ein frischer Contentdownload endet bei der Tasksequenz mit Hashfehler. Ermittle den verantwortlichen Inhalt und eine gezielte Behebung.",
+      "inject": "After proving exclusive ownership by the disposable test package, change one byte of its physical FileLib payload. Preserve original bytes; evict only that package's owned client cache before fresh download.",
+      "requirements": ["Map fresh transfer to exact DP and package version", "Resolve DataLib mapping to physical FileLib blob", "Measure blob hash versus correct source", "Recommend supported scoped redistribution, not manual production FileLib editing", "Complete final review/report without repeated closed investigations"],
+      "restoreAndVerify": "Restore exact blob/hash, evict only owned test cache, verify fresh native download and successful task sequence.",
+      "baselineExecutionId": "e72a15b4-642a-435e-b813-c6a7d3871386"
+    },
+    {
+      "id": "active-detection-path",
+      "prompt": "Eine Testanwendung meldet nach Installation mit Exitcode 0 den Fehler 0x87D00324. Prüfe Erkennung und passende Behebung.",
+      "inject": "Owned installer writes a 64-bit HKLM SOFTWARE test marker Version REG_SZ 1.0. Change active detection to explicit SOFTWARE/WOW6432Node test path with Is64Bit=true. Publish policy and reproduce negative detection.",
+      "requirements": ["Correlate same AppEnforce/AppDiscovery attempt", "Query exact active Application and DeploymentType IDs and their separate revisions", "Narrow truncated source queries rather than assuming complete definitions", "Compare actual rule path/view/value/type against installed marker", "Correct detection contract; do not invent marker or recommend blind reinstall"],
+      "restoreAndVerify": "Restore original detection, publish policy, verify Installed and ErrorCode 0; remove owned app/deployment/collection/source/marker/cache.",
+      "baselineExecutionId": "b4287e79-2f14-457b-8c18-ec84b91719b4"
+    },
+    {
+      "id": "publisher-trust",
+      "prompt": "Ein lokal veröffentlichtes Testupdate wird gefunden, der Download scheitert mit 0x8024B303. Untersuche die konkrete Fehlerphase und Abhilfe.",
+      "inject": "Publish isolated signed test CAB and remove only its disposable signer from client LocalMachine TrustedPublisher. Keep required Root trust and AcceptTrustedPublisherCerts enabled. Trigger native WUA download only.",
+      "requirements": ["Map exact update revision and CAB", "Identify concrete signer missing from TrustedPublisher", "Check Root and signed intranet update policy separately", "Separate transport, payload hash and publisher trust", "State missing publisher authorization evidence explicitly; never disable signature verification"],
+      "restoreAndVerify": "Restore same signer, verify same native WUA download succeeds without installation, restore prior trust/policy/bindings and remove all owned update assets.",
+      "baselineExecutionId": "3ef7327f-5d2c-495f-85e4-c9f858cdd879"
+    }
+  ]
+}

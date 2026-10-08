@@ -44,6 +44,25 @@ internal sealed class TeamCompletionState(AgentDefinition[] members, bool requir
 
     public string[] ReviewSources() { lock (_sync) return _sources.Keys.Order(StringComparer.Ordinal).ToArray(); }
 
+    public string HostState()
+    {
+        lock (_sync) return JsonSerializer.Serialize(new
+        {
+            revision = _revision,
+            members = members.Select(m => new { memberId = m.Id,
+                status = _findings.TryGetValue(m.Id, out var finding) ? finding.Status : "not_started" }),
+            approvedReviews = _reviews.Where(r => !IsStale(r.Key, r.Value)).Select(r => r.Key),
+            reviewRequired = _reviews.Where(r => IsStale(r.Key, r.Value)).Select(r => r.Key),
+            unresolvedMembers = _open.Keys
+        });
+    }
+
+    public string? CurrentReview(string memberId)
+    {
+        lock (_sync) return _reviews.TryGetValue(memberId, out var revision) && !IsStale(memberId, revision)
+            && _findings.TryGetValue(memberId, out var finding) ? finding.Content : null;
+    }
+
     public JsonElement GetMemberFindings(string recipient)
     {
         lock (_sync) return JsonSerializer.SerializeToElement(

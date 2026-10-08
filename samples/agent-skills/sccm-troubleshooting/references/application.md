@@ -9,6 +9,17 @@ ermitteln; Application /5 impliziert nicht DeploymentType /5. Vollständige zuge
 SDMPackageXML einschließlich tatsächlicher Detection-Regel lesen. Lazy-Eigenschaft
 nicht als leer interpretieren, wenn nur eine Enumeration statt Instance-GET erfolgte.
 
+Abfragen nach dem konkreten CI_UniqueID/CI_ID und der passenden eigenen Revision
+einschränken; keine ungekürzte Definition aus einer breiten SMS_Application- oder
+SMS_DeploymentType-Liste annehmen. Bei `sourceTruncated=true` oder `truncated=true`
+eine engere Abfrage ausführen: Paging im Belegarchiv ergänzt keine bereits an der
+Quelle abgeschnittenen Daten. Aktive Clientzuordnung, Application-Referenz und
+DeploymentType-Definition getrennt mit ihren exakten IDs/Revisionen belegen.
+Aus der tatsächlich ausgewählten Definition die vollständige Detection-Regel
+einschließlich RegistryKey/ValueName/Is64Bit isolieren. Stimmen IDs nicht mit
+dem betroffenen AppEnforce-/AppDiscovery-Versuch überein, ist die Zuordnung offen.
+Keine andere Definition als Ersatz für die fehlende aktuelle Regel bewerten.
+
 Registryhive, 32-/64-Bit-Sicht, expliziten WOW6432Node-Pfad, Namen, Datentyp, Vergleich
 und erwarteten Wert gegenüber tatsächlich installiertem Zustand prüfen. Bei Dateiregeln
 Pfad/Version, bei Skriptregeln dokumentierten Ausgabevertrag lesen; unbekanntes Detection-

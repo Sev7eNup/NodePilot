@@ -20,6 +20,31 @@ context/output size limits. Power mode does not make a workflow immune to cancel
 or guarantee that a model can finish an analysis. Runtime and API costs may increase.
 The Agents section retains its existing restart notice for settings such as gate capacity.
 
+Progress control also applies in Power mode. Each member receives current host review
+state on every model turn, including after compaction. An identical review submission
+reuses its approval only while its recorded dependencies remain current; changed
+submissions and stale reviews still require review. Follow-up assignments must name
+the concrete unresolved question or material correction.
+
+After 12 model turns without a previously unseen observation/obligation signature,
+the host asks the member to change its approach. After 24 it disables that member's
+tools and requests retained findings and limitations. Alternating previously seen
+states does not reset the counter. This is a structural progress guard, not a semantic
+judgment: new outputs can still be irrelevant, and long analysis of unchanged evidence
+may stop early. A stopped investigation cannot receive a `completed` task outcome.
+
+Evidence envelopes distinguish `sourceTruncated` (the original operation discarded
+data) from `excerptTruncated` (only the model-facing snapshot excerpt is shortened).
+The first requires a narrower source query; paging immutable memory cannot recover
+the missing data. These flags do not establish completeness of filters or scope.
+
+The journal updates an intermediate report from member findings, investigation
+checks and recent tool results throughout the run. Bounded excerpts and omitted
+sections are marked; full observations remain in the journal. Cancellation or timeout
+retains this report without generating a final assessment or running further tools.
+The result panel separates technical execution from task outcome and labels retained
+reports as preliminary. A final model report replaces the checkpoint on success.
+
 The settings registry uses searchable, height-limited lists for skills and MCP servers.
 Expand an entry's details to inspect skill descriptions and hashes or server IDs.
 
