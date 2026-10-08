@@ -1,0 +1,1632 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-10-08T00:00:00Z",
+  "workflow": {
+    "name": "Example 04 - System Health Observatory",
+    "description": "Five parallel local system checks, configurable findings, and a verified diagnostic archive. 45 activities spanning 16 activity types.",
+    "isEnabled": false,
+    "maxConcurrentExecutions": 1,
+    "definition": {
+      "nodes": [
+        {
+          "id": "g-platform",
+          "type": "group",
+          "position": {
+            "x": 960,
+            "y": -100
+          },
+          "style": {
+            "width": 1660,
+            "height": 280
+          },
+          "data": {
+            "label": "01  PLATFORM & MEMORY",
+            "activityType": "group",
+            "disabled": true,
+            "color": "blue",
+            "collapsed": false
+          }
+        },
+        {
+          "id": "g-storage",
+          "type": "group",
+          "position": {
+            "x": 960,
+            "y": 200
+          },
+          "style": {
+            "width": 1660,
+            "height": 280
+          },
+          "data": {
+            "label": "02  SYSTEM STORAGE",
+            "activityType": "group",
+            "disabled": true,
+            "color": "green",
+            "collapsed": false
+          }
+        },
+        {
+          "id": "g-services",
+          "type": "group",
+          "position": {
+            "x": 960,
+            "y": 500
+          },
+          "style": {
+            "width": 1660,
+            "height": 280
+          },
+          "data": {
+            "label": "03  CORE SERVICES",
+            "activityType": "group",
+            "disabled": true,
+            "color": "amber",
+            "collapsed": false
+          }
+        },
+        {
+          "id": "g-readiness",
+          "type": "group",
+          "position": {
+            "x": 960,
+            "y": 800
+          },
+          "style": {
+            "width": 1660,
+            "height": 280
+          },
+          "data": {
+            "label": "04  NETWORK & RESTART",
+            "activityType": "group",
+            "disabled": true,
+            "color": "slate",
+            "collapsed": false
+          }
+        },
+        {
+          "id": "g-history",
+          "type": "group",
+          "position": {
+            "x": 960,
+            "y": 1100
+          },
+          "style": {
+            "width": 1660,
+            "height": 280
+          },
+          "data": {
+            "label": "05  EVENT HISTORY",
+            "activityType": "group",
+            "disabled": true,
+            "color": "rose",
+            "collapsed": false
+          }
+        },
+        {
+          "id": "g-results",
+          "type": "group",
+          "position": {
+            "x": 2680,
+            "y": 180
+          },
+          "style": {
+            "width": 1660,
+            "height": 1100
+          },
+          "data": {
+            "label": "06  ASSESSMENT",
+            "activityType": "group",
+            "disabled": true,
+            "color": "blue",
+            "collapsed": false
+          }
+        },
+        {
+          "id": "g-package",
+          "type": "group",
+          "position": {
+            "x": 960,
+            "y": 1440
+          },
+          "style": {
+            "width": 3380,
+            "height": 300
+          },
+          "data": {
+            "label": "07  REPORT PACKAGE  /  FOLLOW THE FLOW LEFT",
+            "activityType": "group",
+            "disabled": true,
+            "color": "green",
+            "collapsed": false
+          }
+        },
+        {
+          "id": "start",
+          "type": "activity",
+          "position": {
+            "x": 0,
+            "y": 400
+          },
+          "data": {
+            "label": "Manual: System check",
+            "activityType": "manualTrigger",
+            "config": {
+              "parameters": [
+                {
+                  "name": "eventHours",
+                  "type": "string",
+                  "required": true,
+                  "default": "24"
+                },
+                {
+                  "name": "eventLimit",
+                  "type": "string",
+                  "required": true,
+                  "default": "100"
+                },
+                {
+                  "name": "errorThreshold",
+                  "type": "string",
+                  "required": true,
+                  "default": "10"
+                },
+                {
+                  "name": "minimumFreeMemory",
+                  "type": "string",
+                  "required": true,
+                  "default": "10"
+                },
+                {
+                  "name": "minimumFreeDisk",
+                  "type": "string",
+                  "required": true,
+                  "default": "15"
+                }
+              ],
+              "description": "Review local system metrics and bounded error events; write a verified report package."
+            }
+          }
+        },
+        {
+          "id": "run-id",
+          "type": "activity",
+          "position": {
+            "x": 400,
+            "y": 400
+          },
+          "data": {
+            "label": "Generate: Run ID",
+            "activityType": "generateText",
+            "config": {
+              "mode": "guid"
+            }
+          }
+        },
+        {
+          "id": "paths",
+          "type": "activity",
+          "position": {
+            "x": 400,
+            "y": 700
+          },
+          "data": {
+            "label": "PowerShell: Prepare run",
+            "activityType": "runScript",
+            "config": {
+              "script": "$windowHours = [int]{{start.param.eventHours}}\n$recordLimit = [int]{{start.param.eventLimit}}\n$errorLimit = [int]{{start.param.errorThreshold}}\n$memoryFloor = [int]{{start.param.minimumFreeMemory}}\n$diskFloor = [int]{{start.param.minimumFreeDisk}}\nif ($windowHours -lt 1 -or $windowHours -gt 168) { throw 'eventHours must be 1-168.' }\nif ($recordLimit -lt 1 -or $recordLimit -gt 500) { throw 'eventLimit must be 1-500 per log.' }\nif ($errorLimit -lt 0 -or $errorLimit -gt 1001) { throw 'errorThreshold must be 0-1001.' }\nif ($memoryFloor -lt 1 -or $memoryFloor -gt 99 -or $diskFloor -lt 1 -or $diskFloor -gt 99) { throw 'Free-space thresholds must be 1-99 percent.' }\n$rootPath = Join-Path ([IO.Path]::GetTempPath()) ('NodePilot-SystemCheck-' + {{run-id.param.text}})\n$sourcePath = Join-Path $rootPath 'Report'\n$reportPath = Join-Path $sourcePath 'SystemReport.txt'\n$jsonPath = Join-Path $sourcePath 'Findings.json'\n$readmePath = Join-Path $sourcePath 'Readme.txt'\n$archivePath = Join-Path $rootPath 'SystemCheck.zip'\n$extractPath = Join-Path $rootPath 'Verification'\n$systemDrive = $env:SystemDrive\nWrite-Output \"Run directory: $rootPath\"",
+              "engine": "auto",
+              "timeoutSeconds": 60
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "folder",
+          "type": "activity",
+          "position": {
+            "x": 680,
+            "y": 700
+          },
+          "data": {
+            "label": "Folder: Create report area",
+            "activityType": "folderOperation",
+            "config": {
+              "operation": "create",
+              "path": "{{paths.param.sourcePath}}"
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "os",
+          "type": "activity",
+          "position": {
+            "x": 80,
+            "y": 100
+          },
+          "data": {
+            "label": "WMI: Windows & memory",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT CSName, Caption, Version, TotalVisibleMemorySize, FreePhysicalMemory FROM Win32_OperatingSystem",
+              "captureProperties": [
+                "CSName",
+                "Caption",
+                "Version",
+                "TotalVisibleMemorySize",
+                "FreePhysicalMemory"
+              ]
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-platform"
+        },
+        {
+          "id": "build",
+          "type": "activity",
+          "position": {
+            "x": 400,
+            "y": 100
+          },
+          "data": {
+            "label": "Registry: Build revision",
+            "activityType": "registryOperation",
+            "config": {
+              "operation": "read",
+              "keyPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+              "valueName": "UBR"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-platform"
+        },
+        {
+          "id": "cpu",
+          "type": "activity",
+          "position": {
+            "x": 720,
+            "y": 100
+          },
+          "data": {
+            "label": "WMI: Processor inventory",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT Name, NumberOfCores, NumberOfLogicalProcessors FROM Win32_Processor",
+              "captureProperties": [
+                "NumberOfCores",
+                "NumberOfLogicalProcessors"
+              ]
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-platform"
+        },
+        {
+          "id": "memory",
+          "type": "activity",
+          "position": {
+            "x": 1040,
+            "y": 100
+          },
+          "data": {
+            "label": "PowerShell: Memory ratio",
+            "activityType": "runScript",
+            "config": {
+              "script": "$totalMemory = [double]{{os.param.TotalVisibleMemorySize}}\n$availableMemory = [double]{{os.param.FreePhysicalMemory}}\nif ($totalMemory -le 0) { throw 'Invalid total memory from WMI.' }\n$memoryPercent = [math]::Round(100 * $availableMemory / $totalMemory, 2)\nWrite-Output \"Available memory: $memoryPercent percent\"",
+              "engine": "auto",
+              "timeoutSeconds": 60
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-platform"
+        },
+        {
+          "id": "platform-log",
+          "type": "activity",
+          "position": {
+            "x": 1360,
+            "y": 100
+          },
+          "data": {
+            "label": "Log: Platform summary",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "{{os.param.CSName}} | {{os.param.Caption}} {{os.param.Version}}.{{build.param.value}} | Free memory: {{memory.param.memoryPercent}}%"
+            }
+          },
+          "parentId": "g-platform"
+        },
+        {
+          "id": "disk",
+          "type": "activity",
+          "position": {
+            "x": 80,
+            "y": 100
+          },
+          "data": {
+            "label": "WMI: System volume",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT DeviceID, Size, FreeSpace FROM Win32_LogicalDisk WHERE DeviceID='{{paths.param.systemDrive}}'",
+              "captureProperties": [
+                "DeviceID",
+                "Size",
+                "FreeSpace"
+              ]
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-storage"
+        },
+        {
+          "id": "workspace",
+          "type": "activity",
+          "position": {
+            "x": 400,
+            "y": 100
+          },
+          "data": {
+            "label": "Folder: Check report area",
+            "activityType": "folderOperation",
+            "config": {
+              "operation": "exists",
+              "path": "{{paths.param.sourcePath}}"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-storage"
+        },
+        {
+          "id": "capacity",
+          "type": "activity",
+          "position": {
+            "x": 720,
+            "y": 100
+          },
+          "data": {
+            "label": "PowerShell: Capacity ratio",
+            "activityType": "runScript",
+            "config": {
+              "script": "$diskSize = [double]{{disk.param.Size}}\n$diskFree = [double]{{disk.param.FreeSpace}}\nif ($diskSize -le 0) { throw 'Invalid disk size from WMI.' }\n$diskPercent = [math]::Round(100 * $diskFree / $diskSize, 2)\n$diskSummary = [ordered]@{freePercent=$diskPercent;freeGiB=[math]::Round($diskFree / 1GB,2);totalGiB=[math]::Round($diskSize / 1GB,2)}\n$diskSummary | ConvertTo-Json -Compress",
+              "engine": "auto",
+              "timeoutSeconds": 60
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-storage"
+        },
+        {
+          "id": "disk-value",
+          "type": "activity",
+          "position": {
+            "x": 1040,
+            "y": 100
+          },
+          "data": {
+            "label": "JSON: Free disk percentage",
+            "activityType": "jsonQuery",
+            "config": {
+              "source": "inline",
+              "content": "{{capacity.output}}",
+              "jsonPath": "$.freePercent",
+              "resultMode": "single"
+            }
+          },
+          "parentId": "g-storage"
+        },
+        {
+          "id": "storage-log",
+          "type": "activity",
+          "position": {
+            "x": 1360,
+            "y": 100
+          },
+          "data": {
+            "label": "Log: Storage summary",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "System volume {{disk.param.DeviceID}} | Free: {{disk-value.param.result}}% | Report directory exists: {{workspace.param.exists}}"
+            }
+          },
+          "parentId": "g-storage"
+        },
+        {
+          "id": "event-service",
+          "type": "activity",
+          "position": {
+            "x": 80,
+            "y": 100
+          },
+          "data": {
+            "label": "Service: Event Log status",
+            "activityType": "serviceManagement",
+            "config": {
+              "serviceName": "EventLog",
+              "action": "status"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-services"
+        },
+        {
+          "id": "rpc-service",
+          "type": "activity",
+          "position": {
+            "x": 400,
+            "y": 100
+          },
+          "data": {
+            "label": "Service: RPC status",
+            "activityType": "serviceManagement",
+            "config": {
+              "serviceName": "RpcSs",
+              "action": "status"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-services"
+        },
+        {
+          "id": "winrm-service",
+          "type": "activity",
+          "position": {
+            "x": 720,
+            "y": 100
+          },
+          "data": {
+            "label": "Service: WinRM status",
+            "activityType": "serviceManagement",
+            "config": {
+              "serviceName": "WinRM",
+              "action": "status"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-services"
+        },
+        {
+          "id": "auto-services",
+          "type": "activity",
+          "position": {
+            "x": 1040,
+            "y": 100
+          },
+          "data": {
+            "label": "WMI: Stopped auto services",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT Name, State FROM Win32_Service WHERE StartMode='Auto' AND State<>'Running'",
+              "captureProperties": [
+                "Name",
+                "State"
+              ]
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-services"
+        },
+        {
+          "id": "services-log",
+          "type": "activity",
+          "position": {
+            "x": 1360,
+            "y": 100
+          },
+          "data": {
+            "label": "Log: Service summary",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "EventLog: {{event-service.param.status}} | RPC: {{rpc-service.param.status}} | WinRM: {{winrm-service.param.status}} | Stopped auto services: {{auto-services.param.count}} (informational)."
+            }
+          },
+          "parentId": "g-services"
+        },
+        {
+          "id": "firewall",
+          "type": "activity",
+          "position": {
+            "x": 80,
+            "y": 100
+          },
+          "data": {
+            "label": "Service: Firewall status",
+            "activityType": "serviceManagement",
+            "config": {
+              "serviceName": "MpsSvc",
+              "action": "status"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-readiness"
+        },
+        {
+          "id": "cbs-reboot",
+          "type": "activity",
+          "position": {
+            "x": 400,
+            "y": 100
+          },
+          "data": {
+            "label": "Registry: Servicing restart",
+            "activityType": "registryOperation",
+            "config": {
+              "operation": "exists",
+              "keyPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-readiness"
+        },
+        {
+          "id": "wu-reboot",
+          "type": "activity",
+          "position": {
+            "x": 720,
+            "y": 100
+          },
+          "data": {
+            "label": "Registry: Update restart",
+            "activityType": "registryOperation",
+            "config": {
+              "operation": "exists",
+              "keyPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-readiness"
+        },
+        {
+          "id": "network",
+          "type": "activity",
+          "position": {
+            "x": 1040,
+            "y": 100
+          },
+          "data": {
+            "label": "WMI: IP-enabled adapters",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT Description, DHCPEnabled FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled=True",
+              "captureProperties": [
+                "Description",
+                "DHCPEnabled"
+              ]
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-readiness"
+        },
+        {
+          "id": "readiness-log",
+          "type": "activity",
+          "position": {
+            "x": 1360,
+            "y": 100
+          },
+          "data": {
+            "label": "Log: Readiness summary",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "IP-enabled adapters: {{network.param.count}} | Firewall service: {{firewall.param.status}} | Restart flags: servicing={{cbs-reboot.param.exists}}, updates={{wu-reboot.param.exists}}."
+            }
+          },
+          "parentId": "g-readiness"
+        },
+        {
+          "id": "timezone",
+          "type": "activity",
+          "position": {
+            "x": 80,
+            "y": 100
+          },
+          "data": {
+            "label": "WMI: Time zone",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT Caption, Bias FROM Win32_TimeZone",
+              "captureProperties": [
+                "Bias"
+              ]
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-history"
+        },
+        {
+          "id": "events",
+          "type": "activity",
+          "position": {
+            "x": 400,
+            "y": 100
+          },
+          "data": {
+            "label": "PowerShell: Review events",
+            "activityType": "runScript",
+            "config": {
+              "script": "$eventWindow = [int]{{paths.param.windowHours}}\n$eventCap = [int]{{paths.param.recordLimit}}\n$eventItems = New-Object 'System.Collections.Generic.List[object]'\n$eventTruncated = $false\nforeach ($eventLogName in @('System','Application')) {\n $eventQueryText = \"*[System[(Level=1 or Level=2) and TimeCreated[timediff(@SystemTime) <= $([long]$eventWindow * 3600000)]]]\"\n $eventQuery = New-Object System.Diagnostics.Eventing.Reader.EventLogQuery($eventLogName,[System.Diagnostics.Eventing.Reader.PathType]::LogName,$eventQueryText)\n $eventQuery.ReverseDirection = $true\n $eventReader = New-Object System.Diagnostics.Eventing.Reader.EventLogReader($eventQuery)\n $eventSeen = 0\n try {\n  while ($null -ne ($eventRecord = $eventReader.ReadEvent())) {\n   try {\n    if ($eventSeen -ge $eventCap) { $eventTruncated = $true; break }\n    $eventItems.Add([pscustomobject]@{log=$eventLogName;provider=$eventRecord.ProviderName;id=$eventRecord.Id;level=$eventRecord.Level;timeUtc=$eventRecord.TimeCreated.ToUniversalTime().ToString('o')})\n    $eventSeen++\n   } finally { $eventRecord.Dispose() }\n  }\n } finally { $eventReader.Dispose() }\n}\n$errorCount = @($eventItems | Where-Object level -eq 2).Count\n$criticalCount = @($eventItems | Where-Object level -eq 1).Count\n$eventGroups = @($eventItems | Group-Object log,provider,id | Sort-Object Count -Descending | Select-Object -First 5 | ForEach-Object { [pscustomobject]@{log=$_.Group[0].log;provider=$_.Group[0].provider;eventId=$_.Group[0].id;count=$_.Count;latestUtc=$_.Group[0].timeUtc} })\n$summaryXml = \"<eventReview criticalCount='$criticalCount' />\"\n$eventSummaryJson = ConvertTo-Json -InputObject ([ordered]@{errorCount=$errorCount;criticalCount=$criticalCount;truncated=$eventTruncated;hours=$eventWindow;limitPerLog=$eventCap;groups=$eventGroups}) -Depth 5 -Compress\n# Only the bounded summary is needed by downstream activities.\n$eventItems = $null\n$eventRecord = $null\n$eventQuery = $null\n$eventReader = $null\nWrite-Output $eventSummaryJson",
+              "engine": "auto",
+              "timeoutSeconds": 60
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-history"
+        },
+        {
+          "id": "errors",
+          "type": "activity",
+          "position": {
+            "x": 720,
+            "y": 100
+          },
+          "data": {
+            "label": "JSON: Error count",
+            "activityType": "jsonQuery",
+            "config": {
+              "source": "inline",
+              "content": "{{events.output}}",
+              "jsonPath": "$.errorCount",
+              "resultMode": "single"
+            }
+          },
+          "parentId": "g-history"
+        },
+        {
+          "id": "critical",
+          "type": "activity",
+          "position": {
+            "x": 1040,
+            "y": 100
+          },
+          "data": {
+            "label": "XML: Critical count",
+            "activityType": "xmlQuery",
+            "config": {
+              "source": "inline",
+              "content": "{{events.param.summaryXml}}",
+              "xpath": "/eventReview/@criticalCount",
+              "resultMode": "single"
+            }
+          },
+          "parentId": "g-history"
+        },
+        {
+          "id": "events-log",
+          "type": "activity",
+          "position": {
+            "x": 1360,
+            "y": 100
+          },
+          "data": {
+            "label": "Log: Event summary",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "Errors: {{errors.param.result}} | Critical: {{critical.param.result}} | Limited selection: {{events.param.eventTruncated}} | Time zone: {{timezone.output}}."
+            }
+          },
+          "parentId": "g-history"
+        },
+        {
+          "id": "join",
+          "type": "activity",
+          "position": {
+            "x": 40,
+            "y": 420
+          },
+          "data": {
+            "label": "Junction: All five checks",
+            "activityType": "junction",
+            "config": {
+              "mode": "waitAll"
+            }
+          },
+          "parentId": "g-results"
+        },
+        {
+          "id": "assess",
+          "type": "activity",
+          "position": {
+            "x": 360,
+            "y": 420
+          },
+          "data": {
+            "label": "PowerShell: Assess findings",
+            "activityType": "runScript",
+            "config": {
+              "script": "$findingsList = New-Object 'System.Collections.Generic.List[string]'\n$assessedMemory = [double]{{memory.param.memoryPercent}}\n$assessedDisk = [double]{{disk-value.param.result}}\n$assessedErrors = [int]{{errors.param.result}}\n$assessedCritical = [int]{{critical.param.result}}\nif ($assessedMemory -lt [int]{{paths.param.memoryFloor}}) { $findingsList.Add('Free memory below configured threshold.') }\nif ($assessedDisk -lt [int]{{paths.param.diskFloor}}) { $findingsList.Add('Free system disk space below configured threshold.') }\nif ($assessedErrors -ge [int]{{paths.param.errorLimit}}) { $findingsList.Add('Error event count reached configured threshold.') }\nif ($assessedCritical -gt 0) { $findingsList.Add('Critical events found in selected time window.') }\n$serviceStates = [ordered]@{EventLog={{event-service.param.status}};RpcSs={{rpc-service.param.status}};WinRM={{winrm-service.param.status}};MpsSvc={{firewall.param.status}}}\nforeach ($serviceEntry in $serviceStates.GetEnumerator()) { if ($serviceEntry.Value -ne 'Running') { $findingsList.Add(\"Service requires review: $($serviceEntry.Key) = $($serviceEntry.Value)\") } }\n$restartPending = ({{cbs-reboot.param.exists}} -eq 'True') -or ({{wu-reboot.param.exists}} -eq 'True')\nif ($restartPending) { $findingsList.Add('A servicing or Windows Update restart flag is present.') }\n$adapterCount = [int]{{network.param.count}}\nif ($adapterCount -lt 1) { $findingsList.Add('No IP-enabled network adapter found.') }\nif ({{events.param.eventTruncated}} -eq 'True') { $findingsList.Add('Event selection was limited; additional matching records exist.') }\n$reviewCount = $findingsList.Count\n$outcome = if ($reviewCount -gt 0) { 'Review' } else { 'Clear' }\n$checkedAtUtc = [datetime]::UtcNow.ToString('o')\n$assessedEvents = ConvertFrom-Json {{events.output}}\n$findingsJson = ConvertTo-Json -InputObject ([ordered]@{computer={{os.param.CSName}};checkedAtUtc=$checkedAtUtc;outcome=$outcome;thresholds=[ordered]@{minimumFreeMemory=[int]{{paths.param.memoryFloor}};minimumFreeDisk=[int]{{paths.param.diskFloor}};errorThreshold=[int]{{paths.param.errorLimit}}};findings=$findingsList.ToArray();windows={{os.param.Caption}};version={{os.param.Version}};buildRevision={{build.param.value}};processor={{cpu.output}};freeMemoryPercent=$assessedMemory;freeSystemDiskPercent=$assessedDisk;services=$serviceStates;stoppedAutomaticServices=[int]{{auto-services.param.count}};restartPending=$restartPending;ipEnabledAdapters=$adapterCount;events=$assessedEvents}) -Depth 8 -Compress\n$reportLines = @('SYSTEM CHECK',(\"Computer: \" + {{os.param.CSName}}),\"Checked at (UTC): $checkedAtUtc\",\"Outcome: $outcome\",'',\"Free memory: $assessedMemory percent\",\"Free system disk: $assessedDisk percent\",\"IP-enabled adapters: $adapterCount\",\"Restart flag: $restartPending\",\"Errors: $assessedErrors | Critical: $assessedCritical\",'', 'FINDINGS')\nif ($reviewCount -eq 0) { $reportLines += 'No configured review condition matched.' } else { $reportLines += $findingsList.ToArray() }\n$reportLines += @('', 'SCOPE', 'This is a local snapshot, not a root cause diagnosis.','Stopped automatic services are informational; trigger-start services may stop by design.','Restart flags cover servicing and Windows Update only. Firewall service status does not describe firewall rules.','Event counts refer to the selected window and per-log limit. See Findings.json for grouped events and details.')\n$reportText = $reportLines -join \"`r`n\"\nWrite-Output \"$outcome : $reviewCount review findings\"",
+              "engine": "auto",
+              "timeoutSeconds": 60
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-results"
+        },
+        {
+          "id": "decision",
+          "type": "activity",
+          "position": {
+            "x": 700,
+            "y": 420
+          },
+          "data": {
+            "label": "Decision: Review needed?",
+            "activityType": "decision",
+            "config": {
+              "cases": [
+                {
+                  "name": "Review",
+                  "condition": {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "assess",
+                      "field": "param",
+                      "paramName": "reviewCount"
+                    },
+                    "op": ">",
+                    "right": {
+                      "kind": "literal",
+                      "value": "0"
+                    }
+                  }
+                }
+              ],
+              "defaultCaseName": "Clear"
+            }
+          },
+          "parentId": "g-results"
+        },
+        {
+          "id": "review",
+          "type": "activity",
+          "position": {
+            "x": 1060,
+            "y": 180
+          },
+          "data": {
+            "label": "Log: Review findings",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "{{assess.param.reportText}}"
+            }
+          },
+          "parentId": "g-results"
+        },
+        {
+          "id": "clear",
+          "type": "activity",
+          "position": {
+            "x": 1060,
+            "y": 660
+          },
+          "data": {
+            "label": "Log: Checks clear",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "No configured review condition matched on {{os.param.CSName}}. See the report for scope and measurements."
+            }
+          },
+          "parentId": "g-results"
+        },
+        {
+          "id": "merge",
+          "type": "activity",
+          "position": {
+            "x": 1420,
+            "y": 420
+          },
+          "data": {
+            "label": "Junction: Selected outcome",
+            "activityType": "junction",
+            "config": {
+              "mode": "waitAny"
+            }
+          },
+          "parentId": "g-results"
+        },
+        {
+          "id": "write-report",
+          "type": "activity",
+          "position": {
+            "x": 3140,
+            "y": 120
+          },
+          "data": {
+            "label": "Text: Write report",
+            "activityType": "textFileEdit",
+            "config": {
+              "operation": "append",
+              "path": "{{paths.param.reportPath}}",
+              "content": "{{assess.param.reportText}}",
+              "createIfMissing": true,
+              "encoding": "utf8",
+              "lineEnding": "crlf"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-package"
+        },
+        {
+          "id": "write-json",
+          "type": "activity",
+          "position": {
+            "x": 2820,
+            "y": 120
+          },
+          "data": {
+            "label": "Text: Write findings JSON",
+            "activityType": "textFileEdit",
+            "config": {
+              "operation": "append",
+              "path": "{{paths.param.jsonPath}}",
+              "content": "{{assess.param.findingsJson}}",
+              "createIfMissing": true,
+              "encoding": "utf8",
+              "lineEnding": "crlf"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-package"
+        },
+        {
+          "id": "write-readme",
+          "type": "activity",
+          "position": {
+            "x": 2500,
+            "y": 120
+          },
+          "data": {
+            "label": "Text: Write package guide",
+            "activityType": "textFileEdit",
+            "config": {
+              "operation": "append",
+              "path": "{{paths.param.readmePath}}",
+              "content": "SystemReport.txt summarizes review findings. Findings.json contains measurements and grouped events.\nThe workflow collects local information and writes this package; it does not modify system configuration.\nClear means no configured review condition matched. Review indicates findings to inspect.\nThe ZIP is extracted and all three files are verified against their originals using SHA256.\nThe output folder and verification copy remain on the server and may be removed after review.",
+              "createIfMissing": true,
+              "encoding": "utf8",
+              "lineEnding": "crlf"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-package"
+        },
+        {
+          "id": "list-files",
+          "type": "activity",
+          "position": {
+            "x": 2180,
+            "y": 120
+          },
+          "data": {
+            "label": "Folder: List report files",
+            "activityType": "folderOperation",
+            "config": {
+              "operation": "list",
+              "path": "{{paths.param.sourcePath}}"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-package"
+        },
+        {
+          "id": "archive",
+          "type": "activity",
+          "position": {
+            "x": 1860,
+            "y": 120
+          },
+          "data": {
+            "label": "ZIP: Create package",
+            "activityType": "zipOperation",
+            "config": {
+              "operation": "compress",
+              "source": "{{paths.param.sourcePath}}\\*",
+              "destination": "{{paths.param.archivePath}}",
+              "compressionLevel": "Optimal",
+              "force": false
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-package"
+        },
+        {
+          "id": "hash",
+          "type": "activity",
+          "position": {
+            "x": 1540,
+            "y": 120
+          },
+          "data": {
+            "label": "Hash: Archive SHA256",
+            "activityType": "fileHash",
+            "config": {
+              "path": "{{paths.param.archivePath}}",
+              "algorithm": "SHA256"
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-package"
+        },
+        {
+          "id": "extract",
+          "type": "activity",
+          "position": {
+            "x": 1220,
+            "y": 120
+          },
+          "data": {
+            "label": "ZIP: Extract for verification",
+            "activityType": "zipOperation",
+            "config": {
+              "operation": "extract",
+              "source": "{{paths.param.archivePath}}",
+              "destination": "{{paths.param.extractPath}}",
+              "force": false
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-package"
+        },
+        {
+          "id": "verify",
+          "type": "activity",
+          "position": {
+            "x": 900,
+            "y": 120
+          },
+          "data": {
+            "label": "PowerShell: Verify all files",
+            "activityType": "runScript",
+            "config": {
+              "script": "$originalFolder = {{paths.param.sourcePath}}\n$restoredFolder = {{paths.param.extractPath}}\n$checkedArchive = {{paths.param.archivePath}}\n$files = @(Get-ChildItem -LiteralPath $restoredFolder -File -Recurse -ErrorAction Stop)\nif ($files.Count -ne 3) { throw 'The archive must contain exactly three report files.' }\nforeach ($name in @('SystemReport.txt', 'Findings.json', 'Readme.txt')) {\n    $restored = @($files | Where-Object Name -eq $name)\n    if ($restored.Count -ne 1) { throw \"File missing from archive: $name\" }\n    $originalHash = (Get-FileHash -LiteralPath (Join-Path $originalFolder $name) -Algorithm SHA256 -ErrorAction Stop).Hash\n    $restoredHash = (Get-FileHash -LiteralPath $restored[0].FullName -Algorithm SHA256 -ErrorAction Stop).Hash\n    if ($originalHash -ne $restoredHash) { throw \"Archive content does not match: $name\" }\n}\n$verified = $true\n$archiveBytes = (Get-Item -LiteralPath $checkedArchive -ErrorAction Stop).Length\nWrite-Output \"Archive verified: 3 files with matching contents, $archiveBytes Bytes.\"",
+              "engine": "auto",
+              "timeoutSeconds": 60
+            },
+            "targetMachineId": "localhost"
+          },
+          "parentId": "g-package"
+        },
+        {
+          "id": "complete",
+          "type": "activity",
+          "position": {
+            "x": 580,
+            "y": 120
+          },
+          "data": {
+            "label": "Log: Package verified",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "{{assess.param.outcome}} | {{verify.param.archiveBytes}} bytes | SHA256: {{hash.param.hash}} | {{paths.param.archivePath}}"
+            }
+          },
+          "parentId": "g-package"
+        },
+        {
+          "id": "result",
+          "type": "activity",
+          "position": {
+            "x": 260,
+            "y": 120
+          },
+          "data": {
+            "label": "Return: System check result",
+            "activityType": "returnData",
+            "config": {
+              "data": {
+                "computerName": "{{os.param.CSName}}",
+                "outcome": "{{assess.param.outcome}}",
+                "reviewCount": "{{assess.param.reviewCount}}",
+                "report": "{{assess.param.reportText}}",
+                "folder": "{{paths.param.rootPath}}",
+                "archive": "{{paths.param.archivePath}}",
+                "sha256": "{{hash.param.hash}}",
+                "verified": "{{verify.param.verified}}"
+              }
+            }
+          },
+          "parentId": "g-package"
+        },
+        {
+          "id": "note-intro",
+          "type": "stickyNote",
+          "position": {
+            "x": 0,
+            "y": -100
+          },
+          "style": {
+            "width": 780,
+            "height": 300
+          },
+          "data": {
+            "label": "Note",
+            "activityType": "note",
+            "disabled": true,
+            "fontSize": 20,
+            "text": "SYSTEM CHECK\n\nFive parallel checks collect platform, storage, service, restart and event information from the NodePilot server. The assessment applies the configured thresholds and records findings."
+          }
+        },
+        {
+          "id": "note-scope",
+          "type": "stickyNote",
+          "position": {
+            "x": 0,
+            "y": 1040
+          },
+          "style": {
+            "width": 780,
+            "height": 380
+          },
+          "data": {
+            "label": "Note",
+            "activityType": "note",
+            "disabled": true,
+            "fontSize": 20,
+            "text": "REPORT & VERIFICATION\n\nThe selected outcome continues into the report lane below, flowing from right to left. A text report, JSON findings and a package guide are archived, extracted and compared using SHA256.\n\nEach run writes to a new temporary directory. System configuration is unchanged."
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "start-run-id",
+          "source": "start",
+          "target": "run-id",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "start.success"
+          }
+        },
+        {
+          "id": "run-id-paths",
+          "source": "run-id",
+          "target": "paths",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "run-id.success"
+          },
+          "sourceHandle": "bottom",
+          "targetHandle": "top"
+        },
+        {
+          "id": "paths-folder",
+          "source": "paths",
+          "target": "folder",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "paths.success"
+          }
+        },
+        {
+          "id": "os-build",
+          "source": "os",
+          "target": "build",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "os.success"
+          }
+        },
+        {
+          "id": "build-cpu",
+          "source": "build",
+          "target": "cpu",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "build.success"
+          }
+        },
+        {
+          "id": "cpu-memory",
+          "source": "cpu",
+          "target": "memory",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "cpu.success"
+          }
+        },
+        {
+          "id": "memory-platform-log",
+          "source": "memory",
+          "target": "platform-log",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "memory.success"
+          }
+        },
+        {
+          "id": "folder-os",
+          "source": "folder",
+          "target": "os",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "folder.success"
+          }
+        },
+        {
+          "id": "disk-workspace",
+          "source": "disk",
+          "target": "workspace",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "disk.success"
+          }
+        },
+        {
+          "id": "workspace-capacity",
+          "source": "workspace",
+          "target": "capacity",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "workspace.success"
+          }
+        },
+        {
+          "id": "capacity-disk-value",
+          "source": "capacity",
+          "target": "disk-value",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "capacity.success"
+          }
+        },
+        {
+          "id": "disk-value-storage-log",
+          "source": "disk-value",
+          "target": "storage-log",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "disk-value.success"
+          }
+        },
+        {
+          "id": "folder-disk",
+          "source": "folder",
+          "target": "disk",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "folder.success"
+          }
+        },
+        {
+          "id": "event-service-rpc-service",
+          "source": "event-service",
+          "target": "rpc-service",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "event-service.success"
+          }
+        },
+        {
+          "id": "rpc-service-winrm-service",
+          "source": "rpc-service",
+          "target": "winrm-service",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "rpc-service.success"
+          }
+        },
+        {
+          "id": "winrm-service-auto-services",
+          "source": "winrm-service",
+          "target": "auto-services",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "winrm-service.success"
+          }
+        },
+        {
+          "id": "auto-services-services-log",
+          "source": "auto-services",
+          "target": "services-log",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "auto-services.success"
+          }
+        },
+        {
+          "id": "folder-event-service",
+          "source": "folder",
+          "target": "event-service",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "folder.success"
+          }
+        },
+        {
+          "id": "firewall-cbs-reboot",
+          "source": "firewall",
+          "target": "cbs-reboot",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "firewall.success"
+          }
+        },
+        {
+          "id": "cbs-reboot-wu-reboot",
+          "source": "cbs-reboot",
+          "target": "wu-reboot",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "cbs-reboot.success"
+          }
+        },
+        {
+          "id": "wu-reboot-network",
+          "source": "wu-reboot",
+          "target": "network",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "wu-reboot.success"
+          }
+        },
+        {
+          "id": "network-readiness-log",
+          "source": "network",
+          "target": "readiness-log",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "network.success"
+          }
+        },
+        {
+          "id": "folder-firewall",
+          "source": "folder",
+          "target": "firewall",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "folder.success"
+          }
+        },
+        {
+          "id": "timezone-events",
+          "source": "timezone",
+          "target": "events",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "timezone.success"
+          }
+        },
+        {
+          "id": "events-errors",
+          "source": "events",
+          "target": "errors",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "events.success"
+          }
+        },
+        {
+          "id": "errors-critical",
+          "source": "errors",
+          "target": "critical",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "errors.success"
+          }
+        },
+        {
+          "id": "critical-events-log",
+          "source": "critical",
+          "target": "events-log",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "critical.success"
+          }
+        },
+        {
+          "id": "folder-timezone",
+          "source": "folder",
+          "target": "timezone",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "folder.success"
+          }
+        },
+        {
+          "id": "platform-log-join",
+          "source": "platform-log",
+          "target": "join",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "platform-log.success"
+          }
+        },
+        {
+          "id": "storage-log-join",
+          "source": "storage-log",
+          "target": "join",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "storage-log.success"
+          }
+        },
+        {
+          "id": "services-log-join",
+          "source": "services-log",
+          "target": "join",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "services-log.success"
+          }
+        },
+        {
+          "id": "readiness-log-join",
+          "source": "readiness-log",
+          "target": "join",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "readiness-log.success"
+          }
+        },
+        {
+          "id": "events-log-join",
+          "source": "events-log",
+          "target": "join",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "events-log.success"
+          }
+        },
+        {
+          "id": "join-assess",
+          "source": "join",
+          "target": "assess",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "join.success"
+          }
+        },
+        {
+          "id": "assess-decision",
+          "source": "assess",
+          "target": "decision",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "assess.success"
+          }
+        },
+        {
+          "id": "decision-review",
+          "source": "decision",
+          "target": "review",
+          "type": "labeled",
+          "data": {
+            "label": "Review",
+            "conditionExpression": {
+              "type": "comparison",
+              "left": {
+                "kind": "variable",
+                "stepId": "decision",
+                "field": "param",
+                "paramName": "case"
+              },
+              "op": "==",
+              "right": {
+                "kind": "literal",
+                "value": "Review"
+              }
+            }
+          }
+        },
+        {
+          "id": "review-merge",
+          "source": "review",
+          "target": "merge",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "review.success"
+          }
+        },
+        {
+          "id": "decision-clear",
+          "source": "decision",
+          "target": "clear",
+          "type": "labeled",
+          "data": {
+            "label": "Clear",
+            "conditionExpression": {
+              "type": "comparison",
+              "left": {
+                "kind": "variable",
+                "stepId": "decision",
+                "field": "param",
+                "paramName": "case"
+              },
+              "op": "==",
+              "right": {
+                "kind": "literal",
+                "value": "Clear"
+              }
+            }
+          }
+        },
+        {
+          "id": "clear-merge",
+          "source": "clear",
+          "target": "merge",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "clear.success"
+          }
+        },
+        {
+          "id": "merge-write-report",
+          "source": "merge",
+          "target": "write-report",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "merge.success"
+          },
+          "sourceHandle": "bottom",
+          "targetHandle": "top"
+        },
+        {
+          "id": "write-report-write-json",
+          "source": "write-report",
+          "target": "write-json",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "write-report.success"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "write-json-write-readme",
+          "source": "write-json",
+          "target": "write-readme",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "write-json.success"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "write-readme-list-files",
+          "source": "write-readme",
+          "target": "list-files",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "write-readme.success"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "list-files-archive",
+          "source": "list-files",
+          "target": "archive",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "list-files.success"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "archive-hash",
+          "source": "archive",
+          "target": "hash",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "archive.success"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "hash-extract",
+          "source": "hash",
+          "target": "extract",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "hash.success"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "extract-verify",
+          "source": "extract",
+          "target": "verify",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "extract.success"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "verify-complete",
+          "source": "verify",
+          "target": "complete",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "verify.success"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "complete-result",
+          "source": "complete",
+          "target": "result",
+          "type": "labeled",
+          "data": {
+            "label": "",
+            "condition": "complete.success"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        }
+      ]
+    }
+  }
+}
