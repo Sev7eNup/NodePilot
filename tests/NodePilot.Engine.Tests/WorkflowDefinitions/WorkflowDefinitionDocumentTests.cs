@@ -29,7 +29,7 @@ public class WorkflowDefinitionDocumentTests
         definition.ActiveEdges.Should().ContainSingle(e => e.Id == "e1");
         definition.OutputVariableToStepId.Should().ContainKey("scriptOut").WhoseValue.Should().Be("work");
         definition.TriggerDescriptors.Should().ContainSingle(d => d.ActivityType == "manualTrigger");
-        definition.Metadata.ActivityCount.Should().Be(1);
+        definition.Metadata.ActivityCount.Should().Be(2);
         definition.Metadata.TriggerTypes.Should().Equal("manualTrigger");
     }
 
@@ -150,7 +150,28 @@ public class WorkflowDefinitionDocumentTests
         }
         """);
 
-        activityCount.Should().Be(1);
+        activityCount.Should().Be(2);
         triggerTypesJson.Should().Be("""["webhookTrigger"]""");
+    }
+
+    [Fact]
+    public void Metadata_CountsEachTriggerNodeButExcludesAnnotationsAndDisabledNodes()
+    {
+        var definition = WorkflowDefinitionDocument.Parse("""
+        {
+          "nodes": [
+            { "id": "a", "type": "activity", "data": { "activityType": "manualTrigger" } },
+            { "id": "b", "type": "activity", "data": { "activityType": "manualTrigger" } },
+            { "id": "c", "type": "activity", "data": { "activityType": "log" } },
+            { "id": "d", "type": "activity", "data": { "activityType": "scheduleTrigger", "disabled": true } },
+            { "id": "note", "type": "stickyNote", "data": { "text": "Description" } },
+            { "id": "group", "type": "group", "data": {} }
+          ],
+          "edges": []
+        }
+        """);
+
+        definition.Metadata.ActivityCount.Should().Be(3);
+        definition.Metadata.TriggerTypes.Should().Equal("manualTrigger");
     }
 }

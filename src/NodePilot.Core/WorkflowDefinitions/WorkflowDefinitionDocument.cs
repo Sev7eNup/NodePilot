@@ -249,13 +249,13 @@ public sealed record WorkflowDefinitionDocument(
 
         foreach (var node in nodes)
         {
-            if (disabledNodeIds.Contains(node.Id) || string.IsNullOrEmpty(node.Type))
+            if (disabledNodeIds.Contains(node.Id) || string.IsNullOrEmpty(node.Type)
+                || node.Type is "note" or "stickyNote" or "group")
                 continue;
 
+            activityCount++;
             if (ActivityCatalog.TryGet(node.Type, out var activity) && activity is { IsTrigger: true })
                 triggers.Add(node.Type);
-            else
-                activityCount++;
         }
 
         return new WorkflowDefinitionMetadata(activityCount, triggers.ToList());

@@ -2,6 +2,8 @@ using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.TestCommons;
@@ -53,6 +55,38 @@ public sealed class MigrationBootstrapperTests : IDisposable
             .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning))
             .Options;
         return new NodePilotDbContext(options);
+    }
+
+    [Fact]
+    public void Bootstrap_ExistingActivityCounts_IncludesTriggersAfterUpgrade()
+    {
+        var id = Guid.NewGuid();
+        using (var before = NewContext())
+        {
+            before.GetService<IMigrator>().Migrate("20260918210108_AddAgentActivities");
+            before.Workflows.Add(new Core.Models.Workflow
+            {
+                Id = id,
+                Name = "Existing workflow",
+                ActivityCount = 1,
+                TriggerTypesJson = """["manualTrigger"]""",
+                DefinitionJson = """
+                {"nodes":[
+                  {"id":"start","data":{"activityType":"manualTrigger"}},
+                  {"id":"log","data":{"activityType":"log"}}
+                ],"edges":[]}
+                """,
+            });
+            before.SaveChanges();
+        }
+
+        using var after = NewContext();
+        MigrationBootstrapper.Bootstrap(after, NullLogger.Instance);
+        var workflow = after.Workflows.Single(w => w.Id == id);
+        workflow.ActivityCount.Should().Be(2);
+        workflow.TriggerTypesJson.Should().Be("""["manualTrigger"]""");
+        MigrationBootstrapper.Bootstrap(after, NullLogger.Instance);
+        workflow.ActivityCount.Should().Be(2);
     }
 
     [Fact]
