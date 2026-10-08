@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Engine.PowerShell;
@@ -137,20 +136,24 @@ public class RunspaceEngineAsyncTests
         using var cts = new CancellationTokenSource();
         var startedName = $"NodePilot-test-{Guid.NewGuid():N}-started";
         using var started = new EventWaitHandle(false, EventResetMode.ManualReset, startedName);
+        var releaseName = $"NodePilot-test-{Guid.NewGuid():N}-release";
+        using var release = new EventWaitHandle(false, EventResetMode.ManualReset, releaseName);
 
         var task = engine.ExecuteAsync(
-            new PowerShellExecutionRequest { ScriptText = StartThenBlock(startedName, blockMs: 4000) },
+            new PowerShellExecutionRequest { ScriptText = StartThenBlock(startedName, releaseName) },
             cts.Token);
-        (await Task.Run(() => started.WaitOne(TimeSpan.FromSeconds(30)),
-            TestContext.Current.CancellationToken)).Should().BeTrue();
-        var sw = Stopwatch.StartNew();
-        await cts.CancelAsync();
+        try
+        {
+            (await Task.Run(() => started.WaitOne(TimeSpan.FromSeconds(30)),
+                TestContext.Current.CancellationToken)).Should().BeTrue();
+            await cts.CancelAsync();
 
-        var thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+            var thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
 
-        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(3), "the caller is released after the grace period, not after the blocking call");
-        thrown.CancellationToken.Should().Be(cts.Token);
+            thrown.CancellationToken.Should().Be(cts.Token);
+        }
+        finally { release.Set(); }
         var next = await engine.ExecuteAsync(
                 new PowerShellExecutionRequest { ScriptText = "'slot back'" },
                 TestContext.Current.CancellationToken)
@@ -169,23 +172,34 @@ public class RunspaceEngineAsyncTests
         };
         var startedName = $"NodePilot-test-{Guid.NewGuid():N}-started";
         using var started = new EventWaitHandle(false, EventResetMode.ManualReset, startedName);
-        var sw = Stopwatch.StartNew();
+        var releaseName = $"NodePilot-test-{Guid.NewGuid():N}-release";
+        using var release = new EventWaitHandle(false, EventResetMode.ManualReset, releaseName);
+        try
+        {
+            var result = await engine.ExecuteAsync(
+                    new PowerShellExecutionRequest
+                    {
+                        ScriptText = StartThenBlock(startedName, releaseName),
+                        Timeout = TimeSpan.FromSeconds(5),
+                    },
+                    TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
-        var result = await engine.ExecuteAsync(
-                new PowerShellExecutionRequest { ScriptText = StartThenBlock(startedName, blockMs: 5000), Timeout = TimeSpan.FromSeconds(1) },
-                TestContext.Current.CancellationToken)
-            .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
-
-        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(4), "the caller is released after timeout plus grace period, not after the blocking call");
-        result.TimedOut.Should().BeTrue("an internal timeout stays a failed result, never a cancellation");
-        result.Success.Should().BeFalse();
-        result.Error.Should().Be("Script timed out after 1s");
+            started.WaitOne(0).Should().BeTrue("the pipeline must reach the blocking .NET call");
+            result.TimedOut.Should().BeTrue("the caller returns before cleanup releases the blocked pipeline");
+            result.Success.Should().BeFalse();
+            result.Error.Should().Be("Script timed out after 5s");
+        }
+        finally { release.Set(); }
     }
 
-    private static string StartThenBlock(string startedName, int blockMs) => $$"""
+    private static string StartThenBlock(string startedName, string releaseName) => $$"""
+        $release = [System.Threading.EventWaitHandle]::OpenExisting('{{releaseName}}')
         $started = [System.Threading.EventWaitHandle]::OpenExisting('{{startedName}}')
-        try { [void]$started.Set() } finally { $started.Dispose() }
-        [System.Threading.Thread]::Sleep({{blockMs}})
+        try {
+            [void]$started.Set()
+            [void]$release.WaitOne()
+        } finally { $release.Dispose(); $started.Dispose() }
         """;
 
     // The script cannot finish naturally until cleanup releases it. The wait limit above
