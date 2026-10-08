@@ -28,10 +28,15 @@ Only the newest release receives fixes. There are no maintenance branches. NodeP
 
 ## Scope, what is a vulnerability here, and what is not
 
+The [threat model](docs/threat-model.md) collects trust boundaries, credential scope,
+agent restrictions and their regression evidence. It also defines the remaining deployment
+checks for an independent reviewer.
+
 Some behaviour that looks like a hole is a documented product decision. Reporting these is fine, but they are closed as intended rather than fixed:
 
-- **Operator can run code as the service identity.** `Operator` is deliberately a *trusted automation author*. A local activity without a target machine runs in-process under the NodePilot service identity, and that is what agentless local automation means. **Folder RBAC scopes which workflows a user sees. It is not a sandbox around the code an Operator writes.** Escalation from Viewer, or across a folder boundary the RBAC model claims to hold, *is* in scope.
-- **`localhost` / `127.0.0.1` / `::1` without credentials skips WinRM** and runs in-process. Same reasoning, same conclusion.
+- **Operator can run code as the service identity.** `Operator` is deliberately a *trusted automation author*. A local activity without a target machine runs under the NodePilot service identity; its process/runspace depends on the activity and engine configuration. **Folder RBAC scopes supported workflow access. It is not a sandbox around the code an Operator writes.** Escalation from Viewer, or across a folder boundary the RBAC model claims to hold, *is* in scope.
+- **Credentials are global automation resources.** Admin and Operator can list credential metadata, create and update credentials, and use them in automation; only Admin can delete them. Folder permissions do not partition this vault. Passwords are not returned by the credential API.
+- **`localhost` / `127.0.0.1` / `::1` without credentials skips WinRM** and uses local execution under the service identity. Agent tools additionally require explicit service-identity selection and administrator opt-in.
 - **The release installers are signed with a self-signed publisher certificate**, so Windows reports an untrusted root and SmartScreen warns on a downloaded file. This is a cost decision, not a defect. The thumbprint is published in the release notes, and the artifact is verified against a pinned thumbprint at install time. See [the deployment guide](docs/deployment-guide.md#first-run-the-smartscreen-prompt).
 - **Development configuration is deliberately relaxed.** `appsettings.Development.json` turns the hardening flags off so that local iteration works without certificates. A finding that only reproduces under `ASPNETCORE_ENVIRONMENT=Development` is not a product vulnerability. A finding that a hardening flag *fails to hold* in production is.
 

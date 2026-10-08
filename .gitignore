@@ -200,6 +200,8 @@ src/nodepilot-ui/coverage-sonar/
 
 # Codex CLI scratch artifacts
 .codex-artifacts/
+src/nodepilot-ui/reliability-current/
+src/nodepilot-ui/reliability-history/
 
 # Local blog article drafts and their images
 /docs/blogarticle/

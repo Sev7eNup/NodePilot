@@ -29,6 +29,10 @@ npm run test:e2e:demo     # builds dist-demo, serves it under /demo/ on :4180
 The nightly Task Scheduler job (`scripts/nightly-tests.ps1`) runs `npm run test:e2e`
 alongside `dotnet test` and `npm run test:run`.
 
+CI publishes first-attempt failures, retries and recurring flakes in its job summary and
+the `e2e-reliability` artifact. Definitions, history limits and the distinction from real
+release acceptance are in [test reliability](../../../docs/testing/test-reliability.md).
+
 ## Conventions (read before adding specs)
 
 - `installDefaultMocks(page)` (from `fixtures/mockApi.ts`) installs a **predicate catch-all**

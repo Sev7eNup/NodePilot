@@ -25,6 +25,7 @@ Moderner, schlanker Ersatz fuer Microsoft System Center Orchestrator. Agentless 
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
 - `docs/workflow-tests.md` — Test-Suite unter `scripts/test-suite/`: 51 generierte Workflows gegen die laufende Engine, `suite-manifest.json` als Abdeckungsquelle, Guard-Test `TestSuiteCoverageTests`
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
+- `docs/threat-model.md` — Vertrauensgrenzen, globale Credentials, Agent-Policy und Sicherheitsnachweise
 - `docs/ai-feature-ideas.md` — Beschreibungstiefe zu den KI-Ideen, **keine Spezifikation**. Priorisierung und Status stehen in `docs/roadmap.md`.
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen
 - `src/nodepilot-ui/demo/` — **Browser-Demo** der SPA auf www.nodepilot.run (`/demo/`), dieselbe App gegen ein In-Memory-Backend; Regeln in `src/nodepilot-ui/CLAUDE.md`
