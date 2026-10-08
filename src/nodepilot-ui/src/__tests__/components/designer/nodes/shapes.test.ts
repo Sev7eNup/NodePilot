@@ -30,6 +30,7 @@ const EXPECTED_ACTION: Record<string, NodeShape> = {
   powerManagement: 'power', waitForCondition: 'circle', restApi: 'browser', sql: 'cylinder',
   xmlQuery: 'kite', jsonQuery: 'braces', emailNotification: 'banner', textFileEdit: 'house',
   generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'stopwatch',
+  aiAgent: 'chip', aiAgentTeam: 'steppedFrame',
 };
 
 describe('getNodeShape — precedence', () => {

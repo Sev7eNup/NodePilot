@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
@@ -143,6 +143,9 @@ describe('ExecutionsPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Backup Job' })).toBeInTheDocument()
     );
+    // A pending search debounce must not undo a page change when the search did not change.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)));
+    expect(screen.getByRole('button', { name: 'Backup Job' })).toBeInTheDocument();
     expect(requestedPages).toEqual([1, 2]);
   });
 

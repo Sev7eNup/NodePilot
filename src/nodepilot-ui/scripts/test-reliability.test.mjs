@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { collect, summarize, markdown, includeMissing } from './test-reliability.mjs';
 
@@ -82,27 +83,31 @@ test('an absent shard artifact is represented as missing rather than a smaller g
 });
 
 test('consumes real Playwright results for pass, retry, expected failure, skip and terminal failure', () => {
-  const root = resolve('test-results');
-  mkdirSync(root, { recursive: true });
-  const probe = mkdtempSync(join(root, 'reliability-probe-'));
-  const output = join(probe, 'report.json');
-  writeFileSync(join(probe, 'playwright.config.mjs'), "export default { testDir: '.', testMatch: 'probe.spec.ts', retries: 1, workers: 1, reporter: 'json', outputDir: './results' };\n");
-  writeFileSync(join(probe, 'probe.spec.ts'), `import { test, expect } from '@playwright/test';
+  const root = resolve(tmpdir());
+  const probe = mkdtempSync(join(root, 'nodepilot-reliability-'));
+  try {
+    const output = join(probe, 'report.json');
+    writeFileSync(join(probe, 'playwright.config.mjs'), "export default { testDir: '.', testMatch: 'probe.spec.mjs', retries: 1, workers: 1, reporter: 'json', outputDir: './results' };\n");
+    writeFileSync(join(probe, 'probe.spec.mjs'), `import { test, expect } from ${JSON.stringify(import.meta.resolve('@playwright/test'))};
 test('passes', () => expect(true).toBe(true));
 test('recovers', ({}, info) => expect(info.retry).toBe(1));
 test('expected failure', () => { test.fail(); expect(true).toBe(false); });
 test.skip('skipped', () => {});
 test('fails', () => expect(true).toBe(false));
 `);
-  const run = spawnSync(process.execPath, [resolve('node_modules/@playwright/test/cli.js'), 'test', '--config', join(probe, 'playwright.config.mjs')], {
-    env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: output }, encoding: 'utf8', timeout: 60_000,
-  });
-  assert.equal(run.status, 1, run.stderr);
-  const result = summarize([collect(JSON.parse(readFileSync(output, 'utf8')), metadata)]);
-  assert.equal(result.executed, 4);
-  assert.equal(result.skipped, 1);
-  assert.equal(result.firstAttemptFailures, 2);
-  assert.equal(result.flaky, 1);
-  assert.equal(result.failed, 1);
-  assert.equal(result.retries, 2);
+    const run = spawnSync(process.execPath, [resolve('node_modules/@playwright/test/cli.js'), 'test', '--config', join(probe, 'playwright.config.mjs')], {
+      env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: output }, encoding: 'utf8', timeout: 60_000,
+    });
+    assert.equal(run.status, 1, run.stderr);
+    const result = summarize([collect(JSON.parse(readFileSync(output, 'utf8')), metadata)]);
+    assert.equal(result.executed, 4);
+    assert.equal(result.skipped, 1);
+    assert.equal(result.firstAttemptFailures, 2);
+    assert.equal(result.flaky, 1);
+    assert.equal(result.failed, 1);
+    assert.equal(result.retries, 2);
+  } finally {
+    assert.equal(dirname(probe), root);
+    rmSync(probe, { recursive: true, force: true });
+  }
 });
