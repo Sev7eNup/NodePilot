@@ -14,38 +14,73 @@ exhaustive.
 
 Planned version: **1.4.5**.
 
+### Release highlight: AI Agent & AI Agent Team
+
+> **Give your workflow a task in plain language.**
+> “Investigate this server's update errors, check the relevant logs and services,
+> and report the likely cause with supporting evidence.”
+
+**AI Agent** uses selected tools, inspects results and follows up before returning a
+text or JSON report. **AI Agent Team** adds a supervisor, parallel specialists and
+reviewers to investigate together inside one workflow step. Actions are currently
+**read-only**: agents investigate and recommend repairs.
+
+Requires an AI profile with tool calling and explicitly selected tools and target
+identities. [Learn how to configure agents and teams →](docs/ai-agents.md)
+
 ### Added
 
-- **AI agent workflow activities.** Run an individual agent or a supervisor-led team
-  inside a workflow step. Configure roles, models, tools, skills and per-member target
-  identities; independent specialists work in bounded parallel batches with shared budgets.
-- **Evidence and review.** Agents retain original observations with evidence IDs, track
-  investigation questions and request reviewer checks. Dependent reviews are invalidated
-  when their supporting findings change. Large observations can be recalled and analyzed
-  in sections; conversation compaction preserves the original evidence in the run journal.
-- **Agent operations.** Configure runtime limits, versioned skill packages and approved MCP
-  tools in administration. Follow assignments, tool results and member progress in the
-  designer, inspect execution history and export the journal; REST, CLI and MCP expose
-  agent administration and run inspection.
-- **Explicit task outcomes.** Agent steps return a text or schema-validated JSON report,
-  usage counters and a separate `completed`, `partial` or `blocked` assessment. Missing
-  information remains visible in the report instead of being treated as a proven finding.
+- Follow agent assignments, observations and reviews in the designer and execution history,
+  and export the journal. Results distinguish technical success from `completed`, `partial`
+  or `blocked` work; interrupted runs retain preliminary findings. Reviews make the basis
+  of an answer inspectable but do not guarantee a correct diagnosis.
+- Versioned agent skills, approved external MCP tools, and administration through REST,
+  CLI and MCP. Example skills cover Windows and SCCM troubleshooting. Agent registries
+  require native database and secret-key backups; portable configuration exports omit them.
+- Configurable agent budgets and optional **Power mode**, which removes call, delegation
+  and overall agent-time budgets. Permissions, cancellation and workflow timeouts still
+  apply. Power mode is off by default and can increase runtime and provider costs.
+- Workflow imports can map referenced resources to matching destination resources and
+  workflows imported together. Missing or ambiguous references are reported for correction.
+
+### Changed
+
+- Four English IT examples replace the old starter workflows: Server Overview (5 activities),
+  Event Log Review (10), Diagnostic Package (18), and System Health Observatory (45).
+  All run on `localhost`, include the trigger in their counts, and need neither email nor AI.
+  See the [sample guide](samples/README.md).
+- Agent settings use searchable lists. Browser-demo links support `?lang=de` and `?lang=en`.
+- Expanded agent documentation and clarified workflow terminology; added an Orchestrator
+  2016 end-of-support article. Removed unused palette files and local skill-lock tracking.
 
 ### Fixed
 
-- Transient agent model failures can retry the same request once within existing budgets,
-  without repeating completed tools or delegations. Persistent failures retain available
-  preliminary findings and journal evidence.
-- Exhausting the shared investigation model budget now reaches the reserved, tool-free
-  final report, including after parallel delegation. Unfinished members and missing reviews
-  remain unresolved; cancellation and other technical failures keep their failure semantics.
+- Event Log triggers no longer read the same log concurrently, avoiding recurring
+  out-of-range errors. They read entries newer than the saved cursor.
+- Execution history pages full records only after selecting their keys, reducing SQL Server
+  timeouts. Unchanged search text no longer resets the selected page.
+- Dashboard aggregates and duration trends stay warm after idle periods, including the
+  30-day view, reducing unnecessary raw execution scans.
+- Workflow activity counts include triggers, and Last Run timestamps preserve UTC.
+- Grouped canvas nodes no longer cause false overlap warnings. AI agent nodes have their
+  intended shapes and colors.
+- Agent investigations preserve evidence across context compaction, detect stalled progress
+  and avoid repeating completed tools when retrying transient model failures. Exhausting
+  the investigation model-call budget uses the reserved final report and retains unresolved work.
+- Stabilized asynchronous regression tests and CI test isolation and reporting.
 
 ### Security
 
-- Agent tools enforce the current read-only policy, selected targets and identities, file
-  scopes and approved external-tool contracts. Packaged CMD/Bash scripts execute checked
-  canonical commands; the CMD bootstrap also uses a fixed system executable path to prevent
-  package-local command shadowing. PowerShell retains target signature and execution-policy checks.
+- **Agent actions are currently read-only.** Agents can investigate and recommend repairs;
+  tools, targets, paths and invoked workflows are checked before execution. Skills and
+  Power mode grant no extra permissions. External MCP tools require administrator approval;
+  changed connections or tool contracts require renewed approval. Selected calls execute
+  without individual approval dialogs. Regular workflow behavior is unchanged.
+- Agent skill scripts use checked commands; PowerShell retains target signature and
+  execution-policy checks. The CMD bootstrap prevents package-local command shadowing.
+- Server upgrades repair data-directory permissions that could otherwise prevent the service
+  from reading its JWT key and force an update rollback.
+- Updated DOMPurify to 3.4.16 and patched locked build dependencies, including `source-map-js`.
 
 ## [1.4.4] - 2026-10-03
 
