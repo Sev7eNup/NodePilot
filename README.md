@@ -33,8 +33,6 @@ It is the product's own frontend on an in-memory backend, so anything that genui
 
 **[Watch product video](https://www.nodepilot.run/media/nodepilot-product-tour.mp4)**
 
-The video shows SCOrch import, the Workflow Designer, execution history, Live Ops, logs as well as AI chat in operation. English captions, no audio.
-
 <details>
 <summary><b>Browse screenshots</b></summary>
 
