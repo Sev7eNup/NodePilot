@@ -97,12 +97,13 @@ export function ExecutionsPage() {
   }, [requestedExecutionId]);
 
   useEffect(() => {
+    if (search.trim() === debouncedSearch) return;
     const timer = globalThis.setTimeout(() => {
       setDebouncedSearch(search.trim());
       setPage(1);
     }, 250);
     return () => globalThis.clearTimeout(timer);
-  }, [search]);
+  }, [search, debouncedSearch]);
 
   // The global executions list shows only finished runs (Succeeded / Failed / Cancelled).
   // Running runs belong in the designer's live panel, not in this history list.

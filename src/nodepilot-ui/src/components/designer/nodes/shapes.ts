@@ -35,6 +35,7 @@ export const NODE_SHAPES = [
   'house', 'shield', 'launchSlant', 'browser', 'cylinder', 'pillH',
   'banner', 'documentFold', 'kite', 'gem', 'pentagonUp', 'pentagonDown',
   'folder', 'braces', 'circle', 'speechBubble',
+  'chip', 'steppedFrame',
 ] as const;
 export type NodeShape = typeof NODE_SHAPES[number];
 
@@ -135,6 +136,8 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
   // `square` is the optical anchor: size 1.0, iconScale 1.0 -> its inside-icon (iconFont) is the
   // equal-size target every other shape is tuned toward.
   square: { clip: undefined, size: 1.0, iconScale: 1.0, badges: SQUARE_BADGES },
+  chip: blob('polygon(20% 0%, 80% 0%, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0% 80%, 0% 20%, 20% 20%)', 1.10),
+  steppedFrame: blob('polygon(25% 0%, 75% 0%, 75% 12%, 88% 12%, 88% 25%, 100% 25%, 100% 75%, 88% 75%, 88% 88%, 75% 88%, 75% 100%, 25% 100%, 25% 88%, 12% 88%, 12% 75%, 0% 75%, 0% 25%, 12% 25%, 12% 12%, 25% 12%)', 1.12),
   // Bookend pair (trigger + returnData). `size` area-compensated (pennant/flag fill ~62% of their
   // bbox -> bumped to 1.25 so the silhouettes read equal to square); iconScale 1.0 -> inside-icon
   // matches square. iconOffsetX shifts the icon toward the body's center of mass (pennant body
@@ -246,12 +249,12 @@ export const SHAPE_CLIP_PATHS = Object.fromEntries(
 export const getBackingClip = (shape: NodeShape): string | undefined => SHAPE_DEFS[shape].backingClip;
 
 // --- Mapping (checked at compile time) -----------------------------------
-/** Exactly the activities that get their own shape (20 `action` types + `log` + `delay`). */
+/** Exactly the activities that get their own shape (action types + `log` + `delay`). */
 type ShapedActivityType =
   | 'runScript' | 'fileOperation' | 'folderOperation' | 'fileHash' | 'zipOperation'
   | 'serviceManagement' | 'scheduledTask' | 'registryOperation' | 'wmiQuery' | 'startProgram'
   | 'powerManagement' | 'waitForCondition' | 'restApi' | 'sql' | 'xmlQuery' | 'jsonQuery'
-  | 'emailNotification' | 'textFileEdit' | 'generateText' | 'llmQuery' | 'log' | 'delay';
+  | 'emailNotification' | 'textFileEdit' | 'generateText' | 'llmQuery' | 'aiAgent' | 'aiAgentTeam' | 'log' | 'delay';
 
 /** `satisfies` enforces that every ShapedActivityType is mapped and every value is a NodeShape. */
 const ACTION_SHAPE = {
@@ -261,6 +264,7 @@ const ACTION_SHAPE = {
   powerManagement: 'power', waitForCondition: 'circle', restApi: 'browser', sql: 'cylinder',
   xmlQuery: 'kite', jsonQuery: 'braces', emailNotification: 'banner', textFileEdit: 'house',
   generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'stopwatch',
+  aiAgent: 'chip', aiAgentTeam: 'steppedFrame',
 } as const satisfies Record<ShapedActivityType, NodeShape>;
 
 /** Control-flow activities — each gets its own shape; all render with the shared indigo frame.

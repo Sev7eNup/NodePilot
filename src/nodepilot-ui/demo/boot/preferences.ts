@@ -25,9 +25,8 @@ function seed(key: string, value: string): void {
   }
 }
 
-// The demo always starts in English, regardless of the browser language. Seeded rather than left
-// to the product's own detector, which would pick the browser language and fall back to German.
-seed(LANGUAGE_KEY, 'en');
+// Match the browser on a first visit while preserving an explicit language choice.
+seed(LANGUAGE_KEY, globalThis.navigator?.language?.toLowerCase().startsWith('de') ? 'de' : 'en');
 const requestedLanguage = new URLSearchParams(globalThis.location?.search ?? '').get('lang');
 if (requestedLanguage === 'de' || requestedLanguage === 'en') {
   try { globalThis.localStorage?.setItem(LANGUAGE_KEY, requestedLanguage); } catch { /* storage is optional */ }
