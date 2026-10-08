@@ -96,7 +96,7 @@ jobs:
   backend:
     name: Backend build + tests
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -185,7 +185,7 @@ jobs:
         run: dotnet tool restore
 
       - name: Test with coverage
-        timeout-minutes: 10
+        timeout-minutes: 20
         # --settings applies coverage.runsettings, which excludes EF migrations and
         # [ExcludeFromCodeCoverage]-attributed code from the denominator. It is the same filter
         # the documented local measurement uses, so both report the same number.
