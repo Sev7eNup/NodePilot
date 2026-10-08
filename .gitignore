@@ -213,6 +213,9 @@ src/nodepilot-ui/reliability-history/
 # Local investigation output (CM1 reviews, gcdumps, log pulls) - never part of the repo
 .artifacts/
 
+# Local image generation output (prompts and renders) - never part of the repo
+/output/imagegen/
+
 # Scratch bodies handed to `gh pr create --body-file` — never part of the repo
 /pr*-body.md
 

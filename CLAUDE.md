@@ -75,10 +75,33 @@ cd src\nodepilot-docs-ui; npm run dev     # Doku-Website, Port 5174 — nur wenn
 - **Scope:** Minimaler Root-Cause-Fix. Würde ein Fix deutlich mehr Dateien anfassen als das benannte Problem → stoppen und den geplanten Scope in 3 Bullets nennen, bevor editiert wird.
 - **Keine Abwärtskompatibilität:** Keine Shims, Feature-Flags, optionale Defaults für sanfte Migration. Sauber durchziehen: `NOT NULL`, Required-Properties, alte Code-Pfade ersatzlos löschen. Alte DB → Migrations fahren, fertig. Ein Bruch an einem Format, das Installationen aufbewahren (Export-/Backup-Envelope, Workflow-JSON), wird vorher angesprochen und dann ebenso ohne Shim durchgezogen.
 - **Neue Abhängigkeit** (NuGet über `Directory.Packages.props`, npm) nur nach Rückfrage. Lockfiles nur anfassen, wenn sich die Auflösung wirklich ändert.
-- **Sprachregeln** (C#, React/TS, PowerShell) liegen pfadgebunden in `.claude/rules/` und laden nur beim Bearbeiten passender Dateien.
 - **PowerShell 5.1 / Windows:** Kein Inline-SQL durch PowerShell-Quoting — Query in eine `.sql`-Datei schreiben und per `psql -f` ausführen. Dateien als UTF-8 **ohne** BOM schreiben. Keine `sed`/Regex-Zeilen-Edits auf Source-Dateien (CRLF bricht sie) — Edit-Tool verwenden. Kein `$args`-Splatting; explizite benannte Parameter.
 - **Code-Kommentare:** Sachlich und kurz, in einfachem Englisch. Sie sagen, **was** der Code tut und **warum** — nicht mehr. Keine Herleitung, keine Erzählung, keine Rückblende auf frühere Fehlversuche, keine Messwerte oder Beispielzahlen als Beleg, kein „X used to …, which meant …". Wer den Hintergrund braucht, findet ihn in Commit-Message, PR oder `docs/`. Ein bis drei Zeilen reichen fast immer; ein Kommentar, der länger ist als der Code darunter, ist meist eine Erzählung. Die vorhandenen langen Kommentare im Repo sind **kein** Vorbild.
 - **Reporting:** Knapp berichten — was geändert, was verifiziert, was offen. Keine Per-File-Walkthroughs, kein Plan-Nacherzählen. Interaktive Rückfragen nur, wenn die Antwort wirklich blockiert.
+
+## Sprachregeln (C#, React/TS, PowerShell)
+
+**C#** (`src/**/*.cs`, `tests/**/*.cs`)
+- Async durchgehend. Kein `.Result`, kein `.Wait()`, kein `GetAwaiter().GetResult()` auf I/O.
+- `CancellationToken` durchreichen, wo die Operation sinnvoll abbrechbar ist. Zustands- und Lifecycle-Writes, die auch bei Abbruch landen müssen, speichern mit `CancellationToken.None` (ein nach dem Commit gecanceltes `SaveChangesAsync` lässt Entities `Added` → doppelter INSERT; Guard: `StepStatePersistenceInvariantTests`).
+- Nullability-Warnungen beheben, nicht mit `!` oder `#pragma` stummschalten.
+- Ein Interface nur bei echter zweiter Implementierung oder echter Test-Naht (Remote-Layer, Uhr, LLM-Client), nicht pro Klasse.
+- Parallelität nur begrenzt (Semaphore/Channel mit Kapazität), mit definiertem Fehler- und Cancel-Verhalten.
+
+**React / TypeScript** (`src/nodepilot-ui/`, `src/nodepilot-docs-ui/`)
+- Keine unsicheren Casts (`as unknown as T`), um einen Typfehler loszuwerden.
+- Keinen State speichern, der sich aus Props oder anderem State ableiten lässt.
+- Render- oder Event-Logik vor `useEffect`. Die Lint-Regel `react-hooks/set-state-in-effect` ist aus, also ist das hier Konvention, nicht Check.
+- Kein `useMemo`/`useCallback` ohne konkreten Grund (Referenzstabilität für eine Abhängigkeit, gemessene Kosten).
+- Netzwerkzugriffe über `src/api/` und React Query, nicht direkt in Komponenten.
+- Semantische, zugängliche Controls (`<button>`, `<label>`) statt klickbarer `<div>`s.
+
+**PowerShell** (`**/*.ps1`, `**/*.psm1`)
+- Ziel Windows PowerShell 5.1. Keine 7.x-Syntax (`??`, `?.`, Ternary, `&&`/`||`).
+- Skriptkopf wie in `deploy/`: `[CmdletBinding()]`, `$ErrorActionPreference = 'Stop'`, `Set-StrictMode -Version 3.0`.
+- Approved Verbs, volle Cmdlet- und Parameternamen, keine Aliase.
+- Credentials als `PSCredential` oder über den Secret-Provider, nie im Klartext.
+- Installer-Skripte unter `deploy/desktop/` und `deploy/server/` bleiben ASCII-only (PS 5.1 liest UTF-8 ohne BOM als ANSI).
 
 ## Datenbank
 
