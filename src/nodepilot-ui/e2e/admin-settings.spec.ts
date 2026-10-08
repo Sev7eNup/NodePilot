@@ -119,12 +119,13 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
   test('76.1 — all System section tabs render; Integrations shows SMTP + LLM', async ({ page }) => {
     await openSystemTab(page);
 
-    // The nine section sub-tabs always render in the tab bar in this order, grouped as
+    // The section sub-tabs always render in the tab bar in this order, grouped as
     // integrations, security, operations and data. System info comes last because it is the
     // only read-only tab and would otherwise split the run of tabs that edit configuration.
     const tabs = [
       /integrations/i,
       /ai knowledge/i,
+      /ai agents/i,
       /authentication/i,
       /^security$/i,
       /logging .* telemetry|logging & telemetry/i,
@@ -143,7 +144,7 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
       .filter({ has: page.getByRole('button', { name: /^security$/i }) });
     const rendered = await tabBar.getByRole('button').allInnerTexts();
     expect(rendered.map((s) => s.trim().toLowerCase())).toEqual([
-      'integrations', 'ai knowledge', 'authentication', 'security',
+      'integrations', 'ai knowledge', 'ai agents', 'authentication', 'security',
       'logging & telemetry', 'performance', 'database', 'retention', 'system info',
     ]);
 
