@@ -1,4 +1,4 @@
-import { LANG_STORAGE_KEY, type Lang } from '../../i18n/languages'
+import type { Lang } from '../../i18n/languages'
 import { de, type Messages } from './de'
 import { en } from './en'
 
@@ -84,13 +84,4 @@ export function applyLanguage(lang: Lang): void {
     link.setAttribute('href', docsHref(lang, link.getAttribute('data-docs-path') ?? ''))
   }
   document.querySelector('meta[name="description"]')?.setAttribute('content', dictionary.meta.description)
-}
-
-/** Remembers an explicit language choice for the website and the docs. */
-export function persistLang(lang: Lang): void {
-  try {
-    window.localStorage.setItem(LANG_STORAGE_KEY, lang)
-  } catch {
-    // Blocked storage: the choice lasts for this page view only.
-  }
 }

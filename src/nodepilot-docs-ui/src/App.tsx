@@ -7,7 +7,7 @@ import DocPage from './components/DocPage'
 import SearchModal from './components/SearchModal'
 import { availablePages } from './lib/content'
 import { navTitleKey, pageByPath } from './data/nav'
-import { detectLang, LANG_STORAGE_KEY, parseLocation } from './i18n/languages'
+import { detectLang, parseLocation } from './i18n/languages'
 import { docPath } from './lib/docPath'
 import { updateDocsHead } from './lib/docs-head'
 
@@ -27,20 +27,14 @@ export default function App() {
   // A URL without a language prefix redirects to the detected language, keeping the page.
   useEffect(() => {
     if (lang) return
-    navigate(docPath(detectLang(), current || home), { replace: true })
-  }, [lang, current, home, navigate])
+    navigate(`${docPath(detectLang(), current || home)}${location.search}${location.hash}`, { replace: true })
+  }, [lang, current, home, navigate, location.search, location.hash])
 
-  // The URL is authoritative for the language: mirror it into i18next, remember the choice
-  // for the next visit, and set <html lang> for screen readers and search engines.
+  // Mirror the URL into i18next and <html lang>. Only the switcher persists a preference.
   useEffect(() => {
     if (!lang) return
     if (i18n.language !== lang) void i18n.changeLanguage(lang)
     document.documentElement.lang = lang
-    try {
-      window.localStorage?.setItem(LANG_STORAGE_KEY, lang)
-    } catch {
-      // Private mode or disabled storage; the language stays in the URL.
-    }
   }, [lang, i18n])
 
   // Every address is its own prerendered file and carries its own title; navigating inside the
