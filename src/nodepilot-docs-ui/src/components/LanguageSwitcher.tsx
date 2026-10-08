@@ -1,6 +1,6 @@
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { LANGUAGES, LANGUAGE_LABELS, type Lang } from '../i18n/languages'
+import { LANGUAGES, LANGUAGE_LABELS, persistLang, type Lang } from '../i18n/languages'
 import { docPath } from '../lib/docPath'
 
 /**
@@ -15,6 +15,7 @@ import { docPath } from '../lib/docPath'
  */
 export default function LanguageSwitcher({ lang, current }: { lang: Lang; current: string }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { t } = useTranslation()
 
   return (
@@ -25,9 +26,11 @@ export default function LanguageSwitcher({ lang, current }: { lang: Lang; curren
           <button
             key={code}
             type="button"
-            // The active segment stays an enabled button so the group keeps a predictable
-            // tab order; pressing it does nothing.
-            onClick={() => !active && navigate(docPath(code, current))}
+            // Confirming the active language also makes it an explicit preference.
+            onClick={() => {
+              persistLang(code)
+              if (!active) navigate(`${docPath(code, current)}${location.search}${location.hash}`)
+            }}
             className={active ? 'is-active' : undefined}
             aria-current={active ? 'true' : undefined}
             // The visible label is a two-letter code; screen readers get the full language name.

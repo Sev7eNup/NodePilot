@@ -27,7 +27,7 @@ function nodeSize(n: Node): { w: number; h: number } {
 }
 
 /** Absolute canvas position, walking the (cycle-guarded) parent chain. */
-function absolutePosition(n: Node, byId: Map<string, Node>): XY {
+export function absolutePosition(n: Node, byId: Map<string, Node>): XY {
   let x = n.position.x;
   let y = n.position.y;
   let pid = n.parentId;

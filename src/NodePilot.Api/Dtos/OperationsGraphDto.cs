@@ -122,7 +122,7 @@ public record OpsEdge(
 /// <para>
 /// This is observed ACTIVITY, not progress. There is deliberately no percentage: the obvious
 /// denominators are all wrong. Step rows include executed trigger nodes and later Skipped rows,
-/// while <c>Workflow.ActivityCount</c> excludes triggers and disabled nodes — and loops re-run
+/// while <c>Workflow.ActivityCount</c> excludes disabled nodes and annotations — and loops re-run
 /// nodes, so no fixed total exists. A bar that reads "100 %" and then falls back to 80 % on the
 /// next loop iteration is worse than no bar.
 /// </para>

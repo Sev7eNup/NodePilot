@@ -4,7 +4,7 @@ import { articleBySlug, isBlogPreview } from './blog'
    interaction stays in the page, apart from the links a visitor opens. */
 import { mountExperience } from './experience/controller'
 import appIconUrl from './images/logo-dark.webp'
-import { isLang } from '../i18n/languages'
+import { detectLang, isLang, persistLang } from '../i18n/languages'
 import {
   EDGES,
   ICON_OFFSET,
@@ -33,11 +33,10 @@ import {
   applyLanguage,
   currentLang,
   format,
-  persistLang,
   setBasePrefix,
   t,
 } from './i18n'
-import { resolveRoute, routeLanguage } from './router'
+import { localizedPath, resolveRoute, routeLanguage } from './router'
 import { renderSiteContent, renderSiteHead } from './seo'
 
 const REPO = 'https://github.com/Sev7eNup/NodePilot'
@@ -773,8 +772,9 @@ function currentPath(): string {
 /** Opens this page in the chosen language, keeping query and fragment, and remembers the choice. */
 function setLanguage(link: HTMLAnchorElement): void {
   const value = link.dataset.lang
-  if (!isLang(value) || value === currentLang()) return
+  if (!isLang(value)) return
   persistLang(value)
+  if (value === currentLang()) return
   location.assign(`${link.href}${location.search}${location.hash}`)
 }
 
@@ -783,18 +783,26 @@ window.addEventListener('pagehide', () => {
   window.clearTimeout(toastTimer)
 })
 
-setBasePrefix(basePrefix)
-applyLanguage(routeLanguage(currentPath()))
 let route = resolveRoute(currentPath())
-if (route.page === 'article' && !isBlogPreview(document) && articleBySlug[route.slug].status !== 'published') route = { page: 'notfound' }
-// An address without a file of its own is answered with the 404 page, which carries only that section.
-if (!document.getElementById(`${route.page}-page`)) route = { page: 'notfound' }
-renderSiteContent(document, route, currentLang(), basePath)
-renderSiteHead(document, route, currentLang(), siteOrigin)
-labelNavItems()
-setMenu(false)
-setProductTab(currentProductTab)
-applyBlogFilter(false)
-const experienceRoot = document.querySelector<HTMLElement>('#experience-root')
-if (experienceRoot) mountExperience(experienceRoot)
-if (playButton) selectNode(selectedNode)
+const urlLang = routeLanguage(currentPath())
+// Explicit English links keep their language. Unprefixed entries use the shared preference.
+const preferredLang = urlLang === 'en' ? 'en' : detectLang()
+const preferredPath = localizedPath(route, preferredLang)
+if (route.page !== 'notfound' && routeLanguage(preferredPath) !== urlLang) {
+  location.replace(`${basePath}${preferredPath}/${location.search}${location.hash}`)
+} else {
+  setBasePrefix(basePrefix)
+  applyLanguage(urlLang)
+  if (route.page === 'article' && !isBlogPreview(document) && articleBySlug[route.slug].status !== 'published') route = { page: 'notfound' }
+  // An address without a file of its own is answered with the 404 page, which carries only that section.
+  if (!document.getElementById(`${route.page}-page`)) route = { page: 'notfound' }
+  renderSiteContent(document, route, currentLang(), basePath)
+  renderSiteHead(document, route, currentLang(), siteOrigin)
+  labelNavItems()
+  setMenu(false)
+  setProductTab(currentProductTab)
+  applyBlogFilter(false)
+  const experienceRoot = document.querySelector<HTMLElement>('#experience-root')
+  if (experienceRoot) mountExperience(experienceRoot)
+  if (playButton) selectNode(selectedNode)
+}

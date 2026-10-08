@@ -205,7 +205,9 @@ public class WorkflowsController : WorkflowsControllerBase
 
             executionWindow = raw
                 .Select(r => new WorkflowExecutionListRow(
-                    r.Id, r.WorkflowId, ParseStatus(r.Status), r.StartedAt, r.CompletedAt))
+                    r.Id, r.WorkflowId, ParseStatus(r.Status),
+                    DateTime.SpecifyKind(r.StartedAt, DateTimeKind.Utc),
+                    r.CompletedAt.HasValue ? DateTime.SpecifyKind(r.CompletedAt.Value, DateTimeKind.Utc) : null))
                 .ToList();
         }
 
@@ -338,7 +340,8 @@ public class WorkflowsController : WorkflowsControllerBase
     /// <summary>
     /// Raw projection used for the ROW_NUMBER raw-SQL query. Status is read as a string
     /// because EF's HasConversion mapping does not apply to <c>SqlQueryRaw&lt;T&gt;</c>
-    /// result types — we re-parse it in C# via <see cref="ParseStatus"/>.
+    /// result types. Status is re-parsed via <see cref="ParseStatus"/> and stored UTC
+    /// timestamps are tagged explicitly, preserving the JSON 'Z' suffix on SQL Server.
     /// </summary>
     private sealed record WorkflowExecutionListRowRaw(
         Guid Id,
