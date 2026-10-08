@@ -1,5 +1,6 @@
 import type { Node, Edge } from '@xyflow/react';
 import i18n from '../i18n';
+import { absolutePosition } from './groupReparenting';
 import { edgeSourcePort, edgeTargetPort, getPortPoint } from './edgePorts';
 import { REMOTE_ACTIVITY_TYPES, TRIGGER_ACTIVITY_TYPES } from './activityCatalog.generated';
 import { checkRequiredActivityConfig } from './activityConfigFacts';
@@ -501,11 +502,12 @@ export function lintWorkflow(
   // edges cut diagonally through the targets in between. Auto-Layout (Tidy) repositions the
   // nodes; flagging it here keeps the author from debugging a step that only looks unwired.
   const nodeBounds = new Map<string, { x: number; y: number; w: number; h: number }>();
+  const positionedNodes = new Map(nodes.map((n) => [n.id, n]));
   for (const n of liveNodes) {
     const m = (n as { measured?: { width?: number; height?: number } }).measured;
     const w = m?.width ?? (n as { width?: number }).width ?? 140;
     const h = m?.height ?? (n as { height?: number }).height ?? 132;
-    nodeBounds.set(n.id, { x: n.position.x, y: n.position.y, w, h });
+    nodeBounds.set(n.id, { ...absolutePosition(n, positionedNodes), w, h });
   }
   const labelById = new Map<string, string>();
   for (const n of liveNodes) labelById.set(n.id, getLabel(n));
