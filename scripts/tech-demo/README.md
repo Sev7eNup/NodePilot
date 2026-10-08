@@ -82,7 +82,7 @@ Jeder Phase-E-Branch in `main.json` ist eine Kondition, die einen oder mehrere d
 
 | Detail | Wert |
 |---|---|
-| `waitNofM`-Config-Key | `requiredCount` (NICHT `n` — im bestehenden `samples/all-activities-horizontal.workflow.json` ist das falsch als `n` und wird silent auf Default 1 zurückgesetzt) |
+| `waitNofM`-Config-Key | `requiredCount` (NICHT `n` — ein unbekannter Schlüssel fällt auf den Default 1 zurück) |
 | Boolean-Truthiness | Leer, `"false"` (case-insensitive), `"0"` = falsy. Alles andere truthy. PowerShell-`[string]$true` = `"True"` → truthy ✓ |
 | `runScript`-Param-Capture | Alle lokal deklarierten Variablen werden automatisch als `param.*` exponiert (ProcessExecutionEngine hängt einen Capture-Block ans Script). Kein Marker nötig. |
 | `{{var.output}}` in Script-Text | Wird als PowerShell-single-quoted-String eingesetzt (`'value'`). Nicht selbst zusätzlich quoten. |

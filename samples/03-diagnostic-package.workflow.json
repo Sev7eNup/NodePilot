@@ -1,0 +1,579 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-10-08T00:00:00Z",
+  "workflow": {
+    "name": "Example 03 - Diagnostic Package",
+    "description": "Run three local WMI queries in parallel, write a server report, create a ZIP archive, and verify the extracted files against their originals. Eighteen nodes including the manual trigger.",
+    "isEnabled": false,
+    "maxConcurrentExecutions": 1,
+    "definition": {
+      "nodes": [
+        {
+          "id": "start",
+          "type": "activity",
+          "position": {
+            "x": 0,
+            "y": 300
+          },
+          "data": {
+            "label": "Manual: Create diagnostic package",
+            "activityType": "manualTrigger",
+            "config": {}
+          }
+        },
+        {
+          "id": "paths",
+          "type": "activity",
+          "position": {
+            "x": 400,
+            "y": 300
+          },
+          "data": {
+            "label": "PowerShell: Prepare output paths",
+            "activityType": "runScript",
+            "config": {
+              "script": "$runId = [guid]::NewGuid().ToString('N')\n$rootPath = Join-Path ([IO.Path]::GetTempPath()) ('NodePilot-Demo-' + $runId)\n$sourcePath = Join-Path $rootPath 'Report'\n$reportPath = Join-Path $sourcePath 'ServerReport.txt'\n$readmePath = Join-Path $sourcePath 'Readme.txt'\n$archivePath = Join-Path $rootPath 'ServerDiagnostics.zip'\n$extractPath = Join-Path $rootPath 'Verification'\nWrite-Output \"Output directory: $rootPath\"",
+              "engine": "auto",
+              "timeoutSeconds": 60
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "folder",
+          "type": "activity",
+          "position": {
+            "x": 720,
+            "y": 300
+          },
+          "data": {
+            "label": "Folder: Create report directory",
+            "activityType": "folderOperation",
+            "config": {
+              "operation": "create",
+              "path": "{{paths.param.sourcePath}}"
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "system",
+          "type": "activity",
+          "position": {
+            "x": 1080,
+            "y": 40
+          },
+          "data": {
+            "label": "WMI: Read Windows and memory",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT CSName, Caption, Version, TotalVisibleMemorySize FROM Win32_OperatingSystem",
+              "captureProperties": [
+                "CSName",
+                "Caption",
+                "Version",
+                "TotalVisibleMemorySize"
+              ]
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "disks",
+          "type": "activity",
+          "position": {
+            "x": 1080,
+            "y": 300
+          },
+          "data": {
+            "label": "WMI: Read local disks",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT DeviceID, VolumeName, Size, FreeSpace, DriveType FROM Win32_LogicalDisk WHERE DriveType=3",
+              "captureProperties": [
+                "DeviceID",
+                "Size",
+                "FreeSpace"
+              ]
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "services",
+          "type": "activity",
+          "position": {
+            "x": 1080,
+            "y": 560
+          },
+          "data": {
+            "label": "WMI: Read stopped auto-start services",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT Name, DisplayName, State, StartMode FROM Win32_Service WHERE StartMode='Auto' AND State<>'Running'",
+              "captureProperties": [
+                "Name",
+                "State"
+              ]
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "join",
+          "type": "activity",
+          "position": {
+            "x": 1460,
+            "y": 300
+          },
+          "data": {
+            "label": "Junction: Wait for all three queries",
+            "activityType": "junction",
+            "config": {
+              "mode": "waitAll"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "type": "activity",
+          "position": {
+            "x": 1800,
+            "y": 300
+          },
+          "data": {
+            "label": "PowerShell: Assemble report",
+            "activityType": "runScript",
+            "config": {
+              "script": "$memoryGiB = [math]::Round([double]{{system.param.TotalVisibleMemorySize}} / 1MB, 1)\n$systemText = 'Computer: ' + {{system.param.CSName}} + \"`r`nWindows: \" + {{system.param.Caption}} + \"`r`nVersion: \" + {{system.param.Version}} + \"`r`nRAM: $memoryGiB GiB\"\n$diskText = {{disks.output}}\n$serviceText = {{services.output}}\n$serviceCount = [int]{{services.param.count}}\nif ($serviceCount -eq 0) { $serviceText = 'All automatically started services are running.' }\n$reportText = \"NODEPILOT SERVER DIAGNOSTICS`r`nCreated (UTC): \" + [DateTime]::UtcNow.ToString('o') + \"`r`n`r`nSYSTEM`r`n$systemText`r`n`r`nDISKS (Size and FreeSpace in bytes)`r`n$diskText`r`n`r`nSTOPPED AUTO-START SERVICES ($serviceCount)`r`n$serviceText`r`nTrigger-start and delayed-start services may be stopped by design.`r`n`r`nInventory only; no repairs were performed.\"\nWrite-Output $reportText",
+              "engine": "auto",
+              "timeoutSeconds": 60
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "write",
+          "type": "activity",
+          "position": {
+            "x": 2120,
+            "y": 300
+          },
+          "data": {
+            "label": "Text File: Write server report",
+            "activityType": "textFileEdit",
+            "config": {
+              "operation": "append",
+              "path": "{{paths.param.reportPath}}",
+              "content": "{{report.param.reportText}}",
+              "createIfMissing": true,
+              "encoding": "utf8",
+              "lineEnding": "crlf"
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "readme",
+          "type": "activity",
+          "position": {
+            "x": 2440,
+            "y": 300
+          },
+          "data": {
+            "label": "Text File: Write readme",
+            "activityType": "textFileEdit",
+            "config": {
+              "operation": "append",
+              "path": "{{paths.param.readmePath}}",
+              "content": "This package contains system information from the NodePilot server.\nNo services were changed.\nThe archive contains ServerReport.txt and Readme.txt.\nThe original files and an extracted verification copy remain in the output directory.\nThe returned output directory can be removed manually after reviewing the files.",
+              "createIfMissing": true,
+              "encoding": "utf8",
+              "lineEnding": "crlf"
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "list",
+          "type": "activity",
+          "position": {
+            "x": 2760,
+            "y": 300
+          },
+          "data": {
+            "label": "Folder: List report files",
+            "activityType": "folderOperation",
+            "config": {
+              "operation": "list",
+              "path": "{{paths.param.sourcePath}}"
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "zip",
+          "type": "activity",
+          "position": {
+            "x": 2760,
+            "y": 900
+          },
+          "data": {
+            "label": "ZIP: Compress report files",
+            "activityType": "zipOperation",
+            "config": {
+              "operation": "compress",
+              "source": "{{paths.param.sourcePath}}\\*",
+              "destination": "{{paths.param.archivePath}}",
+              "compressionLevel": "Optimal",
+              "force": false
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "exists",
+          "type": "activity",
+          "position": {
+            "x": 2440,
+            "y": 900
+          },
+          "data": {
+            "label": "File: Check archive exists",
+            "activityType": "fileOperation",
+            "config": {
+              "operation": "exists",
+              "path": "{{paths.param.archivePath}}"
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "hash",
+          "type": "activity",
+          "position": {
+            "x": 2120,
+            "y": 900
+          },
+          "data": {
+            "label": "Hash: Calculate archive SHA256",
+            "activityType": "fileHash",
+            "config": {
+              "path": "{{paths.param.archivePath}}",
+              "algorithm": "SHA256"
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "extract",
+          "type": "activity",
+          "position": {
+            "x": 1800,
+            "y": 900
+          },
+          "data": {
+            "label": "ZIP: Extract verification copy",
+            "activityType": "zipOperation",
+            "config": {
+              "operation": "extract",
+              "source": "{{paths.param.archivePath}}",
+              "destination": "{{paths.param.extractPath}}",
+              "force": false
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "verify",
+          "type": "activity",
+          "position": {
+            "x": 1460,
+            "y": 900
+          },
+          "data": {
+            "label": "PowerShell: Compare file contents",
+            "activityType": "runScript",
+            "config": {
+              "script": "$originalFolder = {{paths.param.sourcePath}}\n$restoredFolder = {{paths.param.extractPath}}\n$checkedArchive = {{paths.param.archivePath}}\n$files = @(Get-ChildItem -LiteralPath $restoredFolder -File -Recurse -ErrorAction Stop)\nif ($files.Count -ne 2) { throw 'The archive must contain exactly two text files.' }\nforeach ($name in @('ServerReport.txt', 'Readme.txt')) {\n    $restored = @($files | Where-Object Name -eq $name)\n    if ($restored.Count -ne 1) { throw \"File missing from archive: $name\" }\n    $originalHash = (Get-FileHash -LiteralPath (Join-Path $originalFolder $name) -Algorithm SHA256 -ErrorAction Stop).Hash\n    $restoredHash = (Get-FileHash -LiteralPath $restored[0].FullName -Algorithm SHA256 -ErrorAction Stop).Hash\n    if ($originalHash -ne $restoredHash) { throw \"Archive content does not match: $name\" }\n}\n$verified = $true\n$archiveBytes = (Get-Item -LiteralPath $checkedArchive -ErrorAction Stop).Length\nWrite-Output \"Archive verified: 2 files with matching contents, $archiveBytes Bytes.\"",
+              "engine": "auto",
+              "timeoutSeconds": 60
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "log",
+          "type": "activity",
+          "position": {
+            "x": 1080,
+            "y": 900
+          },
+          "data": {
+            "label": "Log: Diagnostic package ready",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "Verified archive on {{system.param.CSName}}: {{paths.param.archivePath}}\nSHA256: {{hash.param.hash}}\nSize: {{verify.param.archiveBytes}} Bytes."
+            }
+          }
+        },
+        {
+          "id": "result",
+          "type": "activity",
+          "position": {
+            "x": 720,
+            "y": 900
+          },
+          "data": {
+            "label": "Return: Paths and checksum",
+            "activityType": "returnData",
+            "config": {
+              "data": {
+                "computerName": "{{system.param.CSName}}",
+                "folder": "{{paths.param.rootPath}}",
+                "archive": "{{paths.param.archivePath}}",
+                "sha256": "{{hash.param.hash}}",
+                "verified": "{{verify.param.verified}}",
+                "archiveBytes": "{{verify.param.archiveBytes}}",
+                "report": "{{report.param.reportText}}"
+              }
+            }
+          }
+        },
+        {
+          "id": "help",
+          "type": "stickyNote",
+          "position": {
+            "x": 0,
+            "y": -60
+          },
+          "data": {
+            "label": "Note",
+            "activityType": "note",
+            "disabled": true,
+            "text": "Three parallel WMI queries collect Windows details, local disk capacity, and stopped auto-start services. A report and ZIP archive are created in a new directory under the service account temporary directory.",
+            "fontSize": 16
+          },
+          "style": {
+            "width": 480,
+            "height": 180
+          }
+        },
+        {
+          "id": "flow",
+          "type": "stickyNote",
+          "position": {
+            "x": 2060,
+            "y": 560
+          },
+          "data": {
+            "label": "Note",
+            "activityType": "note",
+            "disabled": true,
+            "text": "The archive is extracted and both files are compared with the originals using SHA256. The archive, source files, and verification copy remain in the returned output directory.",
+            "fontSize": 16
+          },
+          "style": {
+            "width": 480,
+            "height": 180
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "start-paths",
+          "source": "start",
+          "target": "paths",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "paths-folder",
+          "source": "paths",
+          "target": "folder",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "folder-system",
+          "source": "folder",
+          "target": "system",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "folder-disks",
+          "source": "folder",
+          "target": "disks",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "folder-services",
+          "source": "folder",
+          "target": "services",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "system-join",
+          "source": "system",
+          "target": "join",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "disks-join",
+          "source": "disks",
+          "target": "join",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "services-join",
+          "source": "services",
+          "target": "join",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "join-report",
+          "source": "join",
+          "target": "report",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "report-write",
+          "source": "report",
+          "target": "write",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "write-readme",
+          "source": "write",
+          "target": "readme",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "readme-list",
+          "source": "readme",
+          "target": "list",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "list-zip",
+          "source": "list",
+          "target": "zip",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          },
+          "sourceHandle": "bottom",
+          "targetHandle": "top"
+        },
+        {
+          "id": "zip-exists",
+          "source": "zip",
+          "target": "exists",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "exists-hash",
+          "source": "exists",
+          "target": "hash",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "hash-extract",
+          "source": "hash",
+          "target": "extract",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "extract-verify",
+          "source": "extract",
+          "target": "verify",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "verify-log",
+          "source": "verify",
+          "target": "log",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        },
+        {
+          "id": "log-result",
+          "source": "log",
+          "target": "result",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        }
+      ]
+    }
+  }
+}

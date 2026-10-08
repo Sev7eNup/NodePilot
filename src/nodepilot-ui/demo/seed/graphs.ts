@@ -9,7 +9,7 @@
  * Imported with `?raw` rather than as JSON modules: it keeps the files out of the type
  * system (they are data, not types) and needs no `resolveJsonModule` in the product tsconfig.
  */
-import sccmRaw from '../../../../samples/sccm-ad-provisioning.workflow.json?raw';
+import sccmRaw from './fixtures/sccm-ad-provisioning.workflow.json?raw';
 import diskSpaceRaw from '../../../../scripts/example-disk-space-watch-workflow.json?raw';
 import windowsUpdateRaw from '../../../../scripts/example-windows-update-health-workflow.json?raw';
 import serviceRecoveryRaw from '../../../../scripts/example-service-recovery-workflow.json?raw';

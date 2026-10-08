@@ -179,7 +179,7 @@ diagnostic content and should be handled as support evidence.
 Other workflow nodes communicate through normal outputs/input variables; only the outer
 team node participates in workflow edges. Members do not become independent steps.
 The requested order is model guidance, not a deterministic workflow transition.
-A complete example is available in [the team sample](../samples/ai-agent-team.workflow.json).
+For first-import examples without AI dependencies, see [the sample workflows](../samples/README.md).
 
 ## Tools, packages and storage
 
