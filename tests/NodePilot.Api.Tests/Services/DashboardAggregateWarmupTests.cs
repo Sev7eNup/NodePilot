@@ -53,6 +53,7 @@ public sealed class DashboardAggregateWarmupTests : IDisposable
         var config = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
         var warmup = new DashboardAggregateWarmup(
             cache,
+            _provider.GetRequiredService<IServiceScopeFactory>(),
             availability.Object,
             new NodePilot.Engine.Security.OutputRedactor(config),
             config,
@@ -81,8 +82,8 @@ public sealed class DashboardAggregateWarmupTests : IDisposable
         var (warmup, cache) = Build();
         await warmup.PrimeAsync(TestContext.Current.CancellationToken);
 
-        // Three windows, two aggregates each.
-        cache.Count.Should().Be(6);
+        // Three windows, three aggregates each.
+        cache.Count.Should().Be(9);
     }
 
     [Fact]
@@ -117,5 +118,35 @@ public sealed class DashboardAggregateWarmupTests : IDisposable
 
         refreshed.Should().Be(cache.Count, "every primed window must be renewable");
         refreshed.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task PrimeAsync_DurationTrendEntry_IsServedToTheController()
+    {
+        var (warmup, cache) = Build();
+        await warmup.PrimeAsync(TestContext.Current.CancellationToken);
+
+        var computed = false;
+        await cache.GetOrComputeAsync(
+            DashboardAggregateCache.Key("duration-trend:all", AccessibleFolderSet.Unrestricted, 720),
+            DashboardCacheSettings.Ttl,
+            (_, _) => { computed = true; return Task.FromResult<NodePilot.Api.Dtos.DurationTrendResponse>(null!); },
+            TestContext.Current.CancellationToken);
+
+        computed.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RefreshDueAsync_PinnedEntriesRefreshWithoutRecentRequest_OthersDoNot()
+    {
+        var (warmup, cache) = Build();
+        await warmup.PrimeAsync(TestContext.Current.CancellationToken);
+
+        // Nobody asked for anything within the active window.
+        var refreshed = await cache.RefreshDueAsync(
+            TimeSpan.FromHours(1), TimeSpan.Zero, TestContext.Current.CancellationToken, includePinned: true);
+
+        // window + failure-causes for three windows; the duration trend is not pinned.
+        refreshed.Should().Be(6);
     }
 }

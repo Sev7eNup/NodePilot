@@ -46,7 +46,13 @@ public sealed class DashboardAggregateWarmup : BackgroundService
     /// </summary>
     private static readonly TimeSpan ActiveWindow = TimeSpan.FromMinutes(4);
 
+    /// <summary>Upper bound for waiting on the stats rollup before priming from raw rows anyway.</summary>
+    private static readonly TimeSpan CoverageWait = TimeSpan.FromMinutes(10);
+
+    private static readonly TimeSpan CoveragePoll = TimeSpan.FromSeconds(10);
+
     private readonly DashboardAggregateCache _cache;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDatabaseAvailability _availability;
     private readonly NodePilot.Engine.Security.OutputRedactor _redactor;
     private readonly IConfiguration _configuration;
@@ -54,12 +60,14 @@ public sealed class DashboardAggregateWarmup : BackgroundService
 
     public DashboardAggregateWarmup(
         DashboardAggregateCache cache,
+        IServiceScopeFactory scopeFactory,
         IDatabaseAvailability availability,
         NodePilot.Engine.Security.OutputRedactor redactor,
         IConfiguration configuration,
         ILogger<DashboardAggregateWarmup> logger)
     {
         _cache = cache;
+        _scopeFactory = scopeFactory;
         _availability = availability;
         _redactor = redactor;
         _configuration = configuration;
@@ -82,6 +90,7 @@ public sealed class DashboardAggregateWarmup : BackgroundService
             if (!await _availability.WaitUntilServableAsync(stoppingToken).ConfigureAwait(false))
                 return;
 
+            await WaitForRollupCoverageAsync(stoppingToken).ConfigureAwait(false);
             await PrimeAsync(stoppingToken).ConfigureAwait(false);
 
             while (!stoppingToken.IsCancellationRequested)
@@ -91,7 +100,10 @@ public sealed class DashboardAggregateWarmup : BackgroundService
                     return;
                 try
                 {
-                    await _cache.RefreshDueAsync(RefreshLead, ActiveWindow, stoppingToken)
+                    // Pinned entries are only cheap while the buckets answer them; on the raw
+                    // fallback they are refreshed like any other entry, i.e. only when requested.
+                    var covered = await RollupCoversWindowAsync(stoppingToken).ConfigureAwait(false);
+                    await _cache.RefreshDueAsync(RefreshLead, ActiveWindow, stoppingToken, covered)
                         .ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) { throw; }
@@ -111,6 +123,30 @@ public sealed class DashboardAggregateWarmup : BackgroundService
             _logger.LogWarning(ex,
                 "Dashboard aggregate warm-up stopped. The dashboard still works; its first call " +
                 "per window pays for the aggregation again.");
+        }
+    }
+
+    private async Task<bool> RollupCoversWindowAsync(CancellationToken ct)
+    {
+        if (!_configuration.GetValue("Stats:Rollup:Enabled", true)) return false;
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+        var since = ExecutionStatsRollupService.Truncate(DateTime.UtcNow.AddHours(-PrimedWindows[^1]));
+        return await new DashboardRollupReader(db).CoversAsync(since, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Priming before the buckets cover the longest window would aggregate raw executions, which is
+    /// the slow path the rollup replaces. Waits a bounded time, then primes regardless.
+    /// </summary>
+    private async Task WaitForRollupCoverageAsync(CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + CoverageWait;
+        while (!await RollupCoversWindowAsync(ct).ConfigureAwait(false))
+        {
+            if (!_configuration.GetValue("Stats:Rollup:Enabled", true) || DateTime.UtcNow >= deadline)
+                return;
+            await Task.Delay(CoveragePoll, ct).ConfigureAwait(false);
         }
     }
 
@@ -135,13 +171,21 @@ public sealed class DashboardAggregateWarmup : BackgroundService
                     DashboardCacheSettings.Ttl,
                     (db, token) => DashboardHistoricalAggregates.ComputeAsync(
                         db, accessible, windowHours, token),
-                    ct).ConfigureAwait(false);
+                    ct, keepWarm: true).ConfigureAwait(false);
 
                 await _cache.PrimeAsync(
                     DashboardAggregateCache.Key("failure-causes", accessible, windowHours),
                     DashboardCacheSettings.Ttl,
                     (db, token) => new DashboardFailureCauses(db, redactor)
                         .ReadWindowAsync(accessible, windowHours, token),
+                    ct, keepWarm: true).ConfigureAwait(false);
+
+                // Raw-row query with no bucket form, so it is primed but not kept warm unasked.
+                await _cache.PrimeAsync(
+                    DashboardAggregateCache.Key("duration-trend:all", accessible, windowHours),
+                    DashboardCacheSettings.Ttl,
+                    (db, token) => new DashboardDurationTrend(db).ReadAsync(
+                        accessible, windowHours, null, token),
                     ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { throw; }

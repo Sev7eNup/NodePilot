@@ -64,7 +64,7 @@ public class DashboardController : ControllerBase
 
         return Ok(await _aggregates.GetOrComputeAsync(
             DashboardAggregateCache.Key($"duration-trend:{workflowId?.ToString() ?? "all"}", accessible, windowHours),
-            TimeSpan.FromMinutes(2),
+            DashboardCacheSettings.Ttl,
             (db, token) => new DashboardDurationTrend(db).ReadAsync(accessible, windowHours, workflowId, token), ct));
     }
 
