@@ -51,6 +51,8 @@ public sealed class DashboardAggregateCache
         public DateTime ExpiresAtUtc;
         public DateTime LastRequestedUtc;
         public TimeSpan Ttl;
+        /// <summary>Set by <see cref="PrimeAsync{T}"/> with keepWarm: refreshed without needing a recent request.</summary>
+        public bool Pinned;
         public required Func<NodePilotDbContext, CancellationToken, Task<object?>> Factory;
     }
 
@@ -117,15 +119,21 @@ public sealed class DashboardAggregateCache
     /// scan their own few rows, so recomputing one is cheap enough to keep warm.
     /// </para>
     /// </summary>
+    /// <param name="keepWarm">
+    /// Keep refreshing the entry even when nobody requests it (see
+    /// <see cref="RefreshDueAsync"/>). Only for aggregates that are cheap to recompute.
+    /// </param>
     public async Task PrimeAsync<T>(
         string key,
         TimeSpan ttl,
         Func<NodePilotDbContext, CancellationToken, Task<T>> compute,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool keepWarm = false)
     {
         ArgumentNullException.ThrowIfNull(compute);
         var entry = Remember(key, ttl, compute);
         entry.LastRequestedUtc = DateTime.UtcNow;
+        if (keepWarm) entry.Pinned = true;
         await RunAsync(key, entry, ct).ConfigureAwait(false);
     }
 
@@ -135,13 +143,15 @@ public sealed class DashboardAggregateCache
     /// </summary>
     /// <param name="dueWithin">Refresh entries expiring within this span.</param>
     /// <param name="activeWithin">Ignore entries nobody has asked for in this long.</param>
+    /// <param name="includePinned">Also refresh pinned entries regardless of the last request.</param>
     public async Task<int> RefreshDueAsync(
-        TimeSpan dueWithin, TimeSpan activeWithin, CancellationToken ct)
+        TimeSpan dueWithin, TimeSpan activeWithin, CancellationToken ct, bool includePinned = false)
     {
         var now = DateTime.UtcNow;
         var due = _entries
             .Where(kv => kv.Value.ExpiresAtUtc <= now + dueWithin
-                         && kv.Value.LastRequestedUtc >= now - activeWithin)
+                         && ((includePinned && kv.Value.Pinned)
+                             || kv.Value.LastRequestedUtc >= now - activeWithin))
             .Select(kv => kv.Key)
             .ToList();
 
@@ -158,7 +168,8 @@ public sealed class DashboardAggregateCache
         // not accumulate entries nobody reads.
         foreach (var (key, entry) in _entries)
         {
-            if (entry.ExpiresAtUtc < now - activeWithin && entry.LastRequestedUtc < now - activeWithin)
+            if (!entry.Pinned && entry.ExpiresAtUtc < now - activeWithin
+                && entry.LastRequestedUtc < now - activeWithin)
                 _entries.TryRemove(key, out _);
         }
 
