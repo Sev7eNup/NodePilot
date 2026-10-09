@@ -745,6 +745,12 @@ function Assert-NodePilotInstallRootHardened {
     # SYSTEM, Administrators and TrustedInstaller are the principals a machine administrator
     # already trusts with the binaries; any other identity holding a write right can hijack them.
     $trusted = @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
+    # An owner can rewrite the DACL even when every current ACE is safe. Check ownership
+    # before deciding the root needs no repair, just as the service-data guard does.
+    $ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+    if ($trusted -notcontains $ownerSid) {
+        throw "Install directory '$Path' is owned by untrusted principal '$ownerSid', which can change its permissions."
+    }
     $writeMask =
         [System.Security.AccessControl.FileSystemRights]::WriteData -bor
         [System.Security.AccessControl.FileSystemRights]::AppendData -bor

@@ -72,15 +72,28 @@ function Get-LeaderHealth([string]$baseUrl) {
         }
     } catch {
         # A follower answers 503, which throws here; read the status code off the response.
+        $requestError = $_
         $code = 0
-        try { $code = [int]$_.Exception.Response.StatusCode.Value__ } catch {}
+        $body = $null
+        try {
+            $response = $requestError.Exception.Response
+            $code = [int]$response.StatusCode
+            # PowerShell 7 exposes HttpResponseMessage; Windows PowerShell uses WebResponse.
+            if ($response -is [System.Net.WebResponse]) {
+                $reader = New-Object System.IO.StreamReader($response.GetResponseStream())
+                try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            } else {
+                $text = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            }
+            $body = $text | ConvertFrom-Json
+        } catch {}
         return [PSCustomObject]@{
             Url = $u
             StatusCode = $code
             IsLeader = $false
-            NodeId = $null
-            LeaseEpoch = $null
-            Reason = "request-error: $($_.Exception.Message)"
+            NodeId = if ($body -and $body.PSObject.Properties['nodeId']) { $body.nodeId } else { $null }
+            LeaseEpoch = if ($body -and $body.PSObject.Properties['leaseEpoch']) { $body.leaseEpoch } else { $null }
+            Reason = if ($body -and $body.PSObject.Properties['reason']) { $body.reason } else { "request-error: $($requestError.Exception.Message)" }
         }
     }
 }
@@ -132,11 +145,14 @@ if ($SkipServiceStop) {
     [void](Read-Host)
     $failoverStart = Get-Date
 } else {
-    # Resolve the leader hostname for Stop-Service -ComputerName.
+    # Service cmdlets have no ComputerName parameter; execute them through remoting.
     $leaderHost = ([Uri]$leaderUrl).Host
     Write-Step "Step 2: stopping service '$ServiceName' on $leaderHost"
     try {
-        Stop-Service -Name $ServiceName -ComputerName $leaderHost -Force -ErrorAction Stop
+        Invoke-Command -ComputerName $leaderHost -ArgumentList $ServiceName -ErrorAction Stop -ScriptBlock {
+            param($name)
+            Stop-Service -Name $name -Force -ErrorAction Stop
+        }
     } catch {
         Write-Host "FAIL: could not stop service on $leaderHost. $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "Hint: re-run with -SkipServiceStop and stop the service manually." -ForegroundColor Yellow
@@ -183,7 +199,10 @@ if (-not $SkipServiceStop) {
     Write-Step "Step 5: restarting service on the original leader"
     $leaderHost = ([Uri]$leaderUrl).Host
     try {
-        Start-Service -Name $ServiceName -ComputerName $leaderHost -ErrorAction Stop
+        Invoke-Command -ComputerName $leaderHost -ArgumentList $ServiceName -ErrorAction Stop -ScriptBlock {
+            param($name)
+            Start-Service -Name $name -ErrorAction Stop
+        }
     } catch {
         Write-Host "WARN: could not start service on $leaderHost. $($_.Exception.Message). Restart manually then re-check /healthz/leader." -ForegroundColor Yellow
         exit 0

@@ -306,10 +306,12 @@ try {
     Write-Host "Training videos: $($pending.Count) uploaded, $($videos.Count - $pending.Count) already on the server."
 
     $uploaded = 0
-    $failed = @()
     foreach ($item in $relative) {
-        if (Send-File $item) { $uploaded++ } else { $failed += $item }
-        if (($uploaded + $failed.Count) % 25 -eq 0) { Write-Host "  $($uploaded + $failed.Count)/$($relative.Count)" }
+        if (-not (Send-File $item)) {
+            throw "Upload failed: $item. Remaining files were not published."
+        }
+        $uploaded++
+        if ($uploaded % 25 -eq 0) { Write-Host "  $uploaded/$($relative.Count)" }
     }
 } finally {
     Remove-Item -Path "Env:\$credentialVariable" -ErrorAction SilentlyContinue
@@ -317,11 +319,6 @@ try {
 
 Write-Host "Uploaded $uploaded of $($relative.Count) file(s)."
 
-if ($failed.Count -gt 0) {
-    Write-Host "$($failed.Count) file(s) failed:" -ForegroundColor Red
-    $failed | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
-    throw 'Upload incomplete.'
-}
 
 Write-Host "Done. The site should be live at $(Setting 'origin')/"
 Write-Host 'Files removed from the build are not deleted on the server; clear the remote folder for a clean slate.'
