@@ -72,8 +72,8 @@ It is the product's own frontend on an in-memory backend, so anything that genui
 
 - [Product tour](#product-tour)
 - [Why NodePilot](#why-nodepilot)
-- [Coming from System Center Orchestrator](#coming-from-system-center-orchestrator)
 - [Install, pick one of three paths](#install-pick-one-of-three-paths)
+- [Coming from System Center Orchestrator](#coming-from-system-center-orchestrator)
 - [Documentation](#documentation)
 - [Project Structure](#project-structure)
 - [Testing](#testing)
@@ -111,44 +111,6 @@ NodePilot is agentless workflow orchestration for Windows, built in the browser 
 - **Enterprise (preview)**: AD SSO via LDAP/Kerberos, OIDC and SCIM, Active/Passive HA and SIEM logging. See [docs/enterprise-features.md](docs/enterprise-features.md).
 - **Deployment**: installer for a Windows service under a gMSA, in-place upgrades with automatic rollback.
 - **Desktop app**: a single installer for one Windows 11 machine, offline and with its own database.
----
-
-## Coming from System Center Orchestrator
-
-SCOrch is not going anywhere. [System Center 2025 Orchestrator](https://learn.microsoft.com/en-us/lifecycle/products/system-center-2025-orchestrator) is supported until 2035, so an existing installation is not on a deadline. The exception is System Center 2016 Orchestrator, whose extended support ends on January 11, 2027. The options side by side are on the [SCOrch alternative page](https://www.nodepilot.run/en/scorch-alternative/).
-
-What has not moved is authoring. Runbooks are still built in the desktop Runbook Designer, without version history, diff or rollback. NodePilot keeps the agentless model and moves the editor, the debugger and the version history into the browser.
-
-**Existing runbooks come across.** NodePilot reads SCOrch's `.ois_export` XML (2012, 2016 and 2019) and turns runbooks into workflows:
-
-- around forty activity types are mapped, including the Runbook Control set
-- Published Data references are rewritten to NodePilot's `{{...}}` syntax
-- links, conditions, global variables and the folder tree are preserved, as well as the canvas layout
-- unmappable activities become disabled placeholders, and the import report lists every lossy translation
-
-```powershell
-np workflow import-scorch --file .\runbooks.ois_export
-```
-
-Import also runs from the UI and from `POST /api/workflows/import-scorch`. The result is a draft to be reviewed: imported workflows arrive disabled, and credentials are not reconstructed because SCOrch encrypts them. Details are in the [import documentation](https://www.nodepilot.run/docs/en/import-export/).
-
-### How the two compare
-
-| | System Center Orchestrator | NodePilot |
-|---|---|---|
-| **Support lifecycle** | mainstream to 2030, extended to 2035 | rolling releases, no vendor behind it |
-| **Agents on targets** | none | none, same WinRM model |
-| **Authoring** | desktop Runbook Designer | browser, live canvas |
-| **Debugging** | Runbook Tester | breakpoints in the real engine, variable overrides, replay |
-| **Versioning** | none | snapshots, diff, rollback |
-| **Automation API** | web API for jobs | full REST API, `np` CLI, MCP server |
-| **Observability** | job history | OpenTelemetry, Prometheus, Grafana dashboards |
-| **Database** | SQL Server | PostgreSQL or SQL Server |
-| **Licence** | commercial, per managed host | Apache-2.0 |
-| **Support** | vendor | community, single maintainer |
-
-NodePilot provides the source and no support contract, and it is to be judged on that basis.
-
 ---
 
 ## Install, pick one of three paths
@@ -290,6 +252,44 @@ More in [grafana/README.md](grafana/README.md) and in the installation guide on 
 ### Example workflow
 
 `scripts/readme-showcase-workflow.json` is a nightly health check that runs three probes in parallel, gathers them at a junction and then either sends an alert or logs that all is well. It is imported on the **Workflows** page via *Import* or through `POST /api/workflows/import`.
+
+---
+
+## Coming from System Center Orchestrator
+
+SCOrch is not going anywhere. [System Center 2025 Orchestrator](https://learn.microsoft.com/en-us/lifecycle/products/system-center-2025-orchestrator) is supported until 2035, so an existing installation is not on a deadline. The exception is System Center 2016 Orchestrator, whose extended support ends on January 11, 2027. The options side by side are on the [SCOrch alternative page](https://www.nodepilot.run/en/scorch-alternative/).
+
+What has not moved is authoring. Runbooks are still built in the desktop Runbook Designer, without version history, diff or rollback. NodePilot keeps the agentless model and moves the editor, the debugger and the version history into the browser.
+
+**Existing runbooks come across.** NodePilot reads SCOrch's `.ois_export` XML (2012, 2016 and 2019) and turns runbooks into workflows:
+
+- around forty activity types are mapped, including the Runbook Control set
+- Published Data references are rewritten to NodePilot's `{{...}}` syntax
+- links, conditions, global variables and the folder tree are preserved, as well as the canvas layout
+- unmappable activities become disabled placeholders, and the import report lists every lossy translation
+
+```powershell
+np workflow import-scorch --file .\runbooks.ois_export
+```
+
+Import also runs from the UI and from `POST /api/workflows/import-scorch`. The result is a draft to be reviewed: imported workflows arrive disabled, and credentials are not reconstructed because SCOrch encrypts them. Details are in the [import documentation](https://www.nodepilot.run/docs/en/import-export/).
+
+### How the two compare
+
+| | System Center Orchestrator | NodePilot |
+|---|---|---|
+| **Support lifecycle** | mainstream to 2030, extended to 2035 | rolling releases, no vendor behind it |
+| **Agents on targets** | none | none, same WinRM model |
+| **Authoring** | desktop Runbook Designer | browser, live canvas |
+| **Debugging** | Runbook Tester | breakpoints in the real engine, variable overrides, replay |
+| **Versioning** | none | snapshots, diff, rollback |
+| **Automation API** | web API for jobs | full REST API, `np` CLI, MCP server |
+| **Observability** | job history | OpenTelemetry, Prometheus, Grafana dashboards |
+| **Database** | SQL Server | PostgreSQL or SQL Server |
+| **Licence** | commercial, per managed host | Apache-2.0 |
+| **Support** | vendor | community, single maintainer |
+
+NodePilot provides the source and no support contract, and it is to be judged on that basis.
 
 ---
 
