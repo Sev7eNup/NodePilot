@@ -3,11 +3,14 @@ using System.Data;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Security;
+using NodePilot.Api.Hubs;
+using NodePilot.Api.Services;
 using NodePilot.Api.Services.DbAdmin;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -47,12 +50,17 @@ public class DbAdminController : ControllerBase
     private readonly IAuditStager _stager;
     private readonly IMemoryCache _userStateCache;
     private readonly ILogger<DbAdminController> _logger;
+    private readonly IHubContext<ExecutionHub> _hub;
+    private readonly IWorkflowFolderProjection _folderProjection;
+    private readonly DashboardAggregateCache? _aggregates;
 
     public DbAdminController(NodePilotDbContext db, DbAdminMetadataService meta,
         DbAdminQueryExecutor executor,
         DbAdminSecretColumns secretColumns,
         IAuditStager stager,
-        IMemoryCache userStateCache, ILogger<DbAdminController> logger)
+        IMemoryCache userStateCache, ILogger<DbAdminController> logger,
+        IHubContext<ExecutionHub> hub, IWorkflowFolderProjection folderProjection,
+        DashboardAggregateCache? aggregates = null)
     {
         _db = db;
         _meta = meta;
@@ -61,6 +69,9 @@ public class DbAdminController : ControllerBase
         _stager = stager;
         _userStateCache = userStateCache;
         _logger = logger;
+        _hub = hub;
+        _folderProjection = folderProjection;
+        _aggregates = aggregates;
     }
 
     /// <summary>
@@ -140,6 +151,12 @@ public class DbAdminController : ControllerBase
     {
         // AuditLog.Add is staged atomically by PatchRowCore inside the retryable transaction.
         var table = _meta.GetTable(name);
+        // Cell edits preserve the same subscription boundary as the normal move endpoint.
+        // Hold this across lookup, commit and revoke so an in-flight join cannot retain the old scope.
+        using var treeLock = table?.EntityType.ClrType == typeof(Workflow)
+            && string.Equals(req.Column, nameof(Workflow.FolderId), StringComparison.OrdinalIgnoreCase)
+                ? await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct)
+                : null;
         if (table?.EntityType.ClrType != typeof(User))
             return await PatchRowCore(name, pk, req, ct);
 
@@ -235,6 +252,11 @@ public class DbAdminController : ControllerBase
 
             var entry = _db.Entry(entity);
             var oldValue = entry.Property(req.Column).CurrentValue;
+            var subscriptions = entity is Workflow movedWorkflow
+                && string.Equals(req.Column, nameof(Workflow.FolderId), StringComparison.OrdinalIgnoreCase)
+                && !Equals(oldValue, coercedValue)
+                    ? await WorkflowLiveSubscriptions.CaptureAsync(_db, [movedWorkflow.Id], ct)
+                    : null;
             var invalidatesUserSessions = entity is User
                 && IsUserSessionInvalidatingColumn(req.Column)
                 && !Equals(oldValue, coercedValue);
@@ -298,6 +320,8 @@ public class DbAdminController : ControllerBase
 
             if (invalidatesUserSessions && entity is User savedUser)
                 UserSessionInvalidation.InvalidateUserStateCache(_userStateCache, savedUser.Id);
+            if (subscriptions is not null)
+                await subscriptions.RevokeAsync(_hub, _folderProjection, _aggregates);
             if (deferAuditForward is null)
                 AuditEventForwarder.ForwardCommitted(_logger, auditEntry);
             else
@@ -482,7 +506,7 @@ public class DbAdminController : ControllerBase
         // and it hands the whole row back under a result-column name the mask does not know.
         if (mode == "read" && _secretColumns.ReferencesProtectedRowProjection(req.Sql))
             return BadRequest(new DbAdminQueryError("protected_row_projection",
-                "Query serializes a whole row of a table that holds secret columns (to_json/"
+                "Query expands or serializes a whole row of a table that holds secret columns (SELECT */TABLE/to_json/"
                 + "row_to_json/::text/FOR JSON and friends). That would return password hashes or "
                 + "encrypted credentials past the column mask. List the columns you actually need "
                 + "explicitly instead.", null));

@@ -1,6 +1,7 @@
 using NodePilot.Api.Security;
 using NodePilot.Api.Security.Ldap;
 using NodePilot.Api.Security.Oidc;
+using NodePilot.Engine.Security;
 
 namespace NodePilot.Api.Configuration.Validators;
 
@@ -75,8 +76,8 @@ public sealed class AuthenticationBootValidator : IBootValidator
         else if (string.IsNullOrWhiteSpace(serviceDn))
             Error(issues, "Authentication:Ldap:ServiceBindDn", "service-bind credentials are required for background group sync and deprovisioning.");
 
-        var allowedGroups = config.GetSection("Authentication:Ldap:AllowedGroupSids").Get<string[]>() ?? [];
-        if (allowedGroups.Length == 0)
+        var allowedGroups = ProviderAtomicList.Read<string>(config, "Authentication:Ldap:AllowedGroupSids") ?? [];
+        if (allowedGroups.Count == 0)
             Error(issues, "Authentication:Ldap:AllowedGroupSids", "at least one allowed AD group SID is required; unrestricted domain-wide JIT access is disabled.");
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -106,7 +107,7 @@ public sealed class AuthenticationBootValidator : IBootValidator
         if (!config.GetValue<bool>("Authentication:Windows:Enabled")) return;
 
         if (!config.GetValue<bool>("Authentication:Ldap:Enabled")
-            && !(config.GetSection("Authentication:Ldap:AllowedGroupSids").Get<string[]>() ?? []).Any())
+            && !(ProviderAtomicList.Read<string>(config, "Authentication:Ldap:AllowedGroupSids") ?? []).Any())
         {
             Error(issues, "Authentication:Ldap:AllowedGroupSids",
                 "at least one allowed AD group SID is required for Windows SSO.");
@@ -127,7 +128,7 @@ public sealed class AuthenticationBootValidator : IBootValidator
             Error(issues, "Authentication:Oidc:Authority", "must be an absolute HTTPS issuer URL.");
         Required(config, issues, "Authentication:Oidc:ClientId");
         Required(config, issues, "Authentication:Oidc:ClientSecret");
-        if (!(config.GetSection("Authentication:Oidc:AllowedGroupIds").Get<string[]>() ?? []).Any())
+        if (!(ProviderAtomicList.Read<string>(config, "Authentication:Oidc:AllowedGroupIds") ?? []).Any())
             Error(issues, "Authentication:Oidc:AllowedGroupIds", "at least one allowed OIDC group id is required.");
         if (config.GetValue<bool>("Cluster:Enabled"))
         {

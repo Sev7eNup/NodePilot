@@ -40,6 +40,42 @@ public sealed class DashboardAggregateCacheTests : IDisposable
     private DashboardAggregateCache NewCache()
         => new(_provider.GetRequiredService<IServiceScopeFactory>());
 
+    [Fact]
+    public async Task Clear_DetachesInFlightWarmupWithoutRemovingNewGenerationSingleFlight()
+    {
+        var cache = NewCache();
+        var oldStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseNew = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newCalls = 0;
+        var warmup = cache.PrimeAsync("same-scope", TimeSpan.FromMinutes(1), async (_, _) =>
+        {
+            oldStarted.TrySetResult();
+            await releaseOld.Task;
+            return "old-private-details";
+        }, CancellationToken.None);
+        await oldStarted.Task;
+        cache.Clear();
+        Task<string> Read() => cache.GetOrComputeAsync("same-scope", TimeSpan.FromMinutes(1), async (_, _) =>
+        {
+            Interlocked.Increment(ref newCalls);
+            newStarted.TrySetResult();
+            await releaseNew.Task;
+            return "fresh-scope";
+        }, CancellationToken.None);
+        var first = Read();
+        await newStarted.Task;
+        releaseOld.TrySetResult();
+        await warmup;
+        var second = Read();
+        releaseNew.TrySetResult();
+        (await first).Should().Be("fresh-scope");
+        (await second).Should().Be("fresh-scope");
+        newCalls.Should().Be(1, "an old warmup must not delete the replacement generation's pending factory");
+        (await Read()).Should().Be("fresh-scope");
+    }
+
     private static AccessibleFolderSet Scoped(params Guid[] folderIds)
         => new() { IsUnrestricted = false, FolderIds = [.. folderIds] };
 

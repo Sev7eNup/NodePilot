@@ -218,6 +218,15 @@ commit, and restored to their original content if the database commit fails. A c
 failure aborts with a critical manual-recovery error. The result keeps its own settings line
 because a service restart may still be required.
 
+A failed COMMIT acknowledgement does not prove rollback. Each restore writes a stable
+`BACKUP_RESTORE_DB_COMMITTED` audit marker inside the database transaction. After a commit
+exception, the failed transaction is released and a separate bounded read checks that marker.
+A durable marker preserves settings and completes live-subscription revocation without replay;
+an absent marker permits compensation. If verification itself is unavailable, settings are
+left in place, existing live access is conservatively revoked, and the result instructs the
+operator to check the operation ID before repeating the restore. Request cancellation cannot
+skip this commit reconciliation.
+
 ### K9 — Export only the runtime overrides, as raw file content
 What is exported is **only** the **raw JSON content** of `appsettings.runtime.json` (the
 database/file overrides), **not** `IConfigurationRoot` — that one is already decrypted and merged

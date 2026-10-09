@@ -76,11 +76,54 @@ public static class SqlStatementInspector
         return false;
     }
 
-    private static IEnumerable<SqlIdentifier> Tokenize(string sql)
+    /// <summary>
+    /// Finds implicit column expansion, including expansions inside CTEs/derived tables and
+    /// UNION branches. Positional aliases erase the original result names, so name-based
+    /// secret masking cannot make these projections safe. COUNT(*) and multiplication do
+    /// not expand columns. This is a conservative lexer predicate, not a SQL sandbox.
+    /// </summary>
+    public static bool ContainsImplicitColumnProjection(string sql)
+    {
+        var tokens = Tokenize(sql, includeSyntax: true).ToArray();
+        for (var i = 0; i < tokens.Length; i++)
+        {
+            var token = tokens[i];
+            if (token.Quoted) continue;
+            // PostgreSQL's TABLE relation shorthand is equivalent to SELECT *.
+            if (token.Value.Equals("TABLE", StringComparison.OrdinalIgnoreCase)) return true;
+            if (token.Value != "*") continue;
+            if (i >= 2 && i + 1 < tokens.Length
+                && tokens[i - 1].Value == "(" && tokens[i + 1].Value == ")"
+                && !tokens[i - 2].Quoted
+                && tokens[i - 2].Value.Equals("COUNT", StringComparison.OrdinalIgnoreCase)) continue;
+            // A multiplication operator has scalar operands on both sides. In particular,
+            // SELECT [TOP n] *, alias.* and function(*) cannot meet this condition.
+            if (i == 0 || i + 1 == tokens.Length
+                || !CanEndScalar(tokens[i - 1]) || !CanStartScalar(tokens[i + 1])) return true;
+        }
+        return false;
+    }
+
+    private static readonly HashSet<string> NonScalarKeywords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SELECT", "DISTINCT", "ALL", "TOP", "FROM", "WHERE", "AS", "INTO", "JOIN",
+        "ON", "GROUP", "ORDER", "BY", "HAVING", "LIMIT", "OFFSET", "FETCH", "UNION",
+        "INTERSECT", "EXCEPT", "RETURNING", "WHEN", "THEN", "ELSE", "AND", "OR",
+    };
+
+    private static bool IsScalarToken(SqlIdentifier token)
+        => token.Quoted || (token.Value.Length > 0
+            && (char.IsLetterOrDigit(token.Value[0]) || token.Value[0] is '_' or '#' or '@' or '$')
+            && !NonScalarKeywords.Contains(token.Value));
+
+    private static bool CanEndScalar(SqlIdentifier token) => token.Value == ")" || IsScalarToken(token);
+    private static bool CanStartScalar(SqlIdentifier token) => token.Value is "(" or "+" or "-" || IsScalarToken(token);
+
+    private static IEnumerable<SqlIdentifier> Tokenize(string sql, bool includeSyntax = false)
     {
         for (var i = 0; i < sql.Length;)
         {
-            if (char.IsWhiteSpace(sql[i]) || sql[i] is ',' or '(' or ')' or '.' or ';' or '*')
+            if (char.IsWhiteSpace(sql[i]))
             {
                 i++;
                 continue;
@@ -117,6 +160,7 @@ public static class SqlStatementInspector
             if (sql[i] == '\'')
             {
                 SkipQuotedLiteral(sql, ref i, '\'');
+                if (includeSyntax) yield return new SqlIdentifier("<value>", Quoted: true);
                 continue;
             }
 
@@ -132,6 +176,7 @@ public static class SqlStatementInspector
                 i += tag.Length;
                 var end = sql.IndexOf(tag, i, StringComparison.Ordinal);
                 i = end < 0 ? sql.Length : end + tag.Length;
+                if (includeSyntax) yield return new SqlIdentifier("<value>", Quoted: true);
                 continue;
             }
 
@@ -170,6 +215,7 @@ public static class SqlStatementInspector
                 continue;
             }
 
+            if (includeSyntax) yield return new SqlIdentifier(sql[i].ToString(), Quoted: false);
             i++;
         }
     }

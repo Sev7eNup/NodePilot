@@ -122,6 +122,49 @@ public sealed class ExecutionsControllerRbacTests : IDisposable
         page!.Items.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("Viewer", false)]
+    [InlineData("Operator", false)]
+    [InlineData("Admin", true)]
+    public async Task ChildResponses_OnlyExposeReadableParent(string role, bool parentVisible)
+    {
+        _financeExec.ParentExecutionId = _salesExec.Id;
+        await _db.SaveChangesAsync();
+        var ctrl = NewController(_opFinanceUserId, role);
+
+        var list = await ctrl.GetAll(_financeWorkflow.Id, ct: CancellationToken.None);
+        var row = list.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<PagedResponse<Dtos.ExecutionResponse>>().Subject.Items.Single();
+        var detail = (await ctrl.GetById(_financeExec.Id, CancellationToken.None)).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<Dtos.ExecutionResponse>().Subject;
+
+        foreach (var response in new[] { row, detail })
+        {
+            response.ParentExecutionId.Should().Be(parentVisible ? _salesExec.Id : null);
+            response.ParentWorkflowName.Should().Be(parentVisible ? _salesWorkflow.Name : null);
+        }
+        if (!parentVisible)
+            (await ctrl.GetById(_salesExec.Id, CancellationToken.None)).Result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task ChildResponses_PreserveParentWhenBothFoldersAreReadable()
+    {
+        _financeExec.ParentExecutionId = _salesExec.Id;
+        _db.SharedFolderPermissions.Add(new SharedFolderPermission
+        {
+            Id = Guid.NewGuid(), FolderId = _salesId,
+            PrincipalType = FolderPrincipalType.User, PrincipalKey = _opFinanceUserId.ToString("D"),
+            Role = SharedFolderRole.FolderViewer,
+        });
+        await _db.SaveChangesAsync();
+        var ctrl = NewController(_opFinanceUserId, "Viewer");
+        var detail = (await ctrl.GetById(_financeExec.Id, CancellationToken.None)).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<Dtos.ExecutionResponse>().Subject;
+        detail.ParentExecutionId.Should().Be(_salesExec.Id);
+        detail.ParentWorkflowName.Should().Be(_salesWorkflow.Name);
+    }
+
     [Fact]
     public async Task GetById_AsFinanceEditor_OnSalesExec_Returns404()
     {

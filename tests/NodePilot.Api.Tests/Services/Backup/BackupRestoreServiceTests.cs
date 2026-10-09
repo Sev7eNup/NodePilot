@@ -8,6 +8,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Configuration;
 using NodePilot.Api.Services.Backup;
 using NodePilot.Api.Services.Backup.Parts;
+using NodePilot.Api.Hubs;
+using NodePilot.Api.Security;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -24,6 +27,7 @@ namespace NodePilot.Api.Tests.Services.Backup;
 /// zero active Admins (K11), an abort when a workflow references a GUID that isn't in the
 /// backup (K12), and rejection of an unauthenticated encrypted payload (K5).
 /// </summary>
+[Collection(NodePilot.Api.Tests.Hubs.ExecutionHubStaticStateCollection.Name)]
 public sealed class BackupRestoreServiceTests : IDisposable
 {
     private const string Passphrase = "a-strong-backup-pass";
@@ -110,6 +114,256 @@ public sealed class BackupRestoreServiceTests : IDisposable
         db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "wf1", DefinitionJson = def, FolderId = child.Id, IsEnabled = false });
         await db.SaveChangesAsync();
         return (machineId, cred.Id, child.Id);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OverwriteRoundTrip_MovedWorkflowRevokesLiveSubscriptionsAndFolderProjection(bool cancelAfterCommit)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        var privateFolder = new SharedWorkflowFolder
+        {
+            Id = Guid.NewGuid(), Name = "Private", Path = "/Private", Depth = 1,
+            ParentFolderId = SharedWorkflowFolder.RootFolderId,
+        };
+        var workflowId = Guid.NewGuid();
+        src.AddRange(privateFolder, new Workflow
+        {
+            Id = workflowId, Name = "Restored private", DefinitionJson = EmptyDefinition, FolderId = privateFolder.Id,
+        });
+        await src.SaveChangesAsync(ct);
+        var backup = await ExportAsync(src, [BackupSections.Workflows]);
+        using var dst = TestDbFactory.Create();
+        var executionId = Guid.NewGuid();
+        dst.AddRange(new Workflow { Id = workflowId, Name = "Currently public", DefinitionJson = EmptyDefinition },
+            new WorkflowExecution { Id = executionId, WorkflowId = workflowId, Status = ExecutionStatus.Running });
+        await dst.SaveChangesAsync(ct);
+        using var request = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var restoringDb = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(dst.Database.GetDbConnection())
+            .AddInterceptors(new CancelAfterRestoreCommit(cancelAfterCommit ? request : null)).Options);
+        var hub = new RecordingHubContext();
+        var projection = new RecordingFolderProjection();
+        ExecutionHub.RegisterGroupForTest("viewer", $"workflow-{workflowId}");
+        ExecutionHub.RegisterGroupForTest("viewer", executionId.ToString());
+        ExecutionHub.RegisterOpsFeedForTest("viewer", false, [SharedWorkflowFolder.RootFolderId]);
+        try
+        {
+            var restore = new BackupRestoreService(restoringDb, _atRest,
+                new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance),
+                NullLogger<BackupRestoreService>.Instance, VersionProtector(), hub, projection,
+                new ResourceAuthorizationService(restoringDb));
+            await restore.RestoreAsync(backup, Passphrase,
+                new Dictionary<string, RestoreConflictPolicy> { [BackupSections.Workflows] = RestoreConflictPolicy.Overwrite },
+                RestoreActor, request.Token);
+
+            dst.ChangeTracker.Clear();
+            (await dst.Workflows.SingleAsync(w => w.Id == workflowId, ct)).FolderId.Should().Be(privateFolder.Id);
+            hub.Removed.Should().Contain(("viewer", $"workflow-{workflowId}"));
+            hub.Removed.Should().Contain(("viewer", executionId.ToString()));
+            projection.Invalidated.Should().Contain(workflowId);
+            ExecutionHub.GetOpsFeedConnections(SharedWorkflowFolder.RootFolderId).Should().BeEmpty();
+            request.IsCancellationRequested.Should().Be(cancelAfterCommit);
+        }
+        finally
+        {
+            ExecutionHub.ClearGroupsForTest();
+            ExecutionHub.ClearOpsFeedForTest();
+        }
+    }
+
+    private sealed class CancelAfterRestoreCommit(CancellationTokenSource? request) : DbTransactionInterceptor
+    {
+        public override Task TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData,
+            CancellationToken cancellationToken = default)
+        {
+            request?.Cancel();
+            return Task.CompletedTask;
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Restore_CommitFailure_PreservesSettingsAndLiveScopesAccordingToDurableOutcome(
+        bool committed, bool verificationUnavailable)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        var privateFolder = new SharedWorkflowFolder
+        {
+            Id = Guid.NewGuid(), Name = "Private", Path = "/Private", Depth = 1,
+            ParentFolderId = SharedWorkflowFolder.RootFolderId,
+        };
+        var workflowId = Guid.NewGuid();
+        src.AddRange(privateFolder, new Workflow
+        {
+            Id = workflowId, Name = "Restored", DefinitionJson = EmptyDefinition, FolderId = privateFolder.Id,
+        });
+        await src.SaveChangesAsync(ct);
+        var sourceSettings = new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance);
+        sourceSettings.MutateAndWrite(root => root["Smtp"] = new JsonObject { ["Port"] = 2525 });
+        var backup = (await new BackupService(Parts(src)
+            .Where(part => part is not SettingsBackupPart)
+            .Append(new SettingsBackupPart(sourceSettings, _atRest)))
+            .ExportAsync([BackupSections.Workflows, BackupSections.Settings], Passphrase, "admin", ct)).Content;
+
+        using var dst = TestDbFactory.Create();
+        dst.Workflows.Add(new Workflow { Id = workflowId, Name = "Public", DefinitionJson = EmptyDefinition });
+        await dst.SaveChangesAsync(ct);
+        var targetSettings = new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance);
+        targetSettings.MutateAndWrite(root => root["Smtp"] = new JsonObject { ["Port"] = 25 });
+        using var restoringDb = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(dst.Database.GetDbConnection())
+            .AddInterceptors(new FailRestoreCommit(committed), new RejectCommitVerification(verificationUnavailable)).Options);
+        var hub = new RecordingHubContext();
+        var projection = new RecordingFolderProjection();
+        ExecutionHub.RegisterGroupForTest("viewer", $"workflow-{workflowId}");
+        try
+        {
+            var restore = new BackupRestoreService(restoringDb, _atRest, targetSettings,
+                NullLogger<BackupRestoreService>.Instance, VersionProtector(), hub, projection,
+                new ResourceAuthorizationService(restoringDb));
+            var failure = await Record.ExceptionAsync(() => restore.RestoreAsync(backup, Passphrase,
+                Policy(BackupSections.Workflows, RestoreConflictPolicy.Overwrite), RestoreActor, ct));
+
+            dst.ChangeTracker.Clear();
+            (await dst.Workflows.SingleAsync(w => w.Id == workflowId, ct)).FolderId.Should()
+                .Be(committed ? privateFolder.Id : SharedWorkflowFolder.RootFolderId);
+            targetSettings.ReadOrEmpty()["Smtp"]?["Port"]?.GetValue<int>().Should()
+                .Be(committed ? 2525 : 25, "settings compensation must follow the durable database outcome");
+            if (committed)
+            {
+                hub.Removed.Should().Contain(("viewer", $"workflow-{workflowId}"));
+                projection.Invalidated.Should().Contain(workflowId);
+                if (verificationUnavailable)
+                    failure.Should().BeOfType<BackupRestoreException>().Which.Message.Should()
+                        .Contain("Do not repeat the restore");
+                else
+                    failure.Should().BeNull("a verified committed restore must finish its postcommit work");
+            }
+            else
+            {
+                hub.Removed.Should().BeEmpty();
+                failure.Should().BeOfType<IOException>();
+            }
+        }
+        finally { ExecutionHub.ClearGroupsForTest(); }
+    }
+
+    private sealed class FailRestoreCommit(bool committed) : DbTransactionInterceptor
+    {
+        public override ValueTask<InterceptionResult> TransactionCommittingAsync(
+            DbTransaction transaction, TransactionEventData eventData, InterceptionResult result,
+            CancellationToken cancellationToken = default)
+            => committed ? ValueTask.FromResult(result)
+                : ValueTask.FromException<InterceptionResult>(new IOException("Database commit was not applied."));
+
+        public override Task TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData,
+            CancellationToken cancellationToken = default)
+            => Task.FromException(new IOException("Database committed; its acknowledgement was lost."));
+    }
+
+    private sealed class RejectCommitVerification(bool unavailable) : DbCommandInterceptor
+    {
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+            => unavailable && command.CommandText.Contains("FROM \"AuditLog\"", StringComparison.Ordinal)
+                ? ValueTask.FromException<InterceptionResult<DbDataReader>>(new IOException("Database temporarily unavailable."))
+                : ValueTask.FromResult(result);
+    }
+
+    [Theory]
+    [InlineData("startWorkflow", "workflowNameOrId")]
+    [InlineData("forEach", "childWorkflowNameOrId")]
+    [InlineData("aiAgent", "agent")]
+    [InlineData("aiAgentTeam", "members")]
+    public async Task RenameRoundTrip_RemapsChildToRestoredWorkflow(string activity, string targetKey)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        var childId = Guid.NewGuid();
+        var parentId = Guid.NewGuid();
+        var agent = new JsonObject { ["tools"] = new JsonArray(new JsonObject
+            { ["name"] = "workflow_run", ["workflowIds"] = new JsonArray(childId.ToString()) }) };
+        var config = activity switch
+        {
+            "aiAgent" => new JsonObject { ["agent"] = agent },
+            "aiAgentTeam" => new JsonObject { ["members"] = new JsonArray(agent) },
+            _ => new JsonObject { [targetKey] = childId.ToString() },
+        };
+        src.Workflows.AddRange(
+            new Workflow { Id = childId, Name = "Child", DefinitionJson = EmptyDefinition },
+            new Workflow { Id = parentId, Name = "Parent", DefinitionJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                nodes = new[] { new { id = "call", type = activity, data = new
+                    { config } } },
+                edges = Array.Empty<object>(),
+            }) });
+        await src.SaveChangesAsync(ct);
+        var backup = await ExportAsync(src, [BackupSections.Workflows]);
+        using var dst = TestDbFactory.Create();
+        dst.Workflows.AddRange(
+            new Workflow { Id = childId, Name = "Child", DefinitionJson = EmptyDefinition },
+            new Workflow { Id = parentId, Name = "Parent", DefinitionJson = EmptyDefinition });
+        await dst.SaveChangesAsync(ct);
+
+        await Restore(dst).RestoreAsync(backup, Passphrase,
+            new Dictionary<string, RestoreConflictPolicy> { [BackupSections.Workflows] = RestoreConflictPolicy.Rename },
+            RestoreActor, ct);
+
+        dst.ChangeTracker.Clear();
+        var restoredChild = await dst.Workflows.SingleAsync(w => w.Name == "Child (Restored 2)", ct);
+        var restoredParent = await dst.Workflows.SingleAsync(w => w.Name == "Parent (Restored 2)", ct);
+        NodePilot.Core.WorkflowDefinitions.WorkflowResourceReferences.Enumerate(JsonNode.Parse(restoredParent.DefinitionJson))
+            .Where(r => r.Kind == "workflow").Should().ContainSingle().Which.Id.Should().Be(restoredChild.Id);
+        (await dst.Workflows.SingleAsync(w => w.Id == parentId, ct)).DefinitionJson.Should().Be(EmptyDefinition);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RenameRoundTrip_RemapsAgentInfrastructureBindings(bool team)
+    {
+        using var src = TestDbFactory.Create();
+        var machineId = Guid.NewGuid();
+        var credentialId = Guid.NewGuid();
+        var agent = new JsonObject
+        {
+            ["targetMachineId"] = machineId.ToString(), ["credentialId"] = credentialId.ToString(),
+            ["tools"] = new JsonArray()
+        };
+        var config = team ? new JsonObject { ["members"] = new JsonArray(agent) }
+            : new JsonObject { ["agent"] = agent };
+        src.Credentials.Add(new Credential { Id = credentialId, Name = "svc", Username = "svc", EncryptedPassword = _atRest.Protect("secret") });
+        src.ManagedMachines.Add(new ManagedMachine { Id = machineId, Name = "host", Hostname = "source.example" });
+        src.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "Agent", DefinitionJson = new JsonObject
+        {
+            ["nodes"] = new JsonArray(new JsonObject { ["id"] = "agent", ["type"] = team ? "aiAgentTeam" : "aiAgent",
+                ["data"] = new JsonObject { ["config"] = config } }), ["edges"] = new JsonArray()
+        }.ToJsonString() });
+        await src.SaveChangesAsync();
+        var backup = await ExportAsync(src, [BackupSections.Workflows, BackupSections.Credentials, BackupSections.Machines]);
+        using var dst = TestDbFactory.Create();
+        dst.Credentials.Add(new Credential { Id = credentialId, Name = "svc", Username = "old", EncryptedPassword = _atRest.Protect("old-secret") });
+        dst.ManagedMachines.Add(new ManagedMachine { Id = machineId, Name = "host", Hostname = "original.example" });
+        await dst.SaveChangesAsync();
+        await Restore(dst).RestoreAsync(backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>
+        {
+            [BackupSections.Credentials] = RestoreConflictPolicy.Rename,
+            [BackupSections.Machines] = RestoreConflictPolicy.Rename,
+        }, RestoreActor, CancellationToken.None);
+        var machine = await dst.ManagedMachines.SingleAsync(m => m.Id != machineId);
+        var credential = await dst.Credentials.SingleAsync(c => c.Id != credentialId);
+        var restored = JsonNode.Parse((await dst.Workflows.SingleAsync()).DefinitionJson);
+        var refs = NodePilot.Core.WorkflowDefinitions.WorkflowResourceReferences.Enumerate(restored).ToList();
+        refs.Single(r => r.Kind == "machine").Id.Should().Be(machine.Id);
+        refs.Single(r => r.Kind == "credential").Id.Should().Be(credential.Id);
+        (await dst.ManagedMachines.FindAsync(machineId))!.Hostname.Should().Be("original.example");
     }
 
     [Fact]
@@ -199,6 +453,48 @@ public sealed class BackupRestoreServiceTests : IDisposable
             && m.Authority == ExternalIdentity.ActiveDirectoryAuthority
             && m.GroupKey == "S-1-5-21-1-2-3-2001");
         dst.Users.Single(u => u.Username == "admin").IsBreakGlass.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UserOverwrite_ChangedMembershipSnapshotInvalidatesSession(bool freshnessOnly)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        var userId = Guid.NewGuid();
+        var observed = DateTime.UtcNow.AddMinutes(-20);
+        const string authority = "https://identity.example.test";
+        src.Users.AddRange(
+            new User { Id = Guid.NewGuid(), Username = "recovery", Role = UserRole.Admin,
+                PasswordHash = "hash", IsActive = true, IsBreakGlass = true },
+            new User { Id = userId, Username = "viewer", Role = UserRole.Viewer,
+                Provider = AuthProvider.Oidc, IsActive = true, ExternalId = "viewer-subject" });
+        src.ExternalIdentities.Add(new ExternalIdentity
+            { Id = Guid.NewGuid(), UserId = userId, Authority = authority, Subject = "viewer-subject" });
+        src.DirectoryMemberships.Add(new DirectoryMembership
+            { UserId = userId, Authority = authority, GroupKey = "old-group", LastSeenAt = observed });
+        await src.SaveChangesAsync(ct);
+        var backup = await ExportAsync(src, [BackupSections.Users]);
+        using var dst = TestDbFactory.Create();
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, ct);
+        var membership = await dst.DirectoryMemberships.SingleAsync(m => m.UserId == userId, ct);
+        if (freshnessOnly) membership.LastSeenAt = DateTime.UtcNow;
+        else
+        {
+            dst.DirectoryMemberships.Remove(membership);
+            dst.DirectoryMemberships.Add(new DirectoryMembership
+                { UserId = userId, Authority = authority, GroupKey = "current-group", LastSeenAt = observed });
+        }
+        await dst.SaveChangesAsync(ct);
+        var oldStamp = (await dst.Users.SingleAsync(u => u.Id == userId, ct)).SecurityStamp;
+
+        await Restore(dst).RestoreAsync(backup, Passphrase,
+            new Dictionary<string, RestoreConflictPolicy> { [BackupSections.Users] = RestoreConflictPolicy.Overwrite },
+            RestoreActor, ct);
+
+        dst.ChangeTracker.Clear();
+        (await dst.Users.SingleAsync(u => u.Id == userId, ct)).SecurityStamp.Should().Be(oldStamp + 1);
     }
 
     [Fact]

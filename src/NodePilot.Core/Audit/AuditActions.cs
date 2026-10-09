@@ -39,6 +39,7 @@ public static class AuditActions
 
     public const string BackupExported = "BACKUP_EXPORTED";
     public const string BackupRestored = "BACKUP_RESTORED";
+    public const string BackupRestoreDbCommitted = "BACKUP_RESTORE_DB_COMMITTED";
 
     public const string CredentialCreated = "CREDENTIAL_CREATED";
     public const string CredentialDecrypted = "CREDENTIAL_DECRYPTED";

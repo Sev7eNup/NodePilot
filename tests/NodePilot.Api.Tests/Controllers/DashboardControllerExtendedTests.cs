@@ -105,7 +105,7 @@ public class DashboardControllerExtendedTests
             Name = "NotBackfilledYet",
             IsEnabled = true,
             UpdatedAt = DateTime.UtcNow,
-            DefinitionJson = """{"nodes":[{"id":"t","data":{"activityType":"databaseTrigger","config":{"intervalSeconds":45}}}]}""",
+            DefinitionJson = """{"nodes":[{"id":"t","data":{"activityType":"databaseTrigger","config":{"query":"SELECT 1","intervalSeconds":45}}}]}""",
             TriggerTypesJson = null,
         });
         await db.SaveChangesAsync();
@@ -178,7 +178,7 @@ public class DashboardControllerExtendedTests
             Name = "DbPoll",
             IsEnabled = true,
             UpdatedAt = DateTime.UtcNow,
-            DefinitionJson = """{"nodes":[{"id":"t","data":{"activityType":"databaseTrigger","config":{"intervalSeconds":30}}}]}""",
+            DefinitionJson = """{"nodes":[{"id":"t","data":{"activityType":"databaseTrigger","config":{"query":"SELECT 1","intervalSeconds":30}}}]}""",
             TriggerTypesJson = """["databaseTrigger"]"""
         });
         await db.SaveChangesAsync();
@@ -189,6 +189,29 @@ public class DashboardControllerExtendedTests
         trig.NextFireKind.Should().Be("polling");
         trig.PollIntervalSeconds.Should().Be(30);
         trig.NextFireUtc.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("{\"query\":\"SELECT 1\",\"pollingIntervalSeconds\":45,\"intervalSeconds\":90}", 45)]
+    [InlineData("{\"query\":\"SELECT 1\",\"intervalSeconds\":\"60\"}", 60)]
+    [InlineData("{\"query\":\"SELECT 1\"}", 30)]
+    [InlineData("{\"query\":\"SELECT 1\",\"pollingIntervalSeconds\":1}", 5)]
+    [InlineData("{\"intervalSeconds\":45}", null)]
+    [InlineData("{\"query\":\"SELECT 1\",\"provider\":\"unsupported\"}", null)]
+    public async Task Get_DatabaseTrigger_ShowsEffectiveSchedulerInterval(string config, int? expected)
+    {
+        using var db = TestDbFactory.Create();
+        db.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Effective poll interval", IsEnabled = true,
+            DefinitionJson = $$$"""{"nodes":[{"id":"t","data":{"activityType":"databaseTrigger","config":{{{config}}}}}]}""",
+            TriggerTypesJson = """["databaseTrigger"]"""
+        });
+        await db.SaveChangesAsync();
+
+        var stats = Unwrap(await NewController(db).Get(CancellationToken.None));
+
+        stats.ArmedTriggers.Single().PollIntervalSeconds.Should().Be(expected);
     }
 
     [Fact]

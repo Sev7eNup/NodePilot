@@ -98,7 +98,8 @@ internal static class DbAdminReadOnlySqlGuard
         string sql,
         IReadOnlySet<string> protectedTableIdentifiers)
         => ReferencesAnyIdentifier(sql, protectedTableIdentifiers)
-           && (ReferencesAnyIdentifier(sql, WholeRowProjectionIdentifiers)
+           && (SqlStatementInspector.ContainsImplicitColumnProjection(sql)
+               || ReferencesAnyIdentifier(sql, WholeRowProjectionIdentifiers)
                || ReferencesIdentifierPair(sql, "FOR", "JSON")
                || ReferencesIdentifierPair(sql, "FOR", "XML"));
 

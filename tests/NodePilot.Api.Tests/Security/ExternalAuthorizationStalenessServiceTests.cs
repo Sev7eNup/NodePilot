@@ -1,5 +1,7 @@
 using FluentAssertions;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -351,4 +353,94 @@ public sealed class ExternalAuthorizationStalenessServiceTests : IDisposable
         StartedByUserId = user.Id, Status = status, StartedAt = DateTime.UtcNow,
         TriggeredBy = "scheduleTrigger",
     };
+
+    [Fact]
+    public async Task Sweep_FreshDirectorySnapshotCommittedAfterInitialVerdict_PreservesCurrentWork()
+    {
+        var now = DateTime.UtcNow;
+        var user = new User
+        {
+            Id = Guid.NewGuid(), Username = "refreshed@example.test", Provider = AuthProvider.Ldap,
+            Role = UserRole.Operator, IsActive = true, LastDirectorySyncAt = now.AddMinutes(-16),
+            DirectorySyncStatus = "Failed", SecurityStamp = 4,
+        };
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "fresh principal", DefinitionJson = "{}" };
+        var oldSession = new AuthSession
+        {
+            Id = Guid.NewGuid(), UserId = user.Id, AuthenticationMethod = "Ldap",
+            CreatedAt = now.AddHours(-1), LastSeenAt = now.AddMinutes(-16),
+            ExpiresAt = now.AddHours(1), CurrentJti = Guid.NewGuid().ToString("N"),
+        };
+        _db.AddRange(user, workflow, oldSession);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+        var freshExecutionId = Guid.NewGuid();
+        var refresh = new BeforeSweepTransaction(async () =>
+        {
+            // A successful directory sync with unchanged rights does not change SecurityStamp.
+            await _db.Users.Where(candidate => candidate.Id == user.Id).ExecuteUpdateAsync(setters => setters
+                .SetProperty(candidate => candidate.LastDirectorySyncAt, now)
+                .SetProperty(candidate => candidate.DirectorySyncStatus, "Success"));
+            _db.WorkflowExecutions.Add(new WorkflowExecution
+            {
+                Id = freshExecutionId, WorkflowId = workflow.Id, StartedByUserId = user.Id,
+                Status = ExecutionStatus.Running, StartedAt = now, TriggeredBy = "manual",
+            });
+            await _db.SaveChangesAsync();
+        });
+        await using var sweepDb = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(_connection).AddInterceptors(refresh).Options);
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(candidate => candidate.CancelAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var services = new ServiceCollection();
+        services.AddSingleton(sweepDb);
+        services.AddSingleton(engine.Object);
+        services.AddSingleton<IAuditWriter>(NoopAuditWriter.Instance);
+        services.AddSingleton(Options.Create(new AuthenticationPolicyOptions()));
+        services.AddSingleton(Options.Create(new EnterpriseOidcOptions()));
+        services.AddScoped<ExternalAuthorizationEvaluator>();
+        services.AddMemoryCache();
+        using var provider = services.BuildServiceProvider();
+        var cluster = new Mock<IClusterStateProvider>();
+        cluster.SetupGet(candidate => candidate.IsLeader).Returns(true);
+        var service = new ExternalAuthorizationStalenessService(
+            provider.GetRequiredService<IServiceScopeFactory>(), Options.Create(new AuthenticationPolicyOptions()),
+            cluster.Object, NullLogger<ExternalAuthorizationStalenessService>.Instance,
+            TestDatabaseAvailability.Available);
+
+        var affected = await service.SweepOnceAsync(now, default);
+
+        refresh.DidRefresh.Should().BeTrue();
+        _db.ChangeTracker.Clear();
+        using (new FluentAssertions.Execution.AssertionScope())
+        {
+            affected.Should().Be(0);
+            (await _db.Users.SingleAsync(candidate => candidate.Id == user.Id)).SecurityStamp.Should().Be(4);
+            (await _db.AuthSessions.SingleAsync(candidate => candidate.Id == oldSession.Id)).RevokedAt.Should().BeNull();
+            (await _db.WorkflowExecutions.SingleAsync(candidate => candidate.Id == freshExecutionId)).Status
+                .Should().Be(ExecutionStatus.Running);
+        }
+        engine.Verify(candidate => candidate.CancelAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private sealed class BeforeSweepTransaction(Func<Task> refresh) : DbTransactionInterceptor
+    {
+        public bool DidRefresh { get; private set; }
+
+        public override async ValueTask<InterceptionResult<DbTransaction>> TransactionStartingAsync(
+            DbConnection connection, TransactionStartingEventData eventData, InterceptionResult<DbTransaction> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (!DidRefresh)
+            {
+                // Finish the competing sync before the sweep acquires its transaction locks.
+                // This exercises a real serial order rather than writing through another
+                // context on an already locked SQLite connection.
+                await refresh();
+                DidRefresh = true;
+            }
+            return result;
+        }
+    }
 }
