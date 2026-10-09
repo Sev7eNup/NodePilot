@@ -527,7 +527,7 @@ describe('DashboardPage', () => {
     })));
     renderPage();
     await waitFor(() => expect(screen.getByText('Nightly')).toBeInTheDocument());
-    expect(screen.getByText(/in [45]m/i)).toBeInTheDocument();
+    expect(within(screen.getByText('Nightly').closest('li')!).getByText(/in [45]m/i)).toBeInTheDocument();
   });
 
   it('renders event-driven label for fileWatcher triggers', async () => {
@@ -625,28 +625,85 @@ describe('DashboardPage', () => {
   });
 
   it.each([
-    ['en', null, 'Disabled', 'Single node', 'HA: disabled'],
-    ['de', null, 'Deaktiviert', 'Einzelknoten', 'HA: deaktiviert'],
-    ['en', 'leader', 'Leader', 'HA enabled', 'HA: leader'],
-    ['en', 'standby', 'Standby', 'HA enabled', 'HA: standby'],
-    ['de', 'leader', 'Leader', 'HA aktiviert', 'HA: Leader'],
-    ['de', 'standby', 'Standby', 'HA aktiviert', 'HA: Standby'],
-  ] as const)('shows HA mode and role in %s with role %s', async (language, clusterRole, value, hint, banner) => {
+    ['en', null, 'HA: disabled'],
+    ['de', null, 'HA: deaktiviert'],
+    ['en', 'leader', 'HA: leader'],
+    ['en', 'standby', 'HA: standby'],
+    ['de', 'leader', 'HA: Leader'],
+    ['de', 'standby', 'HA: Standby'],
+  ] as const)('shows HA mode and role in the status bar in %s with role %s', async (language, clusterRole, banner) => {
     await i18n.changeLanguage(language);
     try {
       server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({ ...BASE_STATS, clusterRole })));
       renderPage();
-      const card = (await screen.findByText('HA', { exact: true })).closest('.np-card')! as HTMLElement;
-      expect(within(card).getByText(value)).toBeInTheDocument();
-      expect(within(card).getByText(hint)).toBeInTheDocument();
-      expect(screen.getByText(banner)).toBeInTheDocument();
-      if (clusterRole === null) {
-        expect(within(card).queryByText('Leader')).not.toBeInTheDocument();
-        expect(screen.queryByText(/HA: (active|aktiv)$/)).not.toBeInTheDocument();
-      }
+      expect(await screen.findByText(banner)).toBeInTheDocument();
+      // The status bar is the only place for it; there is no separate HA tile.
+      expect(screen.queryByText('HA', { exact: true })).not.toBeInTheDocument();
     } finally {
       await i18n.changeLanguage('en');
     }
+  });
+
+  it('counts armed triggers and shows the earliest scheduled start', async () => {
+    const soon = new Date(Date.now() + 5 * 60_000 + 30_000).toISOString();
+    const later = new Date(Date.now() + 3 * 3_600_000).toISOString();
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS,
+      armedTriggers: [
+        { workflowId: 'a', workflowName: 'Later', triggerTypes: ['scheduleTrigger'], nextFireUtc: later, nextFireKind: 'cron', pollIntervalSeconds: null },
+        { workflowId: 'b', workflowName: 'Soon', triggerTypes: ['scheduleTrigger'], nextFireUtc: soon, nextFireKind: 'cron', pollIntervalSeconds: null },
+        { workflowId: 'c', workflowName: 'Watcher', triggerTypes: ['fileWatcherTrigger'], nextFireUtc: null, nextFireKind: 'event-driven', pollIntervalSeconds: null },
+      ],
+    })));
+    renderPage();
+    const card = (await screen.findByText('Active triggers', { exact: true })).closest('.np-card')! as HTMLElement;
+    expect(within(card).getByText('3')).toBeInTheDocument();
+    expect(within(card).getByText(/Start in [45]m/)).toBeInTheDocument();
+  });
+
+  it.each([
+    [[], 'No triggers'],
+    [[{ workflowId: 'c', workflowName: 'Watcher', triggerTypes: ['fileWatcherTrigger'], nextFireUtc: null, nextFireKind: 'event-driven', pollIntervalSeconds: null }], 'Event-driven only'],
+  ] as const)('explains the active triggers tile without a scheduled start', async (armedTriggers, hint) => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({ ...BASE_STATS, armedTriggers })));
+    renderPage();
+    const card = (await screen.findByText('Active triggers', { exact: true })).closest('.np-card')! as HTMLElement;
+    expect(within(card).getByText(hint)).toBeInTheDocument();
+  });
+
+  it('counts healthy background services across all heartbeats', async () => {
+    const beat = (serviceName: string, isStale: boolean) => ({
+      serviceName, lastHeartbeatAt: new Date().toISOString(), expectedIntervalSeconds: 30, status: 'ok', isStale,
+    });
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS, healthHeartbeats: [beat('Scheduler', false), beat('Rollup', false), beat('Dispatch', false)],
+    })));
+    renderPage();
+    const card = (await screen.findByText('Services', { exact: true })).closest('.np-card')! as HTMLElement;
+    expect(within(card).getByText('3 / 3')).toBeInTheDocument();
+    expect(within(card).getByText('All running')).toBeInTheDocument();
+  });
+
+  it('turns the services tile red and names the stale services', async () => {
+    const beat = (serviceName: string, isStale: boolean) => ({
+      serviceName, lastHeartbeatAt: new Date().toISOString(), expectedIntervalSeconds: 30, status: 'ok', isStale,
+    });
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS, healthHeartbeats: [beat('Scheduler', false), beat('Rollup', true), beat('Alerting', true)],
+    })));
+    renderPage();
+    const card = (await screen.findByText('Services', { exact: true })).closest('.np-card')! as HTMLElement;
+    const value = within(card).getByText('1 / 3');
+    expect(value).toHaveClass('text-red-600');
+    expect(within(card).getByText('Stale: Rollup, Alerting')).toBeInTheDocument();
+  });
+
+  it('shows a neutral services tile when no heartbeats exist yet', async () => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({ ...BASE_STATS, healthHeartbeats: [] })));
+    renderPage();
+    const card = (await screen.findByText('Services', { exact: true })).closest('.np-card')! as HTMLElement;
+    expect(within(card).getByText('No heartbeats')).toBeInTheDocument();
+    expect(within(card).queryByText(/\d \/ \d/)).not.toBeInTheDocument();
   });
 
   it('keeps the Currently Running list in an out-of-flow scroll container (no row blow-out)', async () => {
