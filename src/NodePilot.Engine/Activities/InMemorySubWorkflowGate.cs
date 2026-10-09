@@ -5,7 +5,8 @@ namespace NodePilot.Engine.Activities;
 /// <summary>
 /// In-process default for <see cref="ISubWorkflowGate"/>. Backs the cap with a
 /// <see cref="SemaphoreSlim"/>; lifetime is Singleton so all activities in the process share
-/// the same pool. The cap limits concurrent startWorkflow calls; raising it does not help once
+/// the same pool. The cap counts child workflows with active work, excluding fully suspended
+/// ancestors under ADR 0018. Raising it does not help once
 /// downstream resources (DB pool, runspace pool, CIM provider) saturate, so the default balances
 /// keeping the queue moving against overloading those resources.
 /// </summary>

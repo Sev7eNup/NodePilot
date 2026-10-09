@@ -12,10 +12,10 @@ public enum ResumeCommand { Continue, StepOver, Stop }
 
 /// <summary>
 /// Payload of the resume message. <c>Overrides</c> holds user-edited variable values —
-/// this is the "what-if" part of the feature's UX: the user can change `{{globals.ENV}}`
-/// from "dev" to "prod", click Continue, and the downstream steps see the new value.
-/// The key format mirrors the variables dict: "globals.ENV", "manual.foo",
-/// "stepName.param.host".
+/// this is the "what-if" part of the feature's UX: the user can change an execution
+/// value, click Continue, and downstream steps see the new value. Keys such as
+/// "manual.foo" and "stepName.param.host" mirror the variables dictionary;
+/// global values remain protected by the coordinator's override validation.
 /// </summary>
 public sealed record ResumeRequest(
     ResumeCommand Command,
@@ -66,11 +66,19 @@ public sealed class DebugHandle
     {
         var tcs = new TaskCompletionSource<ResumeRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[stepId] = tcs;
-        // If the outer token source is cancelled (e.g. the user hits /cancel while paused),
-        // resolve the TaskCompletionSource with cancellation. Otherwise the engine's
-        // awaiting task would hang until the pause guard's own timeout eventually fires.
-        ct.Register(() => tcs.TrySetCanceled(ct));
-        return tcs.Task;
+        return WaitAsync();
+
+        async Task<ResumeRequest> WaitAsync()
+        {
+            using var registration = ct.Register(() => tcs.TrySetCanceled(ct));
+            try { return await tcs.Task.ConfigureAwait(false); }
+            finally
+            {
+                // Remove only this pause, even if a later pause reused the same step id.
+                ((ICollection<KeyValuePair<string, TaskCompletionSource<ResumeRequest>>>)_pending)
+                    .Remove(new(stepId, tcs));
+            }
+        }
     }
 
     /// <summary>Signals resume for the given step. Returns false if no step with this ID

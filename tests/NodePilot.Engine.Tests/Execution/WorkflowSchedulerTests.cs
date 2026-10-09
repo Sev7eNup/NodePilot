@@ -22,6 +22,75 @@ namespace NodePilot.Engine.Tests.Execution;
 [Collection("SerialEngineTests")]
 public class WorkflowSchedulerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_ChildCapacityTracksParallelSteps_AndDrainsFailureBeforeResumingCoordinator(bool failSibling)
+    {
+        WorkflowScheduler.Configure(2);
+        using var capacity = new InMemorySubWorkflowGate(1);
+        var ct = TestContext.Current.CancellationToken;
+        var finishSibling = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var nestedWaiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var childStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishChild = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sibling = Node("sibling");
+        var nested = Node("nested", "startWorkflow");
+        var nodes = new[] { sibling, nested };
+        try
+        {
+            var run = SubWorkflowGateLease.RunAsync(capacity, async () =>
+            {
+                await WorkflowScheduler.RunAsync(nodes, nodes.ToDictionary(n => n.Id),
+                    nodes.ToDictionary(n => n.Id, _ => new List<string>()),
+                    nodes.ToDictionary(n => n.Id, _ => new List<string>()),
+                    new Dictionary<string, List<WorkflowEdge>>(), new Dictionary<(string, string), WorkflowEdge>(),
+                    new Dictionary<string, string>(), new ConcurrentDictionary<string, ActivityResult>(), [], [],
+                    async (node, stepCt) =>
+                    {
+                        if (node.Id == sibling.Id)
+                        {
+                            await finishSibling.Task.WaitAsync(stepCt);
+                            if (failSibling) throw new InvalidOperationException("sibling failed");
+                            return new ActivityResult { Success = true };
+                        }
+                        return await WorkflowScheduler.RunWithCurrentStepGateReleasedAsync(() =>
+                            SubWorkflowGateLease.RunWithCurrentSlotReleasedAsync(async () =>
+                            {
+                                nestedWaiting.SetResult();
+                                return await SubWorkflowGateLease.RunAsync(capacity, async () =>
+                                {
+                                    childStarted.SetResult();
+                                    await finishChild.Task.WaitAsync(stepCt);
+                                    return new ActivityResult { Success = true };
+                                }, stepCt);
+                            }, stepCt), stepCt);
+                    }, NullLogger.Instance, ct);
+                return true;
+            }, ct);
+            await nestedWaiting.Task.WaitAsync(ct);
+            childStarted.Task.IsCompleted.Should().BeFalse("the sibling still occupies the parent workflow slot");
+            capacity.Available.Should().Be(0);
+            finishSibling.SetResult();
+            if (failSibling)
+                await FluentActions.Awaiting(() => run.WaitAsync(TimeSpan.FromSeconds(5), ct))
+                    .Should().ThrowAsync<InvalidOperationException>().WithMessage("sibling failed");
+            else
+            {
+                await childStarted.Task.WaitAsync(ct);
+                finishChild.SetResult();
+                await run.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            }
+            capacity.Available.Should().Be(1);
+        }
+        finally
+        {
+            finishSibling.TrySetResult();
+            finishChild.TrySetResult();
+            WorkflowScheduler.ResetForTests();
+        }
+    }
+
     private static WorkflowNode Node(string id, string type = "runScript", string config = "{}")
     {
         using var doc = JsonDocument.Parse(config);

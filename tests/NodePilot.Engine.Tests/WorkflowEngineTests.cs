@@ -1196,6 +1196,65 @@ public class WorkflowEngineTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WaitAnyWithPollingActivity_CancelsPollDelayWithoutFailingRun()
+    {
+        var polling = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var shell = new Mock<NodePilot.Engine.PowerShell.IPowerShellExecutionEngine>();
+        shell.SetupGet(e => e.IsAvailable).Returns(true);
+        shell.Setup(e => e.ExecuteAsync(It.IsAny<NodePilot.Engine.PowerShell.PowerShellExecutionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NodePilot.Engine.PowerShell.PowerShellExecutionResult
+                { Success = true, Output = "###NODEPILOT_COND:False###" });
+        var factory = new NodePilot.Engine.PowerShell.PowerShellEngineFactory(shell.Object, shell.Object, shell.Object);
+        var activity = new NodePilot.Engine.Activities.WaitForConditionActivity(
+            Mock.Of<IRemoteSessionFactory>(), Mock.Of<ICredentialStore>(), _db, factory,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        var wait = new Mock<IActivityExecutor>();
+        wait.SetupGet(e => e.ActivityType).Returns("waitForCondition");
+        wait.Setup(e => e.ExecuteAsync(It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .Returns<StepExecutionContext, JsonElement, CancellationToken>(async (context, config, ct) =>
+            {
+                var pending = activity.ExecuteAsync(context, config, ct);
+                pending.IsCompleted.Should().BeFalse();
+                polling.TrySetResult();
+                try { return await pending; }
+                catch (OperationCanceledException)
+                {
+                    // The fixture shares one SQLite connection; serialize the loser's write
+                    // after the synchronous junction step has persisted its terminal row.
+                    await Task.Delay(100, CancellationToken.None);
+                    throw;
+                }
+            });
+        _mockExecutor.Setup(e => e.ExecuteAsync(It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                await polling.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                return new ActivityResult { Success = true };
+            });
+        var registry = new ActivityRegistry(new IActivityExecutor[]
+            { _manualTriggerExecutor.Object, _mockExecutor.Object, wait.Object, new NodePilot.Engine.Activities.JunctionActivity() });
+        var provider = TestDbContext.BuildScopeProviderOnSameConnection(_connection, registry);
+        var engine = new WorkflowEngine(_db, NullLogger<WorkflowEngine>.Instance, provider, Mock.Of<IExecutionNotifier>());
+        var workflow = CreateWorkflow("{\"nodes\":[" + TriggerNodeJson + """
+            ,{"id":"winner","type":"runScript","data":{"config":{}}},
+            {"id":"poll","type":"waitForCondition","data":{"config":{"script":"$false","intervalSeconds":60,"timeoutSeconds":120}}},
+            {"id":"join","type":"junction","data":{"config":{"mode":"waitAny"}}}],
+            "edges":[{"id":"t1","source":"trigger-1","target":"winner"},
+            {"id":"t2","source":"trigger-1","target":"poll"},
+            {"id":"e1","source":"winner","target":"join"},
+            {"id":"e2","source":"poll","target":"join"}]}
+            """);
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await engine.ExecuteAsync(workflow, "test", CancellationToken.None);
+
+        execution.Status.Should().Be(ExecutionStatus.Succeeded, execution.ErrorMessage);
+        var loser = await _db.StepExecutions.SingleAsync(s => s.WorkflowExecutionId == execution.Id && s.StepId == "poll");
+        loser.Status.Should().Be(ExecutionStatus.Cancelled);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WithParameters_PersistsInputParametersJson()
     {
         var workflow = CreateWorkflow(BuildSingleNodeWorkflow());

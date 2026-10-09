@@ -535,14 +535,21 @@ public class WorkflowEngine : IWorkflowEngine
 
         // H-4: Reserve capacity before registering runtime state. The following try/finally
         // is then the single cleanup path for capacity slots, running executions and debug handles.
-        perUserCounted = CheckCapacityCaps(startedByUserId, callDepth, interactiveRun);
+        var capacityReserved = false;
         try
         {
+            perUserCounted = CheckCapacityCaps(startedByUserId, callDepth, interactiveRun);
+            capacityReserved = true;
             _runningExecutions[execution.Id] = cts;
             if (debug is not null)
                 _debugHandles[execution.Id] = debug;
 
             return await RunGraphAsync(run, inputParameters, globalsResult.Resolved, debug, cts);
+        }
+        catch (NodePilot.Core.Exceptions.ExecutionCapacityException ex) when (!capacityReserved)
+        {
+            await CompleteAsFailedAsync(run, ex);
+            throw;
         }
         catch (OperationCanceledException)
         {
@@ -554,7 +561,7 @@ public class WorkflowEngine : IWorkflowEngine
         }
         finally
         {
-            CleanupRuntimeState(run, startedByUserId, perUserCounted);
+            CleanupRuntimeState(run, startedByUserId, perUserCounted, capacityReserved);
         }
     }
 
@@ -1308,7 +1315,8 @@ public class WorkflowEngine : IWorkflowEngine
     /// The single cleanup path (finally): releases the capacity slot, drops the per-run
     /// runtime state and records the run-duration metrics with the final status.
     /// </summary>
-    private static void CleanupRuntimeState(ExecutionRun run, Guid? startedByUserId, bool perUserCounted)
+    private static void CleanupRuntimeState(
+        ExecutionRun run, Guid? startedByUserId, bool perUserCounted, bool capacityReserved)
     {
         var execution = run.Execution;
         _runningExecutions.TryRemove(execution.Id, out _);
@@ -1323,7 +1331,7 @@ public class WorkflowEngine : IWorkflowEngine
         _debugHandles.TryRemove(execution.Id, out _);
         // Decrement the per-user counter and remove its zero entry atomically with concurrent
         // starts.
-        ReleaseCapacitySlot(startedByUserId, perUserCounted);
+        if (capacityReserved) ReleaseCapacitySlot(startedByUserId, perUserCounted);
 
         run.Stopwatch.Stop();
         var statusTag = new KeyValuePair<string, object?>("status", execution.Status.ToString());
