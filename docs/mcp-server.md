@@ -166,19 +166,24 @@ tools are admin-only, and an admin reads the same rows through DbAdmin anyway. B
 only have made inventory questions ("which workflows exist?") unanswerable. For definitions including
 secret redaction, `get_workflow_definition` remains the more convenient route.
 
-For the remaining secret columns, three server-side layers apply in the `DbAdminSecretColumns`
+For the remaining secret columns, the following server-side layers apply in the `DbAdminSecretColumns`
 contract:
 
 1. If the statement names a protected column → rejection (`protected_column`).
-2. A wildcard select → the protected result columns come back as `***`.
-3. If the statement serializes a **whole row** of a table with a secret column
+2. Result columns with protected names are masked as `***` as defense in depth.
+3. Wildcard projections (`SELECT *`, `alias.*`) and PostgreSQL `TABLE relation` over tables with
+   secret columns are rejected, including inside CTEs, derived tables and UNION branches.
+   Positional aliases can erase the original column names, so masking alone cannot protect them.
+   List the required unprotected columns explicitly; `COUNT(*)` and multiplication remain supported.
+4. If the statement serializes a **whole row** of a table with a secret column
    (`to_json`/`row_to_json`/`to_jsonb`/`json_agg`/`::text`/`FOR JSON`/`FOR XML`) → rejection
    (`protected_row_projection`). Layers 1 and 2 both work through **names**; a row serialization never
    names the column and returns it under an innocuous result-column name — so it bypassed both at
    once (security audit 2026-07-26).
 
-That way no secret lands in the agent's context. Layer 3 is deliberately coarse and also triggers on
-harmless casts against these secret tables; explicitly named, unprotected columns work fine.
+These lexical protections are deliberately coarse and also reject harmless casts against secret
+tables; explicitly named, unprotected columns work fine. They are not a complete SQL sandbox or a
+replacement for database permissions against every provider extension.
 
 ### Supporting resources (secrets never surfaced)
 `list_machines` · `get_machine` · `create_machine` · `update_machine` · `test_machine` ·

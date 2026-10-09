@@ -241,7 +241,7 @@ max_connections = 600
 shared_buffers  = 512MB
 ```
 
-**Live im Code:** Default-Cap **128** gleichzeitige Sub-Workflow-Aufrufe (geteilt zwischen `startWorkflow` und `forEach`), über die injizierte [`ISubWorkflowGate`](../src/NodePilot.Core/Interfaces/ISubWorkflowGate.cs) / [`InMemorySubWorkflowGate`](../src/NodePilot.Engine/Activities/InMemorySubWorkflowGate.cs) — **kein** prozess-weiter statischer Semaphore mehr (frühere `SubWorkflowLimiter`-Klasse; die Session-Logs unten beschreiben den damaligen Stand).
+**Live im Code:** Default-Cap **128** Child-Workflows mit aktiver Arbeit (geteilt zwischen `startWorkflow` und `forEach`), über die injizierte [`ISubWorkflowGate`](../src/NodePilot.Core/Interfaces/ISubWorkflowGate.cs) / [`InMemorySubWorkflowGate`](../src/NodePilot.Engine/Activities/InMemorySubWorkflowGate.cs). Vollständig auf Unter-Workflows wartende Vorfahren geben ihren Slot bis zur Fortsetzung frei; aktive Geschwisterschritte halten ihn. Der globale Engine-Cap begrenzt weiterhin alle laufenden Executions einschließlich wartender Vorfahren ([ADR 0018](adr/0018-active-subworkflow-capacity.md)). Die Session-Logs unten beschreiben den damaligen Stand.
 
 Das Preset ist ausgelegt für **bis zu 500 parallele Workflows** auf einem 20-Core-Host — das ist die Topologie, für die es gemessen wurde, nicht die, auf der es zwangsläufig läuft. Skalierungs-Heuristiken für andere Topologien siehe [Default-Tuning für 500-par.-WF-Topologie](#default-tuning-für-500-par-wf-topologie) weiter unten.
 
