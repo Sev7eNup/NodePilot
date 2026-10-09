@@ -196,8 +196,13 @@ class ScriptContracts(unittest.TestCase):
                     script = str(ROOT / filename).replace("'", "''")
                     command = "$credential = [PSCredential]::new('admin', (ConvertTo-SecureString fixture-only -AsPlainText -Force)); "
                     command += f"& '{script}' -BaseUrl '{self.url}' -Credential $credential"
-                    result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-                                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+                    try:
+                        result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+                                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+                    except subprocess.TimeoutExpired as timeout:
+                        partial = [(part.decode("utf-8", "replace") if isinstance(part, bytes) else part or "")
+                                   for part in (timeout.stdout, timeout.stderr)]
+                        self.fail(f"{filename} did not finish; requests seen: {[(m, p) for m, p, _ in self.calls]}" + chr(10) + chr(10).join(partial))
                     self.assertEqual(1 if fail else 0, result.returncode, result.stdout + result.stderr)
                     requests = [body for _, path, body in self.calls if path.startswith("/api/alerting/")]
                     self.assertEqual(expected_count, len(requests))
