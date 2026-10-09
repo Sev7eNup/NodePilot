@@ -13,8 +13,48 @@ namespace NodePilot.Engine.Tests.Activities;
 /// RestApiHttpClientProvider — proxy/noProxy resolution. Covers global default from
 /// RestApi:Proxy:* and per-step overrides (proxyMode direct/custom with noProxy bypass).
 /// </summary>
-public class RestApiProxyTests
+public class RestApiProxyTests : IDisposable
 {
+    public RestApiProxyTests() => NetworkGuard.HostResolverOverride.Value = _ => [IPAddress.Parse("192.0.2.10")];
+    public void Dispose() => NetworkGuard.HostResolverOverride.Value = null;
+
+    [Theory]
+    [InlineData("{}", "10.0.0.5")]
+    [InlineData("{\"proxyMode\":\"direct\"}", "10.0.0.5")]
+    public void DestinationPolicy_PrivateServiceExplicitlyAllowed_RemainsReachable(string step, string host)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["RestApi:Proxy:Enabled"] = "true",
+            ["RestApi:Proxy:Address"] = "http://proxy.corp:8080",
+            ["RestApi:AllowedHosts:0"] = host,
+        }).Build();
+        var provider = new RestApiHttpClientProvider(Mock.Of<IHttpClientFactory>(), config);
+        var act = () => provider.ValidateDestinationPolicy(ParseConfig(step), new Uri($"http://{host}/health"));
+        act.Should().NotThrow();
+    }
+
+    [Theory]
+    [InlineData("169.254.169.254")]
+    [InlineData("metadata.example")]
+    public void DestinationPolicy_AllowlistedProxyCannotReachMetadata(string host)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["RestApi:Proxy:Enabled"] = "true",
+            ["RestApi:Proxy:Address"] = "http://proxy.corp:8080",
+            ["RestApi:AllowedHosts:0"] = host,
+        }).Build();
+        var provider = new RestApiHttpClientProvider(Mock.Of<IHttpClientFactory>(), config);
+        NetworkGuard.HostResolverOverride.Value = _ => [IPAddress.Parse("192.0.2.10"), IPAddress.Parse("169.254.169.254")];
+        try
+        {
+            var act = () => provider.ValidateDestinationPolicy(ParseConfig("{}"), new Uri($"http://{host}/latest/meta-data"));
+            act.Should().Throw<InvalidOperationException>().WithMessage("*link-local*");
+        }
+        finally { NetworkGuard.HostResolverOverride.Value = null; }
+    }
+
     private static RestApiProxyOptions BuildOpts(bool enabled = false, string? address = null) =>
         new() { Enabled = enabled, Address = address };
 

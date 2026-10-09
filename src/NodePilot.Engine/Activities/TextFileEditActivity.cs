@@ -526,7 +526,7 @@ public class TextFileEditActivity : BaseRemoteActivity
                     $__re = $null
                     if ($__useRegex) {
                         $__opts = if ($__ignoreCase) { [System.Text.RegularExpressions.RegexOptions]::IgnoreCase } else { [System.Text.RegularExpressions.RegexOptions]::None }
-                        $__re = New-Object System.Text.RegularExpressions.Regex($__matchPattern, $__opts)
+                        $__re = New-Object System.Text.RegularExpressions.Regex($__matchPattern, $__opts, [TimeSpan]::FromMilliseconds(500))
                     }
                     $__kept = New-Object System.Collections.Generic.List[string]
                     foreach ($l in $__lines) {
@@ -548,10 +548,13 @@ public class TextFileEditActivity : BaseRemoteActivity
                 # *occurrence* count, not line-count delta — that's the more useful number
                 # for downstream branches (`success && param.linesChanged > 0`).
                 $__originalText = Join-NpLines -Lines $__lines -Ending $__finalEnding
+                if ($__hadTrailingNewline) {
+                    $__originalText += $(if ($__finalEnding -eq 'crlf') { "`r`n" } else { "`n" })
+                }
                 if ($__useRegex) {
                     $__opts = [System.Text.RegularExpressions.RegexOptions]::None
                     if ($__ignoreCase) { $__opts = $__opts -bor [System.Text.RegularExpressions.RegexOptions]::IgnoreCase }
-                    $__re = New-Object System.Text.RegularExpressions.Regex($__matchPattern, $__opts)
+                    $__re = New-Object System.Text.RegularExpressions.Regex($__matchPattern, $__opts, [TimeSpan]::FromMilliseconds(500))
                     if ($__occurrencesAll) {
                         $__changed = $__re.Matches($__originalText).Count
                         $__newText = $__re.Replace($__originalText, $__replacement)

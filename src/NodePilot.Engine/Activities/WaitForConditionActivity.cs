@@ -53,6 +53,7 @@ namespace NodePilot.Engine.Activities;
 public class WaitForConditionActivity : BaseRemoteActivity
 {
     public override string ActivityType => "waitForCondition";
+    internal TimeProvider Clock { get; set; } = TimeProvider.System;
 
     public WaitForConditionActivity(
         IRemoteSessionFactory sessionFactory,
@@ -115,7 +116,7 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         var isUserScript = string.Equals(
             (config.GetStringOrNull("conditionType") ?? "script").Trim(), "script", StringComparison.OrdinalIgnoreCase);
         var engineType = config.GetString("engine", "auto");
-        var deadline = DateTime.UtcNow.AddSeconds(timeout);
+        var deadline = Clock.GetUtcNow().AddSeconds(timeout);
         int attempts = 0;
         string? lastOutput = null;
         string? lastError = null;
@@ -128,7 +129,7 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         // quota and block every other step targeting that host. The connection pool reuses
         // sessions between polls (idle TTL 120s), so the authentication cost is normally
         // paid only on the first poll.
-        while (!ct.IsCancellationRequested && DateTime.UtcNow < deadline)
+        while (!ct.IsCancellationRequested && Clock.GetUtcNow() < deadline)
         {
             attempts++;
             RemoteExecutionResult result;
@@ -205,14 +206,14 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
                 };
             }
 
-            var remaining = deadline - DateTime.UtcNow;
+            var remaining = deadline - Clock.GetUtcNow();
             if (remaining <= TimeSpan.Zero) break;
             var sleep = TimeSpan.FromSeconds(interval);
             if (sleep > remaining) sleep = remaining;
-            try { await Task.Delay(sleep, ct); }
-            catch (OperationCanceledException) { break; }
+            await Task.Delay(sleep, ct);
         }
 
+        ct.ThrowIfCancellationRequested();
         sw.Stop();
         var lastTrimmed = Trim(lastOutput);
         var errorPart = lastError is null ? "" : $" Last error: {Trim(lastError)}";

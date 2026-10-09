@@ -165,8 +165,7 @@ public static class NetworkGuard
     private static bool IsHostListed(IConfiguration config, string sectionPath, string host)
     {
         var requested = NormalizeHostForComparison(host);
-        var allowedHosts = config.GetSection(sectionPath).GetChildren()
-            .Select(c => c.Value)
+        var allowedHosts = (ProviderAtomicList.Read<string>(config, sectionPath) ?? [])
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .Select(v => NormalizeHostForComparison(v!));
         return allowedHosts.Any(h => string.Equals(h, requested, StringComparison.OrdinalIgnoreCase));

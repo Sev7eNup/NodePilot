@@ -39,28 +39,10 @@ public class WinRmSession : IRemoteSession
     /// </summary>
     internal ValueTask DisposeUnpooledAsync() => DisposeAsync();
 
-    public async Task<RemoteExecutionResult> ExecuteScriptAsync(string script, int? timeoutSeconds = null, CancellationToken ct = default)
-    {
-        // PowerShell's module auto-loader is not thread-safe under high concurrency: when many
-        // sessions simultaneously import the same module (e.g. NetTCPIP via Get-NetIPAddress)
-        // the module registry's internal List<T> throws "Collection was modified; enumeration
-        // operation may not execute." This is transient — a short random back-off and retry
-        // reliably succeeds once the first importer has finished. Retry up to 2 more times.
-        const int maxAttempts = 3;
-        RemoteExecutionResult result = default!;
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            result = await ExecuteOnceAsync(script, timeoutSeconds, ct);
-            if (result.Success || attempt == maxAttempts) break;
-            if (!IsModuleLoadRace(result.ErrorOutput)) break;
-            await Task.Delay(Random.Shared.Next(100 * attempt, 350 * attempt), ct);
-        }
-        return result;
-    }
-
-    // Returns true when the error is the well-known PowerShell concurrent-module-load race.
-    private static bool IsModuleLoadRace(string? error) =>
-        error is not null && error.Contains("Collection was modified", StringComparison.OrdinalIgnoreCase);
+    // Error text cannot prove that an invocation had no side effects. Retry belongs to the
+    // caller's explicit policy, including when PowerShell reports a module-loading failure.
+    public Task<RemoteExecutionResult> ExecuteScriptAsync(string script, int? timeoutSeconds = null, CancellationToken ct = default)
+        => ExecuteOnceAsync(script, timeoutSeconds, ct);
 
     private async Task<RemoteExecutionResult> ExecuteOnceAsync(string script, int? timeoutSeconds, CancellationToken ct)
     {
