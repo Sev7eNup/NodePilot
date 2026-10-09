@@ -52,6 +52,12 @@ identities. [Learn how to configure agents and teams →](docs/ai-agents.md)
 - Agent settings use searchable lists. Browser-demo links support `?lang=de` and `?lang=en`.
 - Expanded agent documentation and clarified workflow terminology; added an Orchestrator
   2016 end-of-support article. Removed unused palette files and local skill-lock tracking.
+- The dashboard replaces its Scheduler and HA tiles, which the status bar already shows, with
+  **Active triggers** (count and next scheduled start) and **Services** (healthy background
+  services out of all heartbeats, with the stale ones named).
+- The dashboard duration trend (median and P95) for 24 hours and longer comes from
+  precomputed hourly histograms and is accurate to within a few percent. The upgrade
+  rebuilds the dashboard history once; until it finishes, the dashboard reads raw executions.
 
 ### Fixed
 
@@ -59,8 +65,13 @@ identities. [Learn how to configure agents and teams →](docs/ai-agents.md)
   out-of-range errors. They read entries newer than the saved cursor.
 - Execution history pages full records only after selecting their keys, reducing SQL Server
   timeouts. Unchanged search text no longer resets the selected page.
-- Dashboard aggregates and duration trends stay warm after idle periods, including the
-  30-day view, reducing unnecessary raw execution scans.
+- The 7- and 30-day dashboard views use the precomputed hourly history even when the
+  execution history is younger than the window; before, every cache miss scanned raw
+  executions. Dashboard aggregates stay warm after idle periods and folder changes, and a
+  failing history backfill no longer makes the shorter windows fall back to raw scans.
+- The 1-hour dashboard view and the dashboard history rebuild no longer scan every step
+  execution to count retried runs; a small filtered index serves the lookup. The index is
+  built once on the first start after the upgrade.
 - Workflow activity counts include triggers, and Last Run timestamps preserve UTC.
 - Grouped canvas nodes no longer cause false overlap warnings. AI agent nodes have their
   intended shapes and colors.

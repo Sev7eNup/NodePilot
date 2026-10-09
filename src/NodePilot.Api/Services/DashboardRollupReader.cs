@@ -33,13 +33,16 @@ internal sealed class DashboardRollupReader(NodePilotDbContext db)
     /// True when the buckets cover everything from <paramref name="since"/> onwards and are being
     /// kept current. Buckets from a rollup that is disabled or keeps failing would silently miss
     /// every hour since its last pass.
+    ///
+    /// <para>A finished backfill covers every window: it stops at the oldest execution or at the
+    /// retention horizon, so no older execution exists that a window could miss.</para>
     /// </summary>
     public async Task<bool> CoversAsync(DateTime since, CancellationToken ct)
     {
         var state = await db.ExecutionStatsRollupStates.AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == ExecutionStatsRollupService.StateRowId, ct);
         return state is { CoverageStartUtc: { } start, CoverageEndUtc: not null }
-               && start <= since
+               && (state.BackfillComplete || start <= since)
                && state.UpdatedAt >= DateTime.UtcNow - ExecutionStatsRollupService.StaleAfter;
     }
 
@@ -167,5 +170,38 @@ internal sealed class DashboardRollupReader(NodePilotDbContext db)
             .ToList();
 
         return new FailureCausesResponse(total, top, total - top.Sum(g => g.Count));
+    }
+
+    /// <summary>
+    /// Median and P95 run duration for 24 chart buckets from the hourly duration histograms, or null
+    /// if the window is not covered. The grid ends with the current hour and every bucket spans
+    /// whole hours, so the window can start up to an hour later than now minus its length.
+    /// </summary>
+    public async Task<List<DurationBucket>?> ReadDurationBucketsAsync(
+        AccessibleFolderSet accessible, int windowHours, Guid? workflowId, DateTime nowUtc, CancellationToken ct)
+    {
+        const int bucketCount = 24;
+        if (windowHours < MinimumWindowHours || windowHours % bucketCount != 0) return null;
+        var hoursPerBucket = windowHours / bucketCount;
+        var start = ExecutionStatsRollupService.Truncate(nowUtc).AddHours(1 - windowHours);
+        if (!await CoversAsync(start, ct)) return null;
+
+        var histograms = Enumerable.Range(0, bucketCount).Select(_ => new DurationHistogram()).ToArray();
+        var scoped = Scoped(accessible, start);
+        if (scoped is not null)
+        {
+            var query = scoped.Where(s => s.DurationHistogram != "");
+            if (workflowId is { } id) query = query.Where(s => s.WorkflowId == id);
+            var rows = await query.Select(s => new { s.HourUtc, s.DurationHistogram }).ToListAsync(ct);
+            foreach (var row in rows)
+            {
+                var index = (int)(row.HourUtc - start).TotalHours / hoursPerBucket;
+                if (index is >= 0 and < bucketCount) histograms[index].Add(row.DurationHistogram);
+            }
+        }
+
+        return histograms
+            .Select((h, i) => new DurationBucket(start.AddHours(i * hoursPerBucket), (int)h.Count, h.Median, h.P95))
+            .ToList();
     }
 }

@@ -209,7 +209,7 @@ public sealed class BackupRestoreService(
 
         // Hold both trees from the first snapshot through commit/rollback, including retries.
         // All callers needing both gates acquire shared folders before global folders.
-        using var sharedTree = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var sharedTree = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
         using var globalTree = await FolderTreeMutationLock.GlobalVariableFolders.AcquireAsync(ct);
         WorkflowLiveSubscriptions? subscriptions = null;
         if (hub is not null && folderProjection is not null

@@ -60,7 +60,9 @@ export function useLiveOpsFeed({
       if (invalidateTimer.current !== null) return;
       invalidateTimer.current = setTimeout(() => {
         invalidateTimer.current = null;
-        if (current()) void queryClient.invalidateQueries({ queryKey });
+        // A running refetch finishes instead of restarting: on a busy instance a slow refetch
+        // would otherwise be cancelled by every burst and never complete.
+        if (current()) void queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false });
       }, debounceMs);
     };
 

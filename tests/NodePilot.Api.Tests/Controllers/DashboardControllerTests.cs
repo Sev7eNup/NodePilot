@@ -23,8 +23,10 @@ public class DashboardControllerTests
         IOptionsMonitor<LlmOptions>? llmOptions = null,
         NodePilot.Core.Interfaces.IMaintenanceWindowEvaluator? maintenance = null)
     {
+        // Own folder-tree lock: parallel tests that move folders must not trigger a second read here,
+        // since some tests count the maintenance evaluations of one request.
         var controller = new DashboardController(db, new AlwaysAllowAuthorizationService(),
-            llmOptions: llmOptions, maintenance: maintenance);
+            llmOptions: llmOptions, maintenance: maintenance, folderTree: new NodePilot.Data.FolderTreeMutationLock());
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             new[] { new Claim(ClaimTypes.Role, role) }, "TestAuth"));
         controller.ControllerContext = new ControllerContext
