@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, FlashFilled, Folder, Launch, Link, Search } 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../api/client';
+import { getPage } from '../../api/paging';
 import { ACTIVITY_CATALOG } from '../../lib/activityCatalog.generated';
 import type { WorkflowListItem } from '../../types/api';
 import { useWorkflowBrowserStore } from '../../stores/workflowBrowserStore';
@@ -10,11 +10,13 @@ import { SharedFolderTree, WORKFLOW_DRAG_MIME } from '../workflows/SharedFolderT
 import { sharedFoldersApi } from '../../api/sharedFolders';
 import { TRIGGER_META } from './workflowTriggerMeta';
 import { WorkflowInfoCard } from './WorkflowInfoCard';
+import { WorkflowPageControls } from './WorkflowPageControls';
 
 const GROUP_ORDER = [
   ...ACTIVITY_CATALOG.filter((activity) => activity.category === 'trigger').map((activity) => activity.type),
   '__none__'
 ];
+const EMPTY_WORKFLOWS: WorkflowListItem[] = [];
 
 // In folder view the tree sizes itself to its content and starts scrolling only past this cap,
 // so a shallow tree does not reserve half the sidebar. The workflow list below takes whatever
@@ -40,16 +42,20 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
   const { t } = useTranslation('designer');
   const queryClient = useQueryClient();
 
-  const { data: workflows = [], isLoading } = useQuery({
-    queryKey: ['workflows'],
-    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
-  });
-
-
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [hoveredWorkflow, setHoveredWorkflow] = useState<WorkflowListItem | null>(null);
   const { viewMode, setViewMode, collapsedFolders, toggleFolder, infoCardHeight, setInfoCardHeight } = useWorkflowBrowserStore();
+  const folderId = viewMode === 'folder' ? selectedFolderId : null;
+  const params = new URLSearchParams({ sortBy: 'name', sortDir: 'asc' });
+  if (folderId) params.set('folderId', folderId);
+  if (query.trim()) params.set('search', query.trim());
+  const { data: workflowPage, isLoading, isFetching, isError, refetch } = useQuery({
+    queryKey: ['workflows', 'page', page, folderId, query, 'name', 'asc'],
+    queryFn: () => getPage<WorkflowListItem>(`/workflows/paged?${params}`, page, 50),
+  });
+  const workflows = workflowPage?.items ?? EMPTY_WORKFLOWS;
 
   // Splitter between the workflow list and the info card. The card sits below the splitter,
   // so dragging down shrinks the card and grows the list, hence `height - delta`.
@@ -71,15 +77,13 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
     globalThis.addEventListener('mouseup', onMouseUp);
   }, [infoCardHeight, setInfoCardHeight]);
 
-  // Exclude the current workflow in embed-picker mode, then apply the text search.
+  // Filtering/search happen before paging on the server. Only recursive embedding is hidden here.
   const baseFiltered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return workflows.filter((w) => {
       if (canEmbed && w.id === currentWorkflowId) return false;
-      if (!q) return true;
-      return w.name.toLowerCase().includes(q) || (w.description ?? '').toLowerCase().includes(q);
+      return true;
     });
-  }, [workflows, query, canEmbed, currentWorkflowId]);
+  }, [workflows, canEmbed, currentWorkflowId]);
 
   // In folder mode a selected folder narrows the list to that folder and its descendants,
   // using the same path-prefix logic as WorkflowsPage.
@@ -129,7 +133,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
         {/* View-mode toggle */}
         <div className="flex items-center bg-surface-high rounded-md p-0.5 mb-3">
           <button
-            onClick={() => setViewMode('folder')}
+            onClick={() => { setViewMode('folder'); setPage(1); }}
             className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-[11px] font-label font-semibold transition-colors ${
               viewMode === 'folder' ? 'bg-surface-lowest text-on-surface shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
             }`}
@@ -137,7 +141,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
             <Folder size={11} /> {t('browserFolderView')}
           </button>
           <button
-            onClick={() => setViewMode('trigger')}
+            onClick={() => { setViewMode('trigger'); setPage(1); }}
             className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-[11px] font-label font-semibold transition-colors ${
               viewMode === 'trigger' ? 'bg-surface-lowest text-on-surface shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
             }`}
@@ -151,7 +155,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1); }}
             className="w-full bg-surface-high hover:bg-surface-highest focus:bg-surface-container border border-transparent focus:border-outline-variant/40 rounded-md py-1.5 pl-9 pr-4 text-xs font-label transition-all placeholder:text-outline focus:outline-none"
             placeholder={t('browser.searchPlaceholder')}
           />
@@ -167,7 +171,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
         >
           <SharedFolderTree
             selectedFolderId={selectedFolderId}
-            onFolderSelected={setSelectedFolderId}
+            onFolderSelected={(id) => { setSelectedFolderId(id); setPage(1); }}
             onWorkflowDropped={handleWorkflowDropped}
             compact
           />
@@ -182,6 +186,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
         {isLoading && (
           <div className="text-[11px] font-label text-on-surface-variant px-2">{t('browser.loading')}</div>
         )}
+        {isError && <button type="button" onClick={() => void refetch()}>{t('common:retry')}</button>}
 
         {/* Trigger view */}
         {viewMode === 'trigger' && grouped.length === 0 && !isLoading && (
@@ -247,6 +252,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
           />
         ))}
       </div>
+      <WorkflowPageControls page={page} totalPages={workflowPage?.totalPages ?? 0} busy={isFetching} onChange={setPage} />
       {/* Splitter between list and info card */}
       <div
         onMouseDown={handleInfoDividerMouseDown}

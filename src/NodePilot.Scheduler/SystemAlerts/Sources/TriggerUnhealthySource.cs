@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Core.Enums;
+using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 
@@ -22,10 +23,17 @@ namespace NodePilot.Scheduler.SystemAlerts.Sources;
 public sealed class TriggerUnhealthySource : ISystemAlertSource
 {
     private readonly TriggerHealthRegistry _registry;
+    private readonly IClusterStateProvider _cluster;
 
-    public TriggerUnhealthySource(TriggerHealthRegistry registry) => _registry = registry;
+    public TriggerUnhealthySource(TriggerHealthRegistry registry, IClusterStateProvider cluster)
+    {
+        _registry = registry;
+        _cluster = cluster;
+    }
 
     public string SourceId => "trigger-unhealthy";
+
+    public bool MissingInstancesAreHealthy => true;
 
     public SystemAlertSourceDescriptor Describe() => new(
         SourceId, SystemAlertCategory.Health, SystemAlertScopeCapability.WorkflowScoped, NotificationSeverity.Warning,
@@ -48,7 +56,7 @@ public sealed class TriggerUnhealthySource : ISystemAlertSource
         ]);
 
     public Task<bool> IsAvailableAsync(NodePilotDbContext db, CancellationToken ct)
-        => Task.FromResult(_registry.Snapshot().Count > 0);
+        => Task.FromResult(_cluster.IsLeader);
 
     public async Task<IReadOnlyList<SystemAlertObservation>> ObserveAsync(NodePilotDbContext db, SystemAlertQuery query, CancellationToken ct)
     {

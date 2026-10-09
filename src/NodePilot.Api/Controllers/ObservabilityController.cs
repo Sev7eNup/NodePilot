@@ -110,12 +110,17 @@ public class ObservabilityController : ControllerBase
 
         var configured = _options.AllowedMetricPrefixes;
         var prefixes = (configured is { Length: > 0 } ? configured : DefaultAllowedMetricPrefixes);
+        if (!PromQlSelectorScope.TryInspect(query, prefixes, out var metricExpression))
+            return BadRequest(new
+            {
+                message = "PromQL: every label selector must follow an allowed metric name; unnamed or malformed selectors are not permitted.",
+            });
 
         // Require at least one bare metric-name token — a query consisting only of label
         // selectors (no identifier before `{`) is rejected because it would otherwise pass
         // the allow-list with zero checks performed on it.
         var metricMatches = System.Text.RegularExpressions.Regex.Matches(
-            query,
+            metricExpression,
             @"(?<![a-zA-Z0-9_.])([a-zA-Z_:][a-zA-Z0-9_:]*)\s*(?=[{\[(]|$|\s|[+\-*/%<>=!,\)])",
             System.Text.RegularExpressions.RegexOptions.None,
             TimeSpan.FromMilliseconds(250));

@@ -143,7 +143,12 @@ public class FileWatcherTriggerSource : ITriggerSource
         // arriving between arming and the assignment below waits and is then delivered against the
         // correct baseline — instead of being diffed against an empty snapshot and delivered a
         // second time by the next reconcile scan.
-        await _deliveryGate.WaitAsync(ct);
+        try { await _deliveryGate.WaitAsync(ct); }
+        catch
+        {
+            watcher.Dispose(); // Ownership has not yet transferred to the source.
+            throw;
+        }
         try
         {
             // Publishes the instance the event handlers gate on. Between the arming inside
@@ -249,6 +254,12 @@ public class FileWatcherTriggerSource : ITriggerSource
                     try { await ReconcileAsync(ct); }
                     catch (IOException ex) { _logger.LogWarning(ex, "FileWatcher reconciliation scan failed for {Dir}.", dir); }
                     catch (UnauthorizedAccessException ex) { _logger.LogWarning(ex, "FileWatcher reconciliation scan was denied for {Dir}.", dir); }
+                    catch (InvalidOperationException ex)
+                    {
+                        _faultReason = $"unsafe reconciliation path: {ex.Message}";
+                        _logger.LogWarning(ex, "FileWatcher reconciliation rejected an unsafe path in {Dir}.", dir);
+                        return;
+                    }
                     continue;
                 }
                 if (++consecutiveFailures < ProbeFailuresBeforeFault) continue;
@@ -285,7 +296,7 @@ public class FileWatcherTriggerSource : ITriggerSource
         {
             return await task.WaitAsync(timeout, ct);
         }
-        catch (TimeoutException)
+        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
         {
             _ = task.ContinueWith(
                 t =>
@@ -415,10 +426,17 @@ public class FileWatcherTriggerSource : ITriggerSource
         // path deadline and runs only after the directory validated. Captured after arming it
         // would fold a file that landed in the arm-to-publish window into the baseline while the
         // identity guard above still drops its event, and nothing would ever deliver it.
-        baseline = CaptureSnapshot();
-
-        watcher.EnableRaisingEvents = true;
-        return watcher;
+        try
+        {
+            baseline = CaptureSnapshot();
+            watcher.EnableRaisingEvents = true;
+            return watcher;
+        }
+        catch
+        {
+            watcher.Dispose();
+            throw;
+        }
     }
 
     private async Task DeliverObservedAsync(
@@ -433,6 +451,10 @@ public class FileWatcherTriggerSource : ITriggerSource
         await _deliveryGate.WaitAsync(ct);
         try
         {
+            // Native events may have waited behind another delivery while their path was
+            // replaced or the allowed roots changed. Recheck at the side-effect boundary.
+            FileWatcherPathGuard.Validate(_config, path);
+            if (oldPath is not null) FileWatcherPathGuard.Validate(_config, oldPath);
             var next = new Dictionary<string, FileStamp>(_snapshot, StringComparer.OrdinalIgnoreCase);
             if (!string.IsNullOrWhiteSpace(oldPath))
             {
@@ -516,6 +538,8 @@ public class FileWatcherTriggerSource : ITriggerSource
             foreach (var (action, path, oldPath) in changes)
             {
                 ct.ThrowIfCancellationRequested();
+                FileWatcherPathGuard.Validate(_config, path);
+                if (oldPath is not null) FileWatcherPathGuard.Validate(_config, oldPath);
                 var next = new Dictionary<string, FileStamp>(_snapshot, StringComparer.OrdinalIgnoreCase);
                 if (oldPath is not null) next.Remove(oldPath);
                 if (action == "deleted") next.Remove(path);
@@ -603,9 +627,13 @@ public class FileWatcherTriggerSource : ITriggerSource
     {
         var result = new Dictionary<string, FileStamp>(StringComparer.OrdinalIgnoreCase);
         if (_directory is null) return result;
-        var option = _includeSubdirectories ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-        foreach (var path in Directory.EnumerateFiles(_directory, _filter, option))
+        ValidateDirectory(_directory);
+        foreach (var path in FileWatcherPathGuard.EnumerateFilesReparseFree(
+                     _directory, _filter, _includeSubdirectories))
+        {
+            FileWatcherPathGuard.Validate(_config, path);
             if (TryReadStamp(path, out var stamp)) result[path] = stamp;
+        }
         return result;
     }
 

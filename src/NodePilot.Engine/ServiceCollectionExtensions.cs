@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Activities;
 using NodePilot.Engine.Options;
+using NodePilot.Engine.Security;
 
 namespace NodePilot.Engine;
 
@@ -71,7 +72,12 @@ public static class ServiceCollectionExtensions
     {
         services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
         services.Configure<NodePilot.Core.Agents.AgentOptions>(configuration.GetSection(NodePilot.Core.Agents.AgentOptions.SectionName));
+        services.PostConfigure<NodePilot.Core.Agents.AgentOptions>(options =>
+            options.ReadOnlyMcpTools = (ProviderAtomicList.Read<NodePilot.Core.Agents.AgentMcpReadGrant>(
+                configuration, "Agents:ReadOnlyMcpTools") ?? []).ToArray());
         services.Configure<RestApiProxyOptions>(configuration.GetSection(RestApiProxyOptions.SectionName));
+        services.PostConfigure<RestApiProxyOptions>(options =>
+            options.BypassList = ProviderAtomicList.Read<string>(configuration, "RestApi:Proxy:BypassList") ?? []);
         return services;
     }
 }

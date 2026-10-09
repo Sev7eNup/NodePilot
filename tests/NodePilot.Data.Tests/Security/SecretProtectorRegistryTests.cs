@@ -1,6 +1,8 @@
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Moq;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data.Security;
 using Xunit;
@@ -16,6 +18,28 @@ namespace NodePilot.Data.Tests.Security;
 /// </summary>
 public class SecretProtectorRegistryTests
 {
+    [Fact]
+    public void LegacyRead_KeepsDiDiagnostics_WithoutReReadingKeyConfiguration()
+    {
+        var oldKey = Enumerable.Repeat((byte)4, 32).ToArray();
+        var config = Config(("Secrets:Provider", "AesGcm"), ("Secrets:MasterKey", ValidKeyB64()),
+            ("Secrets:LegacyProvider", "AesGcm"), ("Secrets:LegacyMasterKey", Convert.ToBase64String(oldKey)));
+        var logger = new Mock<ILogger>();
+        var factory = new Mock<ILoggerFactory>();
+        factory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(logger.Object);
+        var services = new ServiceCollection();
+        services.AddSingleton(factory.Object);
+        services.AddNodePilotSecretProtector(config);
+        config["Secrets:LegacyMasterKey"] = "changed-after-registration";
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<ISecretProtector>().Unprotect(new AesGcmSecretProtector(oldKey).Protect("secret"))
+            .Should().Be("secret");
+
+        logger.Verify(x => x.Log(LogLevel.Debug, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(),
+            It.IsAny<Exception?>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
+    }
+
     private static string ValidKeyB64()
     {
         var key = new byte[32];

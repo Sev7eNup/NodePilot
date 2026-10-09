@@ -156,6 +156,8 @@ ws-snapshot.md
 tmp_*
 !docker-compose.yml
 !prometheus.yml
+!grafana/grafana/provisioning/dashboards/dashboards.yml
+!tests/NodePilot.LoadTests/grafana-provisioning/**/*.yml
 !appsettings.loadtests.json
 !samples/**/*.yml
 # All GitHub config (workflows, dependabot, issue templates, release.yml) must stay addable

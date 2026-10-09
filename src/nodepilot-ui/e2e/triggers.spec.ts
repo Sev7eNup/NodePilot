@@ -80,13 +80,14 @@ test.describe('Alle Trigger-Typen — Config UI (Teil 14)', () => {
     await installDefaultMocks(page);
   });
 
-  test('14.1 — scheduleTrigger: cron field + client-side "Next fire times" preview', async ({ page }) => {
+  test('14.1 — scheduleTrigger: cron field + server-computed "Next fire times" preview', async ({ page }) => {
     const putSink: { body: { definitionJson?: string } | null } = { body: null };
     // An every-five-minutes cron makes cron-parser yield concrete future times in the preview.
     await seedTrigger(page, 'scheduleTrigger', { cronExpression: '0 */5 * * * ?' }, putSink);
-    // The designer never calls this endpoint; mocking it proves the preview is computed locally.
+    // The server owns the schedule semantics; the preview lists the dates it returns.
+    const fires = Array.from({ length: 5 }, (_, i) => new Date(Date.now() + (i + 1) * 5 * 60_000).toISOString());
     await page.route('**/api/triggers/schedule/next-fires**', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ fires: [], summary: '' }) }),
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ fires }) }),
     );
 
     await openTrigger(page, /^Schedule$/);
@@ -95,7 +96,7 @@ test.describe('Alle Trigger-Typen — Config UI (Teil 14)', () => {
     const cronInput = page.locator('input[value="0 */5 * * * ?"]');
     await expect(cronInput).toBeVisible({ timeout: 10_000 });
 
-    // Client-side preview header + at least one upcoming fire time (cron-parser computed).
+    // Preview header + at least one upcoming fire time from the server response.
     await expect(page.getByText(/next fire times/i)).toBeVisible();
     // Each fire row carries a relative "in …" suffix; assert at least one renders.
     await expect(page.getByText(/in \d/).first()).toBeVisible();
@@ -111,10 +112,13 @@ test.describe('Alle Trigger-Typen — Config UI (Teil 14)', () => {
   test('14.1b — scheduleTrigger: invalid cron surfaces the parser error in the preview', async ({ page }) => {
     const putSink: { body: { definitionJson?: string } | null } = { body: null };
     await seedTrigger(page, 'scheduleTrigger', { cronExpression: 'not a cron' }, putSink);
+    await page.route('**/api/triggers/schedule/next-fires**', (route) =>
+      route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'Invalid Quartz expression' }) }),
+    );
 
     await openTrigger(page, /^Schedule$/);
 
-    // previewSchedule() shows the parser message (no fire times) for an unparseable expression.
+    // The preview shows the server's parser message (no fire times) for an unparseable expression.
     await expect(page.getByText(/next fire times/i)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('⚠', { exact: false }).first()).toBeVisible();
   });

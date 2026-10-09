@@ -13,6 +13,28 @@ namespace NodePilot.Engine.Tests.Remote;
 /// </summary>
 public class WinRmSessionThrowTests
 {
+    [Theory]
+    [InlineData("throw 'Collection was modified; enumeration operation may not execute.'")]
+    [InlineData("Write-Error 'Collection was modified; enumeration operation may not execute.'")]
+    public async Task ExecuteScriptAsync_CollectionErrorAfterSideEffect_DoesNotReplayScript(string failure)
+    {
+        using var runspace = RunspaceFactory.CreateRunspace();
+        runspace.Open();
+        await using var session = new WinRmSession(runspace, "test-local");
+        var path = Path.GetTempFileName();
+        try
+        {
+            var result = await session.ExecuteScriptAsync(
+                $"[IO.File]::AppendAllText({PowerShellOperation.Literal(path)}, 'x')\n{failure}",
+                timeoutSeconds: 30, ct: TestContext.Current.CancellationToken);
+
+            result.Success.Should().BeFalse();
+            result.ErrorOutput.Should().Contain("Collection was modified");
+            File.ReadAllText(path).Should().Be("x", "the transport must not repeat an already executed side effect");
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public async Task ExecuteScriptAsync_ScriptThrows_KeepsTheOutputWrittenBefore()
     {

@@ -303,8 +303,8 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             // Start draining the pipes IMMEDIATELY and concurrently with the wait — a noisy script
             // would otherwise deadlock once the pipe buffers fill (child blocks writing, we block
             // on exit). Mirrors BeginOutputReadLine on the non-isolated path.
-            var stdoutTask = launched.StandardOutput.ReadToEndAsync(ct);
-            var stderrTask = launched.StandardError.ReadToEndAsync(ct);
+            var stdoutCapture = new OutputCapture(launched.StandardOutput, ct);
+            var stderrCapture = new OutputCapture(launched.StandardError, ct);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             if (request.Timeout is { } configuredTimeout)
@@ -332,7 +332,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             string stderr;
             try
             {
-                var drain = await DrainReadsAsync(stdoutTask, stderrTask, _isolatedDrainGrace, ct);
+                var drain = await DrainReadsAsync(stdoutCapture, stderrCapture, _isolatedDrainGrace, ct);
                 stdout = drain.Stdout;
                 stderr = drain.Stderr;
                 if (drain.DrainTimedOut)
@@ -352,6 +352,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             catch (OperationCanceledException)
             {
                 // Only happens on a real user-cancel (ct). Surface whatever we have as empty.
+                userCancel = true;
                 stdout = string.Empty;
                 stderr = string.Empty;
             }
@@ -360,7 +361,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
 
             // Caller cancel is not a failure - see IPowerShellExecutionEngine.CancelledMessage.
             // Thrown after the drain above so the job object is already closed and the tree reaped.
-            if (userCancel)
+            if (userCancel || ct.IsCancellationRequested)
                 throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
 
             if (timedOut)
@@ -439,16 +440,45 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     /// cref="OperationCanceledException"/>.
     /// </summary>
     internal static async Task<(string Stdout, string Stderr, bool DrainTimedOut)> DrainReadsAsync(
-        Task<string> stdoutTask, Task<string> stderrTask, TimeSpan grace, CancellationToken ct)
+        OutputCapture stdout, OutputCapture stderr, TimeSpan grace, CancellationToken ct)
     {
+        var drain = Task.WhenAll(stdout.Completion, stderr.Completion);
         try
         {
-            await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(grace, ct).ConfigureAwait(false);
-            return (await stdoutTask.ConfigureAwait(false), await stderrTask.ConfigureAwait(false), false);
+            await drain.WaitAsync(grace, ct).ConfigureAwait(false);
+            return (stdout.Text, stderr.Text, false);
         }
         catch (TimeoutException)
         {
-            return (ObserveAbandonedRead(stdoutTask), ObserveAbandonedRead(stderrTask), true);
+            if (stdout.Completion.IsFaulted) await stdout.Completion.ConfigureAwait(false);
+            if (stderr.Completion.IsFaulted) await stderr.Completion.ConfigureAwait(false);
+            return (stdout.Text, stderr.Text, true);
+        }
+        finally
+        {
+            ObserveAbandonedRead(drain);
+        }
+    }
+
+    internal sealed class OutputCapture
+    {
+        private readonly StringBuilder _output = new();
+        internal Task Completion { get; }
+        internal string Text => Snapshot(_output);
+
+        internal OutputCapture(TextReader reader, CancellationToken ct)
+        {
+            Completion = ReadAsync(reader, ct);
+        }
+
+        private async Task ReadAsync(TextReader reader, CancellationToken ct)
+        {
+            var buffer = new char[4096];
+            int count;
+            while ((count = await reader.ReadAsync(buffer.AsMemory(), ct).ConfigureAwait(false)) != 0)
+            {
+                lock (_output) _output.Append(buffer, 0, count);
+            }
         }
     }
 
@@ -500,19 +530,14 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             : stderr;
 
     /// <summary>
-    /// Returns a completed read's text, or empty for a read still blocked by a leaked inherited
-    /// pipe
-    /// handle. A still-pending read is observed via a continuation so its eventual fault
+    /// Observes a still-pending read so its eventual fault
     /// (ObjectDisposedException once the reader is disposed) never raises an
     /// UnobservedTaskException.
     /// </summary>
-    private static string ObserveAbandonedRead(Task<string> readTask)
+    private static void ObserveAbandonedRead(Task readTask)
     {
-        if (readTask.IsCompletedSuccessfully)
-            return readTask.Result;
         _ = readTask.ContinueWith(static t => { _ = t.Exception; },
             CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-        return string.Empty;
     }
 
     private static string? FindExecutable(string windowsName, string unixName)

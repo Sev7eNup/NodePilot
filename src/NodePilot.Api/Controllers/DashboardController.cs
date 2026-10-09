@@ -8,6 +8,7 @@ using NodePilot.Api.Dtos;
 using NodePilot.Api.Services;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.Triggers;
 using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Data;
 using NodePilot.Engine.Cluster;
@@ -57,6 +58,8 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult<DurationTrendResponse>> GetDurationTrend(
         CancellationToken ct, [FromQuery] int windowHours = 24, [FromQuery] Guid? workflowId = null)
     {
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        _authz.InvalidateAll();
         if (windowHours is not (1 or 24 or 168 or 720)) windowHours = 24;
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
         if (_aggregates is null)
@@ -71,6 +74,8 @@ public class DashboardController : ControllerBase
     [HttpGet("failure-causes")]
     public async Task<ActionResult<FailureCausesResponse>> GetFailureCauses(CancellationToken ct, [FromQuery] int windowHours = 24)
     {
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        _authz.InvalidateAll();
         if (windowHours <= 0 || windowHours > 720) windowHours = 24;
         var now = DateTime.UtcNow;
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
@@ -127,6 +132,8 @@ public class DashboardController : ControllerBase
     [HttpGet("dashboard")]
     public async Task<ActionResult<DashboardStats>> Get(CancellationToken ct, [FromQuery] int windowHours = 24)
     {
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        _authz.InvalidateAll();
         // The dashboard charts honour the caller-selected window.
         // Allowed: 1/24/168/720. Out-of-range values clamp to a sane default rather than
         // rejecting — the dashboard is a glance surface, not a strict API contract.
@@ -588,22 +595,17 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
-    /// Returns the smallest <c>intervalSeconds</c> across all enabled databaseTrigger nodes
-    /// in the workflow definition. Returns null when no usable interval is found.
+    /// Returns the smallest effective polling interval across valid databaseTrigger nodes.
+    /// Uses the same canonical key, legacy alias, default and lower bound as the scheduler.
     /// </summary>
     private static int? ExtractDatabasePollInterval(IEnumerable<WorkflowTriggerDescriptor> descriptors)
     {
         int? smallest = null;
         foreach (var descriptor in descriptors.Where(d => d.ActivityType == "databaseTrigger"))
         {
-            var config = descriptor.Config;
-            if (config.ValueKind != JsonValueKind.Object) continue;
-            if (!config.TryGetProperty("intervalSeconds", out var intervalProperty)) continue;
-
-            int interval = 0;
-            var parsed = (intervalProperty.ValueKind == JsonValueKind.Number && intervalProperty.TryGetInt32(out interval))
-                || (intervalProperty.ValueKind == JsonValueKind.String && int.TryParse(intervalProperty.GetString(), out interval));
-            if (!parsed || interval <= 0) continue;
+            int interval;
+            try { interval = DatabaseTriggerSettings.Parse(descriptor.Config).PollingIntervalSeconds; }
+            catch (InvalidOperationException) { continue; }
             if (smallest is null || interval < smallest.Value) smallest = interval;
         }
 

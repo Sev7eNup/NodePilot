@@ -184,6 +184,68 @@ public sealed class ScimProvisioningServiceTests : IDisposable
             .Should().BeAfter(stale.AddMinutes(20));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FolderOnlyGroupRemoval_InvalidatesSessionAndCancelsExecution(bool deleteGroup)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var created = await Service().CreateUserAsync(new ScimUserWriteRequest
+        {
+            ExternalId = "folder-member", UserName = "folder-member@example.test", Active = true,
+        }, "https://nodepilot/scim/v2", ct);
+        var userId = Guid.Parse(created.Value!.Id);
+        await Service().CreateGroupAsync(new ScimGroupWriteRequest
+        {
+            ExternalId = "nodepilot-users", DisplayName = "Admission",
+            Members = [new ScimMember { Value = userId.ToString() }],
+        }, "https://nodepilot/scim/v2", ct);
+        var folderGroup = await Service().CreateGroupAsync(new ScimGroupWriteRequest
+        {
+            ExternalId = "finance-readers", DisplayName = "Finance readers",
+            Members = [new ScimMember { Value = userId.ToString() }],
+        }, "https://nodepilot/scim/v2", ct);
+        var folder = new SharedWorkflowFolder
+        {
+            Id = Guid.NewGuid(), Name = "Finance", Path = "/Finance", Depth = 1,
+            ParentFolderId = SharedWorkflowFolder.RootFolderId,
+        };
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Private finance", FolderId = folder.Id, DefinitionJson = "{}" };
+        var execution = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), Workflow = workflow, WorkflowId = workflow.Id,
+            StartedByUserId = userId, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow,
+        };
+        var session = new AuthSession
+        {
+            Id = Guid.NewGuid(), UserId = userId, AuthenticationMethod = "Oidc",
+            CreatedAt = DateTime.UtcNow, LastSeenAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddHours(1),
+        };
+        _db.AddRange(folder, workflow, execution, session, new SharedFolderPermission
+        {
+            Id = Guid.NewGuid(), FolderId = folder.Id, PrincipalType = FolderPrincipalType.Group,
+            PrincipalAuthority = Authority, PrincipalKey = "finance-readers", Role = SharedFolderRole.FolderViewer,
+        });
+        await _db.SaveChangesAsync(ct);
+        var oldStamp = (await _db.Users.SingleAsync(x => x.Id == userId, ct)).SecurityStamp;
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(x => x.CancelAsync(execution.Id, It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = Service(workflowEngine: engine.Object);
+        if (deleteGroup)
+            (await service.DeleteGroupAsync(Guid.Parse(folderGroup.Value!.Id), ct)).Succeeded.Should().BeTrue();
+        else
+            (await service.ReplaceGroupAsync(Guid.Parse(folderGroup.Value!.Id), new ScimGroupWriteRequest
+            {
+                DisplayName = "Finance readers", Members = [],
+            }, "https://nodepilot/scim/v2", ct)).Succeeded.Should().BeTrue();
+
+        _db.ChangeTracker.Clear();
+        (await _db.Users.SingleAsync(x => x.Id == userId, ct)).SecurityStamp.Should().BeGreaterThan(oldStamp);
+        (await _db.AuthSessions.SingleAsync(x => x.Id == session.Id, ct)).RevokedAt.Should().NotBeNull();
+        (await _db.WorkflowExecutions.SingleAsync(x => x.Id == execution.Id, ct)).Status.Should().Be(ExecutionStatus.Cancelled);
+        engine.Verify(x => x.CancelAsync(execution.Id, "scim-authorization-change", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private ScimProvisioningService Service(
         IAuditStager? auditStager = null,
         IWorkflowEngine? workflowEngine = null) => new(

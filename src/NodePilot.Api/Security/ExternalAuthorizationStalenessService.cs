@@ -1,9 +1,11 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Data.Availability;
 
@@ -85,65 +87,26 @@ public sealed class ExternalAuthorizationStalenessService(
         var candidateUserIds = await sessionUsers.Union(executionUsers).ToListAsync(ct);
         if (candidateUserIds.Count == 0) return 0;
 
-        var externalUsers = await db.Users
+        var externalUserIds = await db.Users.AsNoTracking()
             .Where(user => candidateUserIds.Contains(user.Id)
                         && user.Provider != AuthProvider.Local)
+            .Select(user => user.Id)
             .ToListAsync(ct);
-        var activeExternalUsers = externalUsers
-            .Where(user => user.IsActive && !user.IsTombstoned)
-            .ToList();
-        var evaluations = await evaluator.EvaluateManyAsync(
-            activeExternalUsers, now + DeadlineSafetyMargin, ct);
-        var staleUsers = activeExternalUsers
-            .Where(user => !evaluations[user.Id].IsCurrent)
-            .ToList();
-        var invalidUsers = externalUsers
-            .Where(user => !user.IsActive || user.IsTombstoned)
-            .Concat(staleUsers)
-            .DistinctBy(user => user.Id)
-            .ToList();
-        if (invalidUsers.Count == 0) return 0;
+        if (externalUserIds.Count == 0) return 0;
         if (!HasExpectedLease(expectedLeaseEpoch))
             return 0;
 
-        var userIds = invalidUsers.Select(user => user.Id).ToList();
-        var newlyStale = staleUsers.Where(user => user.DirectorySyncStatus != "Stale").ToList();
-        var newlyStaleIds = newlyStale.Select(user => user.Id).ToHashSet();
         var strategy = db.Database.CreateExecutionStrategy();
         var mutation = await strategy.ExecuteAsync(async () =>
         {
             db.ChangeTracker.Clear();
             if (!HasExpectedLease(expectedLeaseEpoch))
-                return (Committed: false,
-                    EngineOwned: (IReadOnlyList<Guid>)[],
-                    SessionCounts: new Dictionary<Guid, int>(),
-                    ExecutionCounts: new Dictionary<Guid, int>());
+                return SweepMutation.None;
 
-            var usersToMarkStale = await db.Users
-                .Where(user => newlyStaleIds.Contains(user.Id))
-                .ToListAsync(ct);
-            foreach (var user in usersToMarkStale.Where(user => user.DirectorySyncStatus != "Stale"))
-            {
-                user.DirectorySyncStatus = "Stale";
-                UserSessionInvalidation.BumpSecurityStamp(user);
-            }
-
-            var sessions = await db.AuthSessions
-                .Where(session => userIds.Contains(session.UserId) && session.RevokedAt == null)
-                .ToListAsync(ct);
-            foreach (var session in sessions) session.RevokedAt = now;
-            var sessionCounts = sessions.GroupBy(session => session.UserId)
-                .ToDictionary(group => group.Key, group => group.Count());
-            var executionCounts = await db.WorkflowExecutions.AsNoTracking()
-                .Where(execution => execution.StartedByUserId != null
-                                 && userIds.Contains(execution.StartedByUserId.Value)
-                                 && (execution.Status == ExecutionStatus.Pending
-                                     || execution.Status == ExecutionStatus.Running
-                                     || execution.Status == ExecutionStatus.Paused))
-                .GroupBy(execution => execution.StartedByUserId!.Value)
-                .ToDictionaryAsync(group => group.Key, group => group.Count(), ct);
-
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            // Freshness and its resulting revocations belong to the same serializable
+            // attempt (ADR 0009/0014). A successful concurrent sync must not be overwritten
+            // by a verdict computed before it, even when it leaves SecurityStamp unchanged.
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             if (expectedLeaseEpoch > 0)
             {
                 // Validate and lock the lease row in the same transaction as user/session/
@@ -161,13 +124,41 @@ public sealed class ExternalAuthorizationStalenessService(
                 {
                     await transaction.RollbackAsync(ct);
                     db.ChangeTracker.Clear();
-                    return (Committed: false,
-                        EngineOwned: (IReadOnlyList<Guid>)[],
-                        SessionCounts: new Dictionary<Guid, int>(),
-                        ExecutionCounts: new Dictionary<Guid, int>());
+                    return SweepMutation.None;
                 }
             }
 
+            var externalUsers = await db.Users
+                .Where(user => externalUserIds.Contains(user.Id) && user.Provider != AuthProvider.Local)
+                .ToListAsync(ct);
+            var activeExternalUsers = externalUsers.Where(user => user.IsActive && !user.IsTombstoned).ToList();
+            var evaluations = await evaluator.EvaluateManyAsync(activeExternalUsers, now + DeadlineSafetyMargin, ct);
+            var staleUsers = activeExternalUsers.Where(user => !evaluations[user.Id].IsCurrent).ToList();
+            var invalidUsers = externalUsers.Where(user => !user.IsActive || user.IsTombstoned)
+                .Concat(staleUsers).DistinctBy(user => user.Id).ToList();
+            if (invalidUsers.Count == 0)
+                return SweepMutation.None;
+            var userIds = invalidUsers.Select(user => user.Id).ToList();
+            var newlyStale = staleUsers.Where(user => user.DirectorySyncStatus != "Stale").ToList();
+            foreach (var user in newlyStale)
+            {
+                user.DirectorySyncStatus = "Stale";
+                UserSessionInvalidation.BumpSecurityStamp(user);
+            }
+            var sessions = await db.AuthSessions
+                .Where(session => userIds.Contains(session.UserId) && session.RevokedAt == null)
+                .ToListAsync(ct);
+            foreach (var session in sessions) session.RevokedAt = now;
+            var sessionCounts = sessions.GroupBy(session => session.UserId)
+                .ToDictionary(group => group.Key, group => group.Count());
+            var executionCounts = await db.WorkflowExecutions.AsNoTracking()
+                .Where(execution => execution.StartedByUserId != null
+                                 && userIds.Contains(execution.StartedByUserId.Value)
+                                 && (execution.Status == ExecutionStatus.Pending
+                                     || execution.Status == ExecutionStatus.Running
+                                     || execution.Status == ExecutionStatus.Paused))
+                .GroupBy(execution => execution.StartedByUserId!.Value)
+                .ToDictionaryAsync(group => group.Key, group => group.Count(), ct);
             var engineOwned = await ExternalExecutionCancellation.CancelAsync(
                 db,
                 userIds,
@@ -181,21 +172,15 @@ public sealed class ExternalAuthorizationStalenessService(
             {
                 await transaction.RollbackAsync(ct);
                 db.ChangeTracker.Clear();
-                return (Committed: false,
-                    EngineOwned: (IReadOnlyList<Guid>)[],
-                    SessionCounts: new Dictionary<Guid, int>(),
-                    ExecutionCounts: new Dictionary<Guid, int>());
+                return SweepMutation.None;
             }
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
-            return (Committed: true,
-                EngineOwned: engineOwned,
-                SessionCounts: sessionCounts,
-                ExecutionCounts: executionCounts);
+            return new SweepMutation(userIds, newlyStale, engineOwned, sessionCounts, executionCounts);
         });
-        if (!mutation.Committed) return 0;
+        if (mutation.UserIds.Count == 0) return 0;
 
-        foreach (var userId in userIds)
+        foreach (var userId in mutation.UserIds)
             UserSessionInvalidation.InvalidateUserStateCache(cache, userId);
 
         var engine = services.GetService<IWorkflowEngine>();
@@ -228,10 +213,10 @@ public sealed class ExternalAuthorizationStalenessService(
             }
         }
 
-        foreach (var user in newlyStale)
+        foreach (var user in mutation.NewlyStale)
         {
             if (!HasExpectedLease(expectedLeaseEpoch))
-                return invalidUsers.Count;
+                return mutation.UserIds.Count;
             await audit.LogAsync(
                 AuditActions.UserAuthorizationStale,
                 "User",
@@ -244,7 +229,17 @@ public sealed class ExternalAuthorizationStalenessService(
                 ct);
         }
 
-        return invalidUsers.Count;
+        return mutation.UserIds.Count;
+    }
+
+    private sealed record SweepMutation(
+        IReadOnlyList<Guid> UserIds,
+        IReadOnlyList<User> NewlyStale,
+        IReadOnlyList<Guid> EngineOwned,
+        IReadOnlyDictionary<Guid, int> SessionCounts,
+        IReadOnlyDictionary<Guid, int> ExecutionCounts)
+    {
+        internal static readonly SweepMutation None = new([], [], [], new Dictionary<Guid, int>(), new Dictionary<Guid, int>());
     }
 
     private bool HasExpectedLease(long expectedLeaseEpoch) =>

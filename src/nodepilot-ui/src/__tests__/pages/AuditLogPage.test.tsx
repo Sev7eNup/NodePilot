@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -363,5 +363,73 @@ describe('AuditLogPage — filter debouncing', () => {
     // Paging mid-edit would follow a cursor from the previous filter set.
     expect(loadMore()).toBeDisabled();
     await waitFor(() => expect(loadMore()).toBeEnabled(), { timeout: 2000 });
+  });
+});
+
+describe('AuditLogPage cursor ownership', () => {
+  const row = (id: string) => ({ ...ENTRIES[0], id, username: id });
+  const cursor = (id: string) => ({ timestamp: ENTRIES[0].timestamp, id });
+
+  it('keeps a late page out of a different filter result', async () => {
+    let release!: () => void;
+    let pageRequested = false;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    server.use(http.get(`${BASE}/api/audit`, async ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      if (params.get('action') === 'FILTER_B') return HttpResponse.json(page([row('filter-b')]));
+      if (params.has('afterId')) {
+        pageRequested = true;
+        await gate;
+        return HttpResponse.json(page([row('late-filter-a')]));
+      }
+      return HttpResponse.json(page([row('filter-a')], cursor('a')));
+    }));
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /load more/i }));
+    await waitFor(() => expect(pageRequested).toBe(true));
+    fireEvent.change(screen.getByPlaceholderText('WORKFLOW_CREATED'), { target: { value: 'FILTER_B' } });
+    await screen.findByText('filter-b');
+    await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 50)); });
+    expect(screen.queryByText('late-filter-a')).not.toBeInTheDocument();
+  });
+
+  it('requests a cursor only once while the next page is pending', async () => {
+    let release!: () => void;
+    let requests = 0;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    server.use(http.get(`${BASE}/api/audit`, async ({ request }) => {
+      if (new URL(request.url).searchParams.has('afterId')) {
+        requests++;
+        await gate;
+        return HttpResponse.json(page([row('next-page')]));
+      }
+      return HttpResponse.json(page([row('first-page')], cursor('first')));
+    }));
+    renderPage();
+    const more = await screen.findByRole('button', { name: /load more/i });
+    fireEvent.click(more);
+    await waitFor(() => expect(requests).toBe(1));
+    fireEvent.click(more);
+    await act(async () => { release(); });
+    await screen.findByText('next-page');
+    expect(requests).toBe(1);
+  });
+
+  it('refreshes the loaded cursor chain when new entries move the first page', async () => {
+    let refreshed = false;
+    server.use(http.get(`${BASE}/api/audit`, ({ request }) => {
+      const after = new URL(request.url).searchParams.get('afterId');
+      if (after === 'new-head') return HttpResponse.json(page([row('between-new-and-old-pages')]));
+      if (after) return HttpResponse.json(page([row('old-tail')]));
+      return HttpResponse.json(page([row(refreshed ? 'new-head' : 'old-head')], cursor(refreshed ? 'new-head' : 'old-head')));
+    }));
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /load more/i }));
+    await screen.findByText('old-tail');
+    refreshed = true;
+    fireEvent.click(screen.getByTitle('Reload'));
+    await screen.findByText('new-head');
+    expect(await screen.findByText('between-new-and-old-pages')).toBeInTheDocument();
+    expect(screen.queryByText('old-tail')).not.toBeInTheDocument();
   });
 });

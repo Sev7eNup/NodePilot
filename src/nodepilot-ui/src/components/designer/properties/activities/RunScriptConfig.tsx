@@ -33,12 +33,12 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
   // config as ConfigOverride so the test reflects whatever the user is editing right now,
   // even if they haven't saved the workflow yet.
   const canRun = !!workflowId && !!stepId;
-  const runStepTest = useCallback(async (): Promise<StepTestResult> => {
+  const runStepTest = useCallback(async (currentScript: string): Promise<StepTestResult> => {
     if (!workflowId || !stepId) {
       return { success: false, output: null, errorOutput: null, outputParameters: {}, durationMs: 0, errorMessage: t('config.runScript.stepNotIdentifiable') };
     }
     return api.post<StepTestResult>(`/workflows/${workflowId}/steps/${stepId}/test`, {
-      configOverride: config,
+      configOverride: { ...config, script: currentScript },
     });
   }, [workflowId, stepId, config, t]);
 

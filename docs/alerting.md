@@ -235,7 +235,9 @@ explains it. Runtime mechanics: see the trigger-liveness section in `docs/claude
 > database, because trigger registrations are process-local: a persisted row would outlive the
 > process that owns it. Consequence in an HA pair: the catalog and the policy preview are served by
 > whichever node answers the request, so a **follower** — which runs no triggers — shows this source
-> as *unavailable* even while the leader alerts correctly. Single-node deployments never see this.
+> as *unavailable* even while the leader alerts correctly. A leader with an empty registry is
+> available and healthy: its complete snapshot ends prior trigger-failure episodes so a later
+> failure can alert again. Single-node deployments always own this registry.
 
 `audit-event` makes the audit log alertable in-product — before it, a failed login, a lockout, a
 break-glass sign-in or a role change reached an operator only through the ECS-JSON SIEM stream, an OTLP

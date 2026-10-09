@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
@@ -94,11 +95,11 @@ test.describe('Workflow-Management (Teil 1)', () => {
 
   test('1.4 — workflow appears in the list and opens from there', async ({ page }) => {
     await installDefaultMocks(page);
-    await page.route('**/api/workflows', (route) =>
+    await page.route('**/api/workflows/paged**', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([workflowJson({ name: 'E2E_Renamed_Test', checkedOutByUserId: null, checkedOutByUserName: null, isEnabled: true })]),
+        body: JSON.stringify(workflowPage(route, [workflowJson({ name: 'E2E_Renamed_Test', checkedOutByUserId: null, checkedOutByUserName: null, isEnabled: true })])),
       }),
     );
     await page.route(`**/api/workflows/${NEW_ID}`, (route) =>

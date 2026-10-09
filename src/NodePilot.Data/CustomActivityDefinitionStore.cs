@@ -34,7 +34,7 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
         var exists = await db.CustomActivityDefinitions
             .AnyAsync(x => x.Key == input.Key && !x.IsDeleted, ct);
         if (exists)
-            throw new InvalidOperationException($"A custom activity with key '{input.Key}' already exists.");
+            throw new CustomActivityDuplicateKeyException(input.Key);
 
         var now = DateTime.UtcNow;
         var def = new CustomActivityDefinition
@@ -51,7 +51,12 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
         };
         ApplyInput(def, input);
         db.CustomActivityDefinitions.Add(def);
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException ex) when (CustomActivityKeyConstraint.IsViolation(ex))
+        {
+            db.Entry(def).State = EntityState.Detached;
+            throw new CustomActivityDuplicateKeyException(input.Key);
+        }
         return def;
     }
 
@@ -59,9 +64,7 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
         Guid id, CustomActivityDefinitionInput input, Guid expectedConcurrencyToken, string? updatedBy, CancellationToken ct)
     {
         var def = await LoadLiveAsync(id, ct);
-        if (def.ConcurrencyToken != expectedConcurrencyToken)
-            throw new CustomActivityConcurrencyException(
-                "The custom activity was modified by someone else. Reload and re-apply your changes.");
+        RequireCurrentToken(def, expectedConcurrencyToken);
 
         SnapshotCurrent(def);          // capture previous state under its current version number
         ApplyInput(def, input);         // Key is immutable — ApplyInput does not touch it
@@ -70,28 +73,30 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
         def.ConcurrencyToken = Guid.NewGuid();
         def.UpdatedAt = DateTime.UtcNow;
         def.UpdatedBy = updatedBy;
-        await db.SaveChangesAsync(ct);
+        await SaveMutationAsync(ct);
         return def;
     }
 
-    public async Task SetEnabledAsync(Guid id, bool enabled, string? updatedBy, CancellationToken ct)
+    public async Task SetEnabledAsync(Guid id, bool enabled, Guid expectedConcurrencyToken, string? updatedBy, CancellationToken ct)
     {
         var def = await LoadLiveAsync(id, ct);
+        RequireCurrentToken(def, expectedConcurrencyToken);
         def.IsEnabled = enabled;
         def.ConcurrencyToken = Guid.NewGuid();
         def.UpdatedAt = DateTime.UtcNow;
         def.UpdatedBy = updatedBy;
-        await db.SaveChangesAsync(ct);
+        await SaveMutationAsync(ct);
     }
 
-    public async Task SoftDeleteAsync(Guid id, CancellationToken ct)
+    public async Task SoftDeleteAsync(Guid id, Guid expectedConcurrencyToken, CancellationToken ct)
     {
         var def = await LoadLiveAsync(id, ct);
+        RequireCurrentToken(def, expectedConcurrencyToken);
         def.IsDeleted = true;
         def.IsEnabled = false; // drop out of catalog/palette immediately
         def.DeletedAt = DateTime.UtcNow;
         def.ConcurrencyToken = Guid.NewGuid();
-        await db.SaveChangesAsync(ct);
+        await SaveMutationAsync(ct);
     }
 
     public async Task<IReadOnlyList<CustomActivityDefinitionVersion>> GetVersionsAsync(Guid id, CancellationToken ct) =>
@@ -100,9 +105,10 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
             .OrderByDescending(v => v.Version)
             .ToListAsync(ct);
 
-    public async Task<CustomActivityDefinition> RollbackAsync(Guid id, int version, string? updatedBy, CancellationToken ct)
+    public async Task<CustomActivityDefinition> RollbackAsync(Guid id, int version, Guid expectedConcurrencyToken, string? updatedBy, CancellationToken ct)
     {
         var def = await LoadLiveAsync(id, ct);
+        RequireCurrentToken(def, expectedConcurrencyToken);
         var snap = await db.CustomActivityDefinitionVersions
             .FirstOrDefaultAsync(v => v.DefinitionId == id && v.Version == version, ct)
             ?? throw new KeyNotFoundException($"Custom activity {id} has no version {version}.");
@@ -127,9 +133,24 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
         def.ConcurrencyToken = Guid.NewGuid();
         def.UpdatedAt = DateTime.UtcNow;
         def.UpdatedBy = updatedBy;
-        await db.SaveChangesAsync(ct);
+        await SaveMutationAsync(ct);
         return def;
     }
+
+    private static void RequireCurrentToken(CustomActivityDefinition definition, Guid expected)
+    {
+        if (definition.ConcurrencyToken != expected)
+            throw MutationConflict();
+    }
+
+    private async Task SaveMutationAsync(CancellationToken ct)
+    {
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateConcurrencyException) { throw MutationConflict(); }
+    }
+
+    private static CustomActivityConcurrencyException MutationConflict() => new(
+        "The custom activity was modified by someone else. Reload and re-apply your changes.");
 
     public async Task<int> CountAsync(CancellationToken ct) =>
         await db.CustomActivityDefinitions.CountAsync(x => !x.IsDeleted, ct);

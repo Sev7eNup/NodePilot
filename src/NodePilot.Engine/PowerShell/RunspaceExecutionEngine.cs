@@ -111,26 +111,10 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             };
         }
 
-        // PowerShell's module auto-loader is not thread-safe under high concurrency: when
-        // many runspaces simultaneously import the same module (e.g. NetTCPIP via
-        // Get-NetIPAddress) the module registry's internal List<T> throws "Collection was
-        // modified; enumeration operation may not execute." Mirrors the retry pattern in
-        // WinRmSession.ExecuteScriptAsync: short random back-off, up to 2 retries, only on
-        // the well-known race signature (other failures pass through immediately).
-        const int maxAttempts = 3;
-        PowerShellExecutionResult result = default!;
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            result = await ExecuteOnceAsync(request, ct);
-            if (result.Success || attempt == maxAttempts) break;
-            if (!IsModuleLoadRace(result.Error)) break;
-            await Task.Delay(Random.Shared.Next(100 * attempt, 350 * attempt), ct);
-        }
-        return result;
+        // An invocation may already have performed side effects before any error. Only the
+        // caller's explicit retry policy may authorize another invocation.
+        return await ExecuteOnceAsync(request, ct);
     }
-
-    internal static bool IsModuleLoadRace(string? error) =>
-        error is not null && error.Contains("Collection was modified", StringComparison.OrdinalIgnoreCase);
 
     // Stop() cannot interrupt a blocking .NET call inside the script, and on a RunspacePool-backed
     // BeginInvoke it can occasionally never take effect at all (e.g. PowerShell/PowerShell#17250).

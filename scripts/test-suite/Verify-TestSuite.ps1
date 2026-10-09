@@ -42,8 +42,7 @@ $h = @{ Authorization = "Bearer $($login.token)" }
 
 $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'suite-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 
-$allWorkflows = Invoke-RestMethod -Uri "$BaseUrl/api/workflows" -Headers $h
-if ($null -ne $allWorkflows.PSObject.Properties['items']) { $allWorkflows = $allWorkflows.items }
+$allWorkflows = Invoke-RestMethod -Uri "$BaseUrl/api/workflows/names" -Headers $h
 
 function Get-Execution { param([string]$Id) Invoke-RestMethod -Uri "$BaseUrl/api/executions/$Id" -Headers $h }
 function Get-Steps { param([string]$Id) @(Invoke-RestMethod -Uri "$BaseUrl/api/executions/$Id/steps" -Headers $h) }
@@ -63,6 +62,7 @@ foreach ($entry in @($manifest.workflows)) {
     $results += [pscustomobject]@{ Workflow = $entry.name; Verdict = 'MISSING'; Detail = 'not installed' }
     continue
   }
+  $wf = Invoke-RestMethod -Uri "$BaseUrl/api/workflows/$($wf.id)" -Headers $h
   if (-not $wf.isEnabled) {
     $results += [pscustomobject]@{ Workflow = $entry.name; Verdict = 'SKIPPED'
       Detail = "disabled (profile $($entry.profile))"

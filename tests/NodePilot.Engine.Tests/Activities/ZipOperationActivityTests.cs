@@ -88,6 +88,79 @@ public sealed class ZipOperationActivityTests : IDisposable
 
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement;
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Compress_RepeatedBackupInsideSource_DoesNotReadItsOwnDestination(bool wildcard, bool windowsPowerShell)
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "np-zip-repeat-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(stage);
+        var destination = Path.Combine(stage, "backup.zip");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(stage, "data.txt"), "retained payload");
+            using (var prior = ZipFile.Open(destination, ZipArchiveMode.Create))
+                prior.CreateEntry("old.txt");
+            await CreateActivity().ExecuteAsync(Ctx(), JsonSerializer.SerializeToElement(new
+            {
+                operation = "compress", source = wildcard ? Path.Combine(stage, "*") : stage,
+                destination, force = true,
+            }), CancellationToken.None);
+            if (windowsPowerShell)
+            {
+                var engine = ProcessExecutionEngine.CreateWindowsPowerShell(NullLogger.Instance);
+                var result = await engine.ExecuteAsync(new PowerShellExecutionRequest
+                {
+                    ScriptText = _capturedScript!, Isolated = true, Timeout = TimeSpan.FromSeconds(15),
+                }, TestContext.Current.CancellationToken);
+                result.Success.Should().BeTrue(result.Error);
+            }
+            else
+            {
+                using var shell = System.Management.Automation.PowerShell.Create();
+                shell.AddScript("try { & { " + _capturedScript + " } } catch { Write-Output $_.Exception.Message }");
+                var output = string.Join("\n", shell.Invoke().Select(item => item.ToString()));
+                shell.HadErrors.Should().BeFalse(output);
+            }
+            File.Exists(destination).Should().BeTrue("the old backup must never disappear on a failed replacement");
+            using var archive = ZipFile.OpenRead(destination);
+            archive.Entries.Should().Contain(entry => entry.FullName.EndsWith("data.txt"));
+            archive.Entries.Should().NotContain(entry => entry.FullName.EndsWith("backup.zip"));
+        }
+        finally { Directory.Delete(stage, true); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Compress_FailedInput_PreservesExistingDestination(bool samePath)
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "np-zip-preserve-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(stage);
+        var destination = Path.Combine(stage, "backup.zip");
+        var source = samePath ? destination : Path.Combine(stage, "input.txt");
+        try
+        {
+            await File.WriteAllTextAsync(destination, "previous archive bytes");
+            if (!samePath) await File.WriteAllTextAsync(source, "locked source");
+            await CreateActivity().ExecuteAsync(Ctx(), JsonSerializer.SerializeToElement(new
+            {
+                operation = "compress", source, destination, force = true,
+            }), CancellationToken.None);
+            using var locked = samePath ? null : File.Open(source, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            using var shell = System.Management.Automation.PowerShell.Create();
+            shell.AddScript("try { & { " + _capturedScript + " } } catch { Write-Output $_.Exception.Message }");
+            shell.Invoke();
+            shell.HadErrors.Should().BeTrue();
+            File.Exists(destination).Should().BeTrue("failed compression must preserve the last good archive");
+            (await File.ReadAllTextAsync(destination)).Should().Be("previous archive bytes");
+            Directory.GetFiles(stage).Should().HaveCount(samePath ? 1 : 2, "temporary output must be removed");
+        }
+        finally { Directory.Delete(stage, true); }
+    }
+
     private static string ZipOutput(string operation, string destination, string sizeBytes) => $$"""
         ###NODEPILOT_ZIP_RESULT_START###
         {"operation":"{{operation}}","destination":"{{destination.Replace("\\", "\\\\")}}","sizeBytes":{{sizeBytes}}}

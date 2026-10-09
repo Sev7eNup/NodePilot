@@ -19,6 +19,52 @@ namespace NodePilot.Engine.Tests.Triggers;
 /// </summary>
 public class EventLogTriggerSourceTests
 {
+    [Fact]
+    public async Task Startup_HoldsReconciliationUntilDowntimeCursorIsPersisted()
+    {
+        var src = new EventLogTriggerSource(NullLogger<EventLogTriggerSource>.Instance, EmptyConfig());
+        var skipEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var persistSkip = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cursor = 100;
+        var delivered = new List<int>();
+        var start = src.InitializeBeforeReconciliationAsync(
+            () => Task.CompletedTask,
+            async () => { skipEntered.SetResult(); await persistSkip.Task; cursor = 200; },
+            TestContext.Current.CancellationToken);
+        await skipEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Task Reconcile()
+        {
+            delivered.AddRange(Enumerable.Range(cursor + 1, 201 - cursor));
+            cursor = 201;
+            return Task.CompletedTask;
+        }
+        try
+        {
+            await src._reconcileGate.RunAsync(Reconcile, TestContext.Current.CancellationToken);
+            delivered.Should().BeEmpty("entries 101–200 belong to downtime, whose skip is not committed yet");
+        }
+        finally { persistSkip.TrySetResult(); await start; }
+
+        await src._reconcileGate.RunAsync(Reconcile, TestContext.Current.CancellationToken);
+        delivered.Should().Equal([201], "the first live entry remains deliverable after startup finishes");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StartupFailure_ReleasesReconciliationGate(bool failDuringSkip)
+    {
+        var src = new EventLogTriggerSource(NullLogger<EventLogTriggerSource>.Instance, EmptyConfig());
+        Func<Task> fail = () => Task.FromException(new OperationCanceledException());
+        Func<Task> ok = () => Task.CompletedTask;
+        Func<Task> startup = () => src.InitializeBeforeReconciliationAsync(
+            failDuringSkip ? ok : fail, failDuringSkip ? fail : ok, TestContext.Current.CancellationToken);
+        await startup.Should().ThrowAsync<OperationCanceledException>();
+        var ran = false;
+        await src._reconcileGate.RunAsync(() => { ran = true; return Task.CompletedTask; }, TestContext.Current.CancellationToken);
+        ran.Should().BeTrue();
+    }
+
     private static JsonElement ParseConfig(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     private static IConfiguration EmptyConfig() =>

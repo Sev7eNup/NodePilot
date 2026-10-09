@@ -290,7 +290,7 @@ export function applyLiveEventUpdate(
         'Failed';
       const finalSteps = isTerminal
         ? exec.steps.map((s) =>
-            s.status === 'Running'
+            s.status === 'Running' || s.status === 'Paused'
               ? { ...s, status: terminalStepStatus, completedAt: evt.completedAt ?? undefined }
               : s
           )

@@ -164,8 +164,10 @@ public sealed class StartupRecoverySingleNodeTests : IDisposable
             .Should().Be("reconciler");
     }
 
-    [Fact]
-    public async Task SingleNode_CancelsRunningSteps_UnderRecoveredExecutions()
+    [Theory]
+    [InlineData(ExecutionStatus.Running)]
+    [InlineData(ExecutionStatus.Paused)]
+    public async Task SingleNode_CancelsActiveSteps_UnderRecoveredExecutions(ExecutionStatus stepStatus)
     {
         var wf = SeedWorkflow();
         var execId = AddExecution(wf.Id, ExecutionStatus.Running);
@@ -177,7 +179,7 @@ public sealed class StartupRecoverySingleNodeTests : IDisposable
             WorkflowExecutionId = execId,
             StepId = "s1",
             StepType = "runScript",
-            Status = ExecutionStatus.Running,
+            Status = stepStatus,
             StartedAt = DateTime.UtcNow.AddMinutes(-4)
         });
         _db.StepExecutions.Add(new StepExecution

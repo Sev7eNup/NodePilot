@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
@@ -98,8 +99,8 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
       folder({ id: WEB_ID, name: 'Web', parentFolderId: PROD_ID, depth: 2, path: '/Production/Web', workflowCount: 0 }),
       folder({ id: DEV_ID, name: 'Development', parentFolderId: ROOT_ID, depth: 1, path: '/Development', workflowCount: 0 }),
     ]);
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow()]) }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow()])) }),
     );
 
     await page.goto('/workflows');
@@ -121,14 +122,14 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
       rootFolder(),
       folder({ id: PROD_ID, name: 'Production' }),
     ]);
-    await page.route('**/api/workflows', (route) =>
+    await page.route('**/api/workflows/paged**', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
+        body: JSON.stringify(workflowPage(route, [
           workflow({ id: WF_IN_ROOT, name: 'RootFlow', folderId: null }),
           workflow({ id: WF_IN_PROD, name: 'ProdFlow', folderId: PROD_ID }),
-        ]),
+        ])),
       }),
     );
 
@@ -157,8 +158,8 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(folders) });
     });
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [])) }),
     );
 
     await page.goto('/workflows');
@@ -188,8 +189,8 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
       }
       return route.continue();
     });
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [])) }),
     );
 
     await page.goto('/workflows');
@@ -223,8 +224,8 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
       }
       return route.continue();
     });
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [])) }),
     );
 
     await page.goto('/workflows');
@@ -258,8 +259,8 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
       }
       return route.continue();
     });
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [])) }),
     );
 
     await page.goto('/workflows');
@@ -298,8 +299,8 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
       }
       return route.continue();
     });
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [])) }),
     );
 
     await page.goto('/workflows');
@@ -323,11 +324,11 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
   // ---------- 52.4 — workflow-to-folder move endpoint contract ----------
   test('52.4 — workflow→folder move calls POST /api/workflows/{id}/move-folder with the target', async ({ page }) => {
     await routeFolders(page, () => [rootFolder(), folder({ id: PROD_ID, name: 'Production' })]);
-    await page.route('**/api/workflows', (route) =>
+    await page.route('**/api/workflows/paged**', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([workflow({ id: WF_IN_ROOT, name: 'RootFlow', folderId: null })]),
+        body: JSON.stringify(workflowPage(route, [workflow({ id: WF_IN_ROOT, name: 'RootFlow', folderId: null })])),
       }),
     );
     let moveBody: { targetFolderId?: string } | null = null;
@@ -364,8 +365,8 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
     // branch swaps it for a <details> disclosure with no resize grip).
     await page.setViewportSize({ width: 1280, height: 900 });
     await routeFolders(page, () => [rootFolder(), folder({ id: PROD_ID, name: 'Production' })]);
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow()]) }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow()])) }),
     );
 
     await page.goto('/workflows');

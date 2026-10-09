@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
+using NodePilot.Core.Models;
 using Xunit;
 
 namespace NodePilot.Data.Tests;
@@ -110,6 +111,8 @@ public class MigrationDriftTests
             toMigration: latestMigration);
 
         script.Should().Contain("[Id] uniqueidentifier")
+            .And.Contain("[StepType] nvarchar(71)")
+            .And.Contain("[ActivityType] nvarchar(71)")
             .And.Contain("PRIMARY KEY ([Id])")
             .And.Contain("IX_DirectoryMemberships_UserId_Authority_GroupKey")
             .And.Contain("UX_SharedFolderPermissions_Principal")
@@ -138,6 +141,8 @@ public class MigrationDriftTests
             toMigration: latestMigration);
 
         script.Should().Contain("uuid")
+            .And.Contain("\"StepType\" TYPE character varying(71)")
+            .And.Contain("\"ActivityType\" TYPE character varying(71)")
             .And.Contain("character varying")
             .And.Contain("bytea")
             .And.Contain("timestamp with time zone")
@@ -305,6 +310,32 @@ public class MigrationDriftTests
             SqliteConnection.ClearAllPools();
             try { File.Delete(dbPath); } catch { /* best effort */ }
         }
+    }
+
+    [Fact]
+    public async Task ActivityTypeWidening_PreservesExistingExecutionAndSupportEvent()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync(ct);
+        await using var db = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection)
+            .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)).Options);
+        var migrator = db.Database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261008211212_CountWorkflowTriggers", ct);
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Preserved", DefinitionJson = "{}" };
+        var execution = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id };
+        var step = new StepExecution { WorkflowExecutionId = execution.Id, StepId = "read", StepType = "custom:read", Output = "retained" };
+        var support = new SupportEvent { EventType = "STEP_COMPLETED", Message = "retained", ActivityType = "custom:read" };
+        db.AddRange(workflow, execution, step, support);
+        await db.SaveChangesAsync(ct);
+
+        await migrator.MigrateAsync(cancellationToken: ct);
+        db.ChangeTracker.Clear();
+
+        (await db.StepExecutions.SingleAsync(s => s.Id == step.Id, ct)).Output.Should().Be("retained");
+        (await db.SupportEvents.SingleAsync(s => s.Id == support.Id, ct)).ActivityType.Should().Be("custom:read");
+        (await db.WorkflowExecutions.SingleAsync(e => e.Id == execution.Id, ct)).WorkflowId.Should().Be(workflow.Id);
     }
 
     private static NodePilotDbContext NewSqliteContext(string connStr)

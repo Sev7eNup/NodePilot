@@ -294,6 +294,43 @@ public class AuditLogRetentionServiceTests
         }
     }
 
+    [Fact]
+    public async Task VerifyArchiveIntegrityAsync_CappedPassesAdvanceAndRevisitArchives()
+    {
+        var archiveDir = Path.Combine(Path.GetTempPath(), $"audit-rotation-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(archiveDir);
+        var (_, factory, conn) = CreateEnv();
+        try
+        {
+            foreach (var name in new[] { "audit-a.ndjson.gz", "audit-b.ndjson.gz" })
+            {
+                var path = Path.Combine(archiveDir, name);
+                await File.WriteAllTextAsync(path, "archive");
+                await File.WriteAllTextAsync(path + ".sha256", "deliberately-wrong");
+                File.SetLastWriteTimeUtc(path, new DateTime(2020, 1, 1));
+            }
+            var logger = new ListLogger<AuditLogRetentionService>();
+            var svc = new AuditLogRetentionService(factory,
+                new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new()),
+                new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(), logger,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
+
+            for (var pass = 0; pass < 3; pass++)
+                await svc.VerifyArchiveIntegrityAsync(archiveDir, 1, CancellationToken.None);
+
+            var drift = logger.Entries.Where(e => e.Message.Contains("HASH DRIFT")).Select(e => e.Message).ToList();
+            drift.Should().HaveCount(3);
+            drift[0].Should().Contain("audit-a.ndjson.gz");
+            drift[1].Should().Contain("audit-b.ndjson.gz");
+            drift[2].Should().Contain("audit-a.ndjson.gz");
+        }
+        finally
+        {
+            conn.Dispose();
+            Directory.Delete(archiveDir, recursive: true);
+        }
+    }
+
     /// <summary>
     /// Drift detection: the verify pass must notice when an archive file's bytes change
     /// after the sidecar was written. The whole point of the SHA-256 sidecar is to detect

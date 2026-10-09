@@ -82,16 +82,16 @@ public class PowerManagementActivity : BaseRemoteActivity
 
         return action switch
         {
-            "shutdown"  => BuildShutdownInvocation("/s", delay, force, message),
-            "restart"   => BuildShutdownInvocation("/r", delay, force, message),
-            "logoff"    => "& shutdown.exe /l",
+            "shutdown"  => GuardNativeExit(BuildShutdownInvocation("/s", delay, force, message)),
+            "restart"   => GuardNativeExit(BuildShutdownInvocation("/r", delay, force, message)),
+            "logoff"    => GuardNativeExit("& shutdown.exe /l"),
             // ERROR 1116 = "system is not currently being shut down" — abort against a
             // machine with no pending shutdown is a benign no-op, not a workflow failure.
             // Run via cmd /c to keep stderr off PowerShell's error stream, then translate
             // exit codes: 0 = aborted real shutdown, 1116 = nothing to abort (still ok),
             // everything else = surface as PS error.
             "abort"     => "$__out = & cmd.exe /c \"shutdown.exe /a 2>&1\"; if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 1116) { Write-Output ($__out -join [Environment]::NewLine) } else { Write-Error ($__out -join [Environment]::NewLine) }",
-            "hibernate" => "& shutdown.exe /h",
+            "hibernate" => GuardNativeExit("& shutdown.exe /h"),
             _ => throw new InvalidOperationException(
                 $"Power Management: unknown action '{action}'. " +
                 "Expected shutdown / restart / logoff / abort / hibernate.")
@@ -103,6 +103,11 @@ public class PowerManagementActivity : BaseRemoteActivity
         var raw = _configuration["PowerManagement:AllowLocalSelfShutdown"];
         return string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static string GuardNativeExit(string invocation) =>
+        "$__npShutdown = " + invocation + "; " +
+        "if ($LASTEXITCODE -ne 0) { throw \"shutdown.exe failed with exit code $($LASTEXITCODE): $($__npShutdown -join ' ')\" }; " +
+        "$__npShutdown";
 
     private static string BuildShutdownInvocation(string opFlag, int delay, bool force, string? message)
     {

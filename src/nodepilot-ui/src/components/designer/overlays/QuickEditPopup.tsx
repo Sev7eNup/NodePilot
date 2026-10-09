@@ -50,8 +50,10 @@ export function QuickEditPopup({ node, screenX, screenY, onSave, onClose }: Read
   const [value, setValue] = useState(() => {
     if (!field) return '';
     const v = config[field.key];
+    if (activityType === 'returnData') return v == null ? '{}' : typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v);
     return v != null ? String(v) : '';
   });
+  const [error, setError] = useState('');
 
   const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -71,13 +73,24 @@ export function QuickEditPopup({ node, screenX, screenY, onSave, onClose }: Read
     const handler = (e: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(e.target as globalThis.Node)) onClose();
     };
-    setTimeout(() => globalThis.addEventListener('mousedown', handler), 0);
-    return () => globalThis.removeEventListener('mousedown', handler);
+    const timer = setTimeout(() => globalThis.addEventListener('mousedown', handler), 0);
+    return () => {
+      clearTimeout(timer);
+      globalThis.removeEventListener('mousedown', handler);
+    };
   }, [onClose]);
 
   const save = () => {
     if (!field) { onClose(); return; }
-    const parsed = field.key === 'seconds' ? Number(value) : value;
+    let parsed: unknown = field.key === 'seconds' ? Number(value) : value;
+    if (activityType === 'returnData') {
+      try { parsed = JSON.parse(value); }
+      catch { setError(t('quickEdit.errorJsonObject')); return; }
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setError(t('quickEdit.errorJsonObject'));
+        return;
+      }
+    }
     onSave(node.id, { [field.key]: parsed });
     onClose();
   };
@@ -115,7 +128,7 @@ export function QuickEditPopup({ node, screenX, screenY, onSave, onClose }: Read
         <textarea
           ref={inputRef as React.RefObject<HTMLTextAreaElement>}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => { setValue(e.target.value); setError(''); }}
           placeholder={fieldPlaceholder}
           className="input-field font-mono text-xs resize-none"
           rows={6}
@@ -126,7 +139,7 @@ export function QuickEditPopup({ node, screenX, screenY, onSave, onClose }: Read
           ref={inputRef as React.RefObject<HTMLInputElement>}
           type={field.key === 'seconds' ? 'number' : 'text'}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => { setValue(e.target.value); setError(''); }}
           placeholder={fieldPlaceholder}
           className="input-field text-sm"
           onKeyDown={(e) => {
@@ -135,6 +148,7 @@ export function QuickEditPopup({ node, screenX, screenY, onSave, onClose }: Read
           }}
         />
       )}
+      {error && <p role="alert" className="text-xs text-error">{error}</p>}
       <div className="flex items-center justify-end gap-2">
         <button onClick={onClose} className="px-3 py-1.5 text-xs font-label font-semibold text-on-surface-variant hover:bg-surface-high rounded-md transition-colors">
           {t('common:cancel')}

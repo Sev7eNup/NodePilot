@@ -235,7 +235,7 @@ public static class WorkflowAnalyzer
 
     private static void AddDuplicateOutputVariableFindings(WorkflowDefinitionDocument doc, List<Finding> findings)
     {
-        var seen = new Dictionary<string, string>(StringComparer.Ordinal);
+        var seen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var node in doc.Nodes)
         {
             if (doc.DisabledNodeIds.Contains(node.Id)) continue;

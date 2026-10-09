@@ -374,6 +374,7 @@ namespace NodePilot.Data.Migrations
                         .HasColumnType("character varying(32)");
 
                     b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
@@ -459,7 +460,10 @@ namespace NodePilot.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Key");
+                    b.HasIndex("Key")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CustomActivityDefinitions_LiveKey")
+                        .HasFilter("\"IsDeleted\" = FALSE");
 
                     b.HasIndex("IsDeleted", "IsEnabled");
 
@@ -1588,8 +1592,8 @@ namespace NodePilot.Data.Migrations
 
                     b.Property<string>("StepType")
                         .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
+                        .HasMaxLength(71)
+                        .HasColumnType("character varying(71)");
 
                     b.Property<string>("TargetMachine")
                         .HasColumnType("text");
@@ -1623,8 +1627,8 @@ namespace NodePilot.Data.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("ActivityType")
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)");
+                        .HasMaxLength(71)
+                        .HasColumnType("character varying(71)");
 
                     b.Property<string>("EventType")
                         .IsRequired()

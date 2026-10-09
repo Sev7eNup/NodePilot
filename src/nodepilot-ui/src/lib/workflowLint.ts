@@ -244,7 +244,7 @@ export function lintWorkflow(
     if (d.disabled === true) continue; // disabled steps emit no output, so they cannot conflict
     const ov = (d.outputVariable as string) || '';
     if (!ov) continue;
-    if (seenOutputVar.has(ov)) {
+    if (seenOutputVar.has(ov.toLowerCase())) {
       errors.push({
         severity: 'error',
         nodeId: n.id,
@@ -252,7 +252,7 @@ export function lintWorkflow(
         message: i18n.t('lint:issues.dupOutputVariable', { name: ov, reference: `{{${ov}.output}}` }),
       });
     } else {
-      seenOutputVar.set(ov, n.id);
+      seenOutputVar.set(ov.toLowerCase(), n.id);
     }
   }
 

@@ -181,6 +181,79 @@ public sealed class BackupAlertingTests : IDisposable
         (restored.Created, restored.Skipped).Should().Be((section.New, section.Conflicts));
     }
 
+    [Theory]
+    [InlineData(false, RestoreConflictPolicy.Overwrite)]
+    [InlineData(true, RestoreConflictPolicy.Overwrite)]
+    [InlineData(false, RestoreConflictPolicy.Skip)]
+    public async Task Restore_ExistingRule_ReplacesChildrenOnlyForOverwrite(
+        bool sameTarget, RestoreConflictPolicy policy)
+    {
+        var restoredWorkflowId = Guid.NewGuid();
+        var oldWorkflowId = sameTarget ? restoredWorkflowId : Guid.NewGuid();
+        byte[] bytes;
+        await using (var src = TestDbFactory.Create())
+        {
+            src.Workflows.Add(new Workflow
+            {
+                Id = restoredWorkflowId, Name = "Restored scope", DefinitionJson = "{}",
+            });
+            var ruleId = Guid.NewGuid();
+            src.NotificationRules.Add(new NotificationRule
+            {
+                Id = ruleId, Name = "restore-rule", EventTypes = "ExecutionFailed",
+                ScopeKind = NotificationScopeKind.Workflows,
+                Routes = [new NotificationRoute
+                {
+                    Id = Guid.NewGuid(), NotificationRuleId = ruleId,
+                    Channel = NotificationChannel.Email, Target = "restored@example.test",
+                }],
+                Targets = [new NotificationRuleTarget
+                {
+                    Id = Guid.NewGuid(), NotificationRuleId = ruleId,
+                    TargetKind = NotificationTargetKind.Workflow, TargetId = restoredWorkflowId,
+                }],
+            });
+            await src.SaveChangesAsync();
+            bytes = await ExportAsync(src, [BackupSections.Alerting]);
+        }
+
+        await using var dst = TestDbFactory.Create();
+        dst.Workflows.Add(new Workflow
+        {
+            Id = oldWorkflowId, Name = "Old scope", DefinitionJson = "{}",
+        });
+        var existingRuleId = Guid.NewGuid();
+        dst.NotificationRules.Add(new NotificationRule
+        {
+            Id = existingRuleId, Name = "restore-rule", EventTypes = "ExecutionFailed",
+            ScopeKind = NotificationScopeKind.Workflows,
+            Routes = [new NotificationRoute
+            {
+                Id = Guid.NewGuid(), NotificationRuleId = existingRuleId,
+                Channel = NotificationChannel.Email, Target = "removed@example.test",
+            }],
+            Targets = [new NotificationRuleTarget
+            {
+                Id = Guid.NewGuid(), NotificationRuleId = existingRuleId,
+                TargetKind = NotificationTargetKind.Workflow, TargetId = oldWorkflowId,
+            }],
+        });
+        await dst.SaveChangesAsync();
+        dst.ChangeTracker.Clear();
+
+        var policies = AllSkip();
+        policies[BackupSections.Alerting] = policy;
+        await Restore(dst).RestoreAsync(bytes, Passphrase, policies, RestoreActor, CancellationToken.None);
+
+        dst.ChangeTracker.Clear();
+        var rule = await dst.NotificationRules.Include(r => r.Routes).Include(r => r.Targets)
+            .SingleAsync(r => r.Id == existingRuleId);
+        rule.Routes.Should().ContainSingle().Which.Target.Should().Be(
+            policy == RestoreConflictPolicy.Overwrite ? "restored@example.test" : "removed@example.test");
+        rule.Targets.Should().ContainSingle().Which.TargetId.Should().Be(
+            policy == RestoreConflictPolicy.Overwrite ? restoredWorkflowId : oldWorkflowId);
+    }
+
     public void Dispose()
     {
         foreach (var f in _tempFiles) { try { File.Delete(f); } catch { /* best effort */ } }

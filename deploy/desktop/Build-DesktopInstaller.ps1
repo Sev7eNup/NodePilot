@@ -237,6 +237,7 @@ New-Item -ItemType Directory -Force -Path $deployStage | Out-Null
 foreach ($f in @('DesktopRuntime.ps1', 'Provision-LocalDb.ps1', 'Update-Desktop.ps1', 'Uninstall-Desktop.ps1', 'appsettings.Desktop.json.template')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination $deployStage -Force
 }
+Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'Preflight.ps1') -Destination $deployStage -Force
 # Run by setup before it copies any file, so they ship as a separate tree (see NodePilot.iss).
 $setupStage = Join-Path $Stage 'setup'
 New-Item -ItemType Directory -Force -Path $setupStage | Out-Null

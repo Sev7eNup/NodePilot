@@ -43,7 +43,7 @@ function renderDrilldown(overrides: Partial<Parameters<typeof OpsExecutionDrilld
   const onClose = vi.fn();
   patchFetch();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const content = (updated = overrides) => (
     <QueryClientProvider client={qc}>
       <OpsExecutionDrilldown
         executionId="ex-1"
@@ -67,14 +67,33 @@ function renderDrilldown(overrides: Partial<Parameters<typeof OpsExecutionDrilld
         onOpenEditor={onOpenEditor}
         onSelectExecution={onSelectExecution}
         onClose={onClose}
-        {...overrides}
+        {...updated}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { onCancel, onRetry, onCancelAll, onQuarantine, onSelectExecution, onOpenEditor, onClose };
+  const view = render(content());
+  return { onCancel, onRetry, onCancelAll, onQuarantine, onSelectExecution, onOpenEditor, onClose,
+    update: (updated: typeof overrides) => view.rerender(content({ ...overrides, ...updated })),
+  };
 }
 
 describe('OpsExecutionDrilldown', () => {
+  it('refreshes final diagnostics when the live status becomes terminal while open', async () => {
+    const view = renderDrilldown();
+    expect(await screen.findByText('schedule')).toBeInTheDocument();
+    server.use(http.get(`${BASE}/api/executions/ex-1`, () => HttpResponse.json({
+      ...DETAIL, status: 'Failed', completedAt: new Date(NOW).toISOString(),
+      errorMessage: 'Final disk failure', stepsTotal: 3, stepsCompleted: 2,
+      failedSteps: [{ stepId: 'disk', stepName: 'Check final disk' }],
+    })));
+
+    view.update({ status: 'Failed', completedAtMs: NOW, runningCount: 0 });
+
+    expect(await screen.findByText('Final disk failure')).toBeInTheDocument();
+    expect(screen.getByText('Check final disk')).toBeInTheDocument();
+    expect(screen.getByText('2 / 3')).toBeInTheDocument();
+  });
+
   it('renders workflow context, live status badge and the fetched triggeredBy', async () => {
     renderDrilldown();
     expect(screen.getByText('Nightly Backup')).toBeInTheDocument();

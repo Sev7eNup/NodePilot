@@ -21,6 +21,10 @@ Client-visible 4xx responses from API controllers use RFC 7807 `ProblemDetails`.
   shape. `ApiProblems` remains available for call sites that need full control over
   `title`/`type`/extensions, but its use is optional, not required.
 - `ProblemDetails.Extensions["code"]` carries the stable machine-readable error code.
+- Typed `ScimError` responses retain their SCIM schema and `application/scim+json` media type
+  under ADR 0009. They are protocol responses, including authorization-filter failures, and
+  are exempt from the generic REST normalization. `ApiProblemDetailsPipelineTests` covers this
+  exception alongside the normal REST contract.
 - `Detail` is the human-readable explanation. Extra request context may be added as extensions when
   it is safe for clients and logs.
 - The end-to-end guarantee is guarded by `ApiProblemDetailsPipelineTests` (Api.Tests/Hosting),

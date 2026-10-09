@@ -14,6 +14,19 @@ namespace NodePilot.Api.Tests.Logging;
 /// </summary>
 public class SupportEventDbSinkTests
 {
+    [Fact]
+    public void ChannelFull_ReportsRejectedWrite_AndAcceptsAgainAfterDrain()
+    {
+        var channel = new SupportEventChannel();
+        for (var i = 0; i < 1024; i++)
+            channel.TryWrite(new SupportEvent { Message = i.ToString() }).Should().BeTrue();
+
+        channel.TryWrite(new SupportEvent { Message = "overflow" }).Should().BeFalse();
+        channel.Reader.TryRead(out var first).Should().BeTrue();
+        first!.Message.Should().Be("0");
+        channel.TryWrite(new SupportEvent { Message = "resumed" }).Should().BeTrue();
+    }
+
     private static LogEvent BuildEvent(LogEventLevel level, string template, params LogEventProperty[] props)
     {
         var parsed = new MessageTemplateParser().Parse(template);

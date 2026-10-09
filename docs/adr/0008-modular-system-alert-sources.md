@@ -73,6 +73,11 @@ or duration, drops its transient policy state (config and routes survive). First
 back-alerts: event sources start from the activation instant; metric sources start their sustain window
 from the first current observation; an unavailable source yields neither alert nor recovery.
 
+Absence is recovery only for sources declaring a complete unhealthy-instance snapshot through
+`ISystemAlertSource.MissingInstancesAreHealthy`. Event streams and partial/bounded samples retain
+their state when an instance is absent. `trigger-unhealthy` declares the complete-snapshot semantics
+on the leader, including an empty healthy registry; a passive HA node remains unavailable.
+
 **Localization stays a frontend concern.** Descriptors carry stable ids/keys and structure (fields, types,
 units, operators, defaults) — **not** display text. The UI localizes via `react-i18next` keys derived from
 `SourceId`/field `Name` in the `alerts` namespace, so DE/EN parity remains a frontend guard, and there is

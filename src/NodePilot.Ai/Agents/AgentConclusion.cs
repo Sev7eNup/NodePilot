@@ -75,7 +75,9 @@ internal sealed record AgentConclusion(string Outcome, string Reason, string Rep
         var sectionLimit = Math.Max(64, (contextCharacters - 8000) / 12);
         object Section(string text, int limit) => new { text = text.Length > limit ? text[..limit] : text, truncated = text.Length > limit };
         string Build() => "Final report synthesis: " + JsonSerializer.Serialize(new {
-            originalTask = Section(config.Task, sectionLimit), initialReport = Section(initial, sectionLimit), latestReport = Section(latest, sectionLimit),
+            // The task defines completion. Shrink supporting excerpts, never the requirements
+            // against which the fresh final session must assess its report.
+            originalTask = Section(config.Task, config.Task.Length), initialReport = Section(initial, sectionLimit), latestReport = Section(latest, sectionLimit),
             memberFindings = findings?.EnumerateArray().Select(f => new {
                 memberId = f.GetProperty("memberId"), status = f.GetProperty("status"),
                 content = Section(f.GetProperty("content").GetString()!, Math.Max(16, sectionLimit / Math.Max(1, findings.Value.GetArrayLength())))

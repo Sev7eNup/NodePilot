@@ -254,6 +254,28 @@ public class WorkflowImportExportControllerTests
     }
 
     [Fact]
+    public async Task Import_UnrelatedLegacyWebhookConfiguration_DoesNotAffectDisabledImport()
+    {
+        await using var db = CreateContext();
+        db.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Unrelated legacy webhook", IsEnabled = true,
+            DefinitionJson = """{"nodes":[{"id":"hook","type":"webhookTrigger","data":{"config":{"path":123}}}],"edges":[]}""",
+        });
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db).ImportExport.Import(
+            EnvelopeWithSingle("New import", """{"nodes":[],"edges":[]}""", enabled: true),
+            null, CancellationToken.None);
+
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ImportWorkflowsResponse>().Subject;
+        response.Created.Should().Be(1);
+        response.Errors.Should().BeEmpty();
+        (await db.Workflows.SingleAsync(w => w.Id == response.Workflows.Single().Id)).IsEnabled.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Import_EnvelopeWithIsEnabledTrue_StillImportsDisabled()
     {
         var db = CreateContext();
@@ -1266,12 +1288,13 @@ public class WorkflowImportExportControllerTests
     }
 
     [Fact]
-    public async Task Import_TwoLiveDefinitionsShareAKey_LinksTheOldest()
+    public async Task Import_DeletedAndLiveDefinitionsShareAKey_LinksTheLiveDefinition()
     {
         var db = CreateContext();
         var oldest = new CustomActivityDefinition
         {
             Id = Guid.NewGuid(), Key = "dup", Name = "Old", CreatedAt = DateTime.UtcNow.AddDays(-1),
+            IsDeleted = true,
         };
         var newer = new CustomActivityDefinition { Id = Guid.NewGuid(), Key = "dup", Name = "New" };
         db.CustomActivityDefinitions.AddRange(newer, oldest);
@@ -1283,6 +1306,8 @@ public class WorkflowImportExportControllerTests
 
         result.Result.Should().BeOfType<OkObjectResult>();
         CustomConfigOf(await db.Workflows.AsNoTracking().SingleAsync())
-            .GetProperty("__customDefinitionId").GetString().Should().Be(oldest.Id.ToString());
+            .GetProperty("__customDefinitionId").GetString().Should().Be(newer.Id.ToString());
+        (await db.CustomActivityDefinitions.CountAsync()).Should().Be(2,
+            "the legitimate deleted definition and its history remain intact");
     }
 }

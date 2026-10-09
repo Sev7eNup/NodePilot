@@ -33,6 +33,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Exercise the offline load-harness contracts without starting NBomber or a real API. -->
+    <Compile Include="..\NodePilot.LoadTests\NodePilotApiClient.cs" Link="LoadTests\Harness\NodePilotApiClient.cs" />
+    <Compile Include="..\NodePilot.LoadTests\WorkflowTemplates.cs" Link="LoadTests\Harness\WorkflowTemplates.cs" />
+    <Compile Include="..\NodePilot.LoadTests\Seeder.cs" Link="LoadTests\Harness\Seeder.cs" />
+    <Compile Include="..\NodePilot.LoadTests\LoadTestOptions.cs" Link="LoadTests\Harness\LoadTestOptions.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\NodePilot.Engine\NodePilot.Engine.csproj" />
     <ProjectReference Include="..\..\src\NodePilot.Mcp\NodePilot.Mcp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\NodePilot.Core\NodePilot.Core.csproj" />

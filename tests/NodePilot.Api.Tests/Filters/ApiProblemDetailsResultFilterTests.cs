@@ -5,12 +5,33 @@ using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
 using NodePilot.Api.Filters;
+using NodePilot.Api.Controllers;
+using NodePilot.Api.Security.Scim;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Filters;
 
 public sealed class ApiProblemDetailsResultFilterTests
 {
+    [Fact]
+    public void ScimControllerError_PreservesProtocolAfterGlobalResultFilter()
+    {
+        var controller = new ScimErrorController();
+        var result = controller.Failure();
+        new ApiProblemDetailsResultFilter().OnResultExecuting(CreateContext(result));
+        result.ContentTypes.Should().ContainSingle().Which.Should().Be("application/scim+json");
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(result.Value);
+        json.GetProperty("schemas")[0].GetString().Should().Be(ScimSchemas.Error);
+        json.GetProperty("status").GetString().Should().Be("409");
+        json.GetProperty("scimType").GetString().Should().Be("uniqueness");
+    }
+
+    private sealed class ScimErrorController : ScimControllerBase
+    {
+        public ObjectResult Failure() => (ObjectResult)FromService(
+            ScimServiceResult<ScimUserResource>.Fail(409, "User already exists.", "uniqueness"));
+    }
+
     [Fact]
     public void OnResultExecuting_NormalizesLegacyCodeMessagePayload()
     {

@@ -29,6 +29,20 @@ describe('guided demo executions', () => {
     expect(JSON.parse(run.returnData!)).toEqual({ freeSpaceGb: '8', severity: 'critical' });
   });
 
+  it.each([
+    ['decision', 'probe'], ['parallel', 'purge'], ['service', 'start'],
+  ] as const)('refuses a guided %s plan when its %s step is disabled', async (mission, stepId) => {
+    const workflow = ensureMissionWorkflow(mission)!;
+    const definition = JSON.parse(workflow.definitionJson);
+    definition.nodes.find((node: { id: string }) => node.id === stepId).data.disabled = true;
+    workflow.definitionJson = JSON.stringify(definition);
+    const run = startRun(workflow.id)!;
+    await vi.runAllTimersAsync();
+    expect(run.status).toBe('Failed');
+    expect(run.errorMessage).toContain('guided graph has changed');
+    expect(getWorld().steps.get(run.id)).toEqual([]);
+  });
+
   it('overlaps both cleanup branches and waits for both before the email', async () => {
     const workflow = ensureMissionWorkflow('parallel')!;
     const run = startRun(workflow.id)!;

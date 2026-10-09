@@ -2,6 +2,7 @@ import { Add, ChevronDown, ChevronUp, Close, Edit, Locked, Search, TrashCan, Unl
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useColumnResize } from '../hooks/useColumnResize';
 import { api } from '../api/client';
 import { ModalShell } from '../components/common/ModalShell';
 import { MobileCardList } from '../components/common/MobileCardList';
@@ -98,31 +99,12 @@ export function GlobalVariablesPage() {
   // Column resizing (same pattern as MachinesPage / WorkflowsPage). Description
   // is excluded — it's the auto-flex column, so it has no inline width and no
   // drag-handle; it absorbs leftover horizontal space.
-  const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS);
+  const { colWidths, startResize } = useColumnResize(DEFAULT_WIDTHS);
   const tableMinWidth = useMemo(
     () => Object.values(colWidths).reduce((a, b) => a + b, 0) + ACTIONS_WIDTH + DESCRIPTION_MIN_WIDTH
       + (canAdmin ? SELECT_WIDTH : 0),
     [colWidths, canAdmin],
   );
-  const resizeRef = useRef<{ col: ResizableColKey; startX: number; startWidth: number } | null>(null);
-
-  const startResize = (col: ResizableColKey, e: React.MouseEvent) => {
-    e.preventDefault();
-    resizeRef.current = { col, startX: e.clientX, startWidth: colWidths[col] };
-    const onMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      const { col, startWidth, startX } = resizeRef.current;
-      const w = Math.max(50, startWidth + ev.clientX - startX);
-      setColWidths((prev) => ({ ...prev, [col]: w }));
-    };
-    const onUp = () => {
-      resizeRef.current = null;
-      globalThis.removeEventListener('mousemove', onMove);
-      globalThis.removeEventListener('mouseup', onUp);
-    };
-    globalThis.addEventListener('mousemove', onMove);
-    globalThis.addEventListener('mouseup', onUp);
-  };
 
   const handleSort = (col: ColKey) => {
     if (sortBy === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));

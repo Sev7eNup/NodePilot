@@ -174,8 +174,8 @@ else {
     if (-not (Test-Path -LiteralPath $RuntimePayloadDirectory -PathType Container)) {
         throw "Runtime payload directory not found: $RuntimePayloadDirectory"
     }
-    Copy-Item -LiteralPath (Join-Path $RuntimePayloadDirectory '*-runtime-*-win-x64.exe') `
-        -Destination (Join-Path $stage 'payload') -Force
+    Get-ChildItem -LiteralPath $RuntimePayloadDirectory -Filter '*-runtime-*-win-x64.exe' -File |
+        ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $stage 'payload') -Force }
 }
 
 # Both packages, because aspnetcore-runtime-*.exe carries only Microsoft.AspNetCore.App: no

@@ -71,6 +71,81 @@ function New-JsonFile {
 }
 
 try {
+    # Execute the updater's actual snapshot/restore statements against a temporary install.
+    # No service, registry or installation actions are evaluated.
+    $updaterPath = Join-Path $scriptDirectory 'Update-NodePilot.ps1'
+    $parseTokens = $null; $parseErrors = $null
+    $updaterAst = [System.Management.Automation.Language.Parser]::ParseFile(
+        $updaterPath, [ref]$parseTokens, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Updater must parse before its configuration contract can be tested.' }
+    $mutation = $updaterAst.Find({ param($node)
+        $node -is [System.Management.Automation.Language.TryStatementAst] -and
+        $node.CatchClauses.Count -gt 0 -and $node.CatchClauses[0].Body.Extent.Text -match '\$updateError ='
+    }, $true)
+    $snapshotStatements = @($mutation.Body.Statements)
+    $start = 0; $end = 0
+    for ($i = 0; $i -lt $snapshotStatements.Count; $i++) {
+        if ($snapshotStatements[$i].Extent.Text -eq ". (Join-Path `$PSScriptRoot 'SwitcherConfig.ps1')") { $start = $i }
+        if ($snapshotStatements[$i].Extent.Text.StartsWith('Get-ChildItem -LiteralPath $InstallPath -Force')) { $end = $i; break }
+    }
+    if ($end -le $start) { throw 'Updater configuration snapshot boundary not found.' }
+    $snapshot = [scriptblock]::Create((($snapshotStatements[($start + 1)..($end - 1)] | ForEach-Object { $_.Extent.Text }) -join "`n"))
+    $restore = $mutation.Body.Statements | Where-Object {
+        $_ -is [System.Management.Automation.Language.TryStatementAst] -and
+        $_.CatchClauses[0].Body.Extent.Text -match 'Could not set the Switcher server URL'
+    }
+    if (@($restore).Count -ne 1) { throw 'Updater configuration restore boundary not found.' }
+    $restore = [scriptblock]::Create($restore.Extent.Text)
+    $restoreBytes = $mutation.Body.Statements | Where-Object {
+        $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+        $_.Extent.Text.StartsWith('if ($null -ne $previousSwitcherConfigBytes)')
+    }
+    if (@($restoreBytes).Count -ne 1) { throw 'Updater must restore the operator file in its transactional body.' }
+    $restoreBytes = [scriptblock]::Create($restoreBytes.Extent.Text)
+    function Write-Info { param([string]$Text) }
+    function Write-Warn { param([string]$Text) throw $Text }
+    $InstallPath = Join-Path $workingDirectory 'installed'
+    $configDirectory = Join-Path $InstallPath 'tools\switcher'
+    [void](New-Item -ItemType Directory -Path $configDirectory -Force)
+    $installedConfig = Join-Path $configDirectory 'switcher.json'
+    $customConfig = ((Get-Content -LiteralPath $SwitcherTemplatePath -Raw -Encoding UTF8) | ConvertFrom-Json)
+    $customConfig.nodePilot.serverUrl = 'https://operator.example.test:8443'
+    $customConfig.nodePilot.profile = 'operator-profile'
+    $customConfig.nodePilot.workflowAllowListPath = 'operator-workflows.txt'
+    $customConfig.systemCenterOrchestrator.apiBaseUrl = 'https://scorch.example.test:8444'
+    [IO.File]::WriteAllText($installedConfig, ($customConfig | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+    $beforeUpdate = [Convert]::ToBase64String([IO.File]::ReadAllBytes($installedConfig))
+    . $snapshot
+    Copy-Item -LiteralPath $SwitcherTemplatePath -Destination $installedConfig -Force
+    . $restoreBytes
+    . $restore
+    Assert-Equal 'an update preserves every operator configuration field and its bytes' `
+        $beforeUpdate ([Convert]::ToBase64String([IO.File]::ReadAllBytes($installedConfig)))
+
+    [IO.File]::WriteAllText($installedConfig, '{broken')
+    $invalidRefused = $false
+    try { . $snapshot } catch { $invalidRefused = $_.Exception.Message -like '*Existing Switcher configuration is invalid*' }
+    Assert-True 'an invalid operator file aborts before the wipe' $invalidRefused
+    Assert-Equal 'the invalid operator file remains available for repair' '{broken' ([IO.File]::ReadAllText($installedConfig))
+
+    Copy-Item -LiteralPath $SwitcherTemplatePath -Destination $installedConfig -Force
+    . $snapshot
+    Copy-Item -LiteralPath $SwitcherTemplatePath -Destination $installedConfig -Force
+    . $restoreBytes
+    $settingsBytes = [Text.Encoding]::UTF8.GetBytes('{"AllowedHosts":"localhost;fallback.example.test"}')
+    $HttpsPort = 8443
+    . $restore
+    Assert-Equal 'an unset URL retains the existing installed-host fallback' 'https://fallback.example.test:8443' `
+        (Get-NodePilotSwitcherServerUrl -ConfigPath $installedConfig)
+
+    # Read failure must not silently replace an operator file with the template.
+    $locked = [IO.File]::Open($installedConfig, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    try {
+        $readRefused = $false
+        try { . $snapshot } catch { $readRefused = $true }
+        Assert-True 'an unreadable operator file aborts before the wipe' $readRefused
+    } finally { $locked.Dispose() }
+
     Write-Host 'SwitcherConfig: URL construction' -ForegroundColor Cyan
     Assert-Equal 'the default HTTPS port is left out of the URL' `
         'https://nodepilot.contoso.local' `

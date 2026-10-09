@@ -1,5 +1,12 @@
 {
   "title": "Workflows",
+  "pagination": {
+    "previous": "Previous page",
+    "next": "Next page",
+    "pageOf": "Page {{page}} of {{totalPages}}",
+    "showing": "{{count}} of {{total}} workflows",
+    "selectionScope": "Selection applies to this page only."
+  },
   "newWorkflow": "New Workflow",
   "newAiWorkflow": "New AI Workflow",
   "newAiWorkflowTitle": "Generate workflow using AI",

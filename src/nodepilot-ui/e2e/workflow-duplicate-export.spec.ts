@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 import { readFileSync } from 'node:fs';
@@ -53,8 +54,8 @@ test.describe('Workflow Duplicate, By-Name & Bulk-Export (Teil 50)', () => {
     await page.route('**/api/auth/me', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ME) }),
     );
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow()]) }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow()])) }),
     );
   });
 
@@ -158,8 +159,8 @@ test.describe('Workflow Duplicate, By-Name & Bulk-Export (Teil 50)', () => {
   });
 
   test('Export All is disabled when there are no workflows', async ({ page }) => {
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [])) }),
     );
     await page.goto('/workflows');
     // The empty-state copy proves the list is loaded rather than still spinning.

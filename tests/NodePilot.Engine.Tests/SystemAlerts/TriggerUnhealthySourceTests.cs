@@ -20,17 +20,28 @@ public class TriggerUnhealthySourceTests
     private static (TriggerHealthRegistry registry, TriggerUnhealthySource source) Subject()
     {
         var registry = new TriggerHealthRegistry();
-        return (registry, new TriggerUnhealthySource(registry));
+        return (registry, new TriggerUnhealthySource(registry, new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider()));
     }
 
     [Fact]
-    public async Task IsAvailable_IsFalse_WhenEveryTriggerIsHealthy()
+    public async Task IsAvailable_OnLeader_WhenEveryTriggerIsHealthy()
     {
-        // An idle installation must not show the source as configurable-but-firing; the catalog
-        // renders it unavailable, exactly like a source whose underlying feature is off.
+        // An empty authoritative registry means recovery, not an unavailable measurement.
         await using var db = TestDbFactory.Create();
         var (_, source) = Subject();
 
+        (await source.IsAvailableAsync(db, CancellationToken.None)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IsAvailable_OnFollower_IsFalseEvenWithStaleRegistryEntries()
+    {
+        await using var db = TestDbFactory.Create();
+        var registry = new TriggerHealthRegistry();
+        registry.MarkUnhealthy("old", Guid.NewGuid(), "old", "scheduleTrigger", "old leader", 1, DateTime.UtcNow);
+        var cluster = new Moq.Mock<NodePilot.Core.Interfaces.IClusterStateProvider>();
+        cluster.SetupGet(c => c.IsLeader).Returns(false);
+        var source = new TriggerUnhealthySource(registry, cluster.Object);
         (await source.IsAvailableAsync(db, CancellationToken.None)).Should().BeFalse();
     }
 

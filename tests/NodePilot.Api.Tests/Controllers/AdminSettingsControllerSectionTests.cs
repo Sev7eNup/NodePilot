@@ -5,8 +5,12 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Configuration;
 using NodePilot.Api.Controllers;
@@ -54,7 +58,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
                 : throw new InvalidOperationException("Unknown blob.");
     }
 
-    private (AdminSettingsController controller, RuntimeOverridesWriter writer, CapturingAuditWriter audit, IConfigurationRoot cfg) NewController(SmtpOptions? initialSmtp = null, LlmOptions? initialLlm = null, RetentionOptions? initialRetention = null, LdapOptions? initialLdap = null, WindowsAuthOptions? initialWindows = null, NodePilotTelemetryOptions? initialTelemetry = null)
+    private (AdminSettingsController controller, RuntimeOverridesWriter writer, CapturingAuditWriter audit, IConfigurationRoot cfg) NewController(SmtpOptions? initialSmtp = null, LlmOptions? initialLlm = null, RetentionOptions? initialRetention = null, LdapOptions? initialLdap = null, WindowsAuthOptions? initialWindows = null, NodePilotTelemetryOptions? initialTelemetry = null, Action<IConfigurationBuilder>? configure = null)
     {
         var overridesPath = Path.Combine(_tempDir, "appsettings.runtime.json");
         var writer = new RuntimeOverridesWriter(overridesPath, NullLogger<RuntimeOverridesWriter>.Instance);
@@ -85,7 +89,9 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             configValues[$"Llm:Profiles:{id}:ApiKey"] = p.ApiKey;
             configValues[$"Llm:Profiles:{id}:Model"] = p.Model;
         }
-        var cfg = new ConfigurationBuilder().AddInMemoryCollection(configValues).Build();
+        var configBuilder = new ConfigurationBuilder().AddInMemoryCollection(configValues);
+        configure?.Invoke(configBuilder);
+        var cfg = configBuilder.Build();
         var audit = new CapturingAuditWriter();
         var probe = new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, new StubHttpClientFactory());
 
@@ -1451,6 +1457,19 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         result.Should().BeOfType<OkObjectResult>();
         File.ReadAllText(writer.OverridesPath).Should().Contain("nodepilot.firma.local");
         audit.Calls.Should().ContainSingle(c => c.Action == "SETTINGS_SECURITY_UPDATED");
+
+        // Reload the persisted file through the same configuration/host-filter boundary used
+        // at boot. Merely finding the string somewhere in the JSON does not prove it applies.
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ContentRootPath = _tempDir, EnvironmentName = "Testing"
+        });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["AllowedHosts"] = "*" });
+        builder.Configuration.AddJsonFile(writer.OverridesPath);
+        await using var host = builder.Build();
+        builder.Configuration["AllowedHosts"].Should().Be("nodepilot.firma.local;localhost");
+        host.Services.GetRequiredService<IOptions<HostFilteringOptions>>().Value.AllowedHosts
+            .Should().BeEquivalentTo("nodepilot.firma.local", "localhost");
     }
 
     [Fact]
@@ -1468,6 +1487,34 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         section.ContainsKey("ApiKey").Should().BeTrue();
         section["ApiKey"].Should().BeNull("explicit JSON null shadows any base-provider ApiKey value");
         section["AllowedWorkflowIds"]!.AsArray().Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PutSection_Security_PolicyLockedRootHosts_AreNotPersisted(bool useEnvironment)
+    {
+        var prefix = "NP_HOSTS_TEST_" + Guid.NewGuid().ToString("N") + "_";
+        Environment.SetEnvironmentVariable(prefix + "AllowedHosts", "policy.example");
+        try
+        {
+            var (controller, writer, _, cfg) = NewController(configure: builder =>
+            {
+                if (useEnvironment) builder.AddEnvironmentVariables(prefix);
+                else builder.AddCommandLine(["--AllowedHosts=policy.example"]);
+            });
+            writer.MutateAndWrite(root => root["AllowedHosts"] = "obsolete.example");
+            controller.Request.Headers.IfMatch = writer.ComputeSectionEtag("Security");
+
+            var result = await controller.PutSection("Security", JsonSerializer.SerializeToElement(
+                new SecuritySettingsDto { StrictAllowedHosts = true, AllowedHosts = "ui-shadow.example" }), CancellationToken.None);
+
+            result.Should().BeOfType<OkObjectResult>();
+            writer.ReadOrEmpty().ContainsKey("AllowedHosts").Should().BeFalse();
+            writer.ReadOrEmpty()["Security"]!.AsObject().ContainsKey("AllowedHosts").Should().BeFalse();
+            cfg["AllowedHosts"].Should().Be("policy.example");
+        }
+        finally { Environment.SetEnvironmentVariable(prefix + "AllowedHosts", null); }
     }
 
     [Fact]

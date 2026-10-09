@@ -397,6 +397,7 @@ builder.Services.AddSingleton<NodePilot.Engine.Security.RestApiHttpClientProvide
 // block local endpoints (e.g. Ollama at 127.0.0.1:11434). Master switch is Llm:Enabled (default
 // false).
 builder.Services.AddNodePilotAi(builder.Configuration);
+builder.Services.ConfigureOptions<NodePilot.Api.Configuration.LlmProxyOptionsPostConfigure>();
 
 builder.Services.AddSingleton<NodePilot.Api.Hubs.DatabaseAvailabilityHubFilter>();
 builder.Services.AddSignalR(options =>

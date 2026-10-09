@@ -347,6 +347,23 @@ try {
         # Redundant on purpose: the repair must leave a directory the plain check accepts.
         Assert-NodePilotInstallRootHardened -Path $repairRoot
         Write-Host '  OK  an untrusted install-root ACE is repaired and re-checked' -ForegroundColor DarkGray
+
+        # Ownership grants WRITE_DAC even when no user ACE grants writes. The updater must
+        # repair this independently of its existing explicit/inherited ACE checks.
+        $ownerOnlyAcl = Get-Acl -LiteralPath $repairRoot
+        $ownerOnlyAcl.SetOwner($me.User)
+        Set-Acl -LiteralPath $repairRoot -AclObject $ownerOnlyAcl
+        $refusedOwner = $false
+        try { Assert-NodePilotInstallRootHardened -Path $repairRoot }
+        catch { $refusedOwner = $_.Exception.Message -match 'owner|owned' }
+        if (-not $refusedOwner) { throw 'The install-root check accepted an untrusted owner with a trusted-only DACL.' }
+        Assert-NodePilotInstallRootHardenedOrRepair -Path $repairRoot `
+            -ServiceAccount 'NT AUTHORITY\SYSTEM' -WarningAction SilentlyContinue
+        if ((Get-Acl -LiteralPath $repairRoot).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') {
+            throw 'Install-root repair did not transfer ownership to Administrators.'
+        }
+        Assert-NodePilotInstallRootHardened -Path $repairRoot
+        Write-Host '  OK  an untrusted owner with safe ACEs is rejected and repaired' -ForegroundColor DarkGray
     }
 
     # The data directory holds the JWT key, and the service refuses to read it when the directory

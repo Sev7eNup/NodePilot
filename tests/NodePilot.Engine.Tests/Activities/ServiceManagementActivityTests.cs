@@ -154,6 +154,33 @@ public sealed class ServiceManagementActivityTests : IDisposable
 
     // ---- sc.exe failures must fail the step ----
 
+    [Theory]
+    [InlineData("delete")]
+    [InlineData("create")]
+    [InlineData("setStartType")]
+    public async Task ScOperation_GeneratesParsablePowerShell(string action)
+    {
+        var config = JsonSerializer.SerializeToElement(new
+        {
+            action, serviceName = "Agent", binaryPath = @"C:\svc\agent.exe",
+            startupType = "AutomaticDelayedStart",
+        });
+        await CreateActivity().ExecuteAsync(Ctx(), config, CancellationToken.None);
+        _capturedScript.Should().NotBeNullOrWhiteSpace();
+        var ast = System.Management.Automation.Language.Parser.ParseInput(_capturedScript!, out _, out var errors);
+        errors.Should().BeEmpty("the generated script must parse before any service operation runs");
+        var guardThrow = ast.Find(node => node is System.Management.Automation.Language.ThrowStatementAst, true);
+        guardThrow.Should().NotBeNull();
+        // Execute only the error expression captured at the remote-session boundary.
+        // No service command is invoked. Parsing alone would not prove that the
+        // diagnostic retains the native exit code and captured output at runtime.
+        using var shell = System.Management.Automation.PowerShell.Create();
+        shell.AddScript("$LASTEXITCODE = 5; $__npSc = @('Access denied'); " + guardThrow!.Extent.Text);
+        Action runGuard = () => shell.Invoke();
+        runGuard.Should().Throw<System.Management.Automation.RuntimeException>()
+            .WithMessage("*exit code 5: Access denied");
+    }
+
     [Fact]
     public async Task Delete_GuardsScExeExitCode()
     {

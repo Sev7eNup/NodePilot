@@ -6,7 +6,7 @@ namespace NodePilot.LoadTests;
 /// <summary>
 /// Builds large/complex workflow definitions as React-Flow-schema JSON.
 /// Every template accepts a uniqueSuffix so multiple seeded copies don't collide on node ids.
-/// All templates target the "loadtest-target" machine (localhost, no credential) — the
+/// All templates target the "loadtest-target" ad-hoc hostname (no credential) — the
 /// NoOpSessionFactory in the API host short-circuits the Remote path without doing any WinRM work.
 /// </summary>
 public static class WorkflowTemplates
@@ -17,6 +17,7 @@ public static class WorkflowTemplates
     {
         var nodes = new List<object>();
         var edges = new List<object>();
+        AddManualTrigger(nodes, edges, $"trigger-{uniqueSuffix}", $"step-{uniqueSuffix}-0");
         for (int i = 0; i < depth; i++)
         {
             var id = $"step-{uniqueSuffix}-{i}";
@@ -63,8 +64,8 @@ public static class WorkflowTemplates
             data = new
             {
                 label = "Root",
-                activityType = "delay",
-                config = new { seconds = 0 }
+                activityType = "manualTrigger",
+                config = new { }
             }
         });
 
@@ -142,7 +143,7 @@ public static class WorkflowTemplates
         string N(string name) => $"{name}-{uniqueSuffix}";
 
         // Root -> parallel branches of mixed activities -> junction -> returnData
-        AddNode(N("root"), 50, 50, "Root", "delay", new { seconds = 0 });
+        AddNode(N("root"), 50, 50, "Root", "manualTrigger");
 
         AddNode(N("script1"), 250, 50, "Script A", "runScript",
             new { script = "$x = 'a'; Write-Output $x", timeoutSeconds = 30 }, remote: true);
@@ -176,10 +177,12 @@ public static class WorkflowTemplates
             AddEdge(N("junction"), id);
         }
 
-        AddNode(N("return"), 900, 250, "Return", "returnData",
+        AddNode(N("postJoin"), 900, 250, "Post join", "junction", new { mode = "waitAll" });
+        AddNode(N("return"), 1100, 250, "Return", "returnData",
             new { data = new { status = "done", suffix = uniqueSuffix } });
         for (int i = 0; i < 5; i++)
-            AddEdge(N($"post{i}"), N("return"));
+            AddEdge(N($"post{i}"), N("postJoin"));
+        AddEdge(N("postJoin"), N("return"));
 
         return Serialize(nodes, edges);
     }
@@ -199,6 +202,7 @@ public static class WorkflowTemplates
             var edges = new List<object>();
 
             var rootId = $"root-{uniqueSuffix}-L{level}";
+            AddManualTrigger(nodes, edges, $"trigger-{uniqueSuffix}-L{level}", rootId);
             nodes.Add(new
             {
                 id = rootId,
@@ -272,6 +276,16 @@ public static class WorkflowTemplates
             result.Add((name, Serialize(nodes, edges)));
         }
         return result;
+    }
+
+    private static void AddManualTrigger(List<object> nodes, List<object> edges, string id, string target)
+    {
+        nodes.Add(new
+        {
+            id, type = "activity", position = new { x = 50, y = -100 },
+            data = new { label = "Start", activityType = "manualTrigger", config = new { } }
+        });
+        edges.Add(new { id = $"e-{id}-{target}", source = id, target, type = "labeled" });
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new()

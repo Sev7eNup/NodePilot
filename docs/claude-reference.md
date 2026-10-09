@@ -613,10 +613,17 @@ statt an `Enumerable.Contains`, was EF Core nicht zuverlässig zu `NOT IN (…)`
 gegenseitige Rekursion (A→B→A) durch einen limitierten Workflow — beide Waits hängen am Step- bzw.
 Per-Item-Timeout und scheitern mit klarer Meldung statt zu hängen.
 
-**Sperrreihenfolge:** in beiden Sub-Workflow-Aktivitäten erst `ISubWorkflowGate`, dann
-`IWorkflowConcurrencyGate`, und der Wait liegt innerhalb der Step-Gate-Freigabe
+**Sperrreihenfolge:** in beiden Sub-Workflow-Aktivitäten erst `IWorkflowConcurrencyGate`, dann
+`ISubWorkflowGate`, und der Wait liegt innerhalb der Step-Gate-Freigabe
 (`RunWithCurrentStepGateReleasedAsync`), damit Wartende keine `Engine:MaxConcurrentSteps`-Slots
-halten.
+halten. Wartende auf ein Workflow-Limit belegen keinen globalen Sub-Workflow-Slot.
+
+**Aktive Sub-Workflows (ADR 0018):** Der gemeinsame Cap zählt Child-Workflows mit aktiver Arbeit.
+Der Scheduler zählt jeden aktiven Schritt separat innerhalb einer gemeinsamen Workflow-Lease:
+Ein laufender Geschwisterschritt hält den Slot; sobald kein Schritt mehr aktiv ist, etwa weil
+alle auf Unter-Workflows warten, wird er freigegeben. Fortsetzungen erwerben ihn erneut. Vollständig wartende Vorfahren bleiben
+durch den unveränderten globalen Engine-Cap begrenzt. Das Per-Item-Timeout von `forEach` umfasst
+beide Kapazitäts-Wartezeiten und die Child-Ausführung.
 
 **`0` wird abgelehnt** (400): `Engine:MaxConcurrentExecutions` liest einen nicht-positiven Cap als
 „aus", dieselbe Zahl dürfte hier nicht „nie laufen" heißen. Gemeinsamer Validator

@@ -526,6 +526,27 @@ public sealed class AgentRuntimeTests
     }
 
     [Fact]
+    public async Task FinalReportRetainsRequirementsAtTheEndOfALongOriginalTask()
+    {
+        var task = new string('x', 30_000) + "\nAlso compare the backup inventory and report any missing machine.";
+        var finalSeen = false;
+        var runtime = Create(request =>
+        {
+            var prompt = request.Conversation!.Last(m => m.Role == "user").Content;
+            if (!prompt.StartsWith("Final report synthesis:")) return new("Initial findings", "test");
+            finalSeen = true;
+            using var data = JsonDocument.Parse(prompt["Final report synthesis: ".Length..]);
+            var original = data.RootElement.GetProperty("originalTask");
+            Assert.Equal(task, original.GetProperty("text").GetString());
+            Assert.False(original.GetProperty("truncated").GetBoolean());
+            return new("""{"outcome":"partial","reason":"Backup inventory is unavailable","report":"Primary inventory checked; backup comparison remains open.","coverage":[{"requirement":"Compare backup inventory","status":"unresolved","basis":"No backup inventory supplied"}]}""", "test");
+        }, autoConclude: false);
+
+        await Run(runtime, new AgentActivityConfiguration { Task = task }, []);
+        Assert.True(finalSeen);
+    }
+
+    [Fact]
     public async Task FinalReportIsSynthesizedWithoutToolsFromTheCompleteDraft()
     {
         var lead = 0;

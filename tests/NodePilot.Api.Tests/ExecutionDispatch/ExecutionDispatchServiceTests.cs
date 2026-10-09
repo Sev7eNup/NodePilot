@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NodePilot.Api.ExecutionDispatch;
+using NodePilot.Api.Security;
 using NodePilot.Core.Enums;
 using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Interfaces;
@@ -16,6 +17,56 @@ namespace NodePilot.Api.Tests.ExecutionDispatch;
 
 public class ExecutionDispatchServiceTests
 {
+    [Theory]
+    [InlineData("manual", "demoted", false)]
+    [InlineData("debug", "demoted", false)]
+    [InlineData("retry:previous", "demoted", false)]
+    [InlineData("manual", "revoked", false)]
+    [InlineData("debug", "revoked", false)]
+    [InlineData("retry:previous", "revoked", false)]
+    [InlineData("manual", "unchanged", true)]
+    [InlineData("debug", "unchanged", true)]
+    [InlineData("retry:previous", "admin", true)]
+    [InlineData("scheduleTrigger", "demoted", false)]
+    [InlineData("scheduleTrigger", "unchanged", true)]
+    public async Task ProcessOutbox_RevalidatesCurrentRunPermission(
+        string triggeredBy, string changeAfterAdmission, bool shouldRun)
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = EnabledWorkflow();
+        var user = new User { Id = Guid.NewGuid(), Username = "queued-operator", Role = UserRole.Operator };
+        var grant = new SharedFolderPermission
+        {
+            Id = Guid.NewGuid(), FolderId = workflow.FolderId,
+            PrincipalKey = user.Id.ToString("D"), Role = SharedFolderRole.FolderOperator,
+        };
+        db.Workflows.Add(workflow);
+        db.Users.Add(user);
+        db.SharedFolderPermissions.Add(grant);
+        await db.SaveChangesAsync();
+        var engine = SucceedingEngine();
+        await using var fixture = CreateFixture(db, engine.Object);
+        var pending = await fixture.Service.DispatchAsync(new WorkflowDispatchIntent(
+            workflow.Id, triggeredBy, null, StartedByUserId: user.Id), CancellationToken.None);
+
+        if (changeAfterAdmission == "demoted") user.Role = UserRole.Viewer;
+        if (changeAfterAdmission is "revoked" or "admin") db.SharedFolderPermissions.Remove(grant);
+        if (changeAfterAdmission == "admin") user.Role = UserRole.Admin;
+        await db.SaveChangesAsync();
+
+        var outcome = await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+
+        outcome.Should().Be(ExecutionDispatchOutcome.Completed);
+        VerifyEngineCalls(engine, shouldRun ? Times.Once() : Times.Never());
+        (await db.ExecutionDispatchOutbox.AnyAsync()).Should().BeFalse();
+        if (!shouldRun)
+        {
+            var persisted = await db.WorkflowExecutions.AsNoTracking().SingleAsync();
+            persisted.Status.Should().Be(ExecutionStatus.Cancelled);
+            persisted.ErrorMessage.Should().Contain("effective_principal_not_authorized");
+        }
+    }
+
     [Fact]
     public async Task DispatchAsync_CreatesPendingAndDurableOutboxInSameSave()
     {
@@ -451,6 +502,7 @@ public class ExecutionDispatchServiceTests
         var services = new ServiceCollection();
         services.AddSingleton(db);
         services.AddSingleton(engine);
+        services.AddScoped<IResourceAuthorizationService, ResourceAuthorizationService>();
         var provider = services.BuildServiceProvider();
         var gate = concurrency ?? new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate();
         var service = new ExecutionDispatchService(

@@ -1,6 +1,8 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodePilot.Ai.Agents;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
@@ -303,17 +305,20 @@ public sealed class OpenAiResponsesLlmClientTests : IDisposable
         resp.TotalTokens.Should().Be(15);
     }
 
-    [Fact]
-    public async Task CompleteAsync_IncompleteMaxOutputTokens_ReportsLengthFinishReason()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompleteAsync_IncompleteMaxOutputTokens_ReportsLengthFinishReason(bool withToolCall)
     {
         Respond(new
         {
             model = "test-model",
             status = "incomplete",
             incomplete_details = new { reason = "max_output_tokens" },
-            output = new object[]
+            output = new object?[]
             {
                 new { type = "message", role = "assistant", content = new object[] { new { type = "output_text", text = "trunc" } } },
+                withToolCall ? new { type = "function_call", call_id = "call_1", name = "read", arguments = "{}" } : null,
             },
         });
 
@@ -321,6 +326,33 @@ public sealed class OpenAiResponsesLlmClientTests : IDisposable
 
         resp.Content.Should().Be("trunc");
         resp.FinishReason.Should().Be("length");
+    }
+
+    [Fact]
+    public async Task IncompleteWireResponse_CannotReachAgentToolInvocation()
+    {
+        Respond(new
+        {
+            model = "test-model",
+            status = "incomplete",
+            incomplete_details = new { reason = "max_output_tokens" },
+            output = new[] { new { type = "function_call", call_id = "call_1", name = "read", arguments = "{}" } },
+        });
+        var invocations = 0;
+        var adapter = new LlmChatClientAdapter(BuildClient(), new(10, 10, 0), new(),
+            (_, _) => Task.CompletedTask, "reader");
+        using var client = new FunctionInvokingChatClient(adapter);
+        var options = new ChatOptions
+        {
+            Tools = [AIFunctionFactory.Create(() => { invocations++; return "read result"; }, "read")],
+        };
+
+        var error = await Assert.ThrowsAsync<LlmException>(() => client.GetResponseAsync(
+            [new ChatMessage(ChatRole.User, "Read")], options, TestContext.Current.CancellationToken));
+
+        error.Kind.Should().Be(LlmErrorKind.MalformedResponse);
+        invocations.Should().Be(0);
+        _server.LogEntries.Should().ContainSingle();
     }
 
     [Fact]
@@ -562,11 +594,14 @@ public sealed class OpenAiResponsesLlmClientTests : IDisposable
         ex.BodyExcerpt.Should().Contain("model unavailable");
     }
 
-    [Fact]
-    public async Task StreamAsync_IncompleteEvent_ReportsLengthFinishReason()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StreamAsync_IncompleteEvent_ReportsLengthFinishReason(bool withToolCall)
     {
         RespondSse(Sse(
             TextStream,
+            withToolCall ? """{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"read","arguments":"{}"}}""" : "{}",
             """{"type":"response.incomplete","response":{"model":"test-model","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}"""));
 
         var (_, done) = await Collect(BuildClient(), Prompt());

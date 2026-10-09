@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Download, Renew, Search } from '@carbon/icons-react';
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { formatDate } from '../lib/format';
@@ -90,8 +90,6 @@ export function AuditLogPage() {
   const [until, setUntil] = useState('');
   const [take, setTake] = useState(100);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // Pages appended by "Load more". Cleared back to the first page when the filters change.
-  const [extraPages, setExtraPages] = useState<AuditPageResponse[]>([]);
 
   // What the inputs currently hold, and what has actually been applied. The list, "load more"
   // and the export all read the applied set, so they can never disagree about what is shown.
@@ -133,43 +131,25 @@ export function AuditLogPage() {
 
   const queryKey = ['audit', appliedText.action, appliedText.resourceType, appliedText.resourceId,
     appliedText.userId, appliedText.ipAddress, since, until, take];
-  const { data: firstPage, refetch, isFetching } = useQuery({
+  const { data, refetch, isFetching, hasNextPage, fetchNextPage } = useInfiniteQuery({
     queryKey,
-    queryFn: async () => {
+    initialPageParam: null as AuditCursor | null,
+    getNextPageParam: (lastPage: AuditPageResponse) => lastPage.nextCursor ?? undefined,
+    queryFn: async ({ pageParam }) => {
       const params = buildParams();
       params.set('take', String(take));
+      if (pageParam) {
+        params.set('afterTs', pageParam.timestamp);
+        params.set('afterId', pageParam.id);
+      }
       return await api.get<AuditPageResponse>(`/audit?${params.toString()}`);
     },
     refetchInterval: 15_000, // Audit entries are not time-critical, so near-live polling is enough
   });
 
-  // Drop the accumulated pages when the filter set changes, since they no longer match it.
-  // This is keyed on the filter values rather than on the fetch: queryFn also runs on the
-  // auto-refetch and on manual refresh, which have to keep the "Load more" pages intact.
-   
-  useEffect(() => { setExtraPages([]); }, [appliedText, since, until, take]);
-
-  const entries: AuditEntry[] = useMemo(() => {
-    const head = firstPage?.items ?? [];
-    const rest = extraPages.flatMap((p) => p.items);
-    return [...head, ...rest];
-  }, [firstPage, extraPages]);
-
-  const lastCursor: AuditCursor | null = useMemo(() => {
-    if (extraPages.length > 0) return extraPages[extraPages.length - 1].nextCursor;
-    return firstPage?.nextCursor ?? null;
-  }, [firstPage, extraPages]);
-
-  const loadMore = useCallback(async () => {
-    // A pending filter change would page against a cursor from the previous filter set.
-    if (!lastCursor || filterPending) return;
-    const params = buildParams();
-    params.set('take', String(take));
-    params.set('afterTs', lastCursor.timestamp);
-    params.set('afterId', lastCursor.id);
-    const next = await api.get<AuditPageResponse>(`/audit?${params.toString()}`);
-    setExtraPages((prev) => [...prev, next]);
-  }, [lastCursor, buildParams, take, filterPending]);
+  // The query owns the complete cursor chain for this filter. Refresh recomputes each
+  // loaded page from the preceding page's new cursor, so newly inserted rows cannot leave gaps.
+  const entries = useMemo(() => data?.pages.flatMap(page => page.items) ?? [], [data]);
 
   // Export links: the streaming endpoint reads the same filter params. The browser sends the
   // httpOnly auth cookie on the GET and Content-Disposition triggers the download, so no
@@ -436,11 +416,11 @@ export function AuditLogPage() {
           );
         })}
       </div>
-      {lastCursor && (
+      {hasNextPage && (
         <div className="flex justify-center">
           <button
-            onClick={loadMore}
-            disabled={filterPending}
+            onClick={() => { if (!filterPending && !isFetching) void fetchNextPage({ cancelRefetch: false }); }}
+            disabled={filterPending || isFetching}
             title={filterPending ? t('audit:export.pending') : undefined}
             className="px-4 py-1.5 rounded-md bg-surface-high hover:bg-surface-highest text-on-surface-variant text-xs font-label font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >

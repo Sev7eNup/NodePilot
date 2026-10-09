@@ -53,16 +53,36 @@ internal static class SubWorkflowInvocation
     }
 
     /// <summary>
-    /// Loads the parent execution row behind the current step. The self-invocation guard and the
-    /// RBAC re-check need the parent workflow id, which is not on the step context.
+    /// Loads the parent execution and resolves its effective principal for authorization and
+    /// propagation to children. The fallback is applied only to the untracked snapshot.
     /// </summary>
-    public static Task<WorkflowExecution?> LoadParentExecutionAsync(
+    public static async Task<WorkflowExecution?> LoadParentExecutionAsync(
         NodePilotDbContext db,
         Guid workflowExecutionId,
         CancellationToken ct)
-        => db.WorkflowExecutions
+    {
+        var execution = await db.WorkflowExecutions
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == workflowExecutionId, ct);
+        if (execution is not null && execution.StartedByUserId is null)
+            execution.StartedByUserId = await db.Workflows.AsNoTracking()
+                .Where(w => w.Id == execution.WorkflowId)
+                .Select(w => w.PublishedByUserId).FirstOrDefaultAsync(ct);
+        return execution;
+    }
+
+    public static async Task<Workflow> ReloadAuthorizedChildAsync(
+        NodePilotDbContext db, Guid childId, WorkflowExecution? parentExecution,
+        ISubWorkflowAuthorizationResolver? authorization, CancellationToken ct)
+    {
+        var child = await db.Workflows.AsNoTracking().SingleOrDefaultAsync(w => w.Id == childId, ct)
+            ?? throw new InvalidOperationException("Child workflow no longer exists.");
+        if (!child.IsEnabled)
+            throw new InvalidOperationException($"Child workflow '{child.Name}' is disabled.");
+        var blocked = await GetAuthorizationBlockAsync(authorization, parentExecution, child, ct);
+        if (blocked is not null) throw new UnauthorizedAccessException(blocked);
+        return child;
+    }
 
     /// <summary>True when the step starts the workflow it runs in (direct recursion).</summary>
     public static bool IsSelfInvocation(WorkflowExecution? parentExec, Workflow childWorkflow)

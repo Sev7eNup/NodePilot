@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook as rtlRenderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -55,9 +55,65 @@ vi.mock('@microsoft/signalr', () => {
 });
 
 import { useDashboardFeed } from '../../hooks/useDashboardFeed';
+import { useLiveOpsFeed } from '../../hooks/useLiveOpsFeed';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
+
+const statusBatch = {
+  events: [{ type: 'ExecutionStatusChanged', evt: { executionId: 'e1', workflowId: 'w1', status: 'Succeeded' } }],
+};
 
 describe('useDashboardFeed', () => {
   beforeEach(() => { __currentConnection = null; });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it.each(['identity-change', 'unmount'] as const)('ignores queued events and invalidations after %s', async (boundary) => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const onStatus = vi.fn();
+    const queryKey = ['ops-test'];
+    const { unmount } = renderHook(() => useLiveOpsFeed({ queryKey, debounceMs: 100, onStatus }), {
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      ),
+    });
+    await waitFor(() => expect(__currentConnection?.invoke).toHaveBeenCalledWith('JoinOperationsFeed'));
+    const oldConnection = __currentConnection;
+    vi.useFakeTimers();
+    act(() => oldConnection?.emit('LiveEventsBatch', statusBatch));
+    expect(onStatus).toHaveBeenCalledOnce();
+
+    act(() => {
+      if (boundary === 'identity-change') clearLocalAuthBoundary();
+      else unmount();
+      oldConnection?.emit('LiveEventsBatch', statusBatch);
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(onStatus).toHaveBeenCalledOnce();
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it('keeps invalidation working when the feed is reconfigured with a pending timer', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const firstKey = ['first'];
+    const secondKey = ['second'];
+    const { rerender } = renderHook(({ queryKey }) => useLiveOpsFeed({ queryKey, debounceMs: 100 }), {
+      initialProps: { queryKey: firstKey },
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      ),
+    });
+    await waitFor(() => expect(__currentConnection?.invoke).toHaveBeenCalledWith('JoinOperationsFeed'));
+    vi.useFakeTimers();
+    act(() => __currentConnection?.emit('LiveEventsBatch', statusBatch));
+    rerender({ queryKey: secondKey });
+    act(() => {
+      __currentConnection?.emit('LiveEventsBatch', statusBatch);
+      vi.advanceTimersByTime(200);
+    });
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: secondKey });
+  });
 
   it('joins the ops feed on connect', async () => {
     renderHook(() => useDashboardFeed());

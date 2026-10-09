@@ -1,6 +1,9 @@
 import { ArrowUp, ChevronRight, FlowModeler, Folder } from '@carbon/icons-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
+import { getPage } from '../../api/paging';
+import { WorkflowPageControls } from './WorkflowPageControls';
 import { ROOT_FOLDER_ID, type SharedFolder } from '../../api/sharedFolders';
 import type { WorkflowSummary } from '../../types/api';
 
@@ -9,8 +12,7 @@ interface Props {
   startFolderId: string;
   /** Full (RBAC-visible) folder tree — used for sub-folders + drill-in. */
   folders: SharedFolder[];
-  /** Workflow list to filter by folder membership. */
-  workflows: WorkflowSummary[];
+  currentWorkflow: WorkflowSummary;
   currentWorkflowId: string | undefined;
   onOpenWorkflow: (w: WorkflowSummary) => void;
   /** Hover bridge — keep the popover open while the pointer is inside it. */
@@ -19,6 +21,7 @@ interface Props {
 }
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+const EMPTY_WORKFLOWS: WorkflowSummary[] = [];
 
 /**
  * Mini file-browser rendered inside a breadcrumb segment's popover. Lists the sub-folders
@@ -27,10 +30,16 @@ const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompar
  * navigates back as long as the parent folder is itself visible (RBAC).
  */
 export function FolderContentsBrowser({
-  startFolderId, folders, workflows, currentWorkflowId, onOpenWorkflow, onMouseEnter, onMouseLeave,
+  startFolderId, folders, currentWorkflow, currentWorkflowId, onOpenWorkflow, onMouseEnter, onMouseLeave,
 }: Readonly<Props>) {
   const { t } = useTranslation('designer');
   const [viewFolderId, setViewFolderId] = useState(startFolderId);
+  const [page, setPage] = useState(1);
+  const { data, isFetching, isError, refetch } = useQuery({
+    queryKey: ['workflows', 'page', page, viewFolderId, '', 'name', 'asc'],
+    queryFn: () => getPage<WorkflowSummary>(`/workflows/paged?folderId=${encodeURIComponent(viewFolderId)}&sortBy=name&sortDir=asc`, page, 50),
+  });
+  const workflows = data?.items ?? EMPTY_WORKFLOWS;
 
   const byId = useMemo(() => new Map(folders.map((f) => [f.id, f] as const)), [folders]);
   const view = byId.get(viewFolderId) ?? null;
@@ -41,8 +50,12 @@ export function FolderContentsBrowser({
     [folders, viewFolderId],
   );
   const folderWorkflows = useMemo(
-    () => workflows.filter((w) => (w.folderId ?? ROOT_FOLDER_ID) === viewFolderId).sort(byName),
-    [workflows, viewFolderId],
+    () => {
+      const rows = workflows.filter((w) => (w.folderId ?? ROOT_FOLDER_ID) === viewFolderId);
+      if ((currentWorkflow.folderId ?? ROOT_FOLDER_ID) === viewFolderId && !rows.some(w => w.id === currentWorkflow.id)) rows.push(currentWorkflow);
+      return rows.sort(byName);
+    },
+    [workflows, viewFolderId, currentWorkflow],
   );
 
   return (
@@ -58,7 +71,7 @@ export function FolderContentsBrowser({
           <button
             type="button"
             className="shrink-0 rounded p-0.5 text-on-surface-variant transition-colors hover:bg-surface-high hover:text-on-surface"
-            onClick={() => setViewFolderId(parent.id)}
+            onClick={() => { setViewFolderId(parent.id); setPage(1); }}
             title={t('folderPath.upOneLevel')}
             aria-label={t('folderPath.upOneLevel')}
           >
@@ -82,7 +95,7 @@ export function FolderContentsBrowser({
                 key={f.id}
                 type="button"
                 className="flex w-full items-center gap-2 px-2.5 py-1 text-left text-on-surface transition-colors hover:bg-surface-high"
-                onClick={() => setViewFolderId(f.id)}
+                onClick={() => { setViewFolderId(f.id); setPage(1); }}
                 title={t('folderPath.openFolder', { name: f.name })}
               >
                 <Folder size={13} className="shrink-0 text-amber-400" />
@@ -98,6 +111,7 @@ export function FolderContentsBrowser({
         <div className="px-2.5 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant/70">
           {t('folderPath.workflows')}
         </div>
+        {isError && <button type="button" onClick={() => void refetch()}>{t('common:retry')}</button>}
         {folderWorkflows.length === 0 ? (
           <div className="px-2.5 py-1 text-on-surface-variant">{t('browser.noWorkflowsInFolder')}</div>
         ) : (
@@ -125,6 +139,7 @@ export function FolderContentsBrowser({
           })
         )}
       </div>
+      <WorkflowPageControls page={page} totalPages={data?.totalPages ?? 0} busy={isFetching} onChange={setPage} />
     </div>
   );
 }

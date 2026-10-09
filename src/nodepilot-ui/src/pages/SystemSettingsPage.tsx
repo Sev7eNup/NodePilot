@@ -22,9 +22,9 @@ import { PerformanceSection } from '../components/admin-settings/PerformanceSect
 import { DbAdminSection } from '../components/admin-settings/DbAdminSection';
 import { AiKnowledgeSection } from '../components/admin-settings/AiKnowledgeSection';
 import { AgentsSection } from '../components/admin-settings/AgentsSection';
+import { systemSettingsLabels } from '../lib/navigation';
 
-type SubTab = 'integrations' | 'ai-knowledge' | 'agents' | 'retention' | 'system-info'
-  | 'authentication' | 'logging-telemetry' | 'security' | 'performance' | 'db-admin';
+type SubTab = keyof typeof systemSettingsLabels;
 
 // Tabs grouped by topic: integrations, security, operations, data. `integrations` comes first
 // because it is also the fallback section for a bare `?tab=system`, and `system-info` comes
@@ -64,23 +64,10 @@ const ICONS: Record<SubTab, React.ComponentType<{ size?: number }>> = {
 
 // i18n key per sub-tab. Also the allow-list for the `?section=` deep link: only a key from
 // this map is accepted, so a new sub-tab needs a label before it can be addressed by link.
-const LABEL_KEYS: Record<SubTab, string> = {
-  'integrations': 'subTabIntegrations',
-  'ai-knowledge': 'subTabAiKnowledge',
-  'agents': 'subTabAgents',
-  'retention': 'subTabRetention',
-  'system-info': 'subTabSystemInfo',
-  'authentication': 'subTabAuthentication',
-  'logging-telemetry': 'subTabLoggingTelemetry',
-  'security': 'subTabSecurity',
-  'performance': 'subTabPerformance',
-  'db-admin': 'subTabDbAdmin',
-};
-
 const DEFAULT_SUB_TAB: SubTab = 'integrations';
 
 function isSubTab(value: string | null): value is SubTab {
-  return value !== null && Object.prototype.hasOwnProperty.call(LABEL_KEYS, value);
+  return value !== null && Object.hasOwn(systemSettingsLabels, value);
 }
 
 export function SystemSettingsPage() {
@@ -97,7 +84,7 @@ export function SystemSettingsPage() {
     setSearchParams(params);
   };
 
-  const labelFor = (tab: SubTab): string => t(`adminSettings:${LABEL_KEYS[tab]}`);
+  const labelFor = (tab: SubTab): string => t(`adminSettings:${systemSettingsLabels[tab]}`);
 
   return (
     <div className="space-y-4">

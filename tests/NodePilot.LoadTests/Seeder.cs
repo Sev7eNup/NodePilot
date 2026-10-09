@@ -13,18 +13,25 @@ public static class Seeder
         var session = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
         var plain = new List<Guid>();
 
+        async Task<Guid> CreatePublishedAsync(string name, string definition)
+        {
+            var id = await client.CreateWorkflowAsync(name, definition, ct);
+            await client.PublishWorkflowAsync(id, name, definition, ct);
+            return id;
+        }
+
         for (int copy = 0; copy < options.Seed.CopiesPerTemplate; copy++)
         {
             var suffix = $"{session}-{copy}";
 
             var deepJson = WorkflowTemplates.BuildDeepSequential(options.Seed.DeepSequentialDepth, suffix);
-            plain.Add(await client.CreateWorkflowAsync($"loadtest-deep-{suffix}", deepJson, ct));
+            plain.Add(await CreatePublishedAsync($"loadtest-deep-{suffix}", deepJson));
 
             var wideJson = WorkflowTemplates.BuildWideFanout(options.Seed.WideFanoutWidth, suffix);
-            plain.Add(await client.CreateWorkflowAsync($"loadtest-wide-{suffix}", wideJson, ct));
+            plain.Add(await CreatePublishedAsync($"loadtest-wide-{suffix}", wideJson));
 
             var mixedJson = WorkflowTemplates.BuildMixedHeavy(suffix, options.ApiBaseUrl);
-            plain.Add(await client.CreateWorkflowAsync($"loadtest-mixed-{suffix}", mixedJson, ct));
+            plain.Add(await CreatePublishedAsync($"loadtest-mixed-{suffix}", mixedJson));
         }
 
         // Sub-workflow chain: seed children before parents so parent's workflowNameOrId resolves.
@@ -36,7 +43,7 @@ public static class Seeder
             Guid topId = Guid.Empty;
             foreach (var (name, json) in chain)
             {
-                topId = await client.CreateWorkflowAsync(name, json, ct);
+                topId = await CreatePublishedAsync(name, json);
             }
             subRoots.Add(topId); // The last one seeded is the outermost parent
         }

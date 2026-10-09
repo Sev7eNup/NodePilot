@@ -96,10 +96,39 @@ internal static class AgentFileTools
 
     internal static async Task<string> ReadAsync(AgentTarget target, string path, long offset, CancellationToken ct)
     {
-        var bytes = await ReadBlockAsync(target, path, offset, 8192, ct);
-        var encoding = bytes.Length >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe ? Encoding.Unicode
-            : bytes.Length >= 2 && bytes[0] == 0xfe && bytes[1] == 0xff ? Encoding.BigEndianUnicode : Encoding.UTF8;
-        return JsonSerializer.Serialize(new { path, offset, nextOffset = offset + bytes.Length, text = encoding.GetString(bytes) });
+        // Small lookahead distinguishes a page boundary from EOF. Raw collection continues
+        // using ReadBlockAsync unchanged; text pages advance only past complete characters.
+        var bytes = await ReadBlockAsync(target, path, offset, 8196, ct);
+        var header = offset == 0 ? bytes : await ReadBlockAsync(target, path, 0, 2, ct);
+        var encoding = header.Length >= 2 && header[0] == 0xff && header[1] == 0xfe ? Encoding.Unicode
+            : header.Length >= 2 && header[0] == 0xfe && header[1] == 0xff ? Encoding.BigEndianUnicode : Encoding.UTF8;
+        var count = Math.Min(bytes.Length, 8192);
+        if (encoding != Encoding.UTF8 && offset % 2 != 0)
+            throw new ArgumentException("UTF-16 text offsets must be at a two-byte character boundary.");
+        if (bytes.Length > count)
+        {
+            if (encoding == Encoding.UTF8)
+            {
+                var start = count - 1;
+                while (start >= 0 && (bytes[start] & 0xc0) == 0x80) start--;
+                if (start >= 0)
+                {
+                    var lead = bytes[start];
+                    var width = lead is >= 0xc2 and <= 0xdf ? 2
+                        : lead is >= 0xe0 and <= 0xef ? 3 : lead is >= 0xf0 and <= 0xf4 ? 4 : 1;
+                    if (count - start < width) count = start;
+                }
+            }
+            else
+            {
+                count -= count % 2;
+                var last = encoding == Encoding.Unicode
+                    ? bytes[count - 2] | bytes[count - 1] << 8
+                    : bytes[count - 2] << 8 | bytes[count - 1];
+                if (last is >= 0xd800 and <= 0xdbff) count -= 2;
+            }
+        }
+        return JsonSerializer.Serialize(new { path, offset, nextOffset = offset + count, text = encoding.GetString(bytes, 0, count) });
     }
 
     internal static async Task WriteAsync(AgentTarget target, string path, string content, CancellationToken ct)

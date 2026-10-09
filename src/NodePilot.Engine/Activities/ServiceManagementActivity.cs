@@ -147,7 +147,7 @@ public class ServiceManagementActivity : BaseRemoteActivity
         var sb = new StringBuilder();
         sb.Append("$__npSc = & sc.exe ").Append(arguments).Append("; ");
         sb.Append("if ($LASTEXITCODE -ne 0) { throw \"sc.exe ").Append(verb)
-          .Append(" failed with exit code $LASTEXITCODE: $($__npSc -join ' ')\" }");
+          .Append(" failed with exit code $($LASTEXITCODE): $($__npSc -join ' ')\" }");
         if (emitOutput)
             sb.Append("; $__npSc");
         return sb.ToString();

@@ -165,7 +165,7 @@ public sealed class GlobalsExportCommand : BaseCommand<GlobalsExportSettings>
     {
         var api = ClientFactory.Create(session);
         var rows = await api.ListGlobalVariablesAsync(ct);
-        var exportable = rows.Select(v => new ImportableGlobalVariable(v.Name, v.Value, v.IsSecret, v.Description)).ToList();
+        var exportable = rows.Select(v => new ImportableGlobalVariable(v.Name, v.IsSecret ? null : v.Value, v.IsSecret, v.Description)).ToList();
         var json = JsonSerializer.Serialize(exportable, new JsonSerializerOptions(NodePilotApiClient.JsonOptions) { WriteIndented = true });
 
         if (!string.IsNullOrWhiteSpace(settings.File))
@@ -228,11 +228,18 @@ public sealed class GlobalsImportCommand : BaseCommand<GlobalsImportSettings>
         int created = 0, updated = 0, skipped = 0;
         foreach (var entry in entries)
         {
-            var value = entry.Value ?? "";
+            // Exports omit secret values. Older exports used the API's display mask.
+            var omittedSecret = entry.IsSecret && (entry.Value is null or "***");
+            var value = omittedSecret ? null : entry.Value ?? "";
             if (existing.TryGetValue(entry.Name, out var found))
             {
                 if (settings.Upsert)
                 {
+                    if (omittedSecret && !found.IsSecret)
+                    {
+                        writer.Error($"A secret value is required for {Markup.Escape(entry.Name)}; the existing variable is not a secret.");
+                        return ExitCodes.Error;
+                    }
                     writer.Info(settings.DryRun
                         ? $"[dim]dry-run[/] update [bold]{Markup.Escape(entry.Name)}[/]"
                         : $"update [bold]{Markup.Escape(entry.Name)}[/]");
@@ -248,11 +255,21 @@ public sealed class GlobalsImportCommand : BaseCommand<GlobalsImportSettings>
             }
             else
             {
+                if (omittedSecret)
+                {
+                    if (settings.DryRun && settings.Upsert)
+                    {
+                        writer.Info($"[dim]dry-run[/] preserve [bold]{Markup.Escape(entry.Name)}[/] only if an existing secret is present (not checked offline)");
+                        continue;
+                    }
+                    writer.Error($"A secret value is required to create {Markup.Escape(entry.Name)}; null and the legacy *** mask cannot create a secret.");
+                    return ExitCodes.Error;
+                }
                 writer.Info(settings.DryRun
                     ? $"[dim]dry-run[/] create [bold]{Markup.Escape(entry.Name)}[/]"
                     : $"create [bold]{Markup.Escape(entry.Name)}[/]");
                 if (!settings.DryRun)
-                    await api.CreateGlobalVariableAsync(new CreateGlobalVariableRequest(entry.Name, value, entry.IsSecret, entry.Description), ct);
+                    await api.CreateGlobalVariableAsync(new CreateGlobalVariableRequest(entry.Name, value ?? string.Empty, entry.IsSecret, entry.Description), ct);
                 created++;
             }
         }

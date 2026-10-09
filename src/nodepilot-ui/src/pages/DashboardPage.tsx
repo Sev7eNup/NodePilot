@@ -227,7 +227,7 @@ export function DashboardPage() {
             {/* Keep the long list out of grid intrinsic sizing; it scrolls inside the row height. */}
             <div className="relative flex-1 min-h-[220px] xl:min-h-0">
               <div className="absolute inset-0 overflow-y-auto">
-                <RunningList items={stats.running} longRunningSeconds={stats.longRunningSeconds} onOpen={(id) => navigate(`/executions?id=${id}`)} />
+                <RunningList items={stats.running} longRunningSeconds={stats.longRunningSeconds} onOpen={(id) => navigate(`/workflows/${id}`)} />
               </div>
             </div>
           </div>
@@ -311,7 +311,8 @@ export function DashboardPage() {
                   <tr
                     key={e.id}
                     className="cursor-pointer hover:bg-surface-low"
-                    onClick={() => navigate(`/executions?id=${e.id}`)}
+                    onClick={() => navigate(['Running', 'Pending', 'Paused'].includes(e.status)
+                      ? `/workflows/${e.workflowId}` : `/executions?id=${e.id}`)}
                   >
                     <td className="px-4 py-2 font-medium text-on-surface">{e.workflowName}</td>
                     <td className="px-4 py-2"><StatusBadge status={e.status} /></td>
@@ -580,8 +581,8 @@ function RunningList({ items, onOpen, longRunningSeconds }: Readonly<{ items: Ru
         <li
           key={r.id}
           className="np-row py-2 flex items-center justify-between cursor-pointer -mx-2 px-2"
-          onClick={() => onOpen(r.id)}
-          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen(r.id)}
+          onClick={() => onOpen(r.workflowId)}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen(r.workflowId)}
           role="button"
           tabIndex={0}
         >

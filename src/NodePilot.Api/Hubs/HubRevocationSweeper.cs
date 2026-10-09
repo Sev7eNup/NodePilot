@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using NodePilot.Api.Security;
 using NodePilot.Core.Enums;
 using NodePilot.Data;
@@ -135,7 +136,6 @@ public class HubRevocationSweeper : BackgroundService
             currentSecurityStamps,
             serverSessions,
             nextSweep).ToList();
-        if (targets.Count == 0) return;
 
         // Two-step termination (Audit M-3):
         //   1. best-effort "forceDisconnect" client event so a cooperating client can
@@ -177,8 +177,17 @@ public class HubRevocationSweeper : BackgroundService
             }
         }
 
-        _logger.LogInformation(
-            "HubRevocationSweeper: disconnected {Count} SignalR connection(s) for revoked tokens / deactivated users",
-            targets.Count);
+        if (targets.Count > 0)
+            _logger.LogInformation(
+                "HubRevocationSweeper: disconnected {Count} SignalR connection(s) for revoked tokens / deactivated users",
+                targets.Count);
+
+        // SCIM refreshes one group at a time. A still-valid admission group does not
+        // preserve a folder-only group's old live subscriptions past its own deadline.
+        var oidcUserIds = externalUsers.Where(user => user.Provider == AuthProvider.Oidc
+                && !invalidUsers.Contains(user.Id)).Select(user => user.Id).ToHashSet();
+        var policy = scope.ServiceProvider.GetRequiredService<IOptions<AuthenticationPolicyOptions>>().Value;
+        await ExecutionHub.RevalidateFolderSubscriptionsAsync(db,
+            new ResourceAuthorizationService(db, policy, nextSweep), _hub, oidcUserIds, ct);
     }
 }

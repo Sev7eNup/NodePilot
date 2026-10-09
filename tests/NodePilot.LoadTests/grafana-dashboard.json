@@ -24,20 +24,22 @@
       "id": 3,
       "type": "timeseries",
       "title": "Execution duration (p50/p95/p99, ms)",
+      "fieldConfig": { "defaults": { "unit": "ms" } },
       "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum(rate(nodepilot_execution_duration_bucket[1m])) by (le))", "legendFormat": "p50" },
-        { "expr": "histogram_quantile(0.95, sum(rate(nodepilot_execution_duration_bucket[1m])) by (le))", "legendFormat": "p95" },
-        { "expr": "histogram_quantile(0.99, sum(rate(nodepilot_execution_duration_bucket[1m])) by (le))", "legendFormat": "p99" }
+        { "expr": "histogram_quantile(0.50, sum(rate(nodepilot_execution_duration_milliseconds_bucket[1m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(nodepilot_execution_duration_milliseconds_bucket[1m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(nodepilot_execution_duration_milliseconds_bucket[1m])) by (le))", "legendFormat": "p99" }
       ]
     },
     {
       "id": 4,
       "type": "timeseries",
       "title": "Step duration by activity_type (p95, ms)",
+      "fieldConfig": { "defaults": { "unit": "ms" } },
       "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
       "targets": [
-        { "expr": "histogram_quantile(0.95, sum by (le, activity_type) (rate(nodepilot_step_duration_bucket[1m])))", "legendFormat": "{{activity_type}}" }
+        { "expr": "histogram_quantile(0.95, sum by (le, activity_type) (rate(nodepilot_step_duration_milliseconds_bucket[1m])))", "legendFormat": "{{activity_type}}" }
       ]
     },
     {
@@ -56,7 +58,7 @@
       "title": ".NET ThreadPool queue length",
       "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
       "targets": [
-        { "expr": "process_runtime_dotnet_thread_pool_queue_length", "legendFormat": "queue" }
+        { "expr": "dotnet_thread_pool_queue_length_total", "legendFormat": "queue" }
       ]
     }
   ]

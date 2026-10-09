@@ -42,8 +42,6 @@ public sealed class SubWorkflowAuthorizationResolver : ISubWorkflowAuthorization
 
     public async Task<string?> IsBlockedAsync(WorkflowExecution parentExecution, Workflow childWorkflow, CancellationToken ct)
     {
-        // Same-folder calls bypass the check — a workflow that fires a sibling in its own
-        // folder is not crossing a permission boundary.
         if (parentExecution is null) return null;
         var parentWorkflow = await _db.Workflows.AsNoTracking()
             .FirstOrDefaultAsync(w => w.Id == parentExecution.WorkflowId, ct);
@@ -76,13 +74,12 @@ public sealed class SubWorkflowAuthorizationResolver : ISubWorkflowAuthorization
                 return $"effective principal '{user.Username}' has a stale directory authorization snapshot; sub-workflow call to '{childWorkflow.Name}' denied";
             }
         }
-        // Same-folder calls do not cross an RBAC boundary, but they still run under an
-        // effective principal. Account deactivation and stale external authorization must
-        // stop them just like cross-folder automation.
-        if (sameFolder) return null;
         if (user.Role == UserRole.Admin) return null;
         if (user.Role != UserRole.Operator)
             return $"effective principal '{user.Username}' has global role '{user.Role}' — sub-workflow calls require global role 'Operator' or 'Admin'";
+        // Same-folder calls skip the folder grant lookup, but account state and the global
+        // role cap still apply to their effective principal.
+        if (sameFolder) return null;
 
         // Walk the folder ancestry of the child to find the highest grant for this user.
         var allFolders = await _db.SharedWorkflowFolders.AsNoTracking().ToListAsync(ct);
@@ -102,7 +99,7 @@ public sealed class SubWorkflowAuthorizationResolver : ISubWorkflowAuthorization
         // Group-aware grant lookup uses the same normalized, server-side snapshot as HTTP
         // authorization. Scheduled/triggered work must never depend on group claims from an
         // old browser token or the legacy JSON cache on User.
-        var directoryGroups = await DirectoryGroupPrincipal.LoadAsync(_db, user, ct);
+        var directoryGroups = await DirectoryGroupPrincipal.LoadAsync(_db, user, _authenticationPolicy, ct);
         var candidateGrants = await _db.SharedFolderPermissions.AsNoTracking()
             .Where(p => chain.Contains(p.FolderId))
             .Where(DirectoryGroupPrincipal.GrantPredicate(effectiveUserId.Value, directoryGroups))

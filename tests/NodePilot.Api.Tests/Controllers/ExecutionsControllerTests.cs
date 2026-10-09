@@ -1754,6 +1754,34 @@ public class ExecutionsControllerTests
         byId.Items.Should().ContainSingle().Which.Id.Should().Be(matchingExecution.Id);
     }
 
+    [Theory]
+    [InlineData("AUDIT-OPERATOR")]
+    [InlineData("A12B34C5")]
+    public async Task GetAll_SearchesInitiatorAndDisplayedIdPrefixBeforePaging(string search)
+    {
+        await using var db = CreateContext();
+        var user = new User { Id = Guid.NewGuid(), Username = "audit-operator", PasswordHash = "unused", Role = UserRole.Operator };
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Daily job", DefinitionJson = "{}" };
+        var match = new WorkflowExecution
+        {
+            Id = Guid.Parse("a12b34c5-1111-4222-8333-444444444444"), WorkflowId = workflow.Id,
+            StartedByUserId = user.Id, Status = ExecutionStatus.Succeeded, StartedAt = DateTime.UtcNow.AddMinutes(-1),
+        };
+        db.Users.Add(user);
+        db.Workflows.Add(workflow);
+        db.WorkflowExecutions.AddRange(match, new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Succeeded, StartedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        var result = await NewController(db, new Mock<IWorkflowEngine>().Object).GetAll(
+            null, false, true, CancellationToken.None, page: 1, pageSize: 1, search: search);
+        var page = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject;
+        page.Total.Should().Be(1);
+        page.Items.Should().ContainSingle().Which.Id.Should().Be(match.Id);
+    }
+
     [Fact]
     public async Task GetAll_PopulatesTriageColumns_StartedByUserAndStepCountsAndFailedStep()
     {

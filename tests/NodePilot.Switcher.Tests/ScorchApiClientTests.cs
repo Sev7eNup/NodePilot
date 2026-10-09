@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using System.Text.Json;
 using FluentAssertions;
 using NodePilot.Switcher.Configuration;
 using NodePilot.Switcher.Services;
@@ -9,6 +10,72 @@ namespace NodePilot.Switcher.Tests;
 
 public sealed class ScorchApiClientTests
 {
+    [Theory]
+    [InlineData("http://outside.example.test/api/runbooks", false)]
+    [InlineData("https://outside.example.test/api/runbooks", false)]
+    [InlineData("//outside.example.test/api/runbooks", false)]
+    [InlineData("http://scorch.example.test/api/runbooks", false)]
+    [InlineData("https://scorch.example.test:444/api/runbooks", false)]
+    [InlineData("http://outside.example.test/api/runbooks", true)]
+    [InlineData("https://outside.example.test/api/runbooks", true)]
+    [InlineData("//outside.example.test/api/runbooks", true)]
+    [InlineData("http://scorch.example.test/api/runbooks", true)]
+    [InlineData("https://scorch.example.test:444/api/runbooks", true)]
+    public async Task ListRunbooks_RejectsOffOriginPathBeforeSending(string path, bool pagination)
+    {
+        var handler = new PagesHandler(
+            JsonSerializer.Serialize(new Dictionary<string, object> { ["value"] = Array.Empty<object>(), ["@odata.nextLink"] = path }),
+            """{"value":[]}""");
+        var config = new ScorchWorkloadConfiguration(@"C:\lists\scorch.txt", "https://scorch.example.test",
+            RunbooksPath: pagination ? "api/runbooks" : path);
+        using var client = new ScorchApiClient(config, handler);
+
+        var action = () => client.ListRunbooksAsync(TestContext.Current.CancellationToken);
+
+        await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("*configured API origin*");
+        handler.Requests.Should().HaveCount(pagination ? 1 : 0);
+    }
+
+    [Theory]
+    [InlineData("api/runbooks?page=2")]
+    [InlineData("/api/runbooks?page=2")]
+    [InlineData("https://scorch.example.test/api/runbooks?page=2")]
+    public async Task ListRunbooks_FollowsSameOriginPagination(string next)
+    {
+        var first = new ScorchRunbook(Guid.NewGuid(), "First");
+        var second = new ScorchRunbook(Guid.NewGuid(), "Second");
+        var handler = new PagesHandler(
+            JsonSerializer.Serialize(new Dictionary<string, object> { ["value"] = new[] { first }, ["@odata.nextLink"] = next }),
+            JsonSerializer.Serialize(new { value = new[] { second } }));
+        using var client = new ScorchApiClient(
+            new ScorchWorkloadConfiguration(@"C:\lists\scorch.txt", "https://scorch.example.test"), handler);
+
+        var result = await client.ListRunbooksAsync(TestContext.Current.CancellationToken);
+
+        result.Should().Equal(first, second);
+        handler.Requests.Should().HaveCount(2);
+        handler.Requests[1].Should().Be(new Uri("https://scorch.example.test/api/runbooks?page=2"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConfiguredMutationPaths_CannotChangeOrigin(bool stop)
+    {
+        var handler = new PagesHandler("{}");
+        var config = new ScorchWorkloadConfiguration(@"C:\lists\scorch.txt", "https://scorch.example.test",
+            JobsPath: "https://outside.example.test/api/jobs",
+            StopJobPathTemplate: "https://outside.example.test/api/jobs/{id}");
+        using var client = new ScorchApiClient(config, handler);
+
+        var action = () => stop
+            ? client.StopJobAsync(Guid.NewGuid(), TestContext.Current.CancellationToken)
+            : client.StartRunbookAsync(Guid.NewGuid(), [], TestContext.Current.CancellationToken);
+
+        await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("*configured API origin*");
+        handler.Requests.Should().BeEmpty();
+    }
+
     // A web service that faults while writing the collection sends a truncated body under HTTP 200.
     // The parser message alone does not say which call broke.
     [Fact]
@@ -79,6 +146,21 @@ public sealed class ScorchApiClientTests
         new(
             new ScorchWorkloadConfiguration(@"C:\lists\scorch.txt", "http://localhost:81"),
             handler);
+
+    private sealed class PagesHandler(params string[] pages) : HttpMessageHandler
+    {
+        public List<Uri> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request.RequestUri ?? throw new InvalidOperationException("Request URI missing."));
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(pages[Requests.Count - 1]),
+                RequestMessage = request,
+            });
+        }
+    }
 
     private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler
     {

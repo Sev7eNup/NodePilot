@@ -233,6 +233,10 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
   recreates them, and reuses the cluster (`initdb` is skipped when `pgdata\PG_VERSION` exists), so data
   survives. `Update-Desktop.ps1` also implements a full staged update with binary + config + DB
   rollback for direct/advanced use. Postgres **major** upgrades are out of scope for v1.
+  During staged rollback only PostgreSQL starts first; the API stays stopped until the snapshot
+  restore succeeds. A failed restore stops recovery with an explicit error and the backup path
+  for manual recovery. The offline `deploy/Test-DesktopUpdate.ps1` checks this ordering and the
+  failure paths without touching real services; it does not replace the release-lab rollback test.
 - **Uninstall:** asks whether to keep the data (*Keep data* / *Delete everything* / *Cancel*; unattended
   keeps it, `/PURGEDATA=1` deletes it) and runs `Uninstall-Desktop.ps1` from `CurUninstallStepChanged`,
   not `[UninstallRun]`, whose parameters Inno freezes at install time. The script ends the shell and

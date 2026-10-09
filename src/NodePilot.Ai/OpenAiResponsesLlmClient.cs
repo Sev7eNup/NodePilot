@@ -69,8 +69,8 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
 
         using var timeoutCts = _transport.CreateTimeoutScope(ct);
         using var resp = await _transport.SendAsync(
-            body, HttpCompletionOption.ResponseContentRead, timeoutCts.Token, ct);
-        using var doc = await LlmHttpTransport.ReadJsonAsync(resp, ct);
+            body, timeoutCts.Token, ct);
+        using var doc = await _transport.ReadJsonAsync(resp, timeoutCts.Token, ct);
 
         return ParseResponse(doc.RootElement);
     }
@@ -201,7 +201,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         {
             return await _transport.SendAsync(
                 BuildBody(request, stream: true, dropTemperature),
-                HttpCompletionOption.ResponseHeadersRead, token, ct);
+                token, ct);
         }
         catch (LlmException ex) when (!dropTemperature && LlmTemperatureQuirk.IsUnsupported(ex))
         {
@@ -211,7 +211,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
                 ex.BodyExcerpt);
             return await _transport.SendAsync(
                 BuildBody(request, stream: true, dropTemperature: true),
-                HttpCompletionOption.ResponseHeadersRead, token, ct);
+                token, ct);
         }
     }
 
@@ -364,13 +364,13 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
 
     /// <summary>
     /// Maps the Responses <c>status</c> onto the chat-completions <c>finish_reason</c> vocabulary
-    /// used elsewhere in NodePilot. Diagnostic only: callers branch on the presence of tool calls,
-    /// not on this string.
+    /// used elsewhere in NodePilot. Incomplete output takes precedence over tool calls so the
+    /// agent adapter can reject the entire unfinished response before executing any tools.
     /// </summary>
     private static string? MapFinishReason(string? status, string? incompleteReason, bool hasToolCalls) => (status, hasToolCalls) switch
     {
-        (_, true) => "tool_calls",
         ("incomplete", _) when incompleteReason == "max_output_tokens" => "length",
+        (_, true) => "tool_calls",
         ("completed", _) => "stop",
         _ => status,
     };

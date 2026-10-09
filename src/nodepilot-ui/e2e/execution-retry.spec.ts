@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
@@ -16,15 +17,15 @@ test.describe('Execution Retry & Cancel-All (Teil 49)', () => {
   test('49.5 — ExecutionsPage Retry button fires POST /executions/{id}/retry', async ({ page }) => {
     await installDefaultMocks(page);
 
-    await page.route('**/api/workflows', (route) =>
+    await page.route('**/api/workflows/paged**', (route) =>
       route.fulfill({
         status: 200, contentType: 'application/json',
-        body: JSON.stringify([{
+        body: JSON.stringify(workflowPage(route, [{
           id: RETRY_WF_ID, name: 'Retry_WF', description: '', isEnabled: true,
           checkedOutByUserId: null, checkedOutByUserName: null, checkedOutAt: null,
           definitionJson: '{"nodes":[],"edges":[]}', version: 1, activityCount: 0,
           triggerTypes: [], createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z',
-        }]),
+        }])),
       }),
     );
     // The executions list labels its rows from here.

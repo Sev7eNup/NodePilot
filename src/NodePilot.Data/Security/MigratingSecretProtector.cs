@@ -27,12 +27,12 @@ public sealed class MigratingSecretProtector : ISecretProtector
 {
     private readonly ISecretProtector _active;
     private readonly ISecretProtector _legacy;
-    private readonly ILogger<MigratingSecretProtector>? _logger;
+    private readonly ILogger? _logger;
 
     public string ProviderName => $"{_active.ProviderName}+{_legacy.ProviderName}-fallback";
 
     public MigratingSecretProtector(ISecretProtector active, ISecretProtector legacy,
-        ILogger<MigratingSecretProtector>? logger = null)
+        ILogger? logger = null)
     {
         _active = active;
         _legacy = legacy;
@@ -40,6 +40,10 @@ public sealed class MigratingSecretProtector : ISecretProtector
     }
 
     public byte[] Protect(string plaintext) => _active.Protect(plaintext);
+
+    // Bootstrap has no DI logger; registry attaches diagnostics without re-reading key files
+    // or rebuilding the active/legacy selection from a potentially changed configuration.
+    internal MigratingSecretProtector WithLogger(ILogger? logger) => new(_active, _legacy, logger);
 
     public string Unprotect(byte[] blob)
     {

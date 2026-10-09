@@ -32,7 +32,7 @@ same artifact, environment and catalog hashes. Failed and blocked cases require 
 ## Coverage and performance
 
 The catalog is generated from the current route, Activity, settings and theme inventories and
-contains 164 human-operated cases. It groups setup by target, role and page, reuses disposable
+contains 167 human-operated cases. It groups setup by target, role and page, reuses disposable
 fixtures, runs independent integration probes in parallel, waits for visible state changes with
 bounded timeouts and records navigation/wait/preparation seconds per case. Only one GUI case runs
 at a time. Evidence is captured at checkpoints and on errors; continuous video is not required.

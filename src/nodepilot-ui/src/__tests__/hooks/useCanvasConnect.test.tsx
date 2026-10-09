@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import type { Node, Edge, FinalConnectionState } from '@xyflow/react';
 import { useCanvasConnect } from '../../hooks/useCanvasConnect';
 import { useCustomActivityCatalogStore } from '../../lib/customActivities';
+import { simulateWorkflow } from '../../lib/workflowSimulation';
 
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
 
@@ -25,6 +26,7 @@ function setup({ initialEdges = [] as Edge[] } = {}) {
   }) as unknown as SetState<Edge[]>;
   const setSelected = vi.fn();
   const commitHistory = vi.fn();
+  const markDirty = vi.fn();
   const screenToFlowPosition = vi.fn(({ x, y }) => ({ x: x * 0.5, y: y * 0.5 }));
 
   const canvasEl = {
@@ -37,7 +39,7 @@ function setup({ initialEdges = [] as Edge[] } = {}) {
   const { result } = renderHook(() =>
     useCanvasConnect({
       edges: currentEdges,
-      setNodes, setEdges, setSelected, commitHistory,
+      setNodes, setEdges, setSelected, commitHistory, markDirty,
       canvasRef, screenToFlowPosition,
     })
   );
@@ -185,6 +187,23 @@ describe('useCanvasConnect', () => {
   });
 
   describe('inline-insert on edge', () => {
+    it('inserting into a disabled branch keeps the new activity unreachable', () => {
+      const original = makeEdge('disabled-branch', 'trigger', 'existing');
+      original.data = { ...original.data, disabled: true };
+      const harness = setup({ initialEdges: [original] });
+      act(() => { harness.result.current.requestInsert(original.id, 400, 300); });
+      act(() => { harness.result.current.insertOnEdge('runScript', 'Restart service'); });
+
+      const nodes = [
+        { id: 'trigger', data: { activityType: 'manualTrigger' } },
+        { id: 'existing', data: { activityType: 'runScript' } },
+        ...harness.getCurrentNodes(),
+      ];
+      const result = simulateWorkflow(nodes, harness.getCurrentEdges());
+      expect([...result.reachable]).toEqual(['trigger']);
+      expect(harness.getCurrentEdges().every(edge => edge.data?.disabled === true)).toBe(true);
+    });
+
     it('requestInsert opens the inline picker at the requested coordinates', () => {
       const harness = setup({ initialEdges: [makeEdge('e1', 'a', 'b')] });
 

@@ -166,6 +166,10 @@ describe('SecuritySection', () => {
         credentialsRewritten: 3, credentialsSkipped: 0, credentialSkipDetails: [],
         globalSecretsRewritten: 2, globalSecretsSkipped: 0, globalSecretSkipDetails: [],
         workflowVersionsRewritten: 4, workflowVersionsSkipped: 0, workflowVersionSkipDetails: [],
+        agentMcpSecretsRewritten: 5, agentMcpSecretsSkipped: 0, agentMcpSecretSkipDetails: [],
+        notificationRoutesRewritten: 6, notificationRoutesSkipped: 0, notificationRouteSkipDetails: [],
+        dispatchParametersRewritten: 7, dispatchParametersSkipped: 0, dispatchParameterSkipDetails: [],
+        runtimeSettingsFilesRewritten: 8, runtimeSettingsFilesSkipped: 0, runtimeSettingsFileSkipDetails: [],
         partialSuccess: false,
       });
     }));
@@ -179,9 +183,7 @@ describe('SecuritySection', () => {
     await waitFor(() => expect(
       useToastStore.getState().toasts.some((x) =>
         x.kind === 'success'
-        && /3 credential/i.test(x.message)
-        && /2 global secret/i.test(x.message)
-        && /4 workflow history version/i.test(x.message)),
+        && /35 stored secret entries re-encrypted/i.test(x.message)),
     ).toBe(true));
 
     const card = screen.getByText('Re-encrypt secrets').closest('.np-card') as HTMLElement;
@@ -189,6 +191,9 @@ describe('SecuritySection', () => {
     expect(result).toHaveTextContent(/Credentials.*3 re-encrypted.*0 skipped/i);
     expect(result).toHaveTextContent(/Global secrets.*2 re-encrypted.*0 skipped/i);
     expect(result).toHaveTextContent(/Workflow history versions.*4 re-encrypted.*0 skipped/i);
+    expect(result).toHaveTextContent(/Notification routes.*6 re-encrypted.*0 skipped/i);
+    expect(result).toHaveTextContent(/Queued execution parameters.*7 re-encrypted.*0 skipped/i);
+    expect(result).toHaveTextContent(/Runtime settings files.*8 re-encrypted.*0 skipped/i);
   });
 
   it('Admin reencrypt: cancelled confirm does not POST', async () => {
@@ -219,6 +224,12 @@ describe('SecuritySection', () => {
           { id: '22222222-2222-2222-2222-222222222222', name: 'Payroll v7', reason: 'CryptographicException' },
           { id: '33333333-3333-3333-3333-333333333333', name: 'Payroll v8', reason: 'FormatException' },
         ],
+        notificationRoutesRewritten: 2, notificationRoutesSkipped: 1,
+        notificationRouteSkipDetails: [{ id: 'route-id', name: 'Alert endpoint', reason: 'ConcurrentChange' }],
+        dispatchParametersRewritten: 3, dispatchParametersSkipped: 1,
+        dispatchParameterSkipDetails: [{ id: 'dispatch-id', name: 'Queued payroll', reason: 'CryptographicException' }],
+        runtimeSettingsFilesRewritten: 1, runtimeSettingsFilesSkipped: 1,
+        runtimeSettingsFileSkipDetails: [{ id: 'runtime-id', name: 'appsettings.runtime.json.bak.1', reason: 'IOException' }],
         partialSuccess: true,
       }, { status: 207 })));
     renderAll();
@@ -229,8 +240,8 @@ describe('SecuritySection', () => {
       useToastStore.getState().toasts.some((x) =>
         x.kind === 'error'
         && /partial/i.test(x.message)
-        && /12 re-encrypted/i.test(x.message)
-        && /3 skipped/i.test(x.message)),
+        && /18 re-encrypted/i.test(x.message)
+        && /6 skipped/i.test(x.message)),
     ).toBe(true));
 
     const card = screen.getByText('Re-encrypt secrets').closest('.np-card') as HTMLElement;
@@ -240,5 +251,8 @@ describe('SecuritySection', () => {
     expect(details).toHaveTextContent(/old-cred.*CryptographicException.*11111111-1111-1111-1111-111111111111/i);
     expect(details).toHaveTextContent(/Payroll v7.*CryptographicException.*22222222-2222-2222-2222-222222222222/i);
     expect(details).toHaveTextContent(/Payroll v8.*FormatException.*33333333-3333-3333-3333-333333333333/i);
+    expect(details).toHaveTextContent(/Alert endpoint.*ConcurrentChange.*route-id/i);
+    expect(details).toHaveTextContent(/Queued payroll.*CryptographicException.*dispatch-id/i);
+    expect(details).toHaveTextContent(/appsettings.runtime.json.bak.1.*IOException.*runtime-id/i);
   });
 });

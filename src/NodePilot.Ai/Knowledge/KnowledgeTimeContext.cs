@@ -31,7 +31,7 @@ public static class KnowledgeTimeContext
             localLine = $"{Format(local)} ({timeZoneId.Trim()}, {OffsetLabel(local.Offset)})";
         }
 
-        if (localLine is null && offsetMinutes is int mins && Math.Abs(mins) <= 14 * 60)
+        if (localLine is null && offsetMinutes is int mins && mins is >= -840 and <= 840)
         {
             var offset = TimeSpan.FromMinutes(mins);
             var local = nowUtc.ToOffset(offset);

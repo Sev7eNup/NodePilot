@@ -71,6 +71,7 @@ export function EditorRightPanel({
       <>
         <ResizeHandle direction="horizontal" {...panelHandleProps} />
         <BulkEditPanel
+          canWrite={canWrite}
           selectedNodes={multiSelected}
           machines={machines}
           onApply={handleBulkApply}
