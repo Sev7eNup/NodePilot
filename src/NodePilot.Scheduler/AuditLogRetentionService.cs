@@ -50,6 +50,8 @@ public class AuditLogRetentionService : LeaderGatedRetentionService
     private AuditLogRetentionOptions Opts => _opts.CurrentValue.AuditLog;
 
     private DateTime _lastVerifyUtc = DateTime.MinValue;
+    private string? _verifyArchivePath;
+    private (DateTime Modified, string Name)? _verifyAfter;
 
     public AuditLogRetentionService(
         IServiceScopeFactory scopeFactory,
@@ -360,11 +362,26 @@ public class AuditLogRetentionService : LeaderGatedRetentionService
     {
         if (!Directory.Exists(archivePath)) return;
 
-        var files = new DirectoryInfo(archivePath)
+        var fullPath = Path.GetFullPath(archivePath);
+        if (!string.Equals(_verifyArchivePath, fullPath, StringComparison.Ordinal))
+        {
+            _verifyArchivePath = fullPath;
+            _verifyAfter = null;
+        }
+
+        var ordered = new DirectoryInfo(fullPath)
             .EnumerateFiles("audit-*.ndjson.gz", SearchOption.TopDirectoryOnly)
             .OrderBy(f => f.LastWriteTimeUtc)
-            .Take(Math.Max(1, maxFiles))
+            .ThenBy(f => f.Name, StringComparer.Ordinal)
             .ToList();
+        var files = ordered.Where(f => _verifyAfter is not { } after
+                || f.LastWriteTimeUtc > after.Modified
+                || (f.LastWriteTimeUtc == after.Modified && StringComparer.Ordinal.Compare(f.Name, after.Name) > 0))
+            .Take(Math.Max(1, maxFiles)).ToList();
+        // Completed a cycle (also tolerates deletion of the cursor file). Revisit old
+        // archives so corruption introduced after an earlier successful pass is detected.
+        if (files.Count == 0)
+            files = ordered.Take(Math.Max(1, maxFiles)).ToList();
 
         if (files.Count == 0) return;
 
@@ -375,6 +392,7 @@ public class AuditLogRetentionService : LeaderGatedRetentionService
         foreach (var file in files)
         {
             if (ct.IsCancellationRequested) break;
+            _verifyAfter = (file.LastWriteTimeUtc, file.Name);
 
             var sidecarPath = file.FullName + ".sha256";
             if (!File.Exists(sidecarPath))

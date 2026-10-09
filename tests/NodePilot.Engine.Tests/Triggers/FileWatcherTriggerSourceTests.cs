@@ -26,6 +26,42 @@ namespace NodePilot.Engine.Tests.Triggers;
 /// </summary>
 public class FileWatcherTriggerSourceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reconcile_AfterLinkAdded_RejectsEscapeAndPreservesSnapshot(bool directoryLink)
+    {
+        using var watched = new TempDirectory();
+        using var outside = new TempDirectory();
+        var externalFile = Path.Combine(outside.Path, "external.txt");
+        await File.WriteAllTextAsync(externalFile, "private");
+        var link = Path.Combine(watched.Path, directoryLink ? "link" : "link.txt");
+        var fires = new System.Collections.Concurrent.ConcurrentBag<string>();
+        await using var source = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance, WithAllowedRoots(watched.Path));
+        await source.StartAsync(Ctx(JsonSerializer.Serialize(new
+        {
+            directory = watched.Path, filter = "*.txt", watchType = "created", includeSubdirectories = true,
+        }), parameters => { fires.Add(parameters["filePath"]); return Task.CompletedTask; }), CancellationToken.None);
+        try
+        {
+            if (directoryLink) Directory.CreateSymbolicLink(link, outside.Path);
+            else File.CreateSymbolicLink(link, externalFile);
+            var reconcile = typeof(FileWatcherTriggerSource).GetMethod("ReconcileAsync",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            var run = () => (Task)reconcile.Invoke(source, [CancellationToken.None])!;
+
+            await run.Should().ThrowAsync<InvalidOperationException>().WithMessage("*reparse point*");
+            source.SnapshotPathsForTests().Should().BeEmpty();
+            fires.Should().BeEmpty();
+        }
+        finally
+        {
+            await source.DisposeAsync();
+            if (directoryLink) Directory.Delete(link); else File.Delete(link);
+        }
+    }
+
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     /// <summary>Escapes a Windows path for embedding in a JSON string literal.</summary>
@@ -773,6 +809,30 @@ public class FileWatcherTriggerSourceTests
             () => 42, TimeSpan.FromSeconds(30), disposeAbandoned: null, CancellationToken.None);
 
         result.Should().Be(42);
+    }
+
+    [Fact]
+    public async Task RunBoundedAsync_CancellationDisposesLateResultExactlyOnce()
+    {
+        using var release = new ManualResetEventSlim(false);
+        using var cts = new CancellationTokenSource();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disposeCount = 0;
+        var pending = FileWatcherTriggerSource.RunBoundedAsync(
+            () => { started.SetResult(); release.Wait(TimeSpan.FromSeconds(30)); return new object(); },
+            TimeSpan.FromSeconds(30),
+            _ => { Interlocked.Increment(ref disposeCount); disposed.SetResult(); }, cts.Token);
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            cts.Cancel();
+            var act = async () => await pending;
+            await act.Should().ThrowAsync<OperationCanceledException>();
+        }
+        finally { release.Set(); }
+        await disposed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        disposeCount.Should().Be(1);
     }
 
     [Fact]

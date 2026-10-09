@@ -24,7 +24,6 @@ public sealed class ScheduleMissedSource : ISystemAlertSource
     private const int DefaultGraceMinutes = 5;
     private const int LookbackHours = 48;
     private const int ExecutionSlackSeconds = 30;
-    private const int MaxCronIterations = 10_000;
 
     public string SourceId => "schedule-missed";
 
@@ -61,7 +60,9 @@ public sealed class ScheduleMissedSource : ISystemAlertSource
                 try { cron = new CronExpression(cronRaw, TimeZoneInfo.Local); }
                 catch (FormatException) { continue; }
 
-                var expected = PreviousFireBefore(cron, now - lookback, now);
+                // A frequent schedule always has a new fire inside the grace period. Check
+                // the latest already-due fire, otherwise that new fire hides every outage.
+                var expected = PreviousFireBefore(cron, now - lookback, now - grace);
                 bool missed;
                 long minutesLate = 0;
                 if (expected is null)
@@ -90,17 +91,11 @@ public sealed class ScheduleMissedSource : ISystemAlertSource
         return observations;
     }
 
-    private static DateTimeOffset? PreviousFireBefore(CronExpression cron, DateTimeOffset start, DateTimeOffset end)
+    internal static DateTimeOffset? PreviousFireBefore(CronExpression cron, DateTimeOffset start, DateTimeOffset end)
     {
-        DateTimeOffset? previous = null;
-        var cursor = start;
-        for (var i = 0; i < MaxCronIterations; i++)
-        {
-            var next = cron.GetNextValidTimeAfter(cursor);
-            if (next is null || next.Value > end) break;
-            previous = next.Value;
-            cursor = next.Value;
-        }
-        return previous;
+        // Quartz owns calendar/DST semantics. Walking forward with a tick cap could stop
+        // many hours before end for sub-minute schedules and silently approve stale runs.
+        var previous = cron.GetPreviousValidTimeBefore(end);
+        return previous > start ? previous : null;
     }
 }

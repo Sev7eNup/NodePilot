@@ -66,11 +66,11 @@ public class EventLogTriggerSource : ITriggerSource
         _settings = settings;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _checkpoint = await context.ReadCheckpointAsync();
-        int maxIndex;
-        int writtenWhileDown;
+        int maxIndex = 0;
+        int writtenWhileDown = 0;
         // The handler is live as soon as the log is opened, and a reconcile it starts must neither
         // read the log alongside this method nor see a cursor that is not set yet.
-        using (await _reconcileGate.HoldAsync(ct))
+        await InitializeBeforeReconciliationAsync(async () =>
         {
             _log = new EventLog(settings.LogName) { EnableRaisingEvents = true };
             _log.EntryWritten += OnEntry;
@@ -105,9 +105,7 @@ public class EventLogTriggerSource : ITriggerSource
                     throw new InvalidOperationException("EventLogTrigger: cleared-log cursor could not be persisted");
                 _checkpoint = reset;
             }
-        }
-
-        await SkipEntriesWrittenWhileDownAsync(context, maxIndex, writtenWhileDown, _cts.Token);
+        }, () => SkipEntriesWrittenWhileDownAsync(context, maxIndex, writtenWhileDown, _cts.Token), ct);
         var reconcileSeconds = Math.Max(1, _config.GetValue<int?>("Trigger:EventLog:ReconcileSeconds") ?? 30);
         _reconcileTask = ReconcileLoopAsync(TimeSpan.FromSeconds(reconcileSeconds), _cts.Token);
         _logger.LogInformation(
@@ -186,7 +184,18 @@ public class EventLogTriggerSource : ITriggerSource
 
     // Every written entry asks for a reconcile, and the EventLog instance is not thread-safe, so
     // passes never overlap; requests that arrive during a pass are folded into one follow-up pass.
-    private readonly SinglePassGate _reconcileGate = new();
+    internal readonly SinglePassGate _reconcileGate = new();
+
+    // Separates Windows log acquisition from startup ordering so barriers can verify the latter
+    // without creating or mutating a machine's event log.
+    internal async Task InitializeBeforeReconciliationAsync(Func<Task> initialize, Func<Task> skip, CancellationToken ct)
+    {
+        using (await _reconcileGate.HoldAsync(ct))
+        {
+            await initialize();
+            await skip();
+        }
+    }
 
     private Task ReconcileAsync(CancellationToken ct)
         => _reconcileGate.RunAsync(() => ReconcileOnceAsync(ct), ct);

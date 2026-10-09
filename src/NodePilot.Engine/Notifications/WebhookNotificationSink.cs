@@ -22,12 +22,10 @@ public sealed class WebhookNotificationSink : INotificationSink
 {
     private const int SendTimeoutSeconds = 15;
     private readonly RestApiHttpClientProvider _clients;
-    private readonly IConfiguration _config;
 
     public WebhookNotificationSink(RestApiHttpClientProvider clients, IConfiguration config)
     {
         _clients = clients;
-        _config = config;
     }
 
     public NotificationChannel Channel => NotificationChannel.GenericWebhook;
@@ -39,15 +37,13 @@ public sealed class WebhookNotificationSink : INotificationSink
 
         // The sink uses the default named client, so the request is proxied whenever the
         // configured proxy does not bypass this destination.
-        var proxied = Uri.TryCreate(target, UriKind.Absolute, out var targetUri)
-                      && _clients.UsesProxyForDestination(default, targetUri);
-        try { NetworkGuard.ValidateUrl(_config, target, proxied); }
+        try { _clients.ValidateDestinationPolicy(default, new Uri(target, UriKind.Absolute)); }
         catch (Exception ex) { return NotificationSendResult.Fail($"Blocked webhook URL: {ex.Message}"); }
 
         var body = NotificationRenderer.WebhookJson(ctx);
         try
         {
-            var client = _clients.GetClient(default); // named "NodePilot" client (SSRF-guarded connect)
+            using var client = _clients.GetClient(default); // named "NodePilot" client (SSRF-guarded connect)
             using var req = new HttpRequestMessage(HttpMethod.Post, target)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json"),
