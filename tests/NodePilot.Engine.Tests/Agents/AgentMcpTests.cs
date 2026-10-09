@@ -14,8 +14,10 @@ using Xunit;
 
 namespace NodePilot.Engine.Tests.Agents;
 
-public sealed class AgentMcpTests
+public sealed class AgentMcpTests : IDisposable
 {
+    public AgentMcpTests() => NetworkGuard.HostResolverOverride.Value = _ => [IPAddress.Parse("192.0.2.10")];
+    public void Dispose() => NetworkGuard.HostResolverOverride.Value = null;
     [Fact]
     public async Task StreamableHttp_InitializesListsAndCallsTools_WithHostOwnedAuthentication()
     {

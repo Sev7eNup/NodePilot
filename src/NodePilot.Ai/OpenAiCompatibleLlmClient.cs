@@ -161,8 +161,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
 
         using var timeoutCts = _transport.CreateTimeoutScope(ct);
         using var resp = await _transport.SendAsync(
-            body, HttpCompletionOption.ResponseContentRead, timeoutCts.Token, ct);
-        using var doc = await LlmHttpTransport.ReadJsonAsync(resp, ct);
+            body, timeoutCts.Token, ct);
+        using var doc = await _transport.ReadJsonAsync(resp, timeoutCts.Token, ct);
 
         if (!doc.RootElement.TryGetProperty("choices", out var choices)
             || choices.ValueKind != JsonValueKind.Array
@@ -363,7 +363,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             body["stream_options"] = new { include_usage = true };
         AppendTools(body, request);
 
-        return await _transport.SendAsync(body, HttpCompletionOption.ResponseHeadersRead, token, ct);
+        return await _transport.SendAsync(body, token, ct);
     }
 
     /// <summary>Builds the OpenAI `messages` array: [system, ...Conversation] or [system, user].

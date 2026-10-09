@@ -14,8 +14,33 @@ using Xunit;
 
 namespace NodePilot.Engine.Tests.Agents;
 
-public sealed class AgentReadCallsTests
+public sealed class AgentReadCallsTests : IDisposable
 {
+    public AgentReadCallsTests() => NetworkGuard.HostResolverOverride.Value = _ => [IPAddress.Parse("192.0.2.10")];
+    public void Dispose() => NetworkGuard.HostResolverOverride.Value = null;
+
+    [Fact]
+    public async Task HttpTool_AllowlistedProxiedMetadata_IsBlockedBeforeSend()
+    {
+        await using var db = TestDbFactory.Create();
+        var handler = new RecordingHttpHandler();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["RestApi:Proxy:Enabled"] = "true",
+            ["RestApi:Proxy:Address"] = "http://proxy.example:8080",
+            ["RestApi:AllowedHosts:0"] = "169.254.169.254",
+        }).Build();
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(() => new HttpClient(handler, false));
+        var provider = new RestApiHttpClientProvider(factory.Object, config);
+        var host = new AgentToolHost(null!, null!, new AgentRunDatabase(db), null!, provider, Policy());
+        await using var session = await host.OpenAsync(new AgentDefinition { Tools = [new() { Name = "http_request" }] },
+            new(), Guid.NewGuid(), null!, null!, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => session.Tools.Single().InvokeAsync(
+            JsonSerializer.SerializeToElement(new { url = "http://169.254.169.254/latest/meta-data" }), TestContext.Current.CancellationToken));
+        Assert.Empty(handler.Methods);
+    }
     [Fact]
     public async Task HttpToolSchemaRejectsEmptyArgumentsBeforePermissionChecks()
     {

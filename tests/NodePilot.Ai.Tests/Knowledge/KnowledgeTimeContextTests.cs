@@ -48,11 +48,14 @@ public class KnowledgeTimeContextTests
         text.Should().Contain("Jetzt (Lokalzeit des Users): 2026-07-21 09:42 (UTC-05:00)");
     }
 
-    [Fact]
-    public void Build_ImplausibleOffset_IsIgnored()
+    [Theory]
+    [InlineData(6000)]
+    [InlineData(int.MinValue)]
+    [InlineData(int.MaxValue)]
+    public void Build_ImplausibleOffset_IsIgnored(int minutes)
     {
         // > 14h is not a real zone offset -> treated as absent, UTC-only.
-        var text = KnowledgeTimeContext.Build(NowUtc, null, 6000);
+        var text = KnowledgeTimeContext.Build(NowUtc, null, minutes);
         text.Should().NotContain("Lokalzeit des Users");
     }
 }

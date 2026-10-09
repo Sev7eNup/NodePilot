@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NodePilot.Api.Ai;
 using NodePilot.Api.Services.DbAdmin;
@@ -46,6 +47,33 @@ public class SqlKnowledgeReaderTests
         var executor = new DbAdminQueryExecutor(db, new StaticOptionsMonitor<DbAdminOptions>(new DbAdminOptions()));
         var redactor = new OutputRedactor(null);
         return new SqlKnowledgeReader(metadata, executor, redactor, new DbAdminSecretColumns(metadata));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteRead_PositionalAliases_DoNotExposeProtectedValues(bool union)
+    {
+        using var db = TestDbFactory.Create();
+        const string secret = "secret-hash-do-not-send-to-model";
+        db.Users.Add(new User { Username = "admin", PasswordHash = secret });
+        await db.SaveChangesAsync();
+        using var schemaCommand = db.Database.GetDbConnection().CreateCommand();
+        schemaCommand.CommandText = "SELECT * FROM Users WHERE 1 = 0";
+        int columnCount;
+        using (var schema = await schemaCommand.ExecuteReaderAsync())
+            columnCount = schema.FieldCount;
+        var aliases = string.Join(",", Enumerable.Range(0, columnCount).Select(index => $"c{index}"));
+        var sql = union
+            ? $"SELECT {string.Join(",", Enumerable.Range(0, columnCount).Select(index => $"NULL AS c{index}"))} WHERE 1 = 0 UNION ALL SELECT * FROM Users"
+            : $"WITH renamed({aliases}) AS (SELECT * FROM Users) SELECT * FROM renamed";
+
+        var result = await NewReader(db).ExecuteReadAsync(sql, CancellationToken.None);
+
+        result.Rows.SelectMany(row => row).Should().NotContain(secret,
+            "renaming a whole-row projection cannot remove the database knowledge secret policy");
+        result.Error.Should().NotBeNullOrEmpty();
+        result.Rows.Should().BeEmpty();
     }
 
     [Fact]
@@ -130,6 +158,8 @@ public class SqlKnowledgeReaderTests
     [InlineData("SELECT * FROM Users FOR JSON AUTO")]
     [InlineData("SELECT * FROM Users FOR XML AUTO")]
     [InlineData("WITH x AS (SELECT * FROM Users) SELECT to_json(x) FROM x")]
+    [InlineData("SELECT r.c FROM (SELECT * FROM Users) AS r(a,b,c)")]
+    [InlineData("TABLE Users")]
     public async Task ExecuteRead_RejectsWholeRowProjectionOverProtectedTable(string sql)
     {
         using var db = TestDbFactory.Create();
@@ -176,6 +206,20 @@ public class SqlKnowledgeReaderTests
         result.Error.Should().BeNull();
         result.Rows.Should().ContainSingle();
         result.Rows[0][0].Should().Be("admin");
+    }
+
+    [Theory]
+    [InlineData("SELECT COUNT(*) FROM Users", "1")]
+    [InlineData("SELECT COUNT(*) * 2 FROM Users", "2")]
+    [InlineData("SELECT (1 + 2) * (3 - 1) FROM Users", "6")]
+    public async Task ExecuteRead_ProtectedTableStillSupportsCountsAndArithmetic(string sql, string expected)
+    {
+        using var db = TestDbFactory.Create();
+        db.Users.Add(new User { Username = "admin", PasswordHash = "secret" });
+        await db.SaveChangesAsync();
+        var result = await NewReader(db).ExecuteReadAsync(sql, CancellationToken.None);
+        result.Error.Should().BeNull();
+        result.Rows.Single().Single().Should().Be(expected);
     }
 
     [Fact]
