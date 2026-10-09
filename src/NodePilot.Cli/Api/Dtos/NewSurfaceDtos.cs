@@ -65,6 +65,15 @@ public sealed record ReencryptResult(
     public int AgentMcpSecretsRewritten { get; init; }
     public int AgentMcpSecretsSkipped { get; init; }
     public IReadOnlyList<ReencryptionSkip> AgentMcpSecretSkipDetails { get; init; } = [];
+    public int NotificationRoutesRewritten { get; init; }
+    public int NotificationRoutesSkipped { get; init; }
+    public IReadOnlyList<ReencryptionSkip> NotificationRouteSkipDetails { get; init; } = [];
+    public int DispatchParametersRewritten { get; init; }
+    public int DispatchParametersSkipped { get; init; }
+    public IReadOnlyList<ReencryptionSkip> DispatchParameterSkipDetails { get; init; } = [];
+    public int RuntimeSettingsFilesRewritten { get; init; }
+    public int RuntimeSettingsFilesSkipped { get; init; }
+    public IReadOnlyList<ReencryptionSkip> RuntimeSettingsFileSkipDetails { get; init; } = [];
 }
 
 // ---- Shared workflow folders (RBAC) -----------------------------------------

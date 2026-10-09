@@ -34,6 +34,9 @@ public sealed record CustomActivityDefinitionInput
 /// </summary>
 public sealed class CustomActivityConcurrencyException(string message) : Exception(message);
 
+public sealed class CustomActivityDuplicateKeyException(string key)
+    : InvalidOperationException($"A custom activity with key '{key}' already exists.");
+
 /// <summary>
 /// Persistence for user-authored custom activities. Tombstoned (soft-deleted) rows are excluded
 /// from every read here; the executor treats a missing/disabled definition as a clean step failure.
@@ -64,17 +67,17 @@ public interface ICustomActivityDefinitionStore
     Task<CustomActivityDefinition> UpdateAsync(Guid id, CustomActivityDefinitionInput input, Guid expectedConcurrencyToken, string? updatedBy, CancellationToken ct);
 
     /// <summary>Admin-only enable/disable. Bumps the concurrency token.</summary>
-    Task SetEnabledAsync(Guid id, bool enabled, string? updatedBy, CancellationToken ct);
+    Task SetEnabledAsync(Guid id, bool enabled, Guid expectedConcurrencyToken, string? updatedBy, CancellationToken ct);
 
     /// <summary>
     /// Soft-delete (tombstone). Keeps script and versions resolvable for old executions and audit.
     /// </summary>
-    Task SoftDeleteAsync(Guid id, CancellationToken ct);
+    Task SoftDeleteAsync(Guid id, Guid expectedConcurrencyToken, CancellationToken ct);
 
     Task<IReadOnlyList<CustomActivityDefinitionVersion>> GetVersionsAsync(Guid id, CancellationToken ct);
 
     /// <summary>Restores a prior snapshot as a new live version (does not purge history).</summary>
-    Task<CustomActivityDefinition> RollbackAsync(Guid id, int version, string? updatedBy, CancellationToken ct);
+    Task<CustomActivityDefinition> RollbackAsync(Guid id, int version, Guid expectedConcurrencyToken, string? updatedBy, CancellationToken ct);
 
     /// <summary>Count of non-deleted definitions (for backup manifest).</summary>
     Task<int> CountAsync(CancellationToken ct);

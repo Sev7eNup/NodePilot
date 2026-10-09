@@ -117,7 +117,7 @@ public sealed class AgentControllerTests
         db.AgentMcpServers.AddRange(new AgentMcpServer { Id = Guid.NewGuid(), Name = "readable", ProtectedSecrets = [1] },
             new AgentMcpServer { Id = Guid.NewGuid(), Name = "unreadable", ProtectedSecrets = [0] });
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
-        var result = await AgentMcpSecretRotation.ReencryptAsync(db, protector.Object, TestContext.Current.CancellationToken);
+        var result = await DatabaseSecretRotation.ReencryptAgentMcpAsync(db, protector.Object, TestContext.Current.CancellationToken);
         Assert.Equal(1, result.Rewritten); Assert.Equal(1, result.Skipped);
         Assert.Equal("unreadable", Assert.Single(result.SkippedDetails).Name);
         var row = await db.AgentMcpServers.AsNoTracking().SingleAsync(s => s.Name == "readable", TestContext.Current.CancellationToken);

@@ -130,7 +130,7 @@ public static class RuntimeOverridesSetup
             }
 
             if (!changed) continue;
-            ReplaceAtomically(path, root);
+            RuntimeOverridesWriter.ReplaceWithoutBackup(path, root);
             migrated++;
         }
 
@@ -181,34 +181,6 @@ public static class RuntimeOverridesSetup
             encryptedAny = true;
         }
         return encryptedAny;
-    }
-
-    private static void ReplaceAtomically(string path, JsonObject root)
-    {
-        var temporary = path + ".migration." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            File.WriteAllText(
-                temporary,
-                root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-
-            try
-            {
-                File.Replace(temporary, path, destinationBackupFileName: null);
-            }
-            catch (Exception ex) when (ex is IOException or PlatformNotSupportedException
-                                       or UnauthorizedAccessException)
-            {
-                // UNC/non-NTFS fallback. The temporary lives beside the target so the move stays
-                // on one volume and inherits the same restricted directory boundary.
-                File.Move(temporary, path, overwrite: true);
-            }
-        }
-        finally
-        {
-            if (File.Exists(temporary)) File.Delete(temporary);
-        }
     }
 
     /// <summary>

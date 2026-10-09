@@ -82,9 +82,22 @@ curl -X POST -H "Authorization: Bearer <admin-token>" \
 - `200 OK` → clean cutover (`partialSuccess: false`).
 - `207 Multi-Status` → übersprungene Rows in `*SkipDetails`, manuell nachpflegen.
 
-Der Sweep umfasst Credentials, Secret-Globals und die vollständig verschlüsselten Definitionen
-in `WorkflowVersions`. Die Response weist dafür zusätzlich `workflowVersionsRewritten`,
-`workflowVersionsSkipped` und `workflowVersionSkipDetails` aus.
+Der Sweep umfasst Credentials, Secret-Globals, Workflow-Versionen, Agent-MCP-Secrets,
+Benachrichtigungsrouten, wartende Ausführungsparameter und verschlüsselte Laufzeiteinstellungen
+einschließlich der `.bak.*`-Rollbackdateien des Writers. Für die drei letzten Bereiche meldet er
+`notificationRoutesRewritten/Skipped`, `dispatchParametersRewritten/Skipped` und
+`runtimeSettingsFilesRewritten/Skipped` sowie die jeweiligen singulären `*SkipDetails`-Arrays.
+Laufzeitzähler zählen Dateien; deren Skip-ID ist die leere GUID. Zwischenzeitlich geänderte
+Datenbankwerte ergeben `ConcurrentUpdate`, beschädigte Laufzeitdateien bleiben unverändert.
+Bereits erfolgreiche Umstellungen bleiben bei Teilfehlern oder Abbruch erhalten: Fallback
+beibehalten und den Sweep erneut ausführen.
+
+Ein Wartungsfenster verwenden und Änderungen an Secrets/Einstellungen sowie Restore/Import
+pausieren. Zunächst alle Nodes mit Active+Legacy starten; der Fallback funktioniert bereits beim
+Laden verschlüsselter Laufzeiteinstellungen. In HA den Endpunkt auf jedem Node mit eigener
+Laufzeitdatei ausführen: Datenbankzeilen sind gemeinsam, das Dateiergebnis gilt nur für diesen Node.
+Externe exportierte Backups werden nicht umgeschrieben; deren Wiederherstellungsschlüssel
+aufbewahren oder die Backups ersetzen, bevor der alte Schlüssel endgültig entfällt.
 
 Derselbe Sweep ist auch in der UI verfügbar — **Admin-Einstellungen → Security → „Secrets neu verschlüsseln“** (Admin-only; Bestätigungsdialog, Ergebnis-Toast mit den Zählern, Partial Success als Fehler-Toast) — sowie per CLI: `np secrets reencrypt`.
 
@@ -104,7 +117,7 @@ Gleiches Prozedere, aber `LegacyProvider=AesGcm` + `LegacyMasterKey={{old-base64
 
 | Endpoint | Auth | Zweck |
 |---|---|---|
-| `POST /api/secrets/reencrypt` | Admin | Bulk-Sweep aller Credentials, Secret-Globals und Workflow-Version-Definitionen durch decrypt→re-encrypt. `200` (clean) oder `207` (skipped, inklusive History-Details). |
+| `POST /api/secrets/reencrypt` | Admin | Verschlüsselt alle sieben oben genannten Datenbank-/Laufzeitbereiche neu. `200` (sauber) oder `207` (übersprungen, mit Details). |
 
 Audit: `SECRETS_REENCRYPTED`.
 

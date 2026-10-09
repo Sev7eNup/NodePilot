@@ -2,6 +2,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Configuration;
 using NodePilot.Api.Services.Backup;
@@ -22,6 +24,44 @@ namespace NodePilot.Api.Tests.Services.Backup;
 /// </summary>
 public sealed class CustomActivityBackupTests : IDisposable
 {
+    [Fact]
+    public async Task Restore_DatabaseLiveKeyConflict_RollsBackAndReportsRetryableConflict()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var src = TestDbFactory.Create();
+        var adminId = SeedAdmin(src);
+        await SeedAsync(src, enabled: true);
+        var backup = await ExportAsync(src);
+        var (connection, initial) = TestDbFactory.CreateWithConnection();
+        await using var ownedConnection = connection;
+        await using var seedDb = initial;
+        SeedAdmin(seedDb, adminId);
+        await using var dst = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection).AddInterceptors(new DuplicateLiveKeyAtSave()).Options);
+
+        var restore = () => Restore(dst).RestoreAsync(backup, Passphrase,
+            new Dictionary<string, RestoreConflictPolicy>(), RestoreActor, ct);
+        await restore.Should().ThrowAsync<BackupRestoreException>().WithMessage("*live key*retry*");
+        dst.ChangeTracker.Clear();
+        (await dst.CustomActivityDefinitions.CountAsync(ct)).Should().Be(0);
+        (await dst.Users.CountAsync(ct)).Should().Be(1);
+    }
+
+    private sealed class DuplicateLiveKeyAtSave : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            var db = eventData.Context!;
+            var incoming = db.ChangeTracker.Entries<CustomActivityDefinition>()
+                .FirstOrDefault(e => e.State == EntityState.Added)?.Entity;
+            if (incoming is not null)
+                db.Add(new CustomActivityDefinition
+                { Id = Guid.NewGuid(), Key = incoming.Key, Name = "conflicting writer", ScriptTemplate = "1" });
+            return ValueTask.FromResult(result);
+        }
+    }
+
     private const string Passphrase = "a-strong-backup-pass";
 
     /// <summary>The admin performing the restore; becomes the runtime principal of every
@@ -63,7 +103,7 @@ public sealed class CustomActivityBackupTests : IDisposable
             InputParametersJson = """[{"name":"apiKey","type":"string","default":"inline-custom-default-secret"}]""",
             OutputParametersJson = "[{\"name\":\"status\",\"type\":\"string\"}]",
         }, "alice", CancellationToken.None);
-        if (enabled) await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+        if (enabled) await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
         return (await store.GetByIdAsync(def.Id, CancellationToken.None))!;
     }
 

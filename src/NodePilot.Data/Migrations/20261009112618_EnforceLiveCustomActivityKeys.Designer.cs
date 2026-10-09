@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodePilot.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodePilot.Data.Migrations
 {
     [DbContext(typeof(NodePilotDbContext))]
-    partial class NodePilotDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261009112618_EnforceLiveCustomActivityKeys")]
+    partial class EnforceLiveCustomActivityKeys
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -463,7 +466,7 @@ namespace NodePilot.Data.Migrations
                     b.HasIndex("Key")
                         .IsUnique()
                         .HasDatabaseName("UX_CustomActivityDefinitions_LiveKey")
-                        .HasFilter("\"IsDeleted\" = FALSE");
+                        .HasFilter(CustomActivityKeyConstraint.Filter(ActiveProvider));
 
                     b.HasIndex("IsDeleted", "IsEnabled");
 
@@ -2474,6 +2477,7 @@ namespace NodePilot.Data.Migrations
                 {
                     b.Navigation("Steps");
                 });
+            MigrationModelPortability.UseActiveProviderStoreTypes(modelBuilder);
 #pragma warning restore 612, 618
         }
     }

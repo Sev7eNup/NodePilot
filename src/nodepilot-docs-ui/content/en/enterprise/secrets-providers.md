@@ -85,9 +85,21 @@ curl -X POST -H "Authorization: Bearer <admin-token>" \
 - `200 OK` → a clean cutover (`partialSuccess: false`).
 - `207 Multi-Status` → skipped rows in `*SkipDetails`, to be fixed manually.
 
-The sweep covers credentials, secret globals and the fully encrypted definitions in
-`WorkflowVersions`. For those, the response additionally reports `workflowVersionsRewritten`,
-`workflowVersionsSkipped` and `workflowVersionSkipDetails`.
+The sweep covers credentials, secret globals, workflow versions, agent MCP secrets,
+notification-route secrets, pending dispatch parameters and encrypted runtime settings including
+the writer's `.bak.*` rollback files. The three latter families report
+`notificationRoutesRewritten/Skipped`, `dispatchParametersRewritten/Skipped` and
+`runtimeSettingsFilesRewritten/Skipped`, with corresponding singular `*SkipDetails` arrays.
+Runtime counts are files, and runtime skip IDs are the empty GUID. A concurrent database change
+is a `ConcurrentUpdate` skip; a bad runtime file stays unchanged. Earlier successful conversions
+remain committed on partial success or cancellation; retain the fallback and rerun.
+
+Use a maintenance window and pause secret/configuration changes and restore/import operations.
+Start every node with active+legacy providers first; encrypted runtime settings can already use
+the fallback during bootstrap. In HA, run the endpoint on each node with its own runtime file:
+database rows are shared, but a clean response covers only that node's local files. External
+exported backups are not rewritten; retain their recovery key or replace those backups before
+retiring the old key permanently.
 
 The same sweep is also available in the UI — **Admin settings → Security → "Re-encrypt secrets"** (admin only; a confirmation dialog, a result toast with the counters, and partial success as an error toast) — and through the CLI: `np secrets reencrypt`.
 
@@ -106,7 +118,7 @@ The same procedure, but with `LegacyProvider=AesGcm` + `LegacyMasterKey={{old-ba
 
 | Endpoint | Auth | Purpose |
 |---|---|---|
-| `POST /api/secrets/reencrypt` | Admin | A bulk sweep of all credentials, secret globals and workflow-version definitions through decrypt→re-encrypt. `200` (clean) or `207` (skipped, including history details). |
+| `POST /api/secrets/reencrypt` | Admin | Re-encrypts all seven database/runtime secret families above. `200` (clean) or `207` (skipped, with details). |
 
 Audit: `SECRETS_REENCRYPTED`.
 
