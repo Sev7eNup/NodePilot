@@ -1,6 +1,8 @@
 using System.Runtime.Versioning;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR.Client;
+using NodePilot.Core.Clients;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Auth;
 using NodePilot.Cli.Output;
@@ -30,7 +32,7 @@ internal static class ExecWatcher
         {
             var rc = await TryStreamWithSignalRAsync(api, session, executionId, writer, ct);
             if (rc.HasValue) return rc.Value;
-            writer.Warning("SignalR is not reachable. Falling back to polling.");
+            writer.Warning("SignalR is unavailable or disconnected. Falling back to polling.");
         }
 
         return await PollLoopAsync(api, executionId, writer, ct);
@@ -44,10 +46,33 @@ internal static class ExecWatcher
         var hubUrl = new Uri(new Uri(session.Server!.TrimEnd('/') + "/"), "hubs/execution");
 
         await using var connection = new HubConnectionBuilder()
-            .WithUrl(hubUrl, opts => opts.AccessTokenProvider = () => Task.FromResult<string?>(token))
+            .WithUrl(hubUrl, opts =>
+            {
+                opts.AccessTokenProvider = () => Task.FromResult<string?>(token);
+                opts.HttpMessageHandlerFactory = handler =>
+                {
+                    if (handler is HttpClientHandler primary)
+                        primary.ServerCertificateCustomValidationCallback = (request, certificate, chain, errors) =>
+                            PinnedCertificateHandlerFactory.Evaluate(session.Tls, hubUrl.IdnHost, hubUrl.Port,
+                                certificate, chain, errors, out _);
+                    return handler;
+                };
+                opts.WebSocketConfiguration = socket =>
+                    socket.RemoteCertificateValidationCallback = (sender, certificate, chain, errors) =>
+                        PinnedCertificateHandlerFactory.Evaluate(session.Tls, hubUrl.IdnHost, hubUrl.Port,
+                            certificate as X509Certificate2,
+                            chain, errors, out _);
+            })
             .Build();
 
-        var done = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var done = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        // A stream that connected successfully can still disappear before the terminal event.
+        // Continue observing the existing run through REST rather than waiting forever.
+        connection.Closed += _ =>
+        {
+            done.TrySetResult(null);
+            return Task.CompletedTask;
+        };
 
         connection.On<JsonStepEvent>("StepStarted", e => HandleStepStarted(e, writer));
         connection.On<JsonStepCompletedEvent>("StepCompleted", e => HandleStepCompleted(e, writer));
@@ -115,7 +140,7 @@ internal static class ExecWatcher
     private static void HandleBatchItem(
         JsonLiveEventItem item,
         OutputWriter writer,
-        TaskCompletionSource<int> done)
+        TaskCompletionSource<int?> done)
     {
         if (item.Event.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
             return;
@@ -146,7 +171,7 @@ internal static class ExecWatcher
     private static void HandleExecutionStatus(
         JsonExecutionStatusEvent e,
         OutputWriter writer,
-        TaskCompletionSource<int> done)
+        TaskCompletionSource<int?> done)
     {
         if (!Commands.Workflow.WorkflowRunCommand.IsTerminal(e.Status))
             return;
