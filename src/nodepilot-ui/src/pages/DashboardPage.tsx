@@ -1,6 +1,5 @@
 import {
   Activity,
-  BareMetalServer,
   Branch,
   ChartLine,
   ChartLineData,
@@ -457,8 +456,6 @@ function HeroGauge({
 function KpiGrid({ stats, windowLabel, windowStatus }: Readonly<{ stats: DashboardStats; windowLabel: string; windowStatus: WindowStatus }>) {
   const { t } = useTranslation(['dashboard', 'common']);
   const machinesAllOnline = stats.machinesTotal === 0 || stats.machinesReachable === stats.machinesTotal;
-  const scheduler = stats.healthHeartbeats.find((h) => h.serviceName.toLowerCase().includes('scheduler')
-    || h.serviceName.toLowerCase().includes('trigger'));
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 h-full content-stretch">
@@ -475,25 +472,46 @@ function KpiGrid({ stats, windowLabel, windowStatus }: Readonly<{ stats: Dashboa
       />
       <RetryKpiCard retryStats={stats.retryStats} windowLabel={windowLabel} windowStatus={windowStatus} />
       <QueueKpiCard stats={stats} />
-      <KpiCard
-        icon={Activity}
-        iconColor={scheduler ? (scheduler.isStale ? 'text-red-600' : 'text-emerald-500') : 'text-outline'}
-        label={t('dashboard:scheduler')}
-        value={scheduler ? (scheduler.isStale ? t('dashboard:schedulerStale') : t('dashboard:schedulerOk')) : t('dashboard:schedulerNoData')}
-        valueColor={scheduler?.isStale ? 'text-red-600' : undefined}
-        hint={scheduler ? formatRelative(scheduler.lastHeartbeatAt) : undefined}
-      />
-      <KpiCard
-        icon={BareMetalServer} iconColor={stats.clusterRole ? 'text-primary' : 'text-outline'}
-        label={t('dashboard:clusterRole')}
-        value={stats.clusterRole === 'leader' ? t('dashboard:clusterLeader')
-          : stats.clusterRole === 'standby' ? t('dashboard:clusterStandby')
-          : t('dashboard:clusterDisabled')}
-        valueColor={stats.clusterRole ? undefined : 'text-on-surface-variant'}
-        compactValue={!stats.clusterRole}
-        hint={stats.clusterRole ? t('dashboard:clusterEnabled') : t('dashboard:clusterSingleNode')}
-      />
+      <ActiveTriggersKpiCard items={stats.armedTriggers ?? []} />
+      <ServicesKpiCard heartbeats={stats.healthHeartbeats} />
     </div>
+  );
+}
+
+function ActiveTriggersKpiCard({ items }: Readonly<{ items: ArmedTriggerInfo[] }>) {
+  const { t } = useTranslation(['dashboard']);
+  // Minute granularity is enough for the "in 5m" hint, same ticker as the trigger list below.
+  const now = useMinuteTick();
+  const nextFire = items
+    .flatMap((w) => (w.nextFireUtc ? [w.nextFireUtc] : []))
+    .reduce<string | null>((a, b) => (a === null || new Date(b) < new Date(a) ? b : a), null);
+  return (
+    <KpiCard
+      icon={FlashFilled} iconColor={items.length > 0 ? 'text-amber-500' : 'text-outline'}
+      label={t('dashboard:activeTriggers')} value={formatNumber(items.length)}
+      hint={nextFire
+        ? t('dashboard:activeTriggersNext', { time: formatRelativeFuture(nextFire, now) })
+        : items.length > 0 ? t('dashboard:activeTriggersEventOnly') : t('dashboard:activeTriggersNone')}
+    />
+  );
+}
+
+function ServicesKpiCard({ heartbeats }: Readonly<{ heartbeats: HealthHeartbeatInfo[] }>) {
+  const { t } = useTranslation(['dashboard']);
+  const stale = heartbeats.filter((h) => h.isStale);
+  const noData = heartbeats.length === 0;
+  return (
+    <KpiCard
+      icon={Activity}
+      iconColor={noData ? 'text-outline' : stale.length > 0 ? 'text-red-600' : 'text-emerald-500'}
+      label={t('dashboard:services')}
+      value={noData ? '–' : `${heartbeats.length - stale.length} / ${heartbeats.length}`}
+      valueColor={stale.length > 0 ? 'text-red-600' : noData ? 'text-on-surface-variant' : undefined}
+      hint={noData ? t('dashboard:servicesNoData')
+        : stale.length > 0 ? t('dashboard:servicesStale', { names: stale.map((h) => h.serviceName).join(', ') })
+        : t('dashboard:servicesAllRunning')}
+      hintColor={stale.length > 0 ? 'text-red-600' : undefined}
+    />
   );
 }
 
@@ -602,7 +620,7 @@ function KpiCard({
         {hint && (
           <p className={`text-xs mt-2 flex items-center gap-1 ${hintColor ?? 'text-outline'}`}>
             {HintIcon && <HintIcon size={10} className="shrink-0" />}
-            <span className={description ? '[overflow-wrap:anywhere]' : 'truncate'}>{hint}</span>
+            <span className={description ? '[overflow-wrap:anywhere]' : 'truncate'} title={hint}>{hint}</span>
           </p>
         )}
       </>}

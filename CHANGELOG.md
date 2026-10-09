@@ -52,6 +52,9 @@ identities. [Learn how to configure agents and teams →](docs/ai-agents.md)
 - Agent settings use searchable lists. Browser-demo links support `?lang=de` and `?lang=en`.
 - Expanded agent documentation and clarified workflow terminology; added an Orchestrator
   2016 end-of-support article. Removed unused palette files and local skill-lock tracking.
+- The dashboard replaces its Scheduler and HA tiles, which the status bar already shows, with
+  **Active triggers** (count and next scheduled start) and **Services** (healthy background
+  services out of all heartbeats, with the stale ones named).
 - The dashboard duration trend (median and P95) for 24 hours and longer comes from
   precomputed hourly histograms and is accurate to within a few percent. The upgrade
   rebuilds the dashboard history once; until it finishes, the dashboard reads raw executions.

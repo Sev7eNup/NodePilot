@@ -101,7 +101,7 @@ test.describe('Dashboard (Teil 11)', () => {
 
   for (const theme of ['light', 'dark']) {
     for (const width of [1440, 390]) {
-      test(`HA and queue KPIs stay readable at ${width}px in ${theme} theme`, async ({ page }, testInfo) => {
+      test(`trigger, services and queue KPIs stay readable at ${width}px in ${theme} theme`, async ({ page }, testInfo) => {
         const german = width === 390;
         await page.setViewportSize({ width, height: 1000 });
         await page.addInitScript(({ value, language }) => {
@@ -110,17 +110,18 @@ test.describe('Dashboard (Teil 11)', () => {
         }, { value: theme, language: german ? 'de' : 'en' });
         await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats({ clusterRole: null, pendingCount: 0, runningCount: 7, longRunningCount: 0 }) }));
         await page.goto('/');
-        const card = page.locator('.np-card').filter({ has: page.getByText('HA', { exact: true }) });
-        const value = card.getByText(german ? 'Deaktiviert' : 'Disabled', { exact: true });
-        const hint = card.getByText(german ? 'Einzelknoten' : 'Single node', { exact: true });
-        await expect(value).toBeVisible();
-        await expect(hint).toBeVisible();
-        await expect(page.getByText(german ? 'HA: deaktiviert' : 'HA: disabled', { exact: true })).toBeVisible();
-        await expect(card.getByText('Leader', { exact: true })).toHaveCount(0);
-        for (const text of [value, hint]) {
-          expect(await text.evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+        for (const [label, value, hint] of [
+          [german ? 'Aktive Trigger' : 'Active triggers', '0', german ? 'Keine Trigger' : 'No triggers'],
+          [german ? 'Dienste' : 'Services', '1 / 1', german ? 'Alle aktiv' : 'All running'],
+        ]) {
+          const tile = page.locator('.np-card').filter({ has: page.getByText(label, { exact: true }) });
+          await expect(tile.getByText(value, { exact: true })).toBeVisible();
+          const hintText = tile.getByText(hint, { exact: true });
+          await expect(hintText).toBeVisible();
+          expect(await hintText.evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+          await tile.screenshot({ path: testInfo.outputPath(`${label.replace(/\W+/g, '-')}-${theme}-${width}.png`), animations: 'disabled' });
         }
-        await card.screenshot({ path: testInfo.outputPath(`ha-disabled-${theme}-${width}.png`), animations: 'disabled' });
+        await expect(page.getByText(german ? 'HA: deaktiviert' : 'HA: disabled', { exact: true })).toBeVisible();
         const queue = page.locator('.np-card').filter({ has: page.getByText('Queue', { exact: true }) });
         await expect(queue.getByText(german ? 'Wartend' : 'Pending', { exact: true })).toBeVisible();
         await expect(queue.getByText(german ? 'Laufend' : 'Running', { exact: true })).toBeVisible();
