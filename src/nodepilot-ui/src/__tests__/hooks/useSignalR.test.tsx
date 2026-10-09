@@ -147,6 +147,47 @@ describe('useWorkflowSignalR', () => {
     await waitFor(() => expect(result.current.connected).toBe(false));
   });
 
+  it.each(['Succeeded', 'Failed', 'Cancelled'])('reconciles a run that became %s while disconnected', async (terminalStatus) => {
+    let completed = false;
+    const execution = { id: 'exec-gap', workflowId: 'wf-1', status: 'Running', startedAt: new Date().toISOString() };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const current = { ...execution, status: completed ? terminalStatus : 'Running', completedAt: completed ? new Date().toISOString() : null };
+      const body = url.includes('/steps') ? []
+        : url.includes('/executions/exec-gap') ? current
+          : completed && url.includes('activeOnly=true') ? [] : [current];
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+    const { result } = renderHook(() => useWorkflowSignalR('wf-1'));
+    await waitFor(() => expect(result.current.liveExecution?.status).toBe('Running'));
+    act(() => { __currentConnection!.transition('reconnecting'); });
+    completed = true;
+    act(() => { __currentConnection!.transition('reconnected'); });
+    await waitFor(() => expect(result.current.liveExecution?.status).toBe(terminalStatus));
+    expect(result.current.liveActiveCount).toBe(0);
+  });
+
+  it('keeps a run active when absent from the capped list but its detail is still running', async () => {
+    let omitFromList = false;
+    const execution = { id: 'exec-cap', workflowId: 'wf-1', status: 'Running', startedAt: new Date().toISOString() };
+    const fetchedDetail = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/executions/exec-cap') && !url.includes('/steps')) fetchedDetail();
+      const body = url.includes('/steps') ? [] : url.includes('/executions/exec-cap') ? execution
+        : omitFromList && url.includes('activeOnly=true') ? [] : [execution];
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+    const { result } = renderHook(() => useWorkflowSignalR('wf-1'));
+    await waitFor(() => expect(result.current.liveExecution?.status).toBe('Running'));
+    act(() => { __currentConnection!.transition('reconnecting'); });
+    omitFromList = true;
+    act(() => { __currentConnection!.transition('reconnected'); });
+    await waitFor(() => expect(fetchedDetail).toHaveBeenCalled());
+    expect(result.current.liveExecution?.status).toBe('Running');
+    expect(result.current.liveActiveCount).toBe(1);
+  });
+
   it('remembers a failed execution-group join and retries it when the database recovers', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
@@ -352,14 +393,25 @@ describe('useWorkflowSignalR', () => {
       });
     });
 
-    // Step-a should still be Running because StepCompleted was for a different exec.
+    // Assert the run by identity: liveExecution is the sorted first run, which can change
+    // when another run's asynchronous hydration completes before its event batch.
     await waitFor(() => {
       expect(result.current.liveExecutions).toHaveLength(2);
-      expect(result.current.liveExecution?.steps[0]?.status).toBe('Running');
+      expect(result.current.liveExecutions.find((e) => e.executionId === 'exec-1')?.steps[0]?.status).toBe('Running');
     });
-    expect(result.current.liveExecution!.steps[0].status).toBe('Running');
+    const original = result.current.liveExecutions.find((e) => e.executionId === 'exec-1')!;
+    expect(original.steps).toHaveLength(1);
+    expect(original.steps[0]).toMatchObject({
+      executionId: 'exec-1', stepId: 'step-a', stepType: 'runScript',
+      status: 'Running', startedAt: '2026-04-26T12:00:00Z',
+    });
+    expect(original.steps[0].completedAt).toBeUndefined();
     const other = result.current.liveExecutions.find((e) => e.executionId === 'exec-OTHER')!;
-    expect(other.steps[0].status).toBe('Succeeded');
+    expect(other.steps).toHaveLength(1);
+    expect(other.steps[0]).toMatchObject({
+      executionId: 'exec-OTHER', stepId: 'step-a', status: 'Succeeded',
+      completedAt: '2026-04-26T12:00:01Z',
+    });
   });
 
   it('keeps parallel executions separated when StepStarted interleaves', async () => {

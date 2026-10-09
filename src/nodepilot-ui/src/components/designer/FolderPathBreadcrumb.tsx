@@ -2,9 +2,8 @@ import { DataBase } from '@carbon/icons-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../../api/client';
 import { sharedFoldersApi } from '../../api/sharedFolders';
-import type { WorkflowListItem, WorkflowSummary } from '../../types/api';
+import type { WorkflowSummary } from '../../types/api';
 import { BreadcrumbSegment, type BreadcrumbSegmentData } from './BreadcrumbSegment';
 
 const OPEN_DELAY_MS = 250;
@@ -31,18 +30,6 @@ export function FolderPathBreadcrumb({ workflow, currentWorkflowId, onOpenWorkfl
     queryFn: () => sharedFoldersApi.list(),
     staleTime: 30_000,
   });
-  const { data: allWorkflows = [] } = useQuery({
-    queryKey: ['workflows'],
-    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
-    staleTime: 30_000,
-  });
-
-  // The global list is capped (recent 500 by UpdatedAt) — make sure the current workflow is
-  // always present in its own folder's popover even if it falls outside that window.
-  const workflows = useMemo(
-    () => (allWorkflows.some((w) => w.id === workflow.id) ? allWorkflows : [...allWorkflows, workflow]),
-    [allWorkflows, workflow],
-  );
 
   const byPath = useMemo(() => new Map(folders.map((f) => [f.path, f] as const)), [folders]);
 
@@ -132,7 +119,7 @@ export function FolderPathBreadcrumb({ workflow, currentWorkflowId, onOpenWorkfl
           isOpen={openPath === segment.path}
           popoverRef={popoverRef}
           folders={folders}
-          workflows={workflows}
+          currentWorkflow={workflow}
           currentWorkflowId={currentWorkflowId}
           onOpenWorkflow={onOpenWorkflow}
           onEnter={requestOpen}

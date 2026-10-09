@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { Position } from '@xyflow/react';
 
 /**
@@ -75,6 +75,7 @@ vi.mock('../../../../lib/summarizeExpression', () => ({
 }));
 
 import { LabeledEdge } from '../../../../components/designer/edges/LabeledEdge';
+import { EdgeEditingContext } from '../../../../components/designer/edges/edgeEditingContext';
 
 const baseProps = {
   id: 'e1',
@@ -93,6 +94,21 @@ const baseProps = {
 } as const;
 
 beforeEach(() => mocks.nodeLookup.clear());
+
+describe('LabeledEdge — edit access', () => {
+  it.each([false, true])('offers insertion only when canWrite is %s', (canWrite) => {
+    const onInsertRequest = vi.fn();
+    render(<EdgeEditingContext.Provider value={{ canWrite, onInsertRequest,
+      beginEdgeReshape: vi.fn(), updateEdgeShape: vi.fn(), resetEdgeShape: vi.fn(),
+    }}><svg><LabeledEdge {...baseProps} selected /></svg></EdgeEditingContext.Provider>);
+    if (canWrite) {
+      fireEvent.click(screen.getByRole('button'));
+      expect(onInsertRequest).toHaveBeenCalledWith('e1', 50, 0);
+    } else {
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    }
+  });
+});
 
 describe('LabeledEdge — disabled indicator', () => {
   beforeEach(() => {

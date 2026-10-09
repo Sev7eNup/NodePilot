@@ -102,34 +102,34 @@ describe('readRecentWorkflows / pushRecentWorkflow', () => {
 
 describe('WorkflowQuickSwitcher', () => {
   it('rendersAllWorkflows_whenNoQuery', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(MOCK)));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json(MOCK)));
     renderSwitcher();
 
     await waitFor(() => expect(screen.getByText('Alpha workflow')).toBeInTheDocument());
-    expect(screen.getByText('Beta workflow')).toBeInTheDocument();
+    expect(await screen.findByText('Beta workflow')).toBeInTheDocument();
     expect(screen.getByText('Gamma workflow')).toBeInTheDocument();
   });
 
   it('emptyWorkflows_showsNoWorkflowsMessage', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderSwitcher();
 
     await waitFor(() => expect(screen.getByText(/No workflows available/)).toBeInTheDocument());
   });
 
   it('queryNarrowsResults_byNameSubstring', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(MOCK)));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json(MOCK)));
     renderSwitcher();
 
     await waitFor(() => expect(screen.getByText('Alpha workflow')).toBeInTheDocument());
     fireEvent.change(screen.getByPlaceholderText(/Switch to workflow/i), { target: { value: 'Beta' } });
 
-    expect(screen.getByText('Beta workflow')).toBeInTheDocument();
+    expect(await screen.findByText('Beta workflow')).toBeInTheDocument();
     expect(screen.queryByText('Alpha workflow')).not.toBeInTheDocument();
   });
 
   it('queryWithoutMatches_showsNoMatchHint', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(MOCK)));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json(MOCK)));
     renderSwitcher();
 
     await waitFor(() => expect(screen.getByText('Alpha workflow')).toBeInTheDocument());
@@ -139,7 +139,7 @@ describe('WorkflowQuickSwitcher', () => {
   });
 
   it('clickingARow_navigatesAndPushesRecent', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(MOCK)));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json(MOCK)));
     renderSwitcher();
 
     await waitFor(() => expect(screen.getByText('Alpha workflow')).toBeInTheDocument());
@@ -151,7 +151,7 @@ describe('WorkflowQuickSwitcher', () => {
   });
 
   it('enterKey_navigatesToHighlightedWorkflow', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(MOCK)));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json(MOCK)));
     renderSwitcher();
 
     await waitFor(() => expect(screen.getByText('Alpha workflow')).toBeInTheDocument());
@@ -165,7 +165,7 @@ describe('WorkflowQuickSwitcher', () => {
   });
 
   it('escapeKey_closes', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(MOCK)));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json(MOCK)));
     const onClose = vi.fn();
     patchFetch();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -185,7 +185,7 @@ describe('WorkflowQuickSwitcher', () => {
 
   it('recentWorkflowsRenderedFirst', async () => {
     pushRecentWorkflow(MOCK[2].id); // gamma is recent
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(MOCK)));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json(MOCK)));
     renderSwitcher();
 
     await waitFor(() => expect(screen.getByText('Gamma workflow')).toBeInTheDocument());

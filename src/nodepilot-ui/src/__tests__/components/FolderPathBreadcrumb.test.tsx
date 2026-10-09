@@ -71,6 +71,22 @@ describe('FolderPathBreadcrumb', () => {
     getMock.mockResolvedValue([WF_CURRENT, WF_SIBLING, WF_FINANCE]);
   });
 
+  it('loads the opened folder lazily and reaches older rows by paging', async () => {
+    getMock.mockImplementation(async (path: string) => {
+      if (!path.startsWith('/workflows/paged?')) return [];
+      const params = new URL(path, 'http://test').searchParams;
+      return { items: params.get('page') === '2' ? [WF_SIBLING] : [], page: Number(params.get('page')),
+        pageSize: 50, total: 51, totalPages: 2 };
+    });
+    renderBreadcrumb(WF_CURRENT);
+    const segment = await screen.findByRole('button', { name: /Reports/ });
+    expect(getMock).not.toHaveBeenCalled();
+    await userEvent.click(segment);
+    fireEvent.click(await screen.findByRole('button', { name: 'Next page' }));
+    expect(await screen.findByText('Annual Report')).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith(expect.stringMatching(/folderId=reports.*page=2/));
+  });
+
   it('renders the named folder segments and no clickable Root', async () => {
     renderBreadcrumb(WF_CURRENT);
 

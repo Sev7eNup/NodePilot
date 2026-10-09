@@ -34,7 +34,7 @@ function machine(id: string, name: string, hostname: string): ManagedMachine {
 describe('BulkEditPanel', () => {
   it('rendersHeaderWithActivityCountOnly_whenAllSelectedAreActivities', () => {
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), activityNode('b')]}
         machines={[]}
         onApply={vi.fn()}
@@ -48,7 +48,7 @@ describe('BulkEditPanel', () => {
 
   it('rendersHeaderWithSingularActivityLabel_whenExactlyOneActivity', () => {
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), junctionNode('j')]}
         machines={[]}
         onApply={vi.fn()}
@@ -62,7 +62,7 @@ describe('BulkEditPanel', () => {
 
   it('rendersHeaderWithMixedCounts', () => {
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), activityNode('b'), junctionNode('j1'), junctionNode('j2')]}
         machines={[]}
         onApply={vi.fn()}
@@ -75,7 +75,7 @@ describe('BulkEditPanel', () => {
 
   it('targetMachineDropdown_listsMachinesWithHostnameSuffix', () => {
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), activityNode('b')]}
         machines={[machine('m1', 'Web-01', 'web01.lab')]}
         onApply={vi.fn()}
@@ -89,7 +89,7 @@ describe('BulkEditPanel', () => {
   it('selectMachine_andClickApply_callsOnApplyWithTargetMachineId', () => {
     const onApply = vi.fn();
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), activityNode('b')]}
         machines={[machine('m1', 'Web-01', 'web01.lab'), machine('m2', 'DB-01', 'db01.lab')]}
         onApply={onApply}
@@ -108,7 +108,7 @@ describe('BulkEditPanel', () => {
 
   it('applyMachineButton_disabledUntilMachineSelected', () => {
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), activityNode('b')]}
         machines={[machine('m1', 'Web-01', 'web01.lab')]}
         onApply={vi.fn()}
@@ -122,7 +122,7 @@ describe('BulkEditPanel', () => {
   it('disableAllOption_emitsDisabledTrue', () => {
     const onApply = vi.fn();
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), activityNode('b')]}
         machines={[]}
         onApply={onApply}
@@ -142,7 +142,7 @@ describe('BulkEditPanel', () => {
   it('enableAllOption_emitsDisabledFalse', () => {
     const onApply = vi.fn();
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), activityNode('b')]}
         machines={[]}
         onApply={onApply}
@@ -161,7 +161,7 @@ describe('BulkEditPanel', () => {
   it('timeoutInput_emitsConfigPatchWithNumericTimeout', () => {
     const onApply = vi.fn();
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), activityNode('b')]}
         machines={[]}
         onApply={onApply}
@@ -182,7 +182,7 @@ describe('BulkEditPanel', () => {
 
   it('applyTimeoutButton_disabledUntilNumberEntered', () => {
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a')]}
         machines={[]}
         onApply={vi.fn()}
@@ -196,7 +196,7 @@ describe('BulkEditPanel', () => {
   it('retryFields_emitFullPolicyWithDefaultDelays', () => {
     const onApply = vi.fn();
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), activityNode('b')]}
         machines={[]}
         onApply={onApply}
@@ -223,7 +223,7 @@ describe('BulkEditPanel', () => {
 
   it('applyRetryButton_disabledIfBackoffMissing', () => {
     render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a')]}
         machines={[]}
         onApply={vi.fn()}
@@ -239,7 +239,7 @@ describe('BulkEditPanel', () => {
   it('closeButton_callsOnClose', () => {
     const onClose = vi.fn();
     const { container } = render(
-      <BulkEditPanel
+      <BulkEditPanel canWrite
         selectedNodes={[activityNode('a'), activityNode('b')]}
         machines={[]}
         onApply={vi.fn()}

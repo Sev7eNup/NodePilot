@@ -43,7 +43,7 @@ import { getPrePublishLint } from '../lib/prePublishChecks';
 import { useSettledGraph } from '../hooks/useSettledGraph';
 import { getSmartDefaults } from '../lib/lastSimilarNode';
 import { newActivityConfig } from '../lib/customActivities';
-import { reparentDraggedNodes, findDropTargetGroupId } from '../lib/groupReparenting';
+import { absolutePosition, reparentDraggedNodes, findDropTargetGroupId } from '../lib/groupReparenting';
 import { useDesignStore, LAYOUT_MODES, MACHINE_COLORS } from '../stores/designStore';
 import { usePointerFlowPosition } from '../stores/pointerFlowPositionStore';
 import { LabeledEdge, EdgeInsertContext } from '../components/designer/edges/LabeledEdge';
@@ -284,8 +284,8 @@ function WorkflowEditorInner() {
   const canWrite = lockCanWrite && !isPublishing && !isTidying;
 
   const { data: allWorkflows } = useQuery({
-    queryKey: ['workflows'],
-    queryFn: () => api.get<Array<{ id: string; name: string }>>('/workflows'),
+    queryKey: ['workflows', 'names'],
+    queryFn: () => api.get<Array<{ id: string; name: string }>>('/workflows/names'),
     staleTime: 60_000,
   });
 
@@ -655,20 +655,24 @@ function WorkflowEditorInner() {
   }, [nodes, searchInput]);
 
   const jumpToNode = useCallback((n: Node) => {
-    const x = (n.position?.x ?? 0) + ((n.measured?.width ?? 140) / 2);
-    const y = (n.position?.y ?? 0) + ((n.measured?.height ?? 100) / 2);
+    const position = absolutePosition(n, new Map(nodes.map(node => [node.id, node])));
+    const x = position.x + ((n.measured?.width ?? 140) / 2);
+    const y = position.y + ((n.measured?.height ?? 100) / 2);
     setCenter(x, y, { zoom: 1.1, duration: 400 });
     setSelected({ type: 'node', id: n.id });
     setSearchOpen(false);
     setSearchInput('');
-  }, [setCenter]);
+  }, [nodes, setCenter]);
 
   const jumpToEdge = useCallback((e: Edge) => {
     const src = nodes.find((n) => n.id === e.source);
     const tgt = nodes.find((n) => n.id === e.target);
     if (!src || !tgt) return;
-    const x = ((src.position.x + (src.measured?.width ?? 140) / 2) + (tgt.position.x + (tgt.measured?.width ?? 140) / 2)) / 2;
-    const y = ((src.position.y + (src.measured?.height ?? 100) / 2) + (tgt.position.y + (tgt.measured?.height ?? 100) / 2)) / 2;
+    const byId = new Map(nodes.map(node => [node.id, node]));
+    const sourcePosition = absolutePosition(src, byId);
+    const targetPosition = absolutePosition(tgt, byId);
+    const x = ((sourcePosition.x + (src.measured?.width ?? 140) / 2) + (targetPosition.x + (tgt.measured?.width ?? 140) / 2)) / 2;
+    const y = ((sourcePosition.y + (src.measured?.height ?? 100) / 2) + (targetPosition.y + (tgt.measured?.height ?? 100) / 2)) / 2;
     setCenter(x, y, { zoom: 1.1, duration: 400 });
     setSelected({ type: 'edge', id: e.id });
   }, [nodes, setCenter]);
@@ -680,7 +684,10 @@ function WorkflowEditorInner() {
   const layoutMode = useDesignStore((s) => s.layoutMode);
   const setLayoutMode = useDesignStore((s) => s.setLayoutMode);
   // Snapshot of positions before the first auto-layout in this session.
-  const origLayoutRef = useRef<{ workflowId: string | undefined; nodes: Node[] } | null>(null);
+  const origLayoutRef = useRef<{
+    workflowId: string | undefined;
+    positions: Map<string, { position: Node['position']; parentId: Node['parentId'] }>;
+  } | null>(null);
   const [origLayoutWorkflowId, setOrigLayoutWorkflowId] = useState<string | null>(null);
   const hasOrigLayout = origLayoutWorkflowId === id;
   const tidyLayout = useCallback(async () => {
@@ -689,7 +696,10 @@ function WorkflowEditorInner() {
     const next = LAYOUT_MODES[(LAYOUT_MODES.indexOf(layoutMode) + 1) % LAYOUT_MODES.length];
     const rememberOriginal = () => {
       if (origLayoutRef.current?.workflowId !== id) {
-        origLayoutRef.current = { workflowId: id, nodes: nodes.map((n) => ({ ...n })) };
+        origLayoutRef.current = {
+          workflowId: id,
+          positions: new Map(nodes.map((n) => [n.id, { position: { ...n.position }, parentId: n.parentId }])),
+        };
         setOrigLayoutWorkflowId(id ?? null);
       }
     };
@@ -727,7 +737,15 @@ function WorkflowEditorInner() {
     if (!origLayoutRef.current || origLayoutRef.current.workflowId !== id) return;
     commitHistory('Restore layout');
     markDirty();
-    setNodes(origLayoutRef.current.nodes);
+    const { positions } = origLayoutRef.current;
+    // Tidy changes only positions. Keep later edits and graph membership; a reparented
+    // node also keeps its position because its coordinate system has changed.
+    setNodes((current) => current.map((node) => {
+      const original = positions.get(node.id);
+      return original && original.parentId === node.parentId
+        ? { ...node, position: { ...original.position } }
+        : node;
+    }));
     origLayoutRef.current = null;
     setOrigLayoutWorkflowId(null);
   }, [id, commitHistory, markDirty, setNodes]);
@@ -869,7 +887,7 @@ function WorkflowEditorInner() {
     insertAt, setInsertAt, requestInsert, insertOnEdge,
   } = useCanvasConnect({
     edges, setNodes, setEdges, setSelected,
-    commitHistory, canvasRef, screenToFlowPosition,
+    commitHistory, markDirty, canvasRef, screenToFlowPosition,
   });
 
   const onConnectEnd = useCallback((event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
@@ -925,6 +943,7 @@ function WorkflowEditorInner() {
 
   const handleBulkApply = useCallback(
     (nodeIds: string[], patch: Record<string, unknown>, configPatch?: Record<string, unknown>) => {
+      if (!canWrite) return;
       commitHistory('Edit property');
       markDirty();
       const ids = new Set(nodeIds);
@@ -941,7 +960,7 @@ function WorkflowEditorInner() {
         return { ...n, data: newData };
       }));
     },
-    [setNodes, commitHistory, markDirty],
+    [canWrite, setNodes, commitHistory, markDirty],
   );
 
   const handleEdgeUpdate = useCallback(
