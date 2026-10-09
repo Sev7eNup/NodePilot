@@ -102,4 +102,6 @@ try {
 } finally {
     [Environment]::SetEnvironmentVariable('PGPASSWORD', $previousPassword)
 }
+# The mocks above set the exit code of a native command; do not leak it to the caller.
+$global:LASTEXITCODE = 0
 Write-Host 'Desktop rollback checks passed (restore success/failure, failed shutdown, readiness success/timeout).'
