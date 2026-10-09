@@ -67,8 +67,8 @@ function Invoke-NodePilotJson {
 }
 
 function Get-WorkflowList {
-  $response = Invoke-NodePilotJson -Method GET -Path '/api/workflows'
-  if ($null -ne $response.PSObject.Properties['items']) { return @($response.items) }
+  # The statistics list is capped at 500; names is the complete readable catalogue.
+  $response = Invoke-NodePilotJson -Method GET -Path '/api/workflows/names'
   return @($response)
 }
 
@@ -372,6 +372,7 @@ foreach ($entry in @($manifest.workflows)) {
     }
   }
   else {
+    $current = Invoke-NodePilotJson -Method GET -Path "/api/workflows/$($current.id)"
     # The login response is flat: { token, userId, username, role, expiresAt }.
     $lockedByMe = $current.checkedOutByUserId -and $current.checkedOutByUserId -eq $login.userId
     if ($current.checkedOutByUserId -and -not $lockedByMe) {

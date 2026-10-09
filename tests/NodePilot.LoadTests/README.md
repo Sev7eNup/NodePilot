@@ -49,6 +49,7 @@ acknowledgement. Do not reuse these settings for a production deployment.
    $env:Remote__AllowNoop = 'true'
    $env:Remote__Noop__MinLatencyMs = '5'
    $env:Remote__Noop__MaxLatencyMs = '20'
+   $env:RestApi__AllowedHosts__0 = 'localhost'
    $env:Logging__StepDetail__Enabled = 'false'
    $env:OpenTelemetry__Enabled = 'true'
    $env:OpenTelemetry__Exporters__PrometheusScrape = 'true'
@@ -61,6 +62,12 @@ acknowledgement. Do not reuse these settings for a production deployment.
    environment named `Loadtest` does **not** qualify. Server deployments outside Development
    require verified TLS (`Encrypt=Strict;TrustServerCertificate=False` for SQL Server).
    No tracked appsettings file needs to change.
+
+   The mixed template calls this API's `/healthz`; the narrow `RestApi:AllowedHosts`
+   entry permits that loopback request. If `ApiBaseUrl` uses another hostname, allow that
+   exact isolated API hostname instead. Keep private-network protection enabled.
+   `loadtest-target` is deliberately an ad-hoc remote hostname handled by Noop; do not
+   map it to localhost, which would select real local PowerShell execution.
 
 3. **Start the API in the same terminal:**
 
@@ -120,7 +127,7 @@ Reports land under `reports/` as `loadtest-<scenario>-<timestamp>.{html,txt,md}`
 
 ## Workflow templates
 
-`WorkflowTemplates.cs` builds four families; `Seeder` creates `CopiesPerTemplate` of each
+`WorkflowTemplates.cs` builds four families with manual triggers; `Seeder` creates and publishes `CopiesPerTemplate` of each
 per run with unique suffixes so concurrent runs don't clash.
 
 | Template | Shape | Targets |

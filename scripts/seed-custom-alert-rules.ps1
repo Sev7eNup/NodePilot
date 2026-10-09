@@ -23,12 +23,21 @@
 
   Run against a local dev instance:
       pg_ctl start ... ; dotnet run --project src/NodePilot.Api --urls http://localhost:5000
-      powershell -File scripts/seed-custom-alert-rules.ps1 -AlertEmail ops@example.com
+      ./scripts/seed-custom-alert-rules.ps1 -AlertEmail ops@example.com -Credential (Get-Credential)
 #>
+[CmdletBinding()]
 param(
   [string]$BaseUrl = 'http://localhost:5000',
-  [string]$AlertEmail = 'alerts@example.com'
+  [string]$AlertEmail = 'alerts@example.com',
+  [Parameter(Mandatory = $true)][PSCredential]$Credential
 )
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version 3.0
+$loginBody = @{ username = $Credential.UserName; password = $Credential.GetNetworkCredential().Password } | ConvertTo-Json
+$login = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/auth/login" -Headers @{ 'X-Auth-Token-Response' = 'true' } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($loginBody))
+if (-not $login.token) { throw 'Login did not return a bearer token' }
+$headers = @{ Authorization = "Bearer $($login.token)" }
 
 function Cond($field, $op, $val) {
   @{ type = 'comparison'; left = @{ kind = 'variable'; source = 'event'; name = $field }; op = $op; right = @{ kind = 'literal'; value = "$val" } } |
@@ -73,7 +82,7 @@ foreach ($r in $rules) {
     targets = @(); dedupKeyTemplate = $null
   } | ConvertTo-Json -Depth 8
   try {
-    Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/alerting/rules" -ContentType 'application/json' -Body $body | Out-Null
+    Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/alerting/rules" -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
     $flap = if ($r.minOcc -gt 1) { " >=$($r.minOcc)/$($r.win)min" } else { '' }
     Write-Host "  + $($r.name)  [$($r.events -join ',')$flap]"
     $created++
@@ -82,3 +91,4 @@ foreach ($r in $rules) {
   }
 }
 Write-Host "Created $created/17 disabled custom alerting rules (route: $AlertEmail). Enable them under /alerts -> Custom rules."
+if ($created -ne $rules.Count) { exit 1 }

@@ -55,7 +55,8 @@ function Invoke-JsonApi {
         ContentType = 'application/json; charset=utf-8'
     }
     if ($null -ne $Body) {
-        $params.Body = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Depth 20 -Compress }
+        $json = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Depth 20 -Compress }
+        $params.Body = [Text.Encoding]::UTF8.GetBytes($json)
     }
     try {
         return Invoke-RestMethod @params
@@ -105,7 +106,7 @@ function Read-Password {
 
 # --- 1) Authenticate -----------------------------------------------------
 $setup = Resolve-SetupTokenPath -ExplicitRoot $ContentRoot
-$headers = @{}
+$headers = @{ 'X-Auth-Token-Response' = 'true' }
 $loginBody = $null
 
 if ($setup) {
@@ -125,6 +126,7 @@ $loginBody = @{ username = $AdminUser; password = $AdminPassword } | ConvertTo-J
 Write-Host "Logging in at $BaseUrl/api/auth/login..."
 $login = Invoke-JsonApi -Method POST -Url "$BaseUrl/api/auth/login" -Body $loginBody -Headers $headers
 $token = $login.token
+if (-not $token) { throw 'Login did not return a bearer token' }
 $authHeaders = @{ Authorization = "Bearer $token" }
 Write-Host "Logged in as $($login.username) (role=$($login.role))" -ForegroundColor Green
 
@@ -133,7 +135,10 @@ if (@('Admin','Operator') -notcontains $login.role) {
 }
 
 # --- 2) Check for existing workflows -------------------------------------
-$existing = Invoke-JsonApi -Method GET -Url "$BaseUrl/api/workflows" -Headers $authHeaders
+$existing = Invoke-JsonApi -Method GET -Url "$BaseUrl/api/workflows/names" -Headers $authHeaders
+foreach ($name in @($MainName, $ChildName, $XlName, $PlanarName)) {
+    if (@($existing | Where-Object { $_.name -eq $name }).Count -gt 1) { throw "Workflow name is ambiguous: $name" }
+}
 $existingMain   = $existing | Where-Object { $_.name -eq $MainName }  | Select-Object -First 1
 $existingChild  = $existing | Where-Object { $_.name -eq $ChildName } | Select-Object -First 1
 $existingXl     = if ($includeXl)     { $existing | Where-Object { $_.name -eq $XlName }     | Select-Object -First 1 } else { $null }
@@ -148,12 +153,18 @@ function Resolve-Conflict {
     return $ans[0]
 }
 
+function Remove-DemoWorkflow {
+    param([string]$Id)
+    Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows/$Id/lock" -Headers $authHeaders | Out-Null
+    Invoke-JsonApi -Method DELETE -Url "$BaseUrl/api/workflows/$Id" -Headers $authHeaders | Out-Null
+}
+
 # --- 3) Resolve conflicts ------------------------------------------------
 if ($existingChild) {
     switch (Resolve-Conflict $ChildName) {
         'a' { throw "Aborted by user." }
         'r' {
-            Invoke-JsonApi -Method DELETE -Url "$BaseUrl/api/workflows/$($existingChild.id)" -Headers $authHeaders | Out-Null
+            Remove-DemoWorkflow -Id $existingChild.id
             Write-Host "Deleted child workflow $($existingChild.id)" -ForegroundColor DarkYellow
             $existingChild = $null
         }
@@ -163,7 +174,7 @@ if ($existingMain) {
     switch (Resolve-Conflict $MainName) {
         'a' { throw "Aborted by user." }
         'r' {
-            Invoke-JsonApi -Method DELETE -Url "$BaseUrl/api/workflows/$($existingMain.id)" -Headers $authHeaders | Out-Null
+            Remove-DemoWorkflow -Id $existingMain.id
             Write-Host "Deleted main workflow $($existingMain.id)" -ForegroundColor DarkYellow
             $existingMain = $null
         }
@@ -173,7 +184,7 @@ if ($existingXl) {
     switch (Resolve-Conflict $XlName) {
         'a' { throw "Aborted by user." }
         'r' {
-            Invoke-JsonApi -Method DELETE -Url "$BaseUrl/api/workflows/$($existingXl.id)" -Headers $authHeaders | Out-Null
+            Remove-DemoWorkflow -Id $existingXl.id
             Write-Host "Deleted XL workflow $($existingXl.id)" -ForegroundColor DarkYellow
             $existingXl = $null
         }
@@ -183,7 +194,7 @@ if ($existingPlanar) {
     switch (Resolve-Conflict $PlanarName) {
         'a' { throw "Aborted by user." }
         'r' {
-            Invoke-JsonApi -Method DELETE -Url "$BaseUrl/api/workflows/$($existingPlanar.id)" -Headers $authHeaders | Out-Null
+            Remove-DemoWorkflow -Id $existingPlanar.id
             Write-Host "Deleted Planar workflow $($existingPlanar.id)" -ForegroundColor DarkYellow
             $existingPlanar = $null
         }
@@ -191,7 +202,7 @@ if ($existingPlanar) {
 }
 
 # --- 4) POST child first (main references it by name) -------------------
-$childDefString = Get-Content $childJsonPath -Raw -Encoding UTF8
+$childDefString = [IO.File]::ReadAllText($childJsonPath)
 if ($existingChild) {
     $childId = $existingChild.id
     Write-Host "Kept existing child: $childId" -ForegroundColor Cyan
@@ -203,11 +214,12 @@ if ($existingChild) {
     }
     $childResp = Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows" -Headers $authHeaders -Body $childReq
     $childId = $childResp.id
+    Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows/$childId/publish" -Headers $authHeaders -Body $childReq | Out-Null
     Write-Host "Created child workflow: $childId" -ForegroundColor Green
 }
 
 # --- 5) POST main --------------------------------------------------------
-$mainDefString = Get-Content $mainJsonPath -Raw -Encoding UTF8
+$mainDefString = [IO.File]::ReadAllText($mainJsonPath)
 if ($existingMain) {
     $mainId = $existingMain.id
     Write-Host "Kept existing main: $mainId" -ForegroundColor Cyan
@@ -219,13 +231,14 @@ if ($existingMain) {
     }
     $mainResp = Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows" -Headers $authHeaders -Body $mainReq
     $mainId = $mainResp.id
+    Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows/$mainId/publish" -Headers $authHeaders -Body $mainReq | Out-Null
     Write-Host "Created main workflow: $mainId" -ForegroundColor Green
 }
 
 # --- 5b) POST XL if xl.json is present -----------------------------------
 $xlId = $null
 if ($includeXl) {
-    $xlDefString = Get-Content $xlJsonPath -Raw -Encoding UTF8
+    $xlDefString = [IO.File]::ReadAllText($xlJsonPath)
     if ($existingXl) {
         $xlId = $existingXl.id
         Write-Host "Kept existing XL: $xlId" -ForegroundColor Cyan
@@ -237,6 +250,7 @@ if ($includeXl) {
         }
         $xlResp = Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows" -Headers $authHeaders -Body $xlReq
         $xlId = $xlResp.id
+        Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows/$xlId/publish" -Headers $authHeaders -Body $xlReq | Out-Null
         Write-Host "Created XL workflow: $xlId" -ForegroundColor Green
     }
 }
@@ -244,7 +258,7 @@ if ($includeXl) {
 # --- 5c) POST Planar if planar.json is present ---------------------------
 $planarId = $null
 if ($includePlanar) {
-    $planarDefString = Get-Content $planarJsonPath -Raw -Encoding UTF8
+    $planarDefString = [IO.File]::ReadAllText($planarJsonPath)
     if ($existingPlanar) {
         $planarId = $existingPlanar.id
         Write-Host "Kept existing Planar: $planarId" -ForegroundColor Cyan
@@ -256,6 +270,7 @@ if ($includePlanar) {
         }
         $planarResp = Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows" -Headers $authHeaders -Body $planarReq
         $planarId = $planarResp.id
+        Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows/$planarId/publish" -Headers $authHeaders -Body $planarReq | Out-Null
         Write-Host "Created Planar workflow: $planarId" -ForegroundColor Green
     }
 }

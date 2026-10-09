@@ -16,29 +16,31 @@ Künstlicher Last-Workflow: fächert von `log-start` auf **11 parallele Branches
 | 8 | `jsonQuery` | `$..name` auf verschachtelter Org-Struktur |
 | 9 | `xmlQuery` | `//host[@up='y']/@name` |
 | 10 | `xmlQuery` | `sum(//host[@up='y']/@cpu)` (XPath-Aggregat) |
-| 11 | `delay` | 5 s |
+| 11 | `delay` | 55 s |
 
 Alle 6 `runScript`-Branches laufen **in-process** → die API erzeugt 6 gleichzeitige PowerShell-Runspaces, die eine Weile ~alle Cores beschäftigen.
 
 ## Import
 
-Die Datei ist eine reine Workflow-Definition (nicht das Export-Envelope). Zwei Wege:
+Die Datei ist eine reine Workflow-Definition (nicht das Export-Envelope). Der Launcher
+meldet sich an, erstellt oder sperrt den Workflow und veröffentlicht die Definition,
+bevor er die parallelen Ausführungen startet. Fremde Bearbeitungssperren und mehrdeutige
+Workflow-Namen führen zum Abbruch.
 
 ```powershell
-# 1) Direkt via API (empfohlen — analog scripts/tech-demo/seed.ps1):
-$def = Get-Content scripts/stress-test/main.json -Raw
-$body = @{ name = "Stress-Test"; description = "Ad-hoc load"; definitionJson = $def; isEnabled = $true } | ConvertTo-Json -Depth 50
-Invoke-RestMethod -Method POST -Uri http://localhost:5000/api/workflows `
-  -Headers @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" } `
-  -Body $body
+./scripts/stress-test/launch-40x.ps1 -BaseUrl http://localhost:5000 -User admin
+# PowerShell fragt das erforderliche Passwort ab.
 ```
 
-```
-# 2) UI: "New Workflow" → Editor → "Import JSON" (falls vorhanden) oder in den
-#    Designer die nodes/edges via Dev-Tools-Load einspielen.
-```
+Alternativ: `python scripts/stress-test/launch-40x.py`. Die Python-Clients verwenden
+`NODEPILOT_URL` (Standard `http://localhost:5000`), `NODEPILOT_USER` (Standard `admin`)
+und `NODEPILOT_PASSWORD`; ohne Passwortvariable fragen sie interaktiv danach.
+`launch-50-master.py` startet einen bereits veröffentlichten Workflow anhand
+`NODEPILOT_STRESS_WORKFLOW`. Die Launcher liefern einen Fehler-Exitcode, wenn ein Start
+oder eine Ausführung fehlschlägt oder bis zur Deadline kein Erfolg feststeht.
 
-Nach dem Import: **Run** klicken, optional Label eingeben. Laufzeit je nach CPU ~10–25 s. Live-Fortschritt via SignalR.
+Die sechs CPU-Branches und die Verzögerung sind auf 55 Sekunden ausgelegt;
+die Gesamtlaufzeit beträgt typischerweise etwa 55–60 Sekunden. Live-Fortschritt via SignalR.
 
 ## Warnung
 

@@ -20,7 +20,7 @@ class GateTests(unittest.TestCase):
     def test_catalog_is_complete_and_drift_checked(self):
         result = self.run_gate('catalog')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(json.loads(result.stdout)), 164)
+        self.assertEqual(len(json.loads(result.stdout)), 167)
 
     def test_catalog_source_hash_change_blocks(self):
         review = json.loads((ROOT / 'coverage-review.json').read_text(encoding='utf-8'))

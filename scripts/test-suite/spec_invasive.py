@@ -25,19 +25,29 @@ NAMES_SCRIPT = ("$cid = " + CID + "\n"
                 "$taskName = \"NPTestTask_$short\"\n")
 
 # Orphans from a run that was cancelled before its own teardown could execute.
-JANITOR_EXTRA = """
+SERVICE_JANITOR = """
 Get-Service -Name 'NPTestSvc_*' -ErrorAction SilentlyContinue | ForEach-Object {
   & sc.exe delete $_.Name | Out-Null
 }
+$invasiveSweep = 'ok'
+"""
+
+TASK_JANITOR = """
 Get-ScheduledTask -TaskPath '\\NodePilot-TestSuite\\' -ErrorAction SilentlyContinue |
   Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
 $invasiveSweep = 'ok'
 """
 
-TEARDOWN = """
+SERVICE_TEARDOWN = """
 $cid = {cid}
 $short = $cid.Substring(0, 8)
 & sc.exe delete "NPTestSvc_$short" | Out-Null
+$teardownDone = 'ok'
+""".replace("{cid}", CID)
+
+TASK_TEARDOWN = """
+$cid = {cid}
+$short = $cid.Substring(0, 8)
 Get-ScheduledTask -TaskName "NPTestTask_$short" -TaskPath '\\NodePilot-TestSuite\\' -ErrorAction SilentlyContinue |
   Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
 $teardownDone = 'ok'
@@ -57,7 +67,7 @@ def _svc(sid, label, config, cases=None):
 
 def service_workflow():
     steps = [
-        janitor(JANITOR_EXTRA), cid(),
+        janitor(SERVICE_JANITOR), cid(),
         Step("names", "Derive per-run fixture names", "runScript",
              {"engine": "auto", "timeoutSeconds": 20, "script": NAMES_SCRIPT},
              target_machine=LOCAL),
@@ -96,7 +106,7 @@ def service_workflow():
              [{"id": "serviceManagement.action.delete", "assertedVia": "names",
                "dimension": "serviceManagement.action", "value": "delete"}]),
         Step("teardown", "Teardown: remove fixtures", "runScript",
-             {"engine": "auto", "timeoutSeconds": 30, "script": TEARDOWN},
+             {"engine": "auto", "timeoutSeconds": 30, "script": SERVICE_TEARDOWN},
              target_machine=LOCAL),
         assert_step("""
 $name      = {{v5.param.name}}
@@ -198,7 +208,7 @@ def _register(sid, label, extra, cases):
 
 def scheduled_task_workflow():
     steps = [
-        janitor(JANITOR_EXTRA), cid(),
+        janitor(TASK_JANITOR), cid(),
         Step("names", "Derive per-run fixture names", "runScript",
              {"engine": "auto", "timeoutSeconds": 20, "script": NAMES_SCRIPT},
              target_machine=LOCAL),
@@ -263,7 +273,7 @@ def scheduled_task_workflow():
              {"engine": "auto", "timeoutSeconds": 30, "script": TASK_GONE_SCRIPT},
              target_machine=LOCAL),
         Step("teardown", "Teardown: remove fixtures", "runScript",
-             {"engine": "auto", "timeoutSeconds": 30, "script": TEARDOWN},
+             {"engine": "auto", "timeoutSeconds": 30, "script": TASK_TEARDOWN},
              target_machine=LOCAL),
         assert_step("""
 $taskName  = {{names.param.taskName}}
