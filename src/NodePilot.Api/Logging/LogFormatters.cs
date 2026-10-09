@@ -18,7 +18,7 @@ internal static class LogFormatters
     ///    NodePilot-domain properties land under <c>nodepilot.*</c>
     /// </summary>
     internal static ITextFormatter? Create(string? format) =>
-        format?.ToLowerInvariant() switch
+        format?.Trim().ToLowerInvariant() switch
         {
             "cmtrace"  => new CmTraceFormatter(),
             "json"     => new CompactJsonFormatter(),

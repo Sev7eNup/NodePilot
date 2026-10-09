@@ -7,7 +7,7 @@ namespace NodePilot.Api.Diagnostics;
 /// Singleton channel between the Serilog sub-sink (<see cref="SupportEventDbSink"/>) and
 /// the background flush service (<see cref="SupportEventFlushService"/>).
 ///
-/// <para><b>Drop-newest backpressure:</b> bounded at 1024 events, FullMode=DropWrite.
+/// <para><b>Drop-newest backpressure:</b> bounded at 1024 events, with non-blocking TryWrite.
 /// When the channel is full (DB unreachable, flush loop running slow), the newest write is
 /// dropped and <see cref="NodePilot.Engine.EngineMetrics.SupportEventsDropped"/> is incremented
 /// with tag <c>reason=channel_full</c>. The Serilog hot path never blocks.</para>
@@ -24,11 +24,9 @@ public sealed class SupportEventChannel
     {
         _channel = Channel.CreateBounded<SupportEvent>(new BoundedChannelOptions(capacity: 1024)
         {
-            // DropWrite: when the channel is full, the write attempt that's currently coming
-            // in gets discarded — the channel's existing contents stay untouched and the
-            // reader carries on as before. That's exactly what we want: events already queued
-            // are safe from the drop, new ones lose out to keep the workflow hot path unblocked.
-            FullMode = BoundedChannelFullMode.DropWrite,
+            // Wait mode makes TryWrite report a full channel as false. No caller uses
+            // WriteAsync, so the logging path remains non-blocking and can count the drop.
+            FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
             SingleWriter = false,
         });

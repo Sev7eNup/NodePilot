@@ -164,7 +164,7 @@ public class DiagnosticsControllerEventsTests
     {
         public string Directory => "";
         public string FileSearchPattern => "*.log";
-        public string? GetCurrentDayFile() => null;
-        public string? GetFileForDate(DateOnly date) => null;
+        public IReadOnlyList<string> GetCurrentDayFiles() => [];
+        public IReadOnlyList<string> GetFilesForDate(DateOnly date) => [];
     }
 }

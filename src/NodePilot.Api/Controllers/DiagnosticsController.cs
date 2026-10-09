@@ -57,8 +57,8 @@ public class DiagnosticsController : ControllerBase
         if (lines < 1) lines = 1;
         if (lines > MaxTailLines) lines = MaxTailLines;
 
-        var file = _resolver.GetCurrentDayFile();
-        if (file is null)
+        var files = _resolver.GetCurrentDayFiles();
+        if (files.Count == 0)
         {
             return Ok(new SupportLogTailResponse(
                 File: null,
@@ -70,21 +70,24 @@ public class DiagnosticsController : ControllerBase
         {
             // FileShare.ReadWrite: Serilog keeps the file open for writing while we read it.
             // Without this share flag, the Open call would fail with an "in use" IOException.
-            using var stream = new FileStream(
-                file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var reader = new StreamReader(stream);
-            var all = new List<string>(capacity: Math.Min(lines, 1024));
-            string? l;
-            // We pragmatically read the whole file — the 10 MB cap keeps this cheap enough.
-            // Larger files would warrant a reverse scan from the end, but V1 doesn't need that.
-            while ((l = reader.ReadLine()) is not null) all.Add(l);
-
-            var tail = all.Count <= lines
-                ? all
-                : all.GetRange(all.Count - lines, lines);
+            var tail = new List<string>(lines);
+            // Read newest segments first; older files are unnecessary once the tail is full.
+            for (var i = files.Count - 1; i >= 0 && tail.Count < lines; i--)
+            {
+                var remaining = lines - tail.Count;
+                var segmentTail = new Queue<string>(remaining);
+                using var stream = new FileStream(files[i], FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var reader = new StreamReader(stream);
+                while (reader.ReadLine() is { } line)
+                {
+                    if (segmentTail.Count == remaining) segmentTail.Dequeue();
+                    segmentTail.Enqueue(line);
+                }
+                tail.InsertRange(0, segmentTail);
+            }
 
             return Ok(new SupportLogTailResponse(
-                File: Path.GetFileName(file),
+                File: Path.GetFileName(files[^1]),
                 LineCount: tail.Count,
                 Lines: tail));
         }
@@ -93,7 +96,7 @@ public class DiagnosticsController : ControllerBase
             // Security: never echo the raw I/O exception — it leaks the server-side support-log
             // path / ACL details. Detail stays in the server log; caller gets a correlation id.
             var correlationId = HttpContext?.TraceIdentifier ?? System.Diagnostics.Activity.Current?.Id ?? Guid.NewGuid().ToString();
-            _logger.LogWarning(ex, "Support-Log tail failed for {File} (correlationId={CorrelationId})", file, correlationId);
+            _logger.LogWarning(ex, "Support-Log tail failed (correlationId={CorrelationId})", correlationId);
             return StatusCode(500, new { code = "SUPPORT_LOG_READ_FAILED", message = "Failed to read the support log.", correlationId });
         }
     }
@@ -111,12 +114,10 @@ public class DiagnosticsController : ControllerBase
             return BadRequest(new { code = "INVALID_DATE", message = "Expected yyyy-MM-dd" });
         }
 
-        var file = _resolver.GetFileForDate(parsedDate);
-        if (file is null) return NotFound();
-
-        var stream = new FileStream(
-            file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        var fileInfo = new FileInfo(file);
+        var files = _resolver.GetFilesForDate(parsedDate);
+        if (files.Count == 0) return NotFound();
+        var file = files[0];
+        var bytes = files.Sum(path => new FileInfo(path).Length);
         await _audit.LogAsync(
             AuditActions.SupportLogDownloaded,
             "SupportLog",
@@ -124,9 +125,9 @@ public class DiagnosticsController : ControllerBase
             AuditDetails.Json(
                 ("date", date),
                 ("file", Path.GetFileName(file)),
-                ("bytes", fileInfo.Length)),
+                ("bytes", bytes)),
             ct);
-        return File(stream, "text/plain", Path.GetFileName(file));
+        return File(new SupportLogReadStream(files), "text/plain", Path.GetFileName(file));
     }
 
     /// <summary>

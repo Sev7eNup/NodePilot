@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Mail;
 using System.DirectoryServices.Protocols;
 using System.Security.Principal;
+using System.Text;
 using Microsoft.Extensions.Options;
 using NodePilot.Ai;
 using NodePilot.Api.Dtos.Settings;
@@ -109,29 +110,40 @@ public sealed class SettingsTestProbe
             // Single guarded egress path: the SSRF-guarded named "Llm" client plus the shared
             // LlmEndpointGuard — the same validation the runtime LLM calls use. Rejects
             // cloud-metadata / non-http(s) BaseUrls before any connect.
-            var client = _httpFactory.CreateClient(LlmHttpClient.Name);
-            // Deliberately above the handler's 30 s connect/TLS budget: whichever deadline fires
-            // first decides the message the operator reads. The handler's timeout produces a
-            // named stage ("TLS handshake did not complete"); this one only ever produces
-            // "the request was canceled due to the configured HttpClient.Timeout".
+            using var client = _httpFactory.CreateClient(LlmHttpClient.Name);
+            // Honor the profile deadline with a 40 s probe ceiling. If the handler's shorter
+            // connect/TLS deadline fires first, its named stage remains visible in the result.
             client.Timeout = TimeSpan.FromSeconds(Math.Min(request.Settings.TimeoutSeconds, 40));
+            // HeadersRead ends HttpClient's timeout at the headers; keep the error-body read
+            // inside the same bounded probe lifetime, including caller cancellation.
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(client.Timeout);
+            var io = deadline.Token;
 
             var url = LlmEndpointGuard.ResolveEndpoint(request.Settings.BaseUrl).ApiRoot + "/models";
             using var probe = new HttpRequestMessage(HttpMethod.Get, url);
             if (!string.IsNullOrEmpty(request.Settings.ApiKey))
                 probe.Headers.Authorization = new AuthenticationHeaderValue("Bearer", request.Settings.ApiKey);
 
-            using var response = await client.SendAsync(probe, ct);
-            sw.Stop();
+            using var response = await client.SendAsync(probe, HttpCompletionOption.ResponseHeadersRead, io);
             if (!response.IsSuccessStatusCode)
             {
-                var body = await response.Content.ReadAsStringAsync(ct);
-                if (body.Length > 200) body = body[..200] + "…";
+                // Read one extra character to detect truncation without buffering or waiting
+                // for the end of an arbitrarily large upstream error response.
+                var charset = response.Content.Headers.ContentType?.CharSet;
+                var encoding = string.IsNullOrEmpty(charset) ? Encoding.UTF8 : Encoding.GetEncoding(charset.Trim('"'));
+                using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(io), encoding,
+                    detectEncodingFromByteOrderMarks: true, bufferSize: 256);
+                var prefix = new char[201];
+                var length = await reader.ReadBlockAsync(prefix.AsMemory(), io);
+                var body = new string(prefix, 0, Math.Min(length, 200)) + (length > 200 ? "…" : "");
+                sw.Stop();
                 return SettingsTestProbeResult.Failure(
                     $"LLM endpoint returned {(int)response.StatusCode} {response.StatusCode}: {body}",
                     sw.Elapsed.TotalMilliseconds,
                     response.StatusCode.ToString());
             }
+            sw.Stop();
             return SettingsTestProbeResult.Success(
                 $"LLM endpoint {request.Settings.BaseUrl} accepted the probe.",
                 sw.Elapsed.TotalMilliseconds);

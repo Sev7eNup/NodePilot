@@ -13,6 +13,43 @@ namespace NodePilot.Api.Tests.Controllers;
 /// </summary>
 public class TriggersControllerTests
 {
+    [Theory]
+    [InlineData("0 0 * * *")]
+    [InlineData("0 * * *")]
+    public void GetNextFires_UnixShortExpression_IsRejected(string cron)
+    {
+        new TriggersController().GetNextFires(cron).Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public void GetNextFires_ExpiredQuartzYear_HasNoFutureFires()
+    {
+        var result = new TriggersController().GetNextFires("0 0 8 ? * MON 2001");
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<NextFiresResponse>().Subject;
+        response.Fires.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void GetNextFires_NumericQuartzWeekdayOne_IsSundayInServerZone()
+    {
+        var result = new TriggersController().GetNextFires("0 0 8 ? * 1");
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<NextFiresResponse>().Subject;
+        response.Fires.Should().HaveCount(5);
+        response.Fires.Select(f => TimeZoneInfo.ConvertTimeFromUtc(f, TimeZoneInfo.Local))
+            .Should().OnlyContain(f => f.DayOfWeek == DayOfWeek.Sunday && f.Hour == 8);
+    }
+
+    [Theory]
+    [InlineData("2026-03-28T00:00:00Z", "2026-03-28T07:00:00Z", "2026-03-29T06:00:00Z", 23)]
+    [InlineData("2026-10-24T00:00:00Z", "2026-10-24T06:00:00Z", "2026-10-25T07:00:00Z", 25)]
+    public void CalculateFires_DailyServerWallClock_PreservesDstTransitions(string after, string first, string second, int hours)
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
+        var fires = TriggersController.CalculateFires("0 0 8 * * ?", 2, DateTimeOffset.Parse(after), zone);
+        fires.Should().Equal(DateTimeOffset.Parse(first).UtcDateTime, DateTimeOffset.Parse(second).UtcDateTime);
+        (fires[1] - fires[0]).Should().Be(TimeSpan.FromHours(hours));
+    }
+
     [Fact]
     public void GetNextFires_MissingCron_ReturnsBadRequest()
     {

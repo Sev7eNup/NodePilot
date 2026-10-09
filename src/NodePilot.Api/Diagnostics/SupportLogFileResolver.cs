@@ -1,4 +1,5 @@
 using NodePilot.Api.Hosting;
+using System.Globalization;
 
 namespace NodePilot.Api.Diagnostics;
 
@@ -9,13 +10,11 @@ namespace NodePilot.Api.Diagnostics;
 /// </summary>
 public interface ISupportLogFileResolver
 {
-    /// <summary>Today's daily file (e.g. <c>nodepilot-support-20260515.log</c>) — may be missing if
-    /// nothing has been logged yet today.</summary>
-    string? GetCurrentDayFile();
+    /// <summary>Today's segments in write order, using Serilog's local rolling date.</summary>
+    IReadOnlyList<string> GetCurrentDayFiles();
 
-    /// <summary>Path to the daily file for a given date. Exists once the file has rolled
-    /// over.</summary>
-    string? GetFileForDate(DateOnly date);
+    /// <summary>All existing segments for a date, ordered by numeric roll sequence.</summary>
+    IReadOnlyList<string> GetFilesForDate(DateOnly date);
 
     /// <summary>Directory that holds the Support Log files.</summary>
     string Directory { get; }
@@ -45,14 +44,22 @@ internal sealed class SupportLogFileResolver : ISupportLogFileResolver
 
     public string FileSearchPattern => _baseNameWithoutDate + "*" + _extension;
 
-    public string? GetCurrentDayFile() => GetFileForDate(DateOnly.FromDateTime(DateTime.UtcNow.Date));
+    public IReadOnlyList<string> GetCurrentDayFiles() => GetFilesForDate(DateOnly.FromDateTime(DateTime.Today));
 
-    public string? GetFileForDate(DateOnly date)
+    public IReadOnlyList<string> GetFilesForDate(DateOnly date)
     {
         var dir = Directory;
-        if (string.IsNullOrEmpty(dir)) return null;
-        var candidate = Path.Combine(dir,
-            $"{_baseNameWithoutDate}{date:yyyyMMdd}{_extension}");
-        return File.Exists(candidate) ? candidate : null;
+        if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir)) return [];
+        var prefix = _baseNameWithoutDate + date.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        return System.IO.Directory.EnumerateFiles(dir, prefix + "*" + _extension)
+            .Select(path => (Path: path, Suffix: Path.GetFileNameWithoutExtension(path)[prefix.Length..]))
+            .Select(file => (file.Path, Sequence: file.Suffix.Length == 0 ? 0 :
+                file.Suffix.StartsWith('_') && int.TryParse(file.Suffix.AsSpan(1), NumberStyles.None,
+                    CultureInfo.InvariantCulture, out var sequence) && sequence > 0 ? sequence : -1))
+            .Where(file => file.Sequence >= 0)
+            .OrderBy(file => file.Sequence)
+            .ThenBy(file => file.Path, StringComparer.Ordinal)
+            .Select(file => file.Path)
+            .ToArray();
     }
 }

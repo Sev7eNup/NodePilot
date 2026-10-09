@@ -83,6 +83,35 @@ public class OperationsControllerTests
         graph.Nodes.Select(n => n.Name).Should().BeEquivalentTo("Alpha", "Beta");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GetGraph_ParentLinksRequireParentFolderAccess(bool parentVisible)
+    {
+        await using var db = TestDbFactory.Create();
+        SeedFolders(db);
+        var parentWf = Wf(Guid.NewGuid(), "Private parent", "{}", FolderB);
+        var childWf = Wf(Guid.NewGuid(), "Shared child", "{}", FolderA);
+        db.Workflows.AddRange(parentWf, childWf);
+        var now = DateTime.UtcNow;
+        var parent = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = parentWf.Id, Status = ExecutionStatus.Running, StartedAt = now.AddMinutes(-5) };
+        var running = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = childWf.Id, Status = ExecutionStatus.Running, StartedAt = now.AddMinutes(-4), ParentExecutionId = parent.Id };
+        var completed = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = childWf.Id, Status = ExecutionStatus.Succeeded, StartedAt = now.AddMinutes(-3), CompletedAt = now.AddMinutes(-2), ParentExecutionId = parent.Id };
+        db.WorkflowExecutions.AddRange(parent, running, completed);
+        await db.SaveChangesAsync();
+        var authz = new ScopedAuthz(new AccessibleFolderSet
+        {
+            IsUnrestricted = false,
+            FolderIds = parentVisible ? [FolderA, FolderB] : [FolderA],
+        });
+
+        var graph = await GetGraph(NewController(db, authz, "Viewer"));
+        graph.Running.Single(row => row.ExecutionId == running.Id).ParentExecutionId
+            .Should().Be(parentVisible ? parent.Id : null);
+        graph.Recent.Single(row => row.ExecutionId == completed.Id).ParentExecutionId
+            .Should().Be(parentVisible ? parent.Id : null);
+    }
+
     [Fact]
     public async Task GetGraph_StartWorkflowRef_ResolvesEdgeBetweenNodes()
     {

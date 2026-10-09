@@ -13,6 +13,13 @@ namespace NodePilot.Api.Tests.Logging;
 public class LogFormattersTests
 {
     [Theory]
+    [InlineData(" cmtrace ", typeof(CmTraceFormatter))]
+    [InlineData(" json ", typeof(Serilog.Formatting.Compact.CompactJsonFormatter))]
+    [InlineData(" ecs-json ", typeof(EcsJsonFormatter))]
+    public void Create_FormatAcceptedByBootValidator_PreservesSelectedFormat(string format, Type expected)
+        => LogFormatters.Create(format).Should().BeOfType(expected);
+
+    [Theory]
     [InlineData("text")]
     [InlineData("TEXT")]
     [InlineData("plain")]

@@ -175,11 +175,11 @@ public class MaintenanceWindowsController : ControllerBase
         if (description is { Length: > 500 })
             return Fail("Description must be 500 characters or less", out error);
 
-        if (!Enum.TryParse<MaintenanceMode>(modeRaw, ignoreCase: true, out var mode))
+        if (!Enum.TryParse<MaintenanceMode>(modeRaw, ignoreCase: true, out var mode) || !Enum.IsDefined(mode))
             return Fail($"Invalid mode '{modeRaw}' (expected Blackout or AllowOnly)", out error);
-        if (!Enum.TryParse<MaintenanceScopeKind>(scopeRaw, ignoreCase: true, out var scope))
+        if (!Enum.TryParse<MaintenanceScopeKind>(scopeRaw, ignoreCase: true, out var scope) || !Enum.IsDefined(scope))
             return Fail($"Invalid scopeKind '{scopeRaw}' (expected Global, Folders or Workflows)", out error);
-        if (!Enum.TryParse<MaintenanceRecurrenceKind>(recurrenceRaw, ignoreCase: true, out var recurrence))
+        if (!Enum.TryParse<MaintenanceRecurrenceKind>(recurrenceRaw, ignoreCase: true, out var recurrence) || !Enum.IsDefined(recurrence))
             return Fail($"Invalid recurrence '{recurrenceRaw}' (expected OneTime, Weekly or Cron)", out error);
 
         // Accept IANA (Europe/Berlin) and Windows (W. Europe Standard Time) ids interchangeably —
