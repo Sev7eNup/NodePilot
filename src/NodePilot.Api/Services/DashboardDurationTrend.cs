@@ -27,6 +27,12 @@ public sealed class DashboardDurationTrend(NodePilotDbContext db)
         // An unknown or inaccessible selection must never fall back to the global series.
         if (workflowId.HasValue && options.All(w => w.Id != workflowId)) return new(buckets, options);
 
+        // Precomputed hourly histograms first. The raw query below sorts every run of the window and
+        // only answers what the buckets cannot: the one-hour window, or a window not covered yet.
+        var fromBuckets = await new DashboardRollupReader(db)
+            .ReadDurationBucketsAsync(accessible, windowHours, workflowId, now, ct);
+        if (fromBuckets is not null) return new(fromBuckets, options);
+
         var postgres = db.Database.IsNpgsql();
         var sqlServer = db.Database.IsSqlServer();
         string Elapsed(string end, string start) => postgres

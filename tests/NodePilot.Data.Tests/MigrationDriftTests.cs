@@ -255,6 +255,33 @@ public class MigrationDriftTests
     }
 
     /// <summary>
+    /// The dashboard's retry share and the stats rollup look up retried steps; without this small
+    /// filtered index both scan all of StepExecutions on every call.
+    /// </summary>
+    [Fact]
+    public void RetriedStepIndex_IsFiltered_OnBothProviders()
+    {
+        using var sqlServer = new NodePilotDbContext(
+            new DbContextOptionsBuilder<NodePilotDbContext>()
+                .UseSqlServer("Server=(localdb)\\mssqllocaldb;Database=NodePilotMigrationScriptOnly;Trusted_Connection=True")
+                .Options);
+        using var postgres = new NodePilotDbContext(
+            new DbContextOptionsBuilder<NodePilotDbContext>()
+                .UseNpgsql("Host=localhost;Database=NodePilotMigrationScriptOnly;Username=nodepilot;Password=not-used")
+                .Options);
+
+        var sqlServerScript = sqlServer.Database.GetService<IMigrator>().GenerateScript(
+            fromMigration: Migration.InitialDatabase,
+            toMigration: sqlServer.Database.GetMigrations().Last());
+        var postgresScript = postgres.Database.GetService<IMigrator>().GenerateScript(
+            fromMigration: Migration.InitialDatabase,
+            toMigration: postgres.Database.GetMigrations().Last());
+
+        sqlServerScript.Should().Contain("CREATE INDEX [IX_StepExecutions_Retried] ON [StepExecutions] ([WorkflowExecutionId]) WHERE \"AttemptCount\" > 1");
+        postgresScript.Should().Contain("CREATE INDEX \"IX_StepExecutions_Retried\" ON \"StepExecutions\" (\"WorkflowExecutionId\") WHERE \"AttemptCount\" > 1");
+    }
+
+    /// <summary>
     /// Every migration must be discoverable by EF: it needs both a <c>[Migration]</c> id and a
     /// <c>[DbContext]</c> attribute, or <c>Migrate()</c> silently skips it and the schema drifts.
     /// </summary>
