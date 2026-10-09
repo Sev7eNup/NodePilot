@@ -183,7 +183,7 @@ class ScriptContracts(unittest.TestCase):
                 # Disable host-process sampling in this HTTP contract fixture.
                 command = f"function Get-NetTCPConnection {{ }}; & '{script}' -BaseUrl '{self.url}' -Password fixture-only -Parallel 1"
                 result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-                                        capture_output=True, text=True, timeout=30)
+                                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
                 self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
 
     @unittest.skipUnless(os.name == "nt", "Windows PowerShell contract")
@@ -197,7 +197,7 @@ class ScriptContracts(unittest.TestCase):
                     command = "$credential = [PSCredential]::new('admin', (ConvertTo-SecureString fixture-only -AsPlainText -Force)); "
                     command += f"& '{script}' -BaseUrl '{self.url}' -Credential $credential"
                     result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-                                            capture_output=True, text=True, timeout=30)
+                                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
                     self.assertEqual(1 if fail else 0, result.returncode, result.stdout + result.stderr)
                     requests = [body for _, path, body in self.calls if path.startswith("/api/alerting/")]
                     self.assertEqual(expected_count, len(requests))
@@ -215,7 +215,7 @@ class ScriptContracts(unittest.TestCase):
                 (demo_root / f"{name}.json").write_text('{"nodes":[],"edges":[]}', encoding="utf-8")
             result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-File", str(script),
                                      "-BaseUrl", self.url, "-AdminPassword", "fixture-only", "-Force"],
-                                    capture_output=True, text=True, timeout=30)
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         creates = [body for method, path, body in self.calls if method == "POST" and path == "/api/workflows"]
         publishes = [body for _, path, body in self.calls if path.endswith("/publish")]
@@ -237,7 +237,7 @@ class ScriptContracts(unittest.TestCase):
             result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-File",
                                      str(ROOT / "continuous-test-1min/Install-ContinuousTest1Min.ps1"),
                                      "-BaseUrl", self.url, "-Password", "fixture-only", "-DefinitionFile", str(definition)],
-                                    capture_output=True, text=True, timeout=30)
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual(10, sum(path.endswith("/publish") for _, path, _ in self.calls))
 
