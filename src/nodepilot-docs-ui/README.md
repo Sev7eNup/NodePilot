@@ -163,6 +163,8 @@ Doku und serviert Website (Port 5176) und Doku (Port 5187) getrennt per `vite pr
   Beschreibung und Übersetzung je Seite, Adresse und Titel beim Navigieren, alte Hash-Adressen.
 - `experience.spec.ts`: geführter Einstieg mit beiden Aufgaben in der aktuellen Sprache und bei
   schmalen Breiten, Links bleiben nach Seitenwechseln korrekt.
+- `language-preference.spec.ts`: Browsersprache als Vorgabe für Website und Doku, nur die
+  Sprachschalter speichern eine Wahl, deutschsprachige Rechtsseiten bleiben erreichbar.
 - `pages-redirects.spec.ts`: alte GitHub-Pages-Links landen auf der passenden kanonischen Adresse,
   Doku-Seiten auch ohne JavaScript per Meta-Refresh.
 - `seo.spec.ts`: statischer Seiteninhalt, Canonical und Sprachverweise ohne JavaScript,
