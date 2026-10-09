@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook as rtlRenderHook, act, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } });
@@ -112,7 +112,44 @@ describe('useDashboardFeed', () => {
       __currentConnection?.emit('LiveEventsBatch', statusBatch);
       vi.advanceTimersByTime(200);
     });
-    expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: secondKey });
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: secondKey }, { cancelRefetch: false });
+  });
+
+  it('lets a running refetch finish instead of restarting it on the next burst', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryKey = ['ops-slow'];
+    const signals: AbortSignal[] = [];
+    renderHook(() => {
+      useQuery({
+        queryKey,
+        queryFn: ({ signal }) => {
+          signals.push(signal);
+          // The first load answers; every refetch after it is still running.
+          return signals.length === 1 ? Promise.resolve(1) : new Promise<number>(() => {});
+        },
+      });
+      useLiveOpsFeed({ queryKey, debounceMs: 100 });
+    }, {
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      ),
+    });
+    await waitFor(() => expect(__currentConnection?.invoke).toHaveBeenCalledWith('JoinOperationsFeed'));
+    await waitFor(() => expect(qc.getQueryData(queryKey)).toBe(1));
+    vi.useFakeTimers();
+    act(() => {
+      __currentConnection?.emit('LiveEventsBatch', statusBatch);
+      vi.advanceTimersByTime(200);
+    });
+    expect(signals).toHaveLength(2);
+
+    act(() => {
+      __currentConnection?.emit('LiveEventsBatch', statusBatch);
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(signals).toHaveLength(2);
+    expect(signals[1].aborted).toBe(false);
   });
 
   it('joins the ops feed on connect', async () => {
@@ -140,7 +177,7 @@ describe('useDashboardFeed', () => {
     // change state constantly, and refetching per event re-ran the history-reading parts of the
     // dashboard endpoint over and over. Allow for that window here.
     await waitFor(
-      () => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['dashboard-stats'] }),
+      () => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['dashboard-stats'] }, { cancelRefetch: false }),
       { timeout: 8_000 },
     );
   });

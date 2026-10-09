@@ -276,6 +276,126 @@ describe('DashboardPage', () => {
     })));
   });
 
+  const WINDOW_CARD_TITLES_30D = ['Success Rate (30 days)', 'Retries needed (30 days)', 'Executions — 30 days', 'Run Status (30 days)'];
+  const cardOf = (title: string) => screen.getByText(title).closest('.np-card') as HTMLElement;
+
+  it('keeps live tiles but shows no previous-window figures while the selected window loads', async () => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.get(`${BASE}/api/stats/dashboard`, async ({ request }) => {
+      if (new URL(request.url).searchParams.get('windowHours') !== '720') {
+        return HttpResponse.json({ ...BASE_STATS, last24hBuckets: [{ hourStart: '2026-09-14T10:00:00Z', succeeded: 28, failed: 2, cancelled: 0 }] });
+      }
+      await released;
+      return HttpResponse.json({
+        ...BASE_STATS,
+        last24h: { total: 90, succeeded: 81, failed: 9, running: 0, cancelled: 0 },
+        last24hBuckets: [{ hourStart: '2026-09-01T00:00:00Z', succeeded: 81, failed: 9, cancelled: 0 }],
+        retryStats: { finishedCount: 90, retriedCount: 9 },
+      });
+    }));
+    renderPage();
+    expect(within(await screen.findByRole('group', { name: 'Run Status (24h)' })).getByText('30')).toBeInTheDocument();
+    expect(within(cardOf('Success Rate (24h)')).getByText('93%')).toBeInTheDocument();
+    expect(within(cardOf('Retries needed (24h)')).getByText('6.7%')).toBeInTheDocument();
+    await waitFor(() => expect(within(cardOf('Executions — 24h')).getByRole('img')).toHaveAttribute('data-chart-option'));
+
+    await userEvent.click(screen.getByRole('button', { name: '30 days' }));
+
+    expect(screen.getByRole('button', { name: '30 days' })).toHaveClass('is-active');
+    // Window-independent parts of the previous response stay on screen.
+    expect(within(screen.getByRole('table')).getByText('Disk Check')).toBeInTheDocument();
+    expect(within(cardOf('Workflows')).getByText('12')).toBeInTheDocument();
+    // The cards of the selected window load instead of showing the previous window's figures.
+    const [hero, retries, executions, runStatus] = WINDOW_CARD_TITLES_30D.map(cardOf);
+    for (const card of [hero, retries, executions, runStatus]) {
+      expect(card).toHaveAttribute('aria-busy', 'true');
+      expect(within(card).getByRole('status')).toHaveTextContent('Loading...');
+    }
+    expect(within(hero).queryByText('93%')).not.toBeInTheDocument();
+    expect(within(retries).queryByText('6.7%')).not.toBeInTheDocument();
+    expect(within(executions).queryByRole('img')).not.toBeInTheDocument();
+    expect(within(runStatus).queryByText('30')).not.toBeInTheDocument();
+
+    release();
+    expect(within(await screen.findByRole('group', { name: 'Run Status (30 days)' })).getByText('90')).toBeInTheDocument();
+    for (const card of [hero, retries, executions, runStatus]) expect(card).toHaveAttribute('aria-busy', 'false');
+    expect(within(hero).getByText('90%')).toBeInTheDocument();
+    expect(within(retries).getByText('10%')).toBeInTheDocument();
+    const chart = within(executions).getByRole('img', { name: 'Executions — 30 days' });
+    expect(JSON.parse(chart.dataset.chartOption!).series.map((entry: { data: number[] }) => entry.data)).toEqual([[81], [9], [0]]);
+  });
+
+  it('lets the duration and failure cards load the selected window instead of showing the previous one', async () => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    const isMonth = (request: Request) => new URL(request.url).searchParams.get('windowHours') === '720';
+    const message = 'Disk full on server-A';
+    server.use(
+      http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)),
+      http.get(`${BASE}/api/stats/failure-causes`, async ({ request }) => {
+        if (!isMonth(request)) {
+          return HttpResponse.json({ totalFailed: 2, remainingCount: 0,
+            groups: [{ message, count: 2, latestExecutionId: 'exec-1', latestStartedAt: '2026-09-14T10:00:00Z' }] });
+        }
+        await released;
+        return HttpResponse.json({ totalFailed: 0, groups: [], remainingCount: 0 });
+      }),
+      http.get(`${BASE}/api/stats/duration-trend`, async ({ request }) => {
+        if (!isMonth(request)) {
+          return HttpResponse.json({ buckets: [{ startedAt: '2026-09-14T10:00:00Z', count: 4, medianMs: 1000, p95Ms: 3000 }], workflows: [] });
+        }
+        await released;
+        return HttpResponse.json({ buckets: [], workflows: [] });
+      }),
+    );
+    renderPage();
+    await screen.findByText(message);
+    await screen.findByRole('img', { name: 'Execution Duration (24h)' });
+
+    await userEvent.click(screen.getByRole('button', { name: '30 days' }));
+
+    const failures = cardOf('Most Common Errors (30 days)');
+    const durations = cardOf('Execution Duration (30 days)');
+    expect(within(failures).queryByText(message)).not.toBeInTheDocument();
+    expect(within(failures).getByRole('status')).toHaveTextContent('Loading...');
+    expect(within(durations).queryByRole('img')).not.toBeInTheDocument();
+    expect(within(durations).getByRole('status')).toHaveTextContent('Loading...');
+
+    release();
+    expect(await within(failures).findByText('No failed executions in the selected period.')).toBeInTheDocument();
+    expect(await within(durations).findByText('No completed runs in the selected period.')).toBeInTheDocument();
+  });
+
+  it('shows the window cards as failed instead of the previous window when a switch fails, and retries', async () => {
+    let monthAvailable = false;
+    server.use(http.get(`${BASE}/api/stats/dashboard`, ({ request }) => {
+      if (new URL(request.url).searchParams.get('windowHours') !== '720') return HttpResponse.json(BASE_STATS);
+      return monthAvailable
+        ? HttpResponse.json({ ...BASE_STATS, last24h: { total: 90, succeeded: 81, failed: 9, running: 0, cancelled: 0 } })
+        : new HttpResponse(null, { status: 500 });
+    }));
+    renderPage();
+    await screen.findByRole('group', { name: 'Run Status (24h)' });
+
+    await userEvent.click(screen.getByRole('button', { name: '30 days' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Failed to load.');
+    expect(within(screen.getByRole('table')).getByText('Disk Check')).toBeInTheDocument();
+    for (const card of WINDOW_CARD_TITLES_30D.map(cardOf)) {
+      expect(card).toHaveAttribute('aria-busy', 'false');
+      expect(within(card).getByText('Failed to load.')).toBeInTheDocument();
+    }
+    expect(screen.queryByText('93%')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /Run Status/ })).not.toBeInTheDocument();
+
+    monthAvailable = true;
+    await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(within(await screen.findByRole('group', { name: 'Run Status (30 days)' })).getByText('90')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('charts the one-hour window as thirty two-minute line buckets', async () => {
     const pad = (n: number) => String(n).padStart(2, '0');
     const starts = Array.from({ length: 30 }, (_, i) => new Date(2026, 8, 15, 21, 14 + 2 * i));
