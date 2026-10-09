@@ -14,6 +14,7 @@ import {
 } from '@carbon/icons-react';
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { useColumnResize } from '../hooks/useColumnResize';
 import { api } from '../api/client';
 import { getPage } from '../api/paging';
 import type { WorkflowExecution, StepExecution, WorkflowNameItem } from '../types/api';
@@ -152,26 +153,7 @@ export function ExecutionsPage() {
   });
 
   // --- Column resizing (mirrors WorkflowsPage / GlobalVariablesPage) ---
-  const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS);
-  const resizeRef = useRef<{ col: ResizableColKey; startX: number; startWidth: number } | null>(null);
-  const startResize = (col: ResizableColKey, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    resizeRef.current = { col, startX: e.clientX, startWidth: colWidths[col] };
-    const onMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      const { col, startWidth, startX } = resizeRef.current;
-      const w = Math.max(MIN_WIDTHS[col] ?? 60, startWidth + ev.clientX - startX);
-      setColWidths((prev) => ({ ...prev, [col]: w }));
-    };
-    const onUp = () => {
-      resizeRef.current = null;
-      globalThis.removeEventListener('mousemove', onMove);
-      globalThis.removeEventListener('mouseup', onUp);
-    };
-    globalThis.addEventListener('mousemove', onMove);
-    globalThis.addEventListener('mouseup', onUp);
-  };
+  const { colWidths, startResize } = useColumnResize(DEFAULT_WIDTHS, MIN_WIDTHS, 60);
   const tableMinWidth = useMemo(
     () => Object.values(colWidths).reduce((a, b) => a + b, 0) + ACTIONS_WIDTH + WORKFLOW_MIN_WIDTH,
     [colWidths],
@@ -201,19 +183,8 @@ export function ExecutionsPage() {
     let list = executions ?? [];
     if (statusFilter !== 'all') list = list.filter((e) => e.status === statusFilter);
     if (workflowFilter !== 'all') list = list.filter((e) => e.workflowId === workflowFilter);
-    // Debounced, like the server query above: on the raw value this re-filtered, re-sorted and
-    // re-cloned up to 200 rows on every keystroke. The client filter stays because it matches
-    // more fields than the server does (started-by user, execution id).
-    const term = debouncedSearch.trim().toLowerCase();
-    if (term) {
-      list = list.filter((e) =>
-        workflowNameOf(e).toLowerCase().includes(term)
-        || (e.triggeredBy ?? '').toLowerCase().includes(term)
-        || (e.startedByUsername ?? '').toLowerCase().includes(term)
-        || e.id.toLowerCase().includes(term)
-        || (e.errorMessage ?? '').toLowerCase().includes(term),
-      );
-    }
+    // Text search is applied before server paging; filtering the returned page again can
+    // discard matches and make the visible rows disagree with the server's total.
     const sorted = [...list].sort((a, b) => {
       let cmp = 0;
       switch (sortBy) {
@@ -230,7 +201,7 @@ export function ExecutionsPage() {
     return sorted;
     // workflowNameOf depends on workflowNames; listing it keeps the sort stable across renames.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [executions, statusFilter, workflowFilter, debouncedSearch, sortBy, sortDir, workflowNames]);
+  }, [executions, statusFilter, workflowFilter, sortBy, sortDir, workflowNames]);
 
   // --- Virtual scrolling (desktop only) ---
   const listRef = useRef<HTMLDivElement>(null);
@@ -330,7 +301,6 @@ export function ExecutionsPage() {
         </div>
       )}
       {/* Toolbar: search + status chips + workflow dropdown. */}
-      {totalCount > 0 && (
         <div className="np-card p-3 mb-3 flex flex-wrap items-center gap-3">
           <div className="relative w-full sm:flex-1 sm:min-w-[220px]">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-outline" />
@@ -372,7 +342,6 @@ export function ExecutionsPage() {
             ))}
           </select>
         </div>
-      )}
       {isLoading ? (
         <p className="text-on-surface-variant font-label">{t('common:loadingDots')}</p>
       ) : totalCount === 0 ? (

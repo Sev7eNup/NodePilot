@@ -36,19 +36,21 @@ internal sealed class ScorchApiClientFactory : IScorchApiClientFactory
 internal sealed class ScorchApiClient : IScorchApiClient, IDisposable
 {
     private readonly ScorchWorkloadConfiguration _configuration;
+    private readonly Uri _baseUri;
     private readonly HttpClient _http;
 
     public ScorchApiClient(ScorchWorkloadConfiguration configuration)
-        : this(configuration, new HttpClientHandler { UseDefaultCredentials = true, PreAuthenticate = true })
+        : this(configuration, new HttpClientHandler { UseDefaultCredentials = true, PreAuthenticate = true, AllowAutoRedirect = false })
     {
     }
 
     internal ScorchApiClient(ScorchWorkloadConfiguration configuration, HttpMessageHandler handler)
     {
         _configuration = configuration;
+        _baseUri = new Uri(configuration.ApiBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
         _http = new HttpClient(handler)
         {
-            BaseAddress = new Uri(configuration.ApiBaseUrl.TrimEnd('/') + "/", UriKind.Absolute),
+            BaseAddress = _baseUri,
             Timeout = TimeSpan.FromSeconds(configuration.RequestTimeoutSeconds),
         };
     }
@@ -74,22 +76,61 @@ internal sealed class ScorchApiClient : IScorchApiClient, IDisposable
             Parameters = Array.Empty<object>(),
             CreatedBy = (string?)null,
         };
-        using var response = await _http.PostAsJsonAsync(_configuration.JobsPath, payload, cancellationToken).ConfigureAwait(false);
+        using var response = await SendAsync(HttpMethod.Post, ResolveApiUri(_configuration.JobsPath), payload, cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, "start SCOrch runbook", cancellationToken).ConfigureAwait(false);
     }
 
     public async Task StopJobAsync(Guid jobId, CancellationToken cancellationToken)
     {
         var path = _configuration.StopJobPathTemplate.Replace("{id}", jobId.ToString(), StringComparison.Ordinal);
-        using var request = new HttpRequestMessage(new HttpMethod(_configuration.StopJobMethod), path)
-        {
-            Content = JsonContent.Create(new { }),
-        };
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await SendAsync(new HttpMethod(_configuration.StopJobMethod), ResolveApiUri(path), new { }, cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, "stop SCOrch job", cancellationToken).ConfigureAwait(false);
     }
 
     public void Dispose() => _http.Dispose();
+
+    private Uri ResolveApiUri(string path)
+    {
+        // Pagination is server input; it must not send the Windows identity to another origin.
+        if (!Uri.TryCreate(_baseUri, path, out var uri)
+            || !string.Equals(uri.Scheme, _baseUri.Scheme, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(uri.IdnHost, _baseUri.IdnHost, StringComparison.OrdinalIgnoreCase)
+            || uri.Port != _baseUri.Port
+            || !string.IsNullOrEmpty(uri.UserInfo))
+            throw new InvalidOperationException("SCOrch request URL must stay on the configured API origin.");
+        return uri;
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpMethod method, Uri uri, object? payload, CancellationToken cancellationToken)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(_configuration.RequestTimeoutSeconds));
+        for (var redirects = 0; ; redirects++)
+        {
+            using var request = new HttpRequestMessage(method, uri);
+            if (payload is not null) request.Content = JsonContent.Create(payload);
+            var response = await _http.SendAsync(request, deadline.Token).ConfigureAwait(false);
+            if (response.StatusCode is not (HttpStatusCode.MovedPermanently or HttpStatusCode.Found
+                or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)
+                || response.Headers.Location is null)
+                return response;
+
+            using (response)
+            {
+                if (redirects >= 10) throw new InvalidOperationException("SCOrch returned too many redirects.");
+                // Resolve relative Location against this hop, then validate BEFORE Windows
+                // credentials or a mutation body can be sent to the next origin.
+                uri = ResolveApiUri(new Uri(uri, response.Headers.Location).AbsoluteUri);
+                if ((response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Found && method == HttpMethod.Post)
+                    || (response.StatusCode == HttpStatusCode.SeeOther && method != HttpMethod.Head))
+                {
+                    method = HttpMethod.Get;
+                    payload = null;
+                }
+            }
+        }
+    }
 
     private async Task<IReadOnlyList<T>> GetCollectionAsync<T>(string path, CancellationToken cancellationToken)
     {
@@ -98,9 +139,10 @@ internal sealed class ScorchApiClient : IScorchApiClient, IDisposable
         string? next = path;
         while (!string.IsNullOrWhiteSpace(next))
         {
-            if (!visited.Add(next) || visited.Count > 1000)
+            var uri = ResolveApiUri(next);
+            if (!visited.Add(uri.AbsoluteUri) || visited.Count > 1000)
                 throw new InvalidOperationException($"SCOrch returned an invalid pagination chain for {typeof(T).Name}.");
-            using var response = await _http.GetAsync(next, cancellationToken).ConfigureAwait(false);
+            using var response = await SendAsync(HttpMethod.Get, uri, null, cancellationToken).ConfigureAwait(false);
             await EnsureSuccessAsync(response, $"read {typeof(T).Name} collection", cancellationToken).ConfigureAwait(false);
             var requestUri = response.RequestMessage?.RequestUri?.ToString() ?? next;
             var payload = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);

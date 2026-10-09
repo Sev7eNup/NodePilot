@@ -12,6 +12,27 @@ namespace NodePilot.Engine.Tests.PowerShell;
 /// </summary>
 public class RunspaceEngineAsyncTests
 {
+    [Theory]
+    [InlineData("throw 'Collection was modified; enumeration operation may not execute.'")]
+    [InlineData("Write-Error 'Collection was modified; enumeration operation may not execute.'")]
+    public async Task Execute_CollectionErrorAfterSideEffect_DoesNotReplayScript(string failure)
+    {
+        using var engine = new RunspaceExecutionEngine(NullLogger.Instance);
+        var path = Path.GetTempFileName();
+        try
+        {
+            var result = await engine.ExecuteAsync(new PowerShellExecutionRequest
+            {
+                ScriptText = $"[IO.File]::AppendAllText({PowerShellOperation.Literal(path)}, 'x')\n{failure}",
+            }, TestContext.Current.CancellationToken);
+
+            result.Success.Should().BeFalse();
+            result.Error.Should().Contain("Collection was modified");
+            File.ReadAllText(path).Should().Be("x", "the transport must not repeat an already executed side effect");
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public async Task Execute_CallerCancellation_ThrowsInsteadOfReturningAFailedResult()
     {
@@ -56,18 +77,6 @@ public class RunspaceEngineAsyncTests
         thrown.CancellationToken.Should().Be(cts.Token,
             "StepRunner tells a junction stand-down from a whole-execution cancel by the token");
         thrown.Message.Should().Be(IPowerShellExecutionEngine.CancelledMessage);
-    }
-
-    [Theory]
-    [InlineData("Collection was modified; enumeration operation may not execute.", true)]
-    [InlineData("collection WAS modified during enumeration", true)]                     // case-insensitive
-    [InlineData("Some completely different error", false)]
-    [InlineData("Script timed out after 30s", false)]
-    [InlineData("", false)]
-    [InlineData(null, false)]
-    public void IsModuleLoadRace_DetectsTransientRaceSignatureOnly(string? error, bool expected)
-    {
-        RunspaceExecutionEngine.IsModuleLoadRace(error).Should().Be(expected);
     }
 
     [Fact]

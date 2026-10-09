@@ -20,6 +20,103 @@ public class SystemAlertEvaluatorTests
 {
     private const string SourceId = "stub";
 
+    [Fact]
+    public async Task Reconstruct_CancelledObservation_PropagatesCancellation()
+    {
+        await using var db = TestDbFactory.Create();
+        var (evaluator, source) = Build();
+        var policy = Policy();
+        db.NotificationRules.Add(policy);
+        await db.SaveChangesAsync();
+        using var cancellation = new CancellationTokenSource();
+        source.Observations = () =>
+        {
+            cancellation.Cancel();
+            throw new OperationCanceledException(cancellation.Token);
+        };
+        var eventKey = $"system:{policy.Id:N}:{SourceId}:instance:{DateTime.UtcNow.Ticks}";
+
+        Func<Task> reconstruct = () => evaluator.TryReconstructContextAsync(db, eventKey, cancellation.Token);
+
+        await reconstruct.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PartialOrUnavailableSource_MissingSampleDoesNotEndEpisode(bool unavailable)
+    {
+        await using var db = TestDbFactory.Create();
+        var (evaluator, source) = Build();
+        var policy = Policy(filter: DepthOver500);
+        var now = DateTime.UtcNow;
+        source.Observations = () => [Obs(600)];
+        var first = (await Eval(evaluator, db, policy, now)).Single();
+        source.Available = !unavailable;
+        source.Observations = () => [];
+        await Eval(evaluator, db, policy, now.AddSeconds(30));
+        source.Available = true;
+        source.Observations = () => [Obs(600)];
+        var second = (await Eval(evaluator, db, policy, now.AddSeconds(60))).Single();
+        second.Context.EventKey.Should().Be(first.Context.EventKey);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TriggerRecoveredAndFailsAgain_StartsNewEpisode(bool anotherTriggerRemainsUnhealthy)
+    {
+        await using var db = TestDbFactory.Create();
+        var registry = new NodePilot.Scheduler.TriggerHealthRegistry();
+        var source = new NodePilot.Scheduler.SystemAlerts.Sources.TriggerUnhealthySource(
+            registry, new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider());
+        var evaluator = new SystemAlertEvaluator(new SystemAlertCatalog([source]));
+        var policy = Policy(filter: SystemAlertConditions.Compare("unhealthySeconds", ">", "60"));
+        policy.SystemSourceId = source.SourceId;
+        var workflowId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        registry.MarkUnhealthy("first", workflowId, "first", "scheduleTrigger", "bad cron", 1, now.AddMinutes(-5));
+        if (anotherTriggerRemainsUnhealthy)
+            registry.MarkUnhealthy("second", workflowId, "second", "scheduleTrigger", "bad cron", 1, now.AddMinutes(-5));
+        var first = (await Eval(evaluator, db, policy, now))
+            .Single(f => f.Context.SourceKey == $"{workflowId:N}:first");
+
+        registry.MarkHealthy("first");
+        await Eval(evaluator, db, policy, now.AddSeconds(30));
+        registry.MarkUnhealthy("first", workflowId, "first", "scheduleTrigger", "bad cron again", 1, now.AddMinutes(-2));
+        var second = (await Eval(evaluator, db, policy, now.AddSeconds(60)))
+            .Single(f => f.Context.SourceKey == $"{workflowId:N}:first");
+
+        second.Context.EventKey.Should().NotBe(first.Context.EventKey,
+            "a recovered trigger must not remain permanently suppressed by its first delivery key");
+    }
+
+    [Theory]
+    [InlineData("{\"windowMinutes\":60}")]
+    [InlineData("{\"windowMinutes\":\"60\"}")]
+    public async Task SourceParameters_ReachTheRealNumericSource(string parameters)
+    {
+        await using var db = TestDbFactory.Create();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "cancel-rate-input", DefinitionJson = "{}" };
+        db.Workflows.Add(workflow);
+        db.WorkflowExecutions.Add(new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Cancelled,
+            StartedAt = DateTime.UtcNow.AddMinutes(-51), CompletedAt = DateTime.UtcNow.AddMinutes(-50),
+        });
+        await db.SaveChangesAsync();
+        var source = new NodePilot.Scheduler.SystemAlerts.Sources.CancelRateSource();
+        var evaluator = new SystemAlertEvaluator(new SystemAlertCatalog([source]));
+        var policy = Policy(filter: SystemAlertConditions.Compare("cancels", "==", "1"));
+        policy.SystemSourceId = source.SourceId;
+        policy.SourceParametersJson = parameters;
+
+        var fires = await Eval(evaluator, db, policy, DateTime.UtcNow);
+
+        fires.Should().ContainSingle("the configured 60-minute window includes this cancellation; the default 10-minute window does not");
+        fires[0].Context.SignalValue.Should().Be(1);
+    }
+
     private sealed class StubSource : ISystemAlertSource
     {
         public string SourceId => SystemAlertEvaluatorTests.SourceId;

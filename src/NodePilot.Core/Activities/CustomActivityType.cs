@@ -12,6 +12,8 @@ namespace NodePilot.Core.Activities;
 public static partial class CustomActivityType
 {
     public const string Prefix = "custom:";
+    public const int MaxKeyLength = 64;
+    public static int MaxTypeLength => Prefix.Length + MaxKeyLength;
 
     /// <summary>The reserved <c>IActivityExecutor.ActivityType</c> sentinel of
     /// <c>CustomActivityExecutor</c>.</summary>

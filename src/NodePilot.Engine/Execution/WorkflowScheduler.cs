@@ -124,17 +124,20 @@ public static class WorkflowScheduler
         IReadOnlyDictionary<string, string>? inputParameters = null)
     {
         var inFlight = new Dictionary<Task<ActivityResult>, InFlightStep>();
-        try
+        await SubWorkflowGateLease.RunSchedulerAsync(async () =>
         {
-            await RunLoopAsync(rootNodes, nodesById, adjacency, reverseAdjacency, incomingEdgesByTarget,
-                activeEdgeByEndpoints, outputVariableToStepId, results, completed, skipped, executeStepAsync,
-                logger, ct, globalVariables, inputParameters, inFlight);
-        }
-        catch
-        {
-            await AbandonInFlightAsync(inFlight);
-            throw;
-        }
+            try
+            {
+                await RunLoopAsync(rootNodes, nodesById, adjacency, reverseAdjacency, incomingEdgesByTarget,
+                    activeEdgeByEndpoints, outputVariableToStepId, results, completed, skipped, executeStepAsync,
+                    logger, ct, globalVariables, inputParameters, inFlight);
+            }
+            catch
+            {
+                await AbandonInFlightAsync(inFlight);
+                throw;
+            }
+        }, ct);
     }
 
     /// <summary>
@@ -192,9 +195,9 @@ public static class WorkflowScheduler
                 var n = queue.Dequeue();
                 if (skipped.Contains(n.Id)) continue;
                 var stepCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                var task = gate is null
+                var task = SubWorkflowGateLease.RunStepAsync(() => gate is null
                     ? executeStepAsync(n, stepCts.Token)
-                    : ExecuteWithGateAsync(gate, n, stepCts.Token, executeStepAsync);
+                    : ExecuteWithGateAsync(gate, n, stepCts.Token, executeStepAsync), stepCts.Token);
                 inFlight[task] = new InFlightStep(n, stepCts);
             }
 

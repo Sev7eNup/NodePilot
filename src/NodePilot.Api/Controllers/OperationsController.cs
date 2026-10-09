@@ -148,7 +148,9 @@ public class OperationsController : ControllerBase
         var runningRows = await execQuery
             .Where(e => e.Status == ExecutionStatus.Running || e.Status == ExecutionStatus.Pending)
             .OrderByDescending(e => e.StartedAt)
-            .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.ParentExecutionId })
+            .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt,
+                ParentExecutionId = execQuery.Where(parent => parent.Id == e.ParentExecutionId)
+                    .Select(parent => (Guid?)parent.Id).FirstOrDefault() })
             .ToListAsync(ct);
 
         var runningCountByWf = runningRows
@@ -235,7 +237,9 @@ public class OperationsController : ControllerBase
             .OrderByDescending(e => e.CompletedAt)
             .ThenByDescending(e => e.Id)
             .Take(RecentCap + 1)
-            .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.ParentExecutionId })
+            .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt,
+                ParentExecutionId = execQuery.Where(parent => parent.Id == e.ParentExecutionId)
+                    .Select(parent => (Guid?)parent.Id).FirstOrDefault() })
             .ToListAsync(ct);
 
         var recentTruncated = recentFetched.Count > RecentCap;

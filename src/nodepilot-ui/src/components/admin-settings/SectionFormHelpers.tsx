@@ -27,41 +27,34 @@ export type FormUi<T> = {
   dialog: React.ReactNode;
 };
 
-export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { loading: true } & Partial<FormUi<T>> {
+/** Owns the edit snapshot and its ETag independently of background query refreshes.
+ * Only an acknowledged save or an explicit "take theirs" replaces that snapshot.
+ * Cards keep their field/secret state; every save and conflict retry follows this one path. */
+export function useSectionEditor<T>(section: string) {
   const queryClient = useQueryClient();
-  const [conflict, setConflict] = useState<SettingsSectionResponse<T> | null>(null);
-  const [errors, setErrors] = useState<string[] | null>(null);
-  // What the Save button actually PUT. "Keep mine" after a 412 has to re-send exactly that
-  // (the PascalCase DTO the card mapped), not the raw camelCase form state.
-  const pendingPayloadRef = useRef<unknown>(null);
-
-  const { data, isLoading } = useQuery({
+  const query = useQuery({
     queryKey: ['admin-settings', section],
     queryFn: () => adminSettings.getSection<T>(section),
   });
+  const [data, setData] = useState(query.data);
+  // Capture initial query data before committing an editable form with fallback values.
+  if (!data && query.data) setData(query.data);
+  const [conflict, setConflict] = useState<SettingsSectionResponse<T> | null>(null);
+  const [errors, setErrors] = useState<string[] | null>(null);
+  const pendingPayloadRef = useRef<unknown>(null);
+  const savingRef = useRef(false);
 
-  const [form, setForm] = useState<T>(fallback);
-  useEffect(() => { if (data) setForm(data.payload); }, [data]);
-
-  const isEnvLocked = (key: string) => {
-    const src = data?.effectiveSource[key];
-    return src === 'env' || src === 'cli';
+  const accept = (fresh: SettingsSectionResponse<T>) => {
+    setData(fresh);
+    queryClient.setQueryData(['admin-settings', section], fresh);
   };
-
   const saveMutation = useMutation({
-    mutationFn: async (payload: unknown) => {
-      setErrors(null);
-      if (!data) throw new Error('No section snapshot loaded yet.');
-      pendingPayloadRef.current = payload;
-      return adminSettings.putSection<T>(section, payload, data.etag);
-    },
+    mutationFn: ({ payload, etag }: { payload: unknown; etag: string }) =>
+      adminSettings.putSection<T>(section, payload, etag),
     onSuccess: (fresh) => {
       pendingPayloadRef.current = null;
-      queryClient.setQueryData(['admin-settings', section], fresh);
+      accept(fresh);
       queryClient.invalidateQueries({ queryKey: ['admin-settings', 'status'] });
-      // These sections drive the visibility of the AI entry points (buttons + AI-Chat nav) —
-      // refresh so a save takes effect without a reload. ('Llm' saves through its own mutation
-      // in IntegrationsSection, listed here so a future move onto this helper keeps the refresh.)
       if (section === 'AiKnowledge' || section === 'Llm') refreshAiCapabilities(queryClient);
     },
     onError: (err: unknown) => {
@@ -75,52 +68,46 @@ export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { l
           const fields = e.fields?.length ? `${e.fields.join(', ')}: ` : '';
           return `${fields}${e.message ?? JSON.stringify(e)}`;
         }));
-        return;
-      }
-      setErrors([err instanceof Error ? err.message : String(err)]);
+      } else setErrors([err instanceof Error ? err.message : String(err)]);
     },
+    onSettled: () => { savingRef.current = false; },
   });
-
-  if (isLoading || !data) {
-    return { loading: true };
-  }
-
-  const dialog = (
-    <EtagConflictDialog
-      open={!!conflict}
-      serverSnapshot={conflict}
-      localDraft={form}
-      onKeepMine={() => {
-        if (!conflict) return;
-        const retryPayload = pendingPayloadRef.current ?? form;
-        queryClient.setQueryData(['admin-settings', section], conflict);
-        setConflict(null);
-        adminSettings.putSection<T>(section, retryPayload, conflict.etag)
-          .then((fresh) => {
-            queryClient.setQueryData(['admin-settings', section], fresh);
-            if (section === 'AiKnowledge' || section === 'Llm') refreshAiCapabilities(queryClient);
-          })
-          .catch((e: unknown) => setErrors([e instanceof Error ? e.message : String(e)]))
-          .finally(() => { pendingPayloadRef.current = null; });
-      }}
-      onTakeTheirs={() => {
-        if (!conflict) return;
-        queryClient.setQueryData(['admin-settings', section], conflict);
-        setConflict(null);
-      }}
-      onCancel={() => setConflict(null)}
-    />
-  );
-
+  const submit = (payload: unknown, etag: string) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    pendingPayloadRef.current = payload;
+    setErrors(null);
+    setConflict(null);
+    saveMutation.mutate({ payload, etag });
+  };
+  const dialog = (draft: unknown) => <EtagConflictDialog
+    open={!!conflict} serverSnapshot={conflict} localDraft={draft}
+    onKeepMine={() => { if (conflict) submit(pendingPayloadRef.current ?? draft, conflict.etag); }}
+    onTakeTheirs={() => {
+      if (!conflict) return;
+      accept(conflict);
+      pendingPayloadRef.current = null;
+      setConflict(null);
+      setErrors(null);
+    }}
+    onCancel={() => { pendingPayloadRef.current = null; setConflict(null); }}
+  />;
   return {
-    loading: false,
-    data,
-    form,
-    set: setForm,
-    isEnvLocked,
-    save: (payload: unknown) => saveMutation.mutate(payload),
-    errors,
-    dialog,
+    data, isLoading: !data, errors, isPending: saveMutation.isPending,
+    save: (payload: unknown) => { if (data) submit(payload, data.etag); }, dialog,
+  };
+}
+
+export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { loading: true } & Partial<FormUi<T>> {
+  const editor = useSectionEditor<T>(section);
+  const { data } = editor;
+  const [form, setForm] = useState<T>(fallback);
+  useEffect(() => { if (data) setForm(data.payload); }, [data]);
+  if (!data) return { loading: true };
+  return {
+    loading: false, data, form, set: setForm,
+    isEnvLocked: (key: string) => data.effectiveSource[key] === 'env' || data.effectiveSource[key] === 'cli',
+    save: editor.save, errors: editor.errors, dialog: editor.dialog(form),
   };
 }
 

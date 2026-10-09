@@ -68,7 +68,9 @@ internal sealed record DirectoryGroupPrincipal(string Authority, string GroupKey
     public static async Task<IReadOnlyCollection<DirectoryGroupPrincipal>> LoadAsync(
         NodePilotDbContext db,
         User user,
-        CancellationToken ct)
+        AuthenticationPolicyOptions policy,
+        CancellationToken ct,
+        DateTime? authorizationAt = null)
     {
         if (user.Provider == AuthProvider.Local) return [];
 
@@ -90,8 +92,13 @@ internal sealed record DirectoryGroupPrincipal(string Authority, string GroupKey
         }
 
         if (allowedAuthorities.Count == 0) return [];
+        var cutoff = (authorizationAt ?? DateTime.UtcNow)
+            .AddMinutes(-Math.Clamp(policy.MaxAuthorizationStalenessMinutes, 1, 15));
+        // AD supplies a complete user snapshot; OIDC/SCIM can refresh individual
+        // groups, so admission freshness cannot extend a folder-only observation.
         var memberships = await db.DirectoryMemberships.AsNoTracking()
-            .Where(membership => membership.UserId == user.Id)
+            .Where(membership => membership.UserId == user.Id
+                && (user.Provider != AuthProvider.Oidc || membership.LastSeenAt > cutoff))
             .Select(membership => new { membership.Authority, membership.GroupKey })
             .ToListAsync(ct);
         return memberships

@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NodePilot.Core.Exceptions;
+using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -170,6 +171,11 @@ public sealed class WorkflowEngineCapacityTests : IDisposable
         var act = async () => await NewEngine().ExecuteAsync(wf, "test", CancellationToken.None);
         await act.Should().ThrowAsync<ExecutionCapacityException>()
             .WithMessage("*Maximum concurrent workflow executions (2) reached*");
+
+        var rejected = await _seedDb.WorkflowExecutions.AsNoTracking()
+            .SingleAsync(e => !_startedExecutionIds.Contains(e.Id));
+        rejected.Status.Should().Be(ExecutionStatus.Failed);
+        rejected.CompletedAt.Should().NotBeNull();
 
         _gate.Release(2);
         await Task.WhenAll(run1, run2);

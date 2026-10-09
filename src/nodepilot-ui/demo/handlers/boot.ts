@@ -10,6 +10,7 @@ import type { AuthMethodsResponse, ObservabilityConfig } from '../../src/types/a
 import { route, type Route } from '../net/router';
 import { json, noContent } from '../net/respond';
 import { DEMO_HOST, DEMO_USER } from '../seed/entities';
+import { previewSchedule } from '../run/schedulePreview';
 
 const authMethods: AuthMethodsResponse = {
   local: true,
@@ -44,6 +45,12 @@ const knowledgeCapabilities = {
 };
 
 export const bootRoutes: Route[] = [
+  route('GET', '/triggers/schedule/next-fires', ({ query }) => {
+    const preview = previewSchedule(query.get('cron') ?? '', Number(query.get('count') ?? 5));
+    return preview.error
+      ? json({ error: preview.error }, 400)
+      : json({ fires: preview.fireTimes.map(fire => fire.toISOString()) });
+  }),
   route('GET', '/healthz/database', () => json({ status: 'ok', sinceUtc: null, reason: null })),
   route('GET', '/healthz/ready', () => json({ status: 'ok' })),
   route('GET', '/healthz/live', () => json({ status: 'ok' })),

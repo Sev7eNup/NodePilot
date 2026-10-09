@@ -388,7 +388,7 @@ def wmi_workflow():
                      "value": "wql"}]),
         Step("v3", "wmi: instance method", "wmiQuery",
              {"mode": "invokeMethod", "className": "Win32_Process",
-              "methodName": "GetOwner", "filter": "Name='explorer.exe'",
+              "methodName": "GetOwner", "filter": "Name='services.exe'",
               "namespace": "root\\cimv2", "captureProperties": ["ReturnValue"]},
              target_machine=LOCAL,
              cases=[{"id": "wmiQuery.mode.invokeMethod-instance",

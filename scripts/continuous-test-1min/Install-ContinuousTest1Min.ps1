@@ -44,13 +44,8 @@ if ($bundle.schema -ne 'nodepilot-workflow-export/v1' -or @($bundle.workflows).C
   throw 'Unerwartetes Workflow-Paket: erwartet werden genau 10 Dauertest-Orchestratoren.'
 }
 
-$existingResponse = Invoke-NodePilotJson -Method GET -Path '/api/workflows' -Headers $headers
-$existing = if ($null -ne $existingResponse.PSObject.Properties['items']) {
-  @($existingResponse.items)
-}
-else {
-  @($existingResponse)
-}
+$existingResponse = Invoke-NodePilotJson -Method GET -Path '/api/workflows/names' -Headers $headers
+$existing = @($existingResponse)
 
 $bundleNames = @($bundle.workflows | ForEach-Object { $_.name })
 $requiredTargets = @($bundle.workflows | ForEach-Object {
@@ -61,6 +56,11 @@ $requiredTargets = @($bundle.workflows | ForEach-Object {
 $missingTargets = @($requiredTargets | Where-Object { $_ -notin $existing.name })
 if ($missingTargets.Count -gt 0) {
   throw "Diese vorausgesetzten Aktivitaets-Testworkflows fehlen: $($missingTargets -join ', '). Importiere zuerst scripts/muster-einzeltests.json und scripts/muster-kombinationen.json."
+}
+foreach ($name in @($bundleNames) + @($requiredTargets)) {
+  if (@($existing | Where-Object { $_.name -eq $name }).Count -gt 1) {
+    throw "Workflow name is ambiguous: $name"
+  }
 }
 
 foreach ($workflow in @($bundle.workflows)) {

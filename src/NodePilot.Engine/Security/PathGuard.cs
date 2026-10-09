@@ -114,7 +114,7 @@ public static class PathGuard
     /// or otherwise malformed arrays are rejected fail-closed. Shared with
     /// <see cref="FileWatcherPathGuard"/> so both guards read their roots the same way.
     /// </summary>
-    internal static string[] ReadConfiguredRoots(
+    public static string[] ReadConfiguredRoots(
         IConfiguration config,
         string sectionPath,
         out bool configured)

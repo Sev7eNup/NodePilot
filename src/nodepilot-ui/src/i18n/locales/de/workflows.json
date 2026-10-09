@@ -1,5 +1,12 @@
 {
   "title": "Workflows",
+  "pagination": {
+    "previous": "Vorherige Seite",
+    "next": "Nächste Seite",
+    "pageOf": "Seite {{page}} von {{totalPages}}",
+    "showing": "{{count}} von {{total}} Workflows",
+    "selectionScope": "Die Auswahl gilt nur für diese Seite."
+  },
   "newWorkflow": "Neuer Workflow",
   "newAiWorkflow": "Neuer KI-Workflow",
   "newAiWorkflowTitle": "Workflow per KI generieren",

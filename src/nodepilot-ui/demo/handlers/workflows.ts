@@ -45,6 +45,22 @@ function listItem(workflow: Workflow) {
   return { ...summary, hasManualTriggerParameters: manualTriggerParameters(workflow).length > 0 };
 }
 
+/** Offline adapter for the same global ordering used by /workflows/paged. */
+function listSortValue(workflow: Workflow, sortBy: string): string | number {
+  switch (sortBy) {
+    case 'name': return workflow.name;
+    case 'activities': return workflow.activityCount ?? 0;
+    case 'triggers': return [...(workflow.triggerTypes ?? [])].sort().join(',');
+    case 'status': return workflow.isEnabled ? 0 : 1;
+    case 'lastRun': return workflow.lastExecution?.startedAt ?? '';
+    case 'successRate': return (workflow.totalCount ?? 0) > 0
+      ? (workflow.successCount ?? 0) / workflow.totalCount! : -1;
+    case 'runtime': return workflow.avgDurationMs ?? -1;
+    case 'created': return workflow.createdAt;
+    default: return workflow.updatedAt;
+  }
+}
+
 function applySave(workflow: Workflow, body: SaveBody | undefined): void {
   if (!body) return;
   if (typeof body.name === 'string' && body.name.trim()) workflow.name = body.name.trim();
@@ -158,6 +174,35 @@ function buildContract(workflow: Workflow): WorkflowContractResponse {
 }
 
 export const workflowRoutes: Route[] = [
+  route('GET', '/workflows/paged', (ctx) => {
+    const requestedPage = Number(ctx.query.get('page') ?? 1);
+    const requestedPageSize = Number(ctx.query.get('pageSize') ?? 50);
+    if (!Number.isSafeInteger(requestedPage) || !Number.isInteger(requestedPageSize))
+      return badRequest('INVALID_PAGE', 'Invalid workflow page or page size.');
+    const page = Math.max(1, requestedPage);
+    const pageSize = Math.min(200, Math.max(1, requestedPageSize));
+    const ids = ctx.query.getAll('ids');
+    if (ids.length > 10) return badRequest('INVALID_IDS', 'At most 10 workflow IDs may be requested.');
+    const folderId = ctx.query.get('folderId');
+    const search = ctx.query.get('search')?.trim().toLowerCase();
+    const sortBy = ctx.query.get('sortBy') ?? 'updated';
+    const direction = ctx.query.get('sortDir') === 'asc' ? 1 : -1;
+    const rows = getWorld().workflows
+      .filter(w => (!folderId || w.folderId === folderId) && (ids.length === 0 || ids.includes(w.id))
+        && (!search || w.name.toLowerCase().includes(search) || w.description?.toLowerCase().includes(search)))
+      .sort((a, b) => {
+        const left = listSortValue(a, sortBy);
+        const right = listSortValue(b, sortBy);
+        const comparison = typeof left === 'number' && typeof right === 'number'
+          ? left - right : String(left).localeCompare(String(right));
+        return comparison * direction || a.id.localeCompare(b.id);
+      });
+    return json({
+      items: rows.slice((page - 1) * pageSize, page * pageSize).map(listItem),
+      page, pageSize, total: rows.length, totalPages: Math.ceil(rows.length / pageSize),
+    });
+  }),
+
   route('GET', '/workflows', (ctx) => {
     const folderId = ctx.query.get('folderId');
     const search = ctx.query.get('search')?.toLowerCase();

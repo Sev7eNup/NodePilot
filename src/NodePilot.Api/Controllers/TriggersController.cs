@@ -25,14 +25,18 @@ public class TriggersController : ControllerBase
         if (string.IsNullOrWhiteSpace(cron))
             return BadRequest(new { error = "Query parameter 'cron' is required." });
 
-        count = Math.Clamp(count, 1, 20);
-
-        CronExpression parsed;
-        try { parsed = new CronExpression(cron); }
+        try { return Ok(new NextFiresResponse(CalculateFires(cron, count, DateTimeOffset.UtcNow, TimeZoneInfo.Local))); }
         catch (FormatException ex) { return BadRequest(new { error = $"Invalid cron expression: {ex.Message}" }); }
+    }
 
+    // The scheduler uses the server's local zone. Keep the clock/zone explicit so DST can be
+    // verified without mutating process-wide timezone state or adding another cron parser.
+    internal static List<DateTime> CalculateFires(string cron, int count, DateTimeOffset after, TimeZoneInfo zone)
+    {
+        count = Math.Clamp(count, 1, 20);
+        var parsed = new CronExpression(cron, zone);
         var fires = new List<DateTime>(count);
-        DateTimeOffset? cursor = DateTimeOffset.UtcNow;
+        DateTimeOffset? cursor = after;
         for (var i = 0; i < count; i++)
         {
             cursor = parsed.GetNextValidTimeAfter(cursor!.Value);
@@ -40,6 +44,6 @@ public class TriggersController : ControllerBase
             fires.Add(cursor.Value.UtcDateTime);
         }
 
-        return Ok(new NextFiresResponse(fires));
+        return fires;
     }
 }

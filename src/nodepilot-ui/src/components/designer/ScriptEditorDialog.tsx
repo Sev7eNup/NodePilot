@@ -44,7 +44,7 @@ interface Props {
   value: string;
   onChange: (value: string) => void;
   onClose: () => void;
-  onRun?: () => Promise<StepTestResult>;
+  onRun?: (currentScript: string) => Promise<StepTestResult>;
   availableVars?: AvailableVar[];
   /** Full `{{step.param.X}}`-style expressions for autocomplete + validation. */
   upstreamRefs?: UpstreamRef[];
@@ -353,7 +353,8 @@ export function ScriptEditorDialog({
     setTestResult(null);
     setResultCollapsed(false);
     try {
-      const res = await onRun();
+      // React has not committed onChange yet; pass the buffer explicitly to the test request.
+      const res = await onRun(code);
       setTestResult(res);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

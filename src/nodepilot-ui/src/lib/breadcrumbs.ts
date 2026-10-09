@@ -1,18 +1,6 @@
-import { metricsSections, navGroups } from './navigation';
+import { metricsSections, navGroups, systemSettingsLabels } from './navigation';
 
 export type BreadcrumbItem = { labelKey: string; to?: string };
-
-const settingsSectionKeys: Record<string, string> = {
-  integrations: 'adminSettings:subTabIntegrations',
-  agents: 'adminSettings:subTabAgents',
-  retention: 'adminSettings:subTabRetention',
-  'system-info': 'adminSettings:subTabSystemInfo',
-  authentication: 'adminSettings:subTabAuthentication',
-  'logging-telemetry': 'adminSettings:subTabLoggingTelemetry',
-  security: 'adminSettings:subTabSecurity',
-  performance: 'adminSettings:subTabPerformance',
-  'db-admin': 'adminSettings:subTabDbAdmin',
-};
 
 function pageDefaultTo(path: string): string {
   if (path === '/settings') return '/settings?tab=personal';
@@ -57,9 +45,10 @@ export function resolveBreadcrumbs(
       return crumbs;
     }
     const requested = params.get('section') ?? 'integrations';
-    const section = settingsSectionKeys[requested] ? requested : 'integrations';
+    const section = Object.hasOwn(systemSettingsLabels, requested)
+      ? requested as keyof typeof systemSettingsLabels : 'integrations';
     crumbs.push({ labelKey: 'adminSettings:tabSystem', to: '/settings?tab=system&section=integrations' });
-    crumbs.push({ labelKey: settingsSectionKeys[section] });
+    crumbs.push({ labelKey: `adminSettings:${systemSettingsLabels[section]}` });
     return crumbs;
   }
 

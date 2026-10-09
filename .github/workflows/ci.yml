@@ -169,6 +169,11 @@ jobs:
           .\deploy\Test-SetupAdapter.ps1
           .\deploy\Test-MachinePath.ps1
           .\deploy\Test-SwitcherConfig.ps1
+          .\deploy\Test-DesktopUpdate.ps1
+          .\deploy\Test-DesktopDatabaseProvisioning.ps1
+          .\deploy\Test-PostgresProvisioning.ps1
+          .\deploy\Test-SitePublish.ps1
+          .\scripts\Test-DevReset.ps1
 
       - name: Deployment security contracts (PowerShell 7)
         shell: pwsh
@@ -177,9 +182,18 @@ jobs:
           .\deploy\Test-SetupAdapter.ps1
           .\deploy\Test-MachinePath.ps1
           .\deploy\Test-SwitcherConfig.ps1
+          .\deploy\Test-DesktopUpdate.ps1
+          .\deploy\Test-DesktopDatabaseProvisioning.ps1
+          .\deploy\Test-PostgresProvisioning.ps1
+          .\deploy\Test-SitePublish.ps1
+          .\scripts\Test-DevReset.ps1
 
       - name: Build
         run: dotnet build --configuration Release --no-restore
+
+      - name: Administration script HTTP contracts
+        shell: pwsh
+        run: python -m unittest discover -s scripts -p test_nodepilot_admin_scripts.py -v
 
       - name: Restore local tools (reportgenerator)
         run: dotnet tool restore

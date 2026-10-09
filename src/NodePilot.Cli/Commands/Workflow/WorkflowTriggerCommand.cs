@@ -103,7 +103,7 @@ public sealed class WorkflowTriggerCommand : AsyncCommand<WorkflowTriggerSetting
         // Anonymous client: the endpoint accepts X-Api-Key only, no JWT. We do not want
         // to leak the operator's bearer to the trigger URL — that would survive in proxy/
         // gateway logs and is unnecessary for this auth path.
-        var api = _factory.CreateAnonymous(session.Server!, settings.AllowInsecureLoopback);
+        var api = _factory.CreateAnonymous(session.Server!, settings.AllowInsecureLoopback, session.Tls);
         try
         {
             var (execution, replayed) = await api.TriggerExternalAsync(

@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Add, Apps, Certificate, Chemistry, CheckmarkFilled, ChevronDown, ChevronUp, CircleDash,
   Close, Edit, ErrorFilled, FlashFilled, Password, Search, SecurityServices, Tag, TrashCan,
   WifiController, WifiOff,
 } from '@carbon/icons-react';
+import { useColumnResize } from '../hooks/useColumnResize';
 import { api } from '../api/client';
 import { ModalShell } from '../components/common/ModalShell';
 import { MobileCardList } from '../components/common/MobileCardList';
@@ -15,6 +16,8 @@ import { useRole } from '../lib/rbac';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
+import { runBulkOperation } from '../lib/bulkOperations';
+import { AuthBoundaryChangedError, captureAuthBoundaryGeneration } from '../security/authBoundary';
 
 type DialogMode =
   | { kind: 'create' }
@@ -61,35 +64,19 @@ export function MachinesPage() {
   const [sortBy, setSortBy] = useState<ColKey | null>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [testState, setTestState] = useState<Record<string, TestState>>({});
+  const [testingAll, setTestingAll] = useState(false);
+  const batchRef = useRef<AbortController | null>(null);
+  useEffect(() => () => batchRef.current?.abort(), []);
 
   // --- Column resizing (same pattern as WorkflowsPage). Tags is excluded because
   // it is the auto-flex column, so it has no inline width and no drag handle.
-  const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS);
+  const { colWidths, startResize } = useColumnResize(DEFAULT_WIDTHS, MIN_WIDTHS);
   // Minimum total table width. Triggers horizontal scrolling on narrow viewports
   // before the flexible Tags column is squeezed below a readable width.
   const tableMinWidth = useMemo(
     () => Object.values(colWidths).reduce((a, b) => a + b, 0) + ACTIONS_WIDTH + TAGS_MIN_WIDTH,
     [colWidths],
   );
-  const resizeRef = useRef<{ col: ResizableColKey; startX: number; startWidth: number } | null>(null);
-
-  const startResize = (col: ResizableColKey, e: React.MouseEvent) => {
-    e.preventDefault();
-    resizeRef.current = { col, startX: e.clientX, startWidth: colWidths[col] };
-    const onMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      const { col, startWidth, startX } = resizeRef.current;
-      const w = Math.max(MIN_WIDTHS[col] ?? 50, startWidth + ev.clientX - startX);
-      setColWidths((prev) => ({ ...prev, [col]: w }));
-    };
-    const onUp = () => {
-      resizeRef.current = null;
-      globalThis.removeEventListener('mousemove', onMove);
-      globalThis.removeEventListener('mouseup', onUp);
-    };
-    globalThis.addEventListener('mousemove', onMove);
-    globalThis.addEventListener('mouseup', onUp);
-  };
 
   const handleSort = (col: ColKey) => {
     if (sortBy === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -192,9 +179,26 @@ export function MachinesPage() {
   const reachableCount = (machines ?? []).filter((m) => m.isReachable).length;
 
   const testAll = async () => {
-    if (!machines || machines.length === 0) return;
-    if (!(await confirmDialog(t('machines:testAllConfirm', { count: machines.length })))) return;
-    machines.forEach((m) => testMutation.mutate(m.id));
+    if (!machines?.length || batchRef.current) return;
+    const batch = new AbortController();
+    batchRef.current = batch;
+    const generation = captureAuthBoundaryGeneration();
+    try {
+      if (!(await confirmDialog(t('machines:testAllConfirm', { count: machines.length }))) || batch.signal.aborted) return;
+      setTestingAll(true);
+      // Each worker advances only after its current connectivity check finishes.
+      await Promise.all(Array.from({ length: Math.min(4, machines.length) }, (_, worker) =>
+        runBulkOperation(machines.filter((_, index) => index % 4 === worker), async (machine) => {
+          await testMutation.mutateAsync(machine.id);
+        }, { getLabel: machine => machine.name, authBoundaryGeneration: generation,
+          shouldAbort: () => batch.signal.aborted })));
+    } catch (error) {
+      if (!(error instanceof AuthBoundaryChangedError)) toast.error((error as Error).message);
+    } finally {
+      batch.abort();
+      if (batchRef.current === batch) batchRef.current = null;
+      setTestingAll(false);
+    }
   };
 
   return (
@@ -211,6 +215,7 @@ export function MachinesPage() {
           {canWrite && totalCount > 0 && (
             <button
               onClick={testAll}
+              disabled={testingAll}
               className="flex items-center gap-2 px-3 py-2 bg-surface-lowest border border-outline-variant text-on-surface rounded-md hover:bg-surface-low transition-colors text-sm"
               title={t('machines:testAllTitle')}
             >
@@ -359,7 +364,7 @@ export function MachinesPage() {
                 {canWrite && (
                   <button
                     onClick={() => testMutation.mutate(m.id)}
-                    disabled={state?.status === 'running'}
+                    disabled={testingAll || state?.status === 'running'}
                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-40"
                     title={t('machines:testConnection')}
                   >
@@ -556,7 +561,7 @@ export function MachinesPage() {
                         {canWrite && (
                           <button
                             onClick={() => testMutation.mutate(m.id)}
-                            disabled={state?.status === 'running'}
+                            disabled={testingAll || state?.status === 'running'}
                             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-40"
                             title={t('machines:testConnection')}
                           >

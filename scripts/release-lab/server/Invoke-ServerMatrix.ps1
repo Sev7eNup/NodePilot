@@ -120,11 +120,12 @@ foreach ($s in $scenarios) {
         $results += $r; continue
     }
     $remoteLoginExisted = $false
+    $remoteSqlCleanupAllowed = $false
     try {
         if ($s.remoteSql) {
             # The remote SQL Server is not restored by a checkpoint: refuse to touch an existing
             # database, and remember whether the computer account's login was already there.
-            $pre = Invoke-Command -VMName $config.remoteSql.vm -Credential $cred -ArgumentList $config.remoteSql.database, $srv.computerAccount -ScriptBlock {
+            $pre = Invoke-Command -VMName $config.remoteSql.vm -Credential $cred -ErrorAction Stop -ArgumentList $config.remoteSql.database, $srv.computerAccount -ScriptBlock {
                 param($db, $login)
                 $c = New-Object System.Data.SqlClient.SqlConnection 'Server=localhost;Integrated Security=true;Encrypt=false'; $c.Open()
                 $cmd = $c.CreateCommand()
@@ -133,8 +134,12 @@ foreach ($s in $scenarios) {
                 $c.Close()
                 [pscustomobject]@{ databaseExists = $dbCount -gt 0; loginExists = $loginCount -gt 0 }
             }
+            if ($null -eq $pre -or $pre.databaseExists -isnot [bool] -or $pre.loginExists -isnot [bool]) {
+                throw 'Remote SQL preflight returned no valid database/login baseline; refusing changes and cleanup.'
+            }
             if ($pre.databaseExists) { throw "Database '$($config.remoteSql.database)' already exists on $($config.remoteSql.fqdn); not touching it." }
             $remoteLoginExisted = $pre.loginExists
+            $remoteSqlCleanupAllowed = $true
         }
         Restore-CleanVm
         $stage = Join-Path $ResultsDir "stage-$($s.id)"
@@ -223,7 +228,7 @@ foreach ($s in $scenarios) {
     }
     catch { $r = [pscustomobject]@{ id = $s.id; verdict = 'HARNESS-ERROR'; error = $_.Exception.Message } }
     finally {
-        if ($s.remoteSql -and $config.PSObject.Properties['remoteSql']) {
+        if ($remoteSqlCleanupAllowed) {
             # Leave the remote SQL Server as it was: drop the scenario's database, and the login only
             # if this scenario created it.
             Invoke-Command -VMName $config.remoteSql.vm -Credential $cred -ArgumentList $config.remoteSql.database, $srv.computerAccount, $remoteLoginExisted -ScriptBlock {

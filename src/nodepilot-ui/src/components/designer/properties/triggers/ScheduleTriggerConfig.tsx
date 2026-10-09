@@ -1,8 +1,8 @@
 import { Time } from '@carbon/icons-react';
-import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Field, type ConfigProps } from '../shared';
-import { previewSchedule, relativeFromNow } from '../../../../lib/cronPreview';
+import { relativeFromNow } from '../../../../lib/cronPreview';
+import { useSchedulePreview } from '../../../../hooks/useSchedulePreview';
 import { formatDate } from '../../../../lib/format';
 
 export function ScheduleTriggerConfig({ config, onUpdate }: Readonly<ConfigProps>) {
@@ -14,11 +14,8 @@ export function ScheduleTriggerConfig({ config, onUpdate }: Readonly<ConfigProps
     { label: t('triggers:scheduleTrigger.presetMonFri8Am'), cron: '0 0 8 ? * MON-FRI' },
   ];
 
-  // Preview of the next 5 fire times, computed client-side with cron-parser so the user gets
-  // immediate feedback without an API round-trip. An invalid expression shows the parser's
-  // error message instead.
   const cron = (config.cronExpression as string) || '';
-  const preview = useMemo(() => previewSchedule(cron, 5), [cron]);
+  const preview = useSchedulePreview(cron);
 
   return (
     <>
@@ -53,7 +50,9 @@ export function ScheduleTriggerConfig({ config, onUpdate }: Readonly<ConfigProps
               {t('triggers:scheduleTrigger.nextFireTimes')}
             </span>
           </div>
-          {preview.error ? (
+          {preview.isLoading ? (
+            <div className="text-[11px] text-on-surface-variant">{t('common:loading')}</div>
+          ) : preview.error ? (
             <div className="text-[11px] font-mono text-error bg-error-container/20 rounded px-2 py-1">
               ⚠ {preview.error}
             </div>

@@ -282,6 +282,43 @@ public class CommandIntegrationNewSurfaceTests
 
     // ---- settings -----------------------------------------------------------
 
+    [Theory]
+    [InlineData("json")]
+    [InlineData("table")]
+    public void SecretsReencrypt_ReportsEveryAdditionalStore(string format)
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/secrets/reencrypt").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(207).WithBodyAsJson(new
+            {
+                credentialsRewritten = 0, credentialsSkipped = 0, credentialSkipDetails = Array.Empty<object>(),
+                globalSecretsRewritten = 0, globalSecretsSkipped = 0, globalSecretSkipDetails = Array.Empty<object>(),
+                workflowVersionsRewritten = 0, workflowVersionsSkipped = 0, workflowVersionSkipDetails = Array.Empty<object>(),
+                notificationRoutesRewritten = 2, notificationRoutesSkipped = 1,
+                notificationRouteSkipDetails = new[] { new { id = Guid.NewGuid(), name = "Route A", reason = "Route unreadable" } },
+                dispatchParametersRewritten = 3, dispatchParametersSkipped = 1,
+                dispatchParameterSkipDetails = new[] { new { id = Guid.NewGuid(), name = "Run A", reason = "Dispatch unreadable" } },
+                runtimeSettingsFilesRewritten = 4, runtimeSettingsFilesSkipped = 1,
+                runtimeSettingsFileSkipDetails = new[] { new { id = Guid.Empty, name = "Runtime A", reason = "Settings unreadable" } },
+                partialSuccess = true,
+            }));
+
+        var result = h.Run("secrets", "reencrypt", "--yes", "-o", format, "--no-color");
+
+        result.ExitCode.Should().Be(ExitCodes.Error);
+        result.Output.Should().Contain("Route A").And.Contain("Route unreadable")
+            .And.Contain("Run A").And.Contain("Dispatch unreadable")
+            .And.Contain("Runtime A").And.Contain("Settings unreadable");
+        if (format == "json")
+            result.Output.Should().Contain("\"notificationRoutesRewritten\":2")
+                .And.Contain("\"dispatchParametersRewritten\":3")
+                .And.Contain("\"runtimeSettingsFilesRewritten\":4");
+        else
+            result.Output.Should().Contain("Notification Routes Rewritten")
+                .And.Contain("Dispatch Parameters Rewritten")
+                .And.Contain("Runtime Settings Files Rewritten");
+    }
+
     [Fact]
     public void SettingsStatus_RendersGrid()
     {

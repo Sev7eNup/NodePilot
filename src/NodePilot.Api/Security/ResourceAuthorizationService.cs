@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
@@ -22,6 +23,8 @@ namespace NodePilot.Api.Security;
 public sealed class ResourceAuthorizationService : IResourceAuthorizationService
 {
     private readonly NodePilotDbContext _db;
+    private readonly AuthenticationPolicyOptions _authenticationPolicy;
+    private readonly DateTime? _authorizationAt;
 
     // Per-request caches. Service is scoped, so these die at end-of-request.
     // Keyed on (userId, folderId): in single-principal-per-request use (the common case)
@@ -33,9 +36,20 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
     private readonly Dictionary<Guid, IReadOnlyCollection<DirectoryGroupPrincipal>> _directoryGroupCache = [];
     private List<SharedWorkflowFolder>? _allFoldersCache;
 
-    public ResourceAuthorizationService(NodePilotDbContext db)
+    public ResourceAuthorizationService(NodePilotDbContext db, IOptions<AuthenticationPolicyOptions>? authenticationPolicy = null)
     {
         _db = db;
+        _authenticationPolicy = authenticationPolicy?.Value ?? new AuthenticationPolicyOptions();
+    }
+
+    // A sweep owns this separate instance: future-deadline decisions must never enter
+    // an HTTP request's authorization cache.
+    internal ResourceAuthorizationService(NodePilotDbContext db,
+        AuthenticationPolicyOptions authenticationPolicy, DateTime authorizationAt)
+    {
+        _db = db;
+        _authenticationPolicy = authenticationPolicy;
+        _authorizationAt = authorizationAt;
     }
 
     public async Task<bool> CanAccessWorkflowAsync(ClaimsPrincipal user, Guid folderId, ResourceOp op, CancellationToken ct = default)
@@ -263,7 +277,7 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
         if (_directoryGroupCache.TryGetValue(userId, out var cached)) return cached;
         var user = await _db.Users.AsNoTracking().SingleOrDefaultAsync(candidate => candidate.Id == userId, ct);
         if (user is null) return [];
-        var groups = await DirectoryGroupPrincipal.LoadAsync(_db, user, ct);
+        var groups = await DirectoryGroupPrincipal.LoadAsync(_db, user, _authenticationPolicy, ct, _authorizationAt);
         _directoryGroupCache[userId] = groups;
         return groups;
     }

@@ -24,6 +24,7 @@ internal abstract class ElapsedExecutionCollector : INotificationCollector
     private readonly string _eventKeyPrefix;
     private readonly string _titlePrefix;
     private readonly string _elapsedVerb;
+    private (DateTime StartedAt, Guid Id)? _scanAfter;
 
     // An execution older than this fires the flavour's event (once per execution).
     // Initialised from the flavour's config key; hot-reload overlaid per pass;
@@ -67,12 +68,20 @@ internal abstract class ElapsedExecutionCollector : INotificationCollector
         var cutoff = now - Threshold;
         // Local copy: the query closure must capture a local, not this collector instance.
         var status = _status;
-        var batch = await db.WorkflowExecutions.AsNoTracking()
-            .Where(e => e.Status == status && e.StartedAt <= cutoff)
-            .OrderBy(e => e.StartedAt)
+        var query = db.WorkflowExecutions.AsNoTracking()
+            .Where(e => e.Status == status && e.StartedAt <= cutoff);
+        if (_scanAfter is { } after)
+            query = query.Where(e => e.StartedAt > after.StartedAt
+                || (e.StartedAt == after.StartedAt && e.Id.CompareTo(after.Id) > 0));
+        var batch = await query
+            .OrderBy(e => e.StartedAt).ThenBy(e => e.Id)
             .Take(ExecutionEventSupport.ScanBatchSize)
             .Select(ExecutionEventSupport.Projection)
             .ToListAsync(ct);
+        // Cycle through the whole eligible set. Already-delivered old rows remain pending/
+        // running and must not permanently occupy the first bounded batch.
+        _scanAfter = batch.Count < ExecutionEventSupport.ScanBatchSize
+            ? null : (batch[^1].StartedAt, batch[^1].Id);
         if (batch.Count == 0) return null;
 
         var contexts = batch.Select(r => BuildContext(r, now)).ToList<NotificationContext>();

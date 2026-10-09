@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
@@ -77,15 +78,15 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
   test('63.1 — clicking Name header sorts asc, second click desc; Updated header re-sorts', async ({ page }) => {
     // Three rows in an unsorted server order, so the default view does not already match the
     // alphabetical order and the click is shown to reorder.
-    await page.route('**/api/workflows', (route) =>
+    await page.route('**/api/workflows/paged**', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
+        body: JSON.stringify(workflowPage(route, [
           workflow({ id: ID_BRAVO, name: 'Bravo', updatedAt: '2026-03-01T00:00:00.000Z' }),
           workflow({ id: ID_ALPHA, name: 'Alpha', updatedAt: '2026-01-01T00:00:00.000Z' }),
           workflow({ id: ID_CHARLIE, name: 'Charlie', updatedAt: '2026-02-01T00:00:00.000Z' }),
-        ]),
+        ])),
       }),
     );
 
@@ -110,10 +111,10 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
 
   // ---------- 63.2 — enable/disable toggle ----------
   test('63.2 — disable toggle fires POST /disable and optimistically flips the badge', async ({ page }) => {
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow({ isEnabled: true })]) }),
-    );
     let disableHit = false;
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow({ isEnabled: !disableHit })])) }),
+    );
     await page.route(`**/api/workflows/${ID_ALPHA}/disable`, (route) => {
       disableHit = true;
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
@@ -135,10 +136,10 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
   });
 
   test('63.2b — enable toggle fires POST /enable on a disabled row', async ({ page }) => {
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow({ isEnabled: false })]) }),
-    );
     let enableHit = false;
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow({ isEnabled: enableHit })])) }),
+    );
     await page.route(`**/api/workflows/${ID_ALPHA}/enable`, (route) => {
       enableHit = true;
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
@@ -158,8 +159,8 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
   test('63.3 — delete: cancel keeps the row, accept fires DELETE and removes it', async ({ page }) => {
     let workflows = [workflow()];
     let deleteHit = false;
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflows) }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, workflows)) }),
     );
     await page.route(`**/api/workflows/${ID_ALPHA}`, (route) => {
       if (route.request().method() === 'DELETE') {
@@ -190,11 +191,11 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
 
   // ---------- status badges + trigger badges ----------
   test('renders status badges (productive / disabled / locked-by-other) and trigger badges', async ({ page }) => {
-    await page.route('**/api/workflows', (route) =>
+    await page.route('**/api/workflows/paged**', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
+        body: JSON.stringify(workflowPage(route, [
           workflow({ id: ID_ALPHA, name: 'Alpha', isEnabled: true, triggerTypes: ['scheduleTrigger'] }),
           workflow({ id: ID_BRAVO, name: 'Bravo', isEnabled: false }),
           workflow({
@@ -205,7 +206,7 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
             checkedOutByUserName: 'colleague',
             checkedOutAt: '2026-06-18T08:00:00.000Z',
           }),
-        ]),
+        ])),
       }),
     );
 
@@ -225,8 +226,8 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
   });
 
   test('duplicate + export-as-JSON row buttons are present for an editable row', async ({ page }) => {
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow()]) }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow()])) }),
     );
     await page.goto('/workflows');
     const row = page.getByRole('row').filter({ hasText: 'Alpha' });
@@ -237,8 +238,8 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
 
   // ---------- Run-from-row (the list-level Play button) ----------
   test('Run Now on a param-less productive workflow fires POST /execute directly (no dialog)', async ({ page }) => {
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow()]) }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow()])) }),
     );
     let executeBody: unknown = undefined;
     await page.route(`**/api/workflows/${ID_ALPHA}/execute`, (route) => {
@@ -267,8 +268,8 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
     });
     // The list carries no definition, only the flag. The parameter form comes from the
     // single-workflow read, which the page fetches when Run Now is clicked.
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow({ definitionJson: undefined, hasManualTriggerParameters: true })]) }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow({ definitionJson: undefined, hasManualTriggerParameters: true })])) }),
     );
     await page.route(`**/api/workflows/${ID_ALPHA}`, (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflow({ definitionJson: defWithParam })) }),

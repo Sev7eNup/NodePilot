@@ -6,6 +6,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useSectionForm, ErrorsAndSave } from './SectionFormHelpers';
 import type { AgentMcpServer, AgentMcpTool, AgentMcpReadGrant, AgentSkill } from '../../types/agents';
 import { randomUuid } from '../../lib/uuid';
+import { assertAuthBoundaryGenerationCurrent, captureAuthBoundaryGeneration } from '../../security/authBoundary';
 
 const defaultLimits = {
   enabled: true, powerMode: false, allowServiceIdentity: false, maxConcurrentRuns: 2,
@@ -212,7 +213,9 @@ function SkillsCard({ admin }: { admin: boolean }) {
     if (action.kind === 'delete') return api.delete(`/agents/skills/${action.skill.id}`);
     if (action.kind === 'toggle') return api.put(`/agents/skills/${action.skill.id}/enabled`, { enabled: !action.skill.enabled });
     if (!file || file.size > 10_000_000) throw new Error(t('package'));
+    const authGeneration = captureAuthBoundaryGeneration();
     const bytes = new Uint8Array(await file.arrayBuffer());
+    assertAuthBoundaryGenerationCurrent(authGeneration);
     let binary = '';
     for (let start = 0; start < bytes.length; start += 32768) binary += String.fromCharCode(...bytes.subarray(start, start + 32768));
     return api.post('/agents/skills', { version, package: btoa(binary) });

@@ -78,3 +78,17 @@ export const metricsSections = [
 
 export type MetricsSectionId = (typeof metricsSections)[number]['id'];
 
+/** Settings section names shared by the tab bar, deep links and breadcrumbs. */
+export const systemSettingsLabels = {
+  integrations: 'subTabIntegrations',
+  'ai-knowledge': 'subTabAiKnowledge',
+  agents: 'subTabAgents',
+  retention: 'subTabRetention',
+  'system-info': 'subTabSystemInfo',
+  authentication: 'subTabAuthentication',
+  'logging-telemetry': 'subTabLoggingTelemetry',
+  security: 'subTabSecurity',
+  performance: 'subTabPerformance',
+  'db-admin': 'subTabDbAdmin',
+} as const;
+

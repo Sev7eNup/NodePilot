@@ -31,8 +31,8 @@ public sealed class DiagnosticsControllerTests : IDisposable
         public string? CurrentDayFile { get; init; }
         public Dictionary<DateOnly, string?> ByDate { get; } = new();
 
-        public string? GetCurrentDayFile() => CurrentDayFile;
-        public string? GetFileForDate(DateOnly date) => ByDate.GetValueOrDefault(date);
+        public IReadOnlyList<string> GetCurrentDayFiles() => CurrentDayFile is { } file ? [file] : [];
+        public IReadOnlyList<string> GetFilesForDate(DateOnly date) => ByDate.GetValueOrDefault(date) is { } file ? [file] : [];
     }
 
     private DiagnosticsController Create(StubResolver resolver)

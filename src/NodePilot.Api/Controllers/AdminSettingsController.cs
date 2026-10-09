@@ -400,8 +400,7 @@ public sealed class AdminSettingsController : ControllerBase
 
     private JsonObject? ReadCurrentSectionObject(SettingsSectionDescriptor descriptor)
     {
-        var root = _writer.ReadOrEmpty();
-        return RuntimeOverridesWriter.NavigateSection(root, descriptor.SectionPath) as JsonObject;
+        return _writer.ReadSection(descriptor.SectionPath);
     }
 
     private IConfigurationRoot SimulateMergedConfig(string sectionPath, JsonObject newSection)
@@ -416,6 +415,8 @@ public sealed class AdminSettingsController : ControllerBase
     {
         foreach (var kv in _configRoot.AsEnumerable())
         {
+            if (excludedSectionPath.Equals("Security", StringComparison.OrdinalIgnoreCase)
+                && kv.Key.Equals("AllowedHosts", StringComparison.OrdinalIgnoreCase)) continue;
             if (kv.Key.StartsWith(excludedSectionPath + ":", StringComparison.OrdinalIgnoreCase)) continue;
             if (string.Equals(kv.Key, excludedSectionPath, StringComparison.OrdinalIgnoreCase)) continue;
             yield return kv;
@@ -425,7 +426,7 @@ public sealed class AdminSettingsController : ControllerBase
     private static IEnumerable<KeyValuePair<string, string?>> FlattenSection(string sectionPath, JsonObject section)
     {
         foreach (var (k, v) in FlattenNode(section))
-            yield return new KeyValuePair<string, string?>($"{sectionPath}:{k}", v);
+            yield return new KeyValuePair<string, string?>(PersistedConfigKey(sectionPath, k), v);
     }
 
     private static IEnumerable<KeyValuePair<string, string?>> FlattenNode(JsonNode? node, string prefix = "")
@@ -459,7 +460,7 @@ public sealed class AdminSettingsController : ControllerBase
         var toRemove = new List<string>();
         foreach (var kvp in section)
         {
-            var fullPath = $"{sectionPath}:{kvp.Key}";
+            var fullPath = PersistedConfigKey(sectionPath, kvp.Key);
             if (kvp.Value is JsonObject child)
             {
                 StripEnvLockedKeys(child, fullPath);
@@ -474,6 +475,12 @@ public sealed class AdminSettingsController : ControllerBase
         }
         foreach (var k in toRemove) section.Remove(k);
     }
+
+    private static string PersistedConfigKey(string sectionPath, string key)
+        => sectionPath.Equals("Security", StringComparison.OrdinalIgnoreCase)
+           && key.Equals("AllowedHosts", StringComparison.OrdinalIgnoreCase)
+            ? "AllowedHosts"
+            : $"{sectionPath}:{key}";
 
     private static string ComputeAuditDiff(
         SettingsSectionDescriptor descriptor,

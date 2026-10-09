@@ -65,6 +65,28 @@ public sealed class ScheduledTaskActivityTests : IDisposable
 
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement;
 
+    [Theory]
+    [InlineData("Task $( $global:npTaskInjected = 1 )")]
+    [InlineData("Task \"quoted\"")]
+    public async Task FallbackDiagnostic_TreatsTaskNameAsData(string taskName)
+    {
+        await CreateActivity().ExecuteAsync(Ctx(),
+            JsonSerializer.SerializeToElement(new { taskName, action = "get" }), CancellationToken.None);
+        var ast = System.Management.Automation.Language.Parser.ParseInput(_capturedScript!, out _, out var errors);
+        errors.Should().BeEmpty("a task name must not change the generated PowerShell syntax");
+        var diagnostic = ast.FindAll(node => node is System.Management.Automation.Language.ThrowStatementAst
+            && node.Extent.Text.Contains("local fallback also failed", StringComparison.Ordinal), true).Single();
+        // Execute only the real generated error expression, with a harmless failure. The COM
+        // fallback and all ScheduledTask commands are deliberately never invoked here.
+        using var shell = System.Management.Automation.PowerShell.Create();
+        shell.AddScript("$global:npTaskInjected = 0; try { try { throw 'fake provider failure' } catch { "
+            + diagnostic.Extent.Text + " } } catch { $_.Exception.Message }; $global:npTaskInjected");
+        var output = shell.Invoke();
+        shell.HadErrors.Should().BeFalse();
+        output.Last().ToString().Should().Be("0");
+        output.First().ToString().Should().Contain(taskName).And.Contain("fake provider failure");
+    }
+
     [Fact]
     public async Task UnknownAction_Throws()
     {

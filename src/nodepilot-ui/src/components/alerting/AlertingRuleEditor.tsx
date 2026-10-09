@@ -97,8 +97,8 @@ export function AlertingRuleEditor({
   const { data: catalog } = useQuery({ queryKey: ['alerting-catalog'], queryFn: () => alertingApi.catalog() });
   const { data: folders } = useQuery({ queryKey: ['shared-folders'], queryFn: () => sharedFoldersApi.list() });
   const { data: workflows } = useQuery({
-    queryKey: ['workflows-min'],
-    queryFn: () => api.get<Array<{ id: string; name: string }>>('/workflows'),
+    queryKey: ['workflows', 'names'],
+    queryFn: () => api.get<Array<{ id: string; name: string }>>('/workflows/names'),
   });
 
   const eventFieldOptions = useMemo(

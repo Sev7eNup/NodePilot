@@ -14,6 +14,19 @@ namespace NodePilot.Api.Tests.Hosting;
 public sealed class ApiProblemDetailsPipelineTests
 {
     [Fact]
+    public async Task ProgramPipeline_ScimAuthorizationErrorKeepsScimWireContract()
+    {
+        using var factory = new ApiPipelineFactory();
+        using var client = factory.CreateClient();
+        using var response = await client.GetAsync("/api/scim/v2/Users");
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/scim+json");
+        var error = await response.Content.ReadFromJsonAsync<JsonElement>();
+        error.GetProperty("schemas")[0].GetString().Should().Be("urn:ietf:params:scim:api:messages:2.0:Error");
+        error.GetProperty("status").GetString().Should().Be("401");
+    }
+
+    [Fact]
     public async Task ProgramPipeline_NormalizesLegacyControllerErrorPayloadsToProblemDetails()
     {
         using var factory = new ApiPipelineFactory();

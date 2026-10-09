@@ -29,14 +29,14 @@ export function TypedPhraseConfirmDialog({
     <div
       className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50"
       onClick={onCancel}
-      onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+      onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.stopPropagation(); onCancel(); } }}
       role="presentation"
       tabIndex={-1}
     >
       <div
         className="bg-surface-lowest rounded-lg shadow-xl p-6 w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && !e.defaultPrevented) onCancel(); }}
         role="presentation"
       >
         <div className="flex items-center justify-between mb-3">

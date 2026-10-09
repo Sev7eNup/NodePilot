@@ -180,7 +180,7 @@ public sealed class BackgroundServiceAndDiagnosticsTests
         var root = Directory.CreateTempSubdirectory("np-support-log").FullName;
         try
         {
-            Resolver(root).GetFileForDate(new DateOnly(2026, 1, 1)).Should().BeNull();
+            Resolver(root).GetFilesForDate(new DateOnly(2026, 1, 1)).Should().BeEmpty();
         }
         finally
         {
@@ -202,7 +202,7 @@ public sealed class BackgroundServiceAndDiagnosticsTests
             Directory.CreateDirectory(resolver.Directory);
             File.WriteAllText(expected, "log line");
 
-            resolver.GetFileForDate(date).Should().Be(expected);
+            resolver.GetFilesForDate(date).Should().Equal(expected);
         }
         finally
         {
@@ -216,7 +216,7 @@ public sealed class BackgroundServiceAndDiagnosticsTests
         var root = Directory.CreateTempSubdirectory("np-support-log").FullName;
         try
         {
-            Resolver(root).GetCurrentDayFile().Should().BeNull();
+            Resolver(root).GetCurrentDayFiles().Should().BeEmpty();
         }
         finally
         {

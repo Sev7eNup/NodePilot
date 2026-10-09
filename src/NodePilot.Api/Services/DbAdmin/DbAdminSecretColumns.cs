@@ -6,21 +6,21 @@ namespace NodePilot.Api.Services.DbAdmin;
 /// row browser (<c>IsHidden</c>/<c>IsMasked</c>), the raw-SQL endpoint and the text2sql knowledge
 /// reader all enforce the same set instead of each carrying its own copy.
 ///
-/// <para>Two complementary layers, because neither alone is sufficient:</para>
+/// <para>Complementary layers, because name-based masking alone is insufficient:</para>
 /// <list type="number">
 ///   <item>Pre-execution rejection (<see cref="ReferencesProtectedColumn"/>) — result-column
 ///   masking cannot recover lineage through an alias or expression
 ///   (<c>SELECT PasswordHash AS p</c>, <c>SELECT substr(PasswordHash,1,4)</c>), so any statement
 ///   that so much as names a hidden identifier is refused before it reaches the database.</item>
-///   <item>Result masking (<see cref="BuildColumnMask"/>) — a wildcard select
-///   (<c>SELECT * FROM Users</c>) names no secret identifier but still returns one, so every
-///   result column whose name matches a protected column is replaced with <c>"***"</c>.</item>
+///   <item>Result masking (<see cref="BuildColumnMask"/>) — defense in depth for every
+///   result column whose name matches a protected column.</item>
 ///   <item>Row-projection rejection (<see cref="ReferencesProtectedRowProjection"/>) —
 ///   both layers above are name-based, and a row serializer defeats both at once:
 ///   <c>SELECT to_json(u) FROM "Users" u</c> never mentions <c>PasswordHash</c> (so layer 1 stays
 ///   quiet) and returns it inside a column called <c>to_json</c> (so layer 2 finds nothing to
-///   mask). Statements that combine a protected table with a whole-row serializer are therefore
-///   refused outright.</item>
+///   mask). Positional aliases on a wildcard projection lose the names too. Statements that
+///   combine a protected table with an implicit column expansion or whole-row serializer are
+///   refused outright; callers must name unprotected columns explicitly.</item>
 /// </list>
 ///
 /// <para>Registered as a singleton alongside <see cref="DbAdminMetadataService"/> — the EF model,
@@ -108,7 +108,7 @@ public sealed class DbAdminSecretColumns
                && DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, GlobalVariableValueIdentifier));
 
     /// <summary>
-    /// True when <paramref name="sql"/> serializes a whole row of a table that carries a masked
+    /// True when <paramref name="sql"/> expands or serializes a whole row of a table that carries a masked
     /// column — <c>SELECT to_json(u) FROM "Users" u</c>, <c>SELECT u::text FROM "Users" u</c>,
     /// <c>SELECT * FROM Users FOR JSON AUTO</c>. Callers must refuse to execute such a statement:
     /// the projection carries the secret past both name-based layers.

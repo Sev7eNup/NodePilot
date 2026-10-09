@@ -68,14 +68,15 @@ public sealed class SystemAlertEvaluator
 
             if (!await source.IsAvailableAsync(db, ct)) continue; // unavailable -> no alert, no recovery
 
-            var query = BuildQuery(group.Key.ParamsKey);
+            var query = SystemAlertParameters.ToQuery(group.Key.ParamsKey);
             IReadOnlyList<SystemAlertObservation> observations;
             try { observations = await source.ObserveAsync(db, query, ct); }
             catch (OperationCanceledException) { throw; }
             catch { continue; } // a flaky source sample must not sink the whole pass
 
             foreach (var policy in group)
-                fires.AddRange(await EvaluatePolicyAsync(db, policy, source.SourceId, observations, now, ct));
+                fires.AddRange(await EvaluatePolicyAsync(db, policy, source.SourceId, observations,
+                    source.MissingInstancesAreHealthy, now, ct));
         }
 
         return fires;
@@ -83,7 +84,7 @@ public sealed class SystemAlertEvaluator
 
     private async Task<IReadOnlyList<SystemAlertFire>> EvaluatePolicyAsync(
         NodePilotDbContext db, NotificationRule policy, string sourceId,
-        IReadOnlyList<SystemAlertObservation> observations, DateTime now, CancellationToken ct)
+        IReadOnlyList<SystemAlertObservation> observations, bool missingInstancesAreHealthy, DateTime now, CancellationToken ct)
     {
         var fires = new List<SystemAlertFire>();
 
@@ -91,6 +92,17 @@ public sealed class SystemAlertEvaluator
             .Where(s => s.NotificationRuleId == policy.Id && s.SourceId == sourceId)
             .ToListAsync(ct);
         var byInstance = states.ToDictionary(s => s.InstanceKey, StringComparer.Ordinal);
+
+        if (missingInstancesAreHealthy)
+        {
+            var observed = observations.Select(o => o.InstanceKey).ToHashSet(StringComparer.Ordinal);
+            foreach (var state in states.Where(s => !observed.Contains(s.InstanceKey)))
+            {
+                state.IsMatching = false;
+                state.MatchStartedAt = null;
+                state.EpisodeStartedAt = null;
+            }
+        }
 
         foreach (var obs in observations)
         {
@@ -182,21 +194,25 @@ public sealed class SystemAlertEvaluator
         if (!TryParseEventKey(eventKey, out var sourceId, out var instanceKey, out var episodeStart))
             return null;
 
+        var policyId = ParsePolicyId(eventKey);
+        var policy = await db.NotificationRules.AsNoTracking().SingleOrDefaultAsync(p =>
+            p.Id == policyId && p.IsEnabled && p.Kind == NotificationRuleKind.System
+            && p.SystemSourceId == sourceId, ct);
+        if (policy is null) return null;
+
         var source = _catalog.Find(sourceId);
         if (source is null || !await source.IsAvailableAsync(db, ct)) return null;
 
         IReadOnlyList<SystemAlertObservation> observations;
-        try { observations = await source.ObserveAsync(db, SystemAlertQuery.Empty, ct); }
+        try { observations = await source.ObserveAsync(db, SystemAlertParameters.ToQuery(policy.SourceParametersJson), ct); }
+        catch (OperationCanceledException) { throw; }
         catch { return null; }
 
         var obs = observations.FirstOrDefault(o => string.Equals(o.InstanceKey, instanceKey, StringComparison.Ordinal));
         if (obs is null) return null;
 
-        // The owning policy id is encoded in the key but the observation carries no severity
-        // override — a
-        // reconstructed send uses the observation's suggested severity, which is acceptable for
-        // recovery.
-        var reconstructed = BuildContext(policyId: ParsePolicyId(eventKey), obs, FieldMap(obs), episodeStart, DateTime.UtcNow);
+        // Retry with the active owning policy's query and severity override, matching first delivery.
+        var reconstructed = BuildContext(policy, obs, FieldMap(obs), episodeStart, DateTime.UtcNow);
         return reconstructed with { EventKey = eventKey };
     }
 
@@ -314,17 +330,6 @@ public sealed class SystemAlertEvaluator
             return JsonSerializer.Serialize(sorted);
         }
         catch (JsonException) { return json; }
-    }
-
-    private static SystemAlertQuery BuildQuery(string paramsKey)
-    {
-        if (string.IsNullOrWhiteSpace(paramsKey)) return SystemAlertQuery.Empty;
-        try
-        {
-            var values = JsonSerializer.Deserialize<Dictionary<string, object?>>(paramsKey);
-            return values is null ? SystemAlertQuery.Empty : new SystemAlertQuery(values);
-        }
-        catch (JsonException) { return SystemAlertQuery.Empty; }
     }
 
     private static bool TryParseEventKey(string eventKey, out string sourceId, out string instanceKey, out DateTime episodeStart)

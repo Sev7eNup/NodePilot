@@ -233,14 +233,25 @@ export function useWorkflowPersistence({
 
   const publish = useCallback(() => {
     if (publishRef.current) return;
+    const publishingWorkflowId = draftRef.current.workflowId;
     publishRef.current = true;
     // A late async producer must never apply across this lifecycle boundary.
     draftGenerationRef.current += 1;
+    const publishingGeneration = draftGenerationRef.current;
     setIsPublishQueued(true);
     void (async () => {
       try {
         // Let the pending save finish first. The atomic publish then snapshots the latest draft.
         if (saveLoopRef.current) await saveLoopRef.current;
+        // Navigation can continue after the user confirms discarding the old draft. Never
+        // turn its queued Publish into a request for the newly opened workflow (or a later
+        // visit to the same workflow). Unmount also invalidates the generation.
+        if (draftRef.current.workflowId !== publishingWorkflowId
+            || draftGenerationRef.current !== publishingGeneration) {
+          publishRef.current = false;
+          setIsPublishQueued(false);
+          return;
+        }
         const snapshot = captureSnapshot();
         if (!snapshot) {
           publishRef.current = false;

@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { resolveWorkflowRef } from '../../lib/resolveWorkflowRef';
 import { clearLocalAuthBoundary } from '../../security/authBoundary';
+import { ApiError } from '../../api/client';
 
 const server = setupServer();
 
@@ -68,6 +69,15 @@ describe('resolveWorkflowRef', () => {
       http.get('/api/workflows/by-name/:name', () => new HttpResponse(null, { status: 500 })),
     );
     await expect(resolveWorkflowRef('boom')).rejects.toThrow();
+  });
+
+  it('preserves the shared API error contract for unavailable workflow lookups', async () => {
+    server.use(http.get('/api/workflows/by-name/:name', () => HttpResponse.json({
+      code: 'DATABASE_UNAVAILABLE', detail: 'Database temporarily unavailable',
+    }, { status: 503, headers: { 'Retry-After': '7' } })));
+    const error = await resolveWorkflowRef('Daily-Report').catch(value => value);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 503, code: 'DATABASE_UNAVAILABLE', retryAfterSeconds: 7 });
   });
 
   it('returns null for empty input without hitting the network', async () => {

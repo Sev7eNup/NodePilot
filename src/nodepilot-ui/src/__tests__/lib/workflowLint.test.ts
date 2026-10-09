@@ -936,10 +936,10 @@ describe('lintWorkflow — localized messages', () => {
     }
   });
 
-  it('dupOutputVariable_keepsTheTemplateReferenceLiteral', () => {
+  it.each(['disk', 'DISK'])('dupOutputVariable_keepsTheTemplateReferenceLiteral (%s)', (firstAlias) => {
     const nodes: Node[] = [
       node('trig', 0, 0, { activityType: 'manualTrigger' }),
-      { ...node('a', 300, 0, { activityType: 'log', config: { message: 'x' } }), data: { label: 'A', activityType: 'log', outputVariable: 'disk', config: { message: 'x' } } },
+      { ...node('a', 300, 0, { activityType: 'log', config: { message: 'x' } }), data: { label: 'A', activityType: 'log', outputVariable: firstAlias, config: { message: 'x' } } },
       { ...node('b', 600, 0, { activityType: 'log', config: { message: 'x' } }), data: { label: 'B', activityType: 'log', outputVariable: 'disk', config: { message: 'x' } } },
     ];
     const edges: Edge[] = [edge('e1', 'trig', 'a'), edge('e2', 'a', 'b')];

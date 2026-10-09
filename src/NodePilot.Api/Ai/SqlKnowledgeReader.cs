@@ -98,8 +98,8 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
             return new SqlQueryKnowledgeResult(
                 Array.Empty<string>(), Array.Empty<IReadOnlyList<string?>>(), false,
                 sw.ElapsedMilliseconds,
-                "Query serializes a whole row of a table that holds secret columns "
-                + "(to_json/row_to_json/::text/FOR JSON). List the columns you need explicitly.");
+                "Query expands or serializes a whole row of a table that holds secret columns "
+                + "(SELECT */TABLE/to_json/row_to_json/::text/FOR JSON). List the columns you need explicitly.");
         }
 
         DbAdminQueryResult result;

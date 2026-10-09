@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
@@ -39,6 +40,53 @@ public sealed class ForEachActivityExecutionTests : IDisposable
     public void Dispose() => _db.Dispose();
 
     // ---------------------------------------------------------------- happy path
+
+    [Fact]
+    public async Task ExecuteAsync_ChildDisabledAfterFirstItem_StopsLaterItems()
+    {
+        var engine = new FakeEngine
+        {
+            OnStart = () =>
+            {
+                _child.IsEnabled = false;
+                _db.SaveChanges();
+            },
+        };
+
+        var result = await Run(engine, "one\ntwo\nthree");
+
+        result.Success.Should().BeFalse();
+        result.OutputParameters["firstError"].Should().Contain("disabled");
+        engine.Calls.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_EveryChild_PreservesParentPrincipal(bool usePublisher)
+    {
+        var principal = Guid.NewGuid();
+        var parent = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Parent", DefinitionJson = "{}",
+            PublishedByUserId = usePublisher ? principal : Guid.NewGuid(),
+        };
+        var execution = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = parent.Id, Status = ExecutionStatus.Running,
+            StartedByUserId = usePublisher ? null : principal,
+        };
+        _child.PublishedByUserId = Guid.NewGuid();
+        _db.Workflows.Add(parent);
+        _db.WorkflowExecutions.Add(execution);
+        await _db.SaveChangesAsync();
+        var engine = new FakeEngine();
+
+        var result = await Run(engine, "one\ntwo", executionId: execution.Id);
+
+        result.Success.Should().BeTrue();
+        engine.Calls.Should().HaveCount(2).And.OnlyContain(call => call.StartedByUserId == principal);
+    }
 
     [Fact]
     public async Task ExecuteAsync_EveryItemSucceeds_ReportsAggregateCounts()
@@ -308,12 +356,35 @@ public sealed class ForEachActivityExecutionTests : IDisposable
 
     // ---------------------------------------------------------------- helpers
 
+    [Fact]
+    public async Task ExecuteAsync_CancelledBeforeGlobalAdmission_ReportsSkippedWithoutLeakingSlot()
+    {
+        using var gate = new InMemorySubWorkflowGate(1);
+        await gate.WaitAsync(TestContext.Current.CancellationToken);
+        using var cancellation = new CancellationTokenSource();
+        var engine = new FakeEngine();
+        var run = Run(engine, "one\ntwo\nthree", subWorkflowGate: gate, cancellation: cancellation.Token);
+        run.IsCompleted.Should().BeFalse();
+        await cancellation.CancelAsync();
+
+        var result = await run;
+
+        result.OutputParameters["failed"].Should().Be("0");
+        result.OutputParameters["skipped"].Should().Be("3");
+        engine.Calls.Should().BeEmpty();
+        gate.Available.Should().Be(0);
+        gate.Release();
+        gate.Available.Should().Be(1);
+    }
+
     private async Task<ActivityResult> Run(
         FakeEngine engine,
         string items,
         Dictionary<string, object?>? extraConfig = null,
         IWorkflowConcurrencyGate? concurrency = null,
-        Guid? executionId = null)
+        Guid? executionId = null,
+        ISubWorkflowGate? subWorkflowGate = null,
+        CancellationToken? cancellation = null)
     {
         var config = new Dictionary<string, object?>
         {
@@ -325,16 +396,17 @@ public sealed class ForEachActivityExecutionTests : IDisposable
 
         var services = new ServiceCollection();
         services.AddSingleton<IWorkflowEngine>(engine);
+        services.AddDbContext<NodePilotDbContext>(options => options.UseSqlite(_db.Database.GetDbConnection()));
         var activity = new ForEachActivity(
             services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
             _db,
-            new InMemorySubWorkflowGate(),
+            subWorkflowGate ?? new InMemorySubWorkflowGate(),
             concurrency ?? new InMemoryWorkflowConcurrencyGate());
 
         return await activity.ExecuteAsync(
             new StepExecutionContext { WorkflowExecutionId = executionId ?? Guid.NewGuid(), StepId = "fe1" },
             JsonDocument.Parse(JsonSerializer.Serialize(config)).RootElement,
-            TestContext.Current.CancellationToken);
+            cancellation ?? TestContext.Current.CancellationToken);
     }
 
     private sealed class FakeEngine : IWorkflowEngine
@@ -342,13 +414,14 @@ public sealed class ForEachActivityExecutionTests : IDisposable
         private int _running;
         private readonly Lock _sync = new();
 
-        public List<(Workflow Workflow, Dictionary<string, string>? Parameters, Guid? ParentExecutionId, int CallDepth)> Calls { get; } = [];
+        public List<(Workflow Workflow, Dictionary<string, string>? Parameters, Guid? ParentExecutionId, int CallDepth, Guid? StartedByUserId)> Calls { get; } = [];
 
         /// <summary>Index from which every child execution reports Failed. Null = all
         /// succeed.</summary>
         public int? FailFrom { get; init; }
 
         public Exception? Throw { get; init; }
+        public Action? OnStart { get; init; }
 
         public TimeSpan Delay { get; init; } = TimeSpan.Zero;
 
@@ -369,12 +442,13 @@ public sealed class ForEachActivityExecutionTests : IDisposable
             lock (_sync)
             {
                 index = Calls.Count;
-                Calls.Add((workflow, inputParameters, parentExecutionId, callDepth));
+                Calls.Add((workflow, inputParameters, parentExecutionId, callDepth, startedByUserId));
                 MaxObservedConcurrency = Math.Max(MaxObservedConcurrency, ++_running);
             }
 
             try
             {
+                OnStart?.Invoke();
                 if (Throw is not null) throw Throw;
                 if (Delay > TimeSpan.Zero) await Task.Delay(Delay, ct);
 

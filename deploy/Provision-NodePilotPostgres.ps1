@@ -96,6 +96,7 @@ function Invoke-Psql {
     )
 
     $arguments = @(
+        '-X'
         '-w'
         '-h', $HostName
         '-p', "$Port"
@@ -144,8 +145,9 @@ if ($roleExists.Output -ne '1') {
     $create = Invoke-Psql -ConnectAs $SuperUser -Secret $superSecret -Database 'postgres' `
         -Sql "CREATE ROLE $quotedUser WITH LOGIN PASSWORD '$($roleSecret.Replace("'", "''"))'"
     if (-not $create.Succeeded) {
+        # PostgreSQL can echo this credential-bearing statement in either output stream.
         return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
-            "CREATE ROLE $User failed: $($create.Error)")
+            "CREATE ROLE $User failed. PostgreSQL output was withheld because the statement contains credentials.")
     }
     $created.Add('role')
 }

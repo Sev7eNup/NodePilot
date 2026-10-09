@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using NodePilot.Core.Activities;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.TestCommons;
@@ -22,6 +23,23 @@ public sealed class NodePilotDbContextTests : IDisposable
     }
 
     private static NodePilotDbContext CreateContext() => TestDbFactory.Create();
+
+    [Theory]
+    [InlineData(typeof(StepExecution), nameof(StepExecution.StepType))]
+    [InlineData(typeof(SupportEvent), nameof(SupportEvent.ActivityType))]
+    public void ExecutionActivityTypeColumns_AccommodateLongestAcceptedCustomKey(Type entityType, string propertyName)
+    {
+        var key = new string('a', 64);
+        CustomActivityValidation.Validate(key, "Custom", "extension", "auto", false, [], [], true)
+            .Should().BeNull();
+        CustomActivityType.IsValidKey(key + "a").Should().BeFalse();
+        var activityType = CustomActivityType.ForKey(key);
+        CustomActivityType.IsValidCustomType(activityType).Should().BeTrue();
+
+        var property = _context.Model.FindEntityType(entityType)!.FindProperty(propertyName)!;
+        property.GetMaxLength().Should().BeGreaterThanOrEqualTo(activityType.Length,
+            "valid custom activities must persist both the durable step and its support events on length-enforcing providers");
+    }
 
     [Fact]
     public void CanCreateDatabase_InMemory()

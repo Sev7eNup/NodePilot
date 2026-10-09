@@ -13,6 +13,21 @@ namespace NodePilot.Engine.Tests.Notifications;
 
 public class NotificationRendererTests
 {
+    [Fact]
+    public async Task WebhookSink_ProxyRequiresExplicitDestinationBeforeSend()
+    {
+        var factory = new Mock<IHttpClientFactory>();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["RestApi:Proxy:Enabled"] = "true",
+            ["RestApi:Proxy:Address"] = "http://proxy.example:8080",
+        }).Build();
+        var sink = new WebhookNotificationSink(new RestApiHttpClientProvider(factory.Object, config), config);
+        var result = await sink.SendAsync(Sample(), "https://192.0.2.10/hook", null, TestContext.Current.CancellationToken);
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("not explicitly allowed");
+        factory.Verify(f => f.CreateClient(It.IsAny<string>()), Times.Never);
+    }
     private static NotificationContext Sample(string? title = null) => new(
         EventType: NotificationEventType.ExecutionFailed,
         Severity: NotificationSeverity.Warning,

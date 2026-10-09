@@ -27,6 +27,9 @@ vi.mock('../../api/client', () => ({
 import { api } from '../../api/client';
 
 import { useWorkflowPersistence } from '../../hooks/useWorkflowPersistence';
+import { useCanvasConnect } from '../../hooks/useCanvasConnect';
+import { useWorkflowHistory } from '../../hooks/useWorkflowHistory';
+import type { Edge, Node } from '@xyflow/react';
 
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -58,6 +61,38 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     routerMock.blocker = { state: 'unblocked', proceed: vi.fn(), reset: vi.fn() };
     vi.mocked(api.put).mockReset();
     vi.mocked(api.post).mockReset();
+  });
+
+  it.each(['quick-connect', 'edge-insert'])('autosaves a clean draft after %s adds a node', async (operation) => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => {
+        const [nodes, setNodes] = React.useState<Node[]>([editableNode('Source')]);
+        const [edges, setEdges] = React.useState<Edge[]>([{ id: 'edge-1', source: 'step-1', target: 'step-2' }]);
+        const persistence = useWorkflowPersistence({ workflowId: 'wf-1', workflow: undefined, nodes, edges });
+        const { commitHistory } = useWorkflowHistory('wf-1', { nodes, edges, setNodes, setEdges }, persistence.markDirty);
+        const connect = useCanvasConnect({ edges, setNodes, setEdges, setSelected: () => {}, commitHistory,
+          markDirty: persistence.markDirty,
+          canvasRef: { current: null }, screenToFlowPosition: (position) => position });
+        return { persistence, connect };
+      }, { wrapper: makeWrapper() });
+      act(() => { result.current.persistence.syncFromServer('Saved workflow'); });
+      act(() => {
+        if (operation === 'quick-connect') result.current.connect.setQuickConnect({
+          fromNodeId: 'step-1', fromHandleId: null, screenX: 0, screenY: 0, flowPosition: { x: 20, y: 20 },
+        });
+        else result.current.connect.requestInsert('edge-1', 20, 20);
+      });
+      act(() => {
+        if (operation === 'quick-connect') result.current.connect.handleQuickConnectPick('log', 'New node');
+        else result.current.connect.insertOnEdge('log', 'New node');
+      });
+      expect(result.current.persistence.isDirty).toBe(true);
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(api.put).toHaveBeenCalledWith('/workflows/wf-1', expect.objectContaining({
+        definitionJson: expect.stringContaining('New node'),
+      }));
+    } finally { vi.useRealTimers(); }
   });
 
   it('saves an immutable snapshot, then follows up when the canvas changed in flight', async () => {
@@ -179,6 +214,44 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     });
 
     await act(async () => publish.resolve({}));
+  });
+
+  it.each([false, true])('drops queued Publish after navigation (return to original: %s)', async (returnToOriginal) => {
+    const saving = deferred<unknown>();
+    vi.mocked(api.put).mockImplementationOnce(() => saving.promise);
+    vi.mocked(api.post).mockResolvedValue({});
+    const { result, rerender } = renderHook(
+      ({ workflowId }) => useWorkflowPersistence({
+        workflowId, workflow: undefined, nodes: [editableNode(workflowId)], edges: [],
+      }),
+      { wrapper: makeWrapper(), initialProps: { workflowId: 'wf-1' } },
+    );
+    act(() => { result.current.syncFromServer('First'); result.current.markDirty(); result.current.save(); });
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    act(() => result.current.publish());
+    // In-app navigation may continue after the user confirms discarding the old draft.
+    rerender({ workflowId: 'wf-2' });
+    act(() => { result.current.syncFromServer('Second'); });
+    if (returnToOriginal) {
+      rerender({ workflowId: 'wf-1' });
+      act(() => { result.current.syncFromServer('First reopened'); });
+    }
+    await act(async () => saving.resolve({}));
+    await waitFor(() => expect(result.current.isPublishing).toBe(false));
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('drops queued Publish when the editor unmounts while its save is pending', async () => {
+    const saving = deferred<unknown>();
+    vi.mocked(api.put).mockImplementationOnce(() => saving.promise);
+    vi.mocked(api.post).mockResolvedValue({});
+    const { result, unmount } = renderPersistence();
+    act(() => { result.current.syncFromServer('First'); result.current.markDirty(); result.current.save(); });
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    act(() => result.current.publish());
+    unmount();
+    await act(async () => saving.resolve({}));
+    expect(api.post).not.toHaveBeenCalled();
   });
 });
 

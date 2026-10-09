@@ -173,11 +173,6 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             .Select(w => w.Name).ToListAsync(ct);
         var takenNames = new HashSet<string>(existingNames, StringComparer.Ordinal);
 
-        // Pre-collect webhook paths from already-installed workflows so an import with a
-        // colliding webhookTrigger.path is auto-disabled rather than silently hijacking the
-        // existing route. The caller can re-enable manually after resolving the collision.
-        var takenWebhookKeys = await CollectWebhookPathsAsync(ct);
-
         // Custom-node references are instance-local ids; relink them by key to this instance.
         // The schema does not enforce unique keys, so the oldest live definition wins a clash.
         var customActivityIdsByKey = (await _db.CustomActivityDefinitions.AsNoTracking()
@@ -220,29 +215,14 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             var finalName = UniqueName(item.Name, takenNames);
             takenNames.Add(finalName);
 
-            // Import is a safety boundary: source-side activation state is never trusted in the
-            // destination environment. Every imported workflow must be reviewed and enabled
-            // explicitly after credentials, targets and trigger side effects have been checked.
-            var enabled = false;
             if (hmacError is not null)
             {
                 // Export intentionally redacts workflow secrets. Preserve import/edit usability,
                 // but never honor IsEnabled=true until an operator installs a strong replacement
                 // key; Enable and Publish enforce the same policy again.
-                enabled = false;
                 errors.Add(
                     $"workflows[{i}] ({item.Name}): {hmacError}; imported as DISABLED until the secret is replaced.");
             }
-            var newWebhookKeys = ExtractWebhookPaths(definitionJson);
-            var collisions = newWebhookKeys.Intersect(takenWebhookKeys).ToList();
-            if (enabled && collisions.Count > 0)
-            {
-                enabled = false;
-                errors.Add(
-                    $"workflows[{i}] ({item.Name}): webhook path collision on [{string.Join(", ", collisions)}] — imported as DISABLED to protect the existing route. Edit the workflow and re-enable after resolving.");
-            }
-            foreach (var k in newWebhookKeys) takenWebhookKeys.Add(k);
-
             // The file is untrusted input and never passes through the concurrency-limit
             // endpoint, so the range is enforced here too. An out-of-range value imports as
             // unlimited rather than failing the whole file.
@@ -260,7 +240,9 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 Description = item.Description,
                 DefinitionJson = definitionJson,
                 Version = 1,
-                IsEnabled = enabled,
+                // Source activation never authorizes triggers in this environment. Review
+                // credentials, targets and trigger side effects before enabling explicitly.
+                IsEnabled = false,
                 MaxConcurrentExecutions = concurrencyLimit,
                 FolderId = targetFolderId,
                 // Import establishes runtime authority the same way Publish does: the importing
@@ -862,39 +844,6 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             resolved[key] = currentId;
         }
         return resolved;
-    }
-
-    /// <summary>
-    /// Scans all currently-enabled workflows in the DB for <c>webhookTrigger</c> nodes and
-    /// returns the set of <c>method:path</c> keys they serve. Used by <see cref="Import"/> to
-    /// detect route collisions. Disabled workflows are excluded because they don't compete
-    /// for an incoming webhook.
-    /// </summary>
-    private async Task<HashSet<string>> CollectWebhookPathsAsync(CancellationToken ct)
-    {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var defs = await _db.Workflows.AsNoTracking()
-            .Where(w => w.IsEnabled)
-            .Select(w => w.DefinitionJson)
-            .ToListAsync(ct);
-        foreach (var def in defs)
-            foreach (var k in ExtractWebhookPaths(def)) set.Add(k);
-        return set;
-    }
-
-    private static IEnumerable<string> ExtractWebhookPaths(string definitionJson)
-    {
-        if (!WorkflowDefinitionDocument.TryParse(definitionJson, out var definition) || definition is null)
-            yield break;
-
-        foreach (var descriptor in definition.TriggerDescriptors.Where(d => d.ActivityType == "webhookTrigger"))
-        {
-            var config = descriptor.Config;
-            if (config.ValueKind != JsonValueKind.Object) continue;
-            var path = config.TryGetProperty("path", out var p) ? p.GetString()?.Trim('/') : null;
-            var method = (config.TryGetProperty("method", out var m) ? m.GetString() : "POST")?.ToUpperInvariant() ?? "POST";
-            if (!string.IsNullOrEmpty(path)) yield return $"{method}:{path}";
-        }
     }
 
     private static WorkflowExportItem ToExportItem(Workflow w, NodePilot.Api.Services.WorkflowPortability portability)

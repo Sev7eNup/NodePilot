@@ -5,6 +5,7 @@ import type { Node } from '@xyflow/react';
 import type { MachineOption } from '../../types/api';
 
 interface Props {
+  canWrite: boolean;
   selectedNodes: Node[];
   machines: MachineOption[];
   onApply: (nodeIds: string[], patch: Record<string, unknown>, configPatch?: Record<string, unknown>) => void;
@@ -20,7 +21,7 @@ interface Props {
  *   - top-level node.data fields (targetMachineId, disabled, outputVariable prefix)
  *   - nested config fields (timeoutSeconds, retry.*)
  */
-export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width }: Readonly<Props>) {
+export function BulkEditPanel({ canWrite, selectedNodes, machines, onApply, onClose, width }: Readonly<Props>) {
   const { t } = useTranslation('designer');
   const [machineId, setMachineId] = useState<string>('');
   const [disabled, setDisabled] = useState<'true' | 'false' | ''>('');
@@ -34,6 +35,7 @@ export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width
   const nonActivityCount = selectedNodes.length - activityCount;
 
   const apply = (patch: Record<string, unknown>, configPatch?: Record<string, unknown>) => {
+    if (!canWrite) return;
     onApply(ids, patch, configPatch);
   };
 
@@ -56,7 +58,7 @@ export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width
           <Close size={16} />
         </button>
       </div>
-      <div className="px-4 py-3 space-y-4 text-xs font-label">
+      <fieldset disabled={!canWrite} className="px-4 py-3 space-y-4 text-xs font-label">
         {/* Target machine */}
         <BulkField label={t('bulkEdit.targetMachine')}>
           <select
@@ -151,7 +153,7 @@ export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width
             {t('bulkEdit.note')}
           </p>
         </div>
-      </div>
+      </fieldset>
     </aside>
   );
 }

@@ -24,7 +24,7 @@ public class WorkflowAssistantCustomActivityTests
             InputParametersJson = "[{\"name\":\"drive\",\"label\":\"Drive\",\"type\":\"string\"}]",
             OutputParametersJson = "[{\"name\":\"freeGb\",\"type\":\"number\"}]",
         }, "alice", CancellationToken.None);
-        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
 
         var fake = new FakeLlmClient().EnqueueStream("ok");
         var svc = new WorkflowAssistantService(new FakeLlmClientFactory(fake), new PromptCatalog(), new WorkflowChatToolRegistry(),

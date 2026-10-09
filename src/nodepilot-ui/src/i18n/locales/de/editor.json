@@ -460,6 +460,7 @@
     "delete": "Löschen"
   },
   "quickEdit": {
+    "errorJsonObject": "Gib ein gültiges JSON-Objekt mit Rückgabefeldern ein.",
     "labelScript": "Skript",
     "placeholderScript": "# PowerShell-Skript…",
     "labelUrl": "URL",

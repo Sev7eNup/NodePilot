@@ -76,7 +76,7 @@ public class ReturnDataActivity : IActivityExecutor
             // the single-line envelope they swallowed the closing quote and every remaining
             // property, so the parent's JsonDocument.Parse threw into a bare catch and the child's
             // whole returnData contract disappeared while both runs stayed green.
-            persistParams[prop.Name] = Cap(_redactor?.Redact(raw) ?? raw);
+            persistParams[prop.Name] = Cap(_redactor?.RedactNamedValue(prop.Name, raw) ?? raw);
         }
 
         var json = JsonSerializer.Serialize(outputParams);

@@ -171,7 +171,7 @@ public sealed class BuildScriptTests : IDisposable
         script.Should().Be(
             "New-Service -Name 'MySvc' -BinaryPathName 'C:\\Tools\\my.exe' -StartupType Automatic" +
             "; $__npSc = & sc.exe config 'MySvc' start= delayed-auto" +
-            "; if ($LASTEXITCODE -ne 0) { throw \"sc.exe config failed with exit code $LASTEXITCODE: $($__npSc -join ' ')\" }");
+            "; if ($LASTEXITCODE -ne 0) { throw \"sc.exe config failed with exit code $($LASTEXITCODE): $($__npSc -join ' ')\" }");
     }
 
     [Fact]
@@ -210,7 +210,7 @@ public sealed class BuildScriptTests : IDisposable
             "if (Get-Service -Name 'MySvc' -ErrorAction SilentlyContinue) " +
             "{ Stop-Service -Name 'MySvc' -Force -ErrorAction SilentlyContinue }; " +
             "$__npSc = & sc.exe delete 'MySvc'; " +
-            "if ($LASTEXITCODE -ne 0) { throw \"sc.exe delete failed with exit code $LASTEXITCODE: $($__npSc -join ' ')\" }; " +
+            "if ($LASTEXITCODE -ne 0) { throw \"sc.exe delete failed with exit code $($LASTEXITCODE): $($__npSc -join ' ')\" }; " +
             "$__npSc");
     }
 
@@ -240,7 +240,7 @@ public sealed class BuildScriptTests : IDisposable
 
         script.Should().Be(
             "$__npSc = & sc.exe config 'MySvc' start= delayed-auto; " +
-            "if ($LASTEXITCODE -ne 0) { throw \"sc.exe config failed with exit code $LASTEXITCODE: $($__npSc -join ' ')\" }; " +
+            "if ($LASTEXITCODE -ne 0) { throw \"sc.exe config failed with exit code $($LASTEXITCODE): $($__npSc -join ' ')\" }; " +
             "& sc.exe qc 'MySvc' | Select-String 'START_TYPE'");
     }
 
@@ -510,13 +510,22 @@ public sealed class BuildScriptTests : IDisposable
     private PowerManagementActivity CreatePowerMgmt() =>
         new(_sessionFactory.Object, _credentialStore.Object, _db, _engineFactory, _configuration);
 
+    private static string ShutdownInvocation(string script)
+    {
+        var ast = System.Management.Automation.Language.Parser.ParseInput(script, out _, out var errors);
+        errors.Should().BeEmpty();
+        var commands = ast.FindAll(node => node is System.Management.Automation.Language.CommandAst command
+            && command.GetCommandName() == "shutdown.exe", searchNestedScriptBlocks: true);
+        return commands.Should().ContainSingle().Subject.Extent.Text;
+    }
+
     [Theory]
     [InlineData("shutdown", "& shutdown.exe /s /f /t 0")]
     [InlineData("restart",  "& shutdown.exe /r /f /t 0")]
     public async Task PowerManagement_DefaultForceAndZeroDelay(string action, string expected)
     {
         var script = await ExecuteAndCaptureScript(CreatePowerMgmt(), ParseConfig($"{{\"action\":\"{action}\"}}"));
-        script.Should().Be(expected);
+        ShutdownInvocation(script).Should().Be(expected);
     }
 
     [Fact]
@@ -524,7 +533,7 @@ public sealed class BuildScriptTests : IDisposable
     {
         var config = ParseConfig("{\"action\":\"restart\",\"delaySeconds\":60,\"message\":\"Patching now\"}");
         var script = await ExecuteAndCaptureScript(CreatePowerMgmt(), config);
-        script.Should().Be("& shutdown.exe /r /f /t 60 /c 'Patching now'");
+        ShutdownInvocation(script).Should().Be("& shutdown.exe /r /f /t 60 /c 'Patching now'");
     }
 
     [Fact]
@@ -532,7 +541,7 @@ public sealed class BuildScriptTests : IDisposable
     {
         var config = ParseConfig("{\"action\":\"shutdown\",\"force\":false,\"delaySeconds\":30}");
         var script = await ExecuteAndCaptureScript(CreatePowerMgmt(), config);
-        script.Should().Be("& shutdown.exe /s /t 30");
+        ShutdownInvocation(script).Should().Be("& shutdown.exe /s /t 30");
     }
 
     [Fact]
@@ -542,7 +551,7 @@ public sealed class BuildScriptTests : IDisposable
         // message came from an upstream step's output we don't trust to be quote-free.
         var config = ParseConfig("{\"action\":\"shutdown\",\"message\":\"Kev's patch\"}");
         var script = await ExecuteAndCaptureScript(CreatePowerMgmt(), config);
-        script.Should().Be("& shutdown.exe /s /f /t 0 /c 'Kev''s patch'");
+        ShutdownInvocation(script).Should().Be("& shutdown.exe /s /f /t 0 /c 'Kev''s patch'");
     }
 
     [Theory]
@@ -554,7 +563,7 @@ public sealed class BuildScriptTests : IDisposable
         // Verify we emit a clean one-shot invocation.
         var script = await ExecuteAndCaptureScript(CreatePowerMgmt(),
             ParseConfig($"{{\"action\":\"{action}\",\"delaySeconds\":30,\"force\":true,\"message\":\"ignored\"}}"));
-        script.Should().Be(expected);
+        ShutdownInvocation(script).Should().Be(expected);
     }
 
     [Fact]
@@ -594,6 +603,6 @@ public sealed class BuildScriptTests : IDisposable
     {
         var config = ParseConfig("{\"action\":\"shutdown\",\"delaySeconds\":-5}");
         var script = await ExecuteAndCaptureScript(CreatePowerMgmt(), config);
-        script.Should().Be("& shutdown.exe /s /f /t 0");
+        ShutdownInvocation(script).Should().Be("& shutdown.exe /s /f /t 0");
     }
 }

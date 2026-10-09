@@ -251,9 +251,11 @@ export function EditorOverlays(props: Readonly<EditorOverlaysProps>) {
       {/* Find & Replace Overlay (Ctrl+H) */}
       {findReplaceOpen && (
         <FindReplaceOverlay
+          canWrite={canWrite}
           nodes={nodes}
           edges={edges}
           onApply={(newNodes, newEdges) => {
+            if (!canWrite) return;
             commitHistory('Find & replace');
             setNodes(() => newNodes);
             setEdges(() => newEdges);
@@ -456,8 +458,8 @@ function ScriptDoubleClickEditor({
 
   // Live (possibly unsaved) config so the step-test reflects the editor, not the last-saved DB
   // state.
-  const runStepTest = async (): Promise<StepTestResult> =>
-    api.post<StepTestResult>(`/workflows/${workflowId}/steps/${node.id}/test`, { configOverride: config });
+  const runStepTest = async (currentScript: string): Promise<StepTestResult> =>
+    api.post<StepTestResult>(`/workflows/${workflowId}/steps/${node.id}/test`, { configOverride: { ...config, script: currentScript } });
 
   return (
     <Suspense fallback={null}>

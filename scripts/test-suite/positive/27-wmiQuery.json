@@ -107,7 +107,7 @@
                 "mode": "invokeMethod",
                 "className": "Win32_Process",
                 "methodName": "GetOwner",
-                "filter": "Name='explorer.exe'",
+                "filter": "Name='services.exe'",
                 "namespace": "root\\cimv2",
                 "captureProperties": [
                   "ReturnValue"

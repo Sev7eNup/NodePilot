@@ -22,6 +22,8 @@ public class NodePilotApiClient
         };
     }
 
+    public NodePilotApiClient(HttpClient http) => _http = http;
+
     public HttpClient Http => _http;
     public string? Token => _token;
 
@@ -34,7 +36,7 @@ public class NodePilotApiClient
         // Bearer client: opt in to receiving the JWT in the response body (the browser SPA
         // does not, and reads it from the httpOnly cookie instead).
         msg.Headers.Add("X-Auth-Token-Response", "true");
-        var resp = await _http.SendAsync(msg, ct);
+        using var resp = await _http.SendAsync(msg, ct);
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<LoginBody>(cancellationToken: ct)
                    ?? throw new InvalidOperationException("Empty login response");
@@ -46,10 +48,16 @@ public class NodePilotApiClient
     {
         // Mirror of CreateWorkflowRequest(Name, Description, DefinitionJson)
         var req = new { name, description = (string?)null, definitionJson };
-        var resp = await _http.PostAsJsonAsync("api/workflows", req, ct);
+        using var resp = await _http.PostAsJsonAsync("api/workflows", req, ct);
         resp.EnsureSuccessStatusCode();
         using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
         return doc.RootElement.GetProperty("id").GetGuid();
+    }
+
+    public async Task PublishWorkflowAsync(Guid id, string name, string definitionJson, CancellationToken ct = default)
+    {
+        using var resp = await _http.PostAsJsonAsync($"api/workflows/{id}/publish", new { name, definitionJson }, ct);
+        resp.EnsureSuccessStatusCode();
     }
 
     /// <summary>
@@ -59,7 +67,7 @@ public class NodePilotApiClient
     /// </summary>
     public async Task<Guid> ExecuteAsync(Guid workflowId, CancellationToken ct = default)
     {
-        var resp = await _http.PostAsJsonAsync($"api/workflows/{workflowId}/execute", new { parameters = (object?)null }, ct);
+        using var resp = await _http.PostAsJsonAsync($"api/workflows/{workflowId}/execute", new { parameters = (object?)null }, ct);
         resp.EnsureSuccessStatusCode();
         using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
         return doc.RootElement.GetProperty("id").GetGuid();
@@ -77,7 +85,7 @@ public class NodePilotApiClient
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
-            var resp = await _http.GetAsync($"api/executions/{executionId}", ct);
+            using var resp = await _http.GetAsync($"api/executions/{executionId}", ct);
             if (resp.IsSuccessStatusCode)
             {
                 using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
@@ -93,16 +101,10 @@ public class NodePilotApiClient
 
     public async Task<int> CountRunningExecutionsAsync(CancellationToken ct = default)
     {
-        var resp = await _http.GetAsync("api/executions", ct);
+        using var resp = await _http.GetAsync("api/executions?status=Running&pageSize=1&includePayloads=false", ct);
         resp.EnsureSuccessStatusCode();
         using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-        int count = 0;
-        foreach (var e in doc.RootElement.EnumerateArray())
-        {
-            var status = e.GetProperty("status").GetString();
-            if (status == "Running") count++;
-        }
-        return count;
+        return doc.RootElement.GetProperty("total").GetInt32();
     }
 
     private sealed record LoginBody(string Token, string Username, string Role);

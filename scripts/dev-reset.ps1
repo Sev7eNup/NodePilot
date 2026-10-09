@@ -37,20 +37,40 @@ function Write-Ok([string]$msg)   { Write-Host "    [OK]   $msg" -ForegroundColo
 function Write-Info([string]$msg) { Write-Host "    [INFO] $msg" -ForegroundColor DarkGray }
 function Write-Fail([string]$msg) { Write-Host "    [FAIL] $msg" -ForegroundColor Red    }
 
-function Stop-Port([int]$port) {
-    $lines = netstat -ano | Where-Object { $_ -match "[:.]$port\s" }
-    $killed = $false
-    foreach ($line in $lines) {
-        if ($line -match '\s+(\d+)\s*$') {
-            $procId = [int]$Matches[1]
-            if ($procId -gt 4) {
-                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-                Write-Info "  Stopped PID $procId (port $port)"
-                $killed = $true
+function Test-DevProcess {
+    param($Process, [string]$ApiDirectory, [string]$UiDirectory)
+
+    if ($Process.Name -eq 'NodePilot.Api.exe' -and $Process.ExecutablePath) {
+        $apiBin = [IO.Path]::GetFullPath((Join-Path $ApiDirectory 'bin')).TrimEnd('\') + '\'
+        return [IO.Path]::GetFullPath($Process.ExecutablePath).StartsWith($apiBin, [StringComparison]::OrdinalIgnoreCase)
+    }
+    if ($Process.Name -ne 'node.exe' -or -not $Process.CommandLine) { return $false }
+    $vitePath = [IO.Path]::GetFullPath((Join-Path $UiDirectory 'node_modules\vite\bin\vite.js'))
+    foreach ($match in [regex]::Matches($Process.CommandLine, '"([^"]+)"|(\S+)')) {
+        $argument = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
+        if (-not [IO.Path]::IsPathRooted($argument)) { continue }
+        try {
+            if ([IO.Path]::GetFullPath($argument).Equals($vitePath, [StringComparison]::OrdinalIgnoreCase)) {
+                return $true
             }
+        } catch { }
+    }
+    return $false
+}
+
+function Get-DevProcessesToStop {
+    param([int[]]$Ports, [string]$ApiDirectory, [string]$UiDirectory)
+
+    $owned = @(Get-CimInstance Win32_Process | Where-Object {
+        Test-DevProcess -Process $_ -ApiDirectory $ApiDirectory -UiDirectory $UiDirectory
+    })
+    $ownedIds = @($owned | ForEach-Object { [int]$_.ProcessId })
+    foreach ($connection in @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object { $_.LocalPort -in $Ports })) {
+        if ([int]$connection.OwningProcess -notin $ownedIds) {
+            throw "Port $($connection.LocalPort) belongs to PID $($connection.OwningProcess), which is not a verified NodePilot development process. No processes were stopped."
         }
     }
-    if (-not $killed) { Write-Info "  Nothing on port $port" }
+    return $owned
 }
 
 function Invoke-Checked([string]$desc, [scriptblock]$action) {
@@ -79,12 +99,12 @@ function Invoke-Checked([string]$desc, [scriptblock]$action) {
 
 Write-Step "Killing existing processes"
 
-Stop-Port 5000
-Stop-Port 5173
-
-# Kill leftover Vite / node processes (frontend dev server)
-Get-Process -Name "node" -ErrorAction SilentlyContinue |
-    Stop-Process -Force -ErrorAction SilentlyContinue
+# Validate every listener before stopping either service; also collect this checkout's orphaned Vite processes.
+$devProcesses = @(Get-DevProcessesToStop -Ports @(5000, 5173) -ApiDirectory $apiDir -UiDirectory $uiDir)
+foreach ($devProcess in $devProcesses) {
+    Stop-Process -Id $devProcess.ProcessId -Force -ErrorAction Stop
+    Write-Info "  Stopped development PID $($devProcess.ProcessId)"
+}
 
 # Brief pause so OS releases port bindings
 Start-Sleep -Seconds 2
@@ -135,7 +155,7 @@ $beProc = Start-Process `
     -RedirectStandardOutput $beOut `
     -RedirectStandardError  $beErr `
     -PassThru `
-    -NoNewWindow
+    -WindowStyle Hidden
 Write-Ok "Backend  PID $($beProc.Id)  ->  $beOut"
 
 # ---------------------------------------------------------------------------
@@ -154,7 +174,7 @@ $feProc = Start-Process `
     -RedirectStandardOutput $feOut `
     -RedirectStandardError  $feErr `
     -PassThru `
-    -NoNewWindow
+    -WindowStyle Hidden
 Write-Ok "Frontend PID $($feProc.Id)  ->  $feOut"
 
 # ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
@@ -41,18 +42,16 @@ function parentJson(refName: string) {
 
 /** Mock the workflows list. childPresent controls whether the ref resolves. */
 async function openEditor(page: Page, refName: string, childPresent: boolean) {
-  await page.route('**/api/workflows', (route) =>
+  await page.route('**/api/workflows/paged**', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(
-        childPresent
+      body: JSON.stringify(workflowPage(route, childPresent
           ? [
               { id: PARENT_ID, name: 'Parent WF', description: '', isEnabled: false },
               { id: CHILD_ID, name: CHILD_NAME, description: 'the child', isEnabled: true },
             ]
-          : [{ id: PARENT_ID, name: 'Parent WF', description: '', isEnabled: false }],
-      ),
+          : [{ id: PARENT_ID, name: 'Parent WF', description: '', isEnabled: false }])),
     }),
   );
   await page.route(`**/api/workflows/${PARENT_ID}`, (route) =>

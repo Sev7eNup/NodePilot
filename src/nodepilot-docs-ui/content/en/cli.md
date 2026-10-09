@@ -271,9 +271,12 @@ np globals update 3b8c... --value new-email@internal
 np globals update 3b8c... --no-secret
 np globals update 3b8c... --folder /Environment/Prod       # moves the variable
 np globals delete 3b8c...
-np globals export --file ./globals.json                   # secrets as ***
+np globals export --file ./globals.json                   # secret values omitted as null
 np globals import -f ./globals.json --upsert
 np globals import -f - --dry-run < globals.json
+
+# Exported secret values are null; --upsert preserves an existing secret.
+# Creating a secret requires a real value. Legacy *** masks are also treated as omitted.
 
 # The folder tree (admin)
 np globals folder list

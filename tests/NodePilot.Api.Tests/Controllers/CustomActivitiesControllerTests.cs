@@ -2,6 +2,8 @@ using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Activities;
@@ -15,6 +17,47 @@ namespace NodePilot.Api.Tests.Controllers;
 
 public class CustomActivitiesControllerTests
 {
+    [Fact]
+    public async Task Import_ConcurrentKeyConflict_SkipsLoserAndContinuesWithNextItem()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (connection, initial) = TestDbFactory.CreateWithConnection();
+        await using var ownedConnection = connection;
+        await using var winnerDb = initial;
+        var barrier = new InsertConcurrentDefinition(winnerDb);
+        await using var importDb = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection).AddInterceptors(barrier).Options);
+        var (controller, _, _) = NewController(importDb);
+        var envelope = new CustomActivityExportEnvelope("nodepilot-customactivity-export/v1", 1, DateTime.UtcNow,
+            new[] { "collision", "next" }.Select(key => new CustomActivityExportItem(
+                key, key, null, "extension", null, "Write-Output 1", "auto", false, false,
+                null, null, null, null, [], [])).ToList());
+
+        var response = await controller.Import(envelope, ct);
+
+        response.Result.Should().BeOfType<OkObjectResult>().Which.Value
+            .Should().BeAssignableTo<IReadOnlyList<CustomActivityResponse>>()
+            .Which.Should().ContainSingle(x => x.Key == "next");
+        (await winnerDb.CustomActivityDefinitions.Select(x => x.Key).ToListAsync(ct))
+            .Should().BeEquivalentTo("collision", "next");
+    }
+
+    private sealed class InsertConcurrentDefinition(NodePilotDbContext winnerDb) : SaveChangesInterceptor
+    {
+        private bool _inserted;
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (!_inserted)
+            {
+                _inserted = true;
+                await new CustomActivityDefinitionStore(winnerDb).CreateAsync(new CustomActivityDefinitionInput
+                { Key = "collision", Name = "winner", ScriptTemplate = "winner" }, "winner", cancellationToken);
+            }
+            return result;
+        }
+    }
+
     private static (CustomActivitiesController controller, CapturingAuditWriter audit, CustomActivityDefinitionStore store)
         NewController(NodePilotDbContext db, string role = "Admin")
     {
@@ -93,7 +136,7 @@ public class CustomActivitiesControllerTests
         var db = TestDbFactory.Create();
         var store = new CustomActivityDefinitionStore(db);
         var def = await store.CreateAsync(new CustomActivityDefinitionInput { Key = "k", Name = "K", ScriptTemplate = "x" }, "op", CancellationToken.None);
-        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
 
         var (c, _, _) = NewController(db, "Operator");
         var res = await c.Update(def.Id, new UpdateCustomActivityRequest(
@@ -110,7 +153,7 @@ public class CustomActivitiesControllerTests
         var db = TestDbFactory.Create();
         var store = new CustomActivityDefinitionStore(db);
         var def = await store.CreateAsync(new CustomActivityDefinitionInput { Key = "k", Name = "K", ScriptTemplate = "x" }, "op", CancellationToken.None);
-        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
         var live = await store.GetByIdAsync(def.Id, CancellationToken.None);
 
         var (c, _, _) = NewController(db, "Admin");

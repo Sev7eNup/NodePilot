@@ -111,14 +111,8 @@ public sealed class OperationalKnowledgeReader(NodePilotDbContext db, IAuditDeta
         if (Guid.TryParse(idOrName, out var id))
             return await q.FirstOrDefaultAsync(w => w.Id == id, ct);
 
-        // exact-case wins; a unique case-insensitive match is the fallback; ambiguous returns null.
-        var exact = await q.Where(w => w.Name == idOrName).Take(2).ToListAsync(ct);
-        if (exact.Count == 1) return exact[0];
-        if (exact.Count > 1) return null;
-
-        var lowered = idOrName.ToLower();
-        var ci = await q.Where(w => w.Name.ToLower() == lowered).Take(2).ToListAsync(ct);
-        return ci.Count == 1 ? ci[0] : null;
+        var resolved = await WorkflowNameResolver.ResolveByNameAsync(q, idOrName, ct);
+        return resolved.Workflow;
     }
 
     private string RedactDefinition(string definitionJson)

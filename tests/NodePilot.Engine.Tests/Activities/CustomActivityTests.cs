@@ -220,7 +220,7 @@ public class CustomActivityExecutorBranchTests
         var store = new CustomActivityDefinitionStore(db);
         var def = await store.CreateAsync(new CustomActivityDefinitionInput
         { Key = "real_key", Name = "K", ScriptTemplate = "x" }, "u", CancellationToken.None);
-        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
 
         var result = await NewExecutor(db).ExecuteAsync(
             Ctx(), Config(new { __customDefinitionId = def.Id.ToString(), __customKey = "stale_key" }), CancellationToken.None);
@@ -236,7 +236,7 @@ public class CustomActivityExecutorBranchTests
         var store = new CustomActivityDefinitionStore(db);
         var def = await store.CreateAsync(new CustomActivityDefinitionInput
         { Key = "remote_op", Name = "R", ScriptTemplate = "x", RunsRemote = true }, "u", CancellationToken.None);
-        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
 
         var result = await NewExecutor(db).ExecuteAsync(
             Ctx(), Config(new { __customDefinitionId = def.Id.ToString(), __customKey = "remote_op" }), CancellationToken.None);
@@ -252,7 +252,7 @@ public class CustomActivityExecutorBranchTests
         var store = new CustomActivityDefinitionStore(db);
         var def = await store.CreateAsync(new CustomActivityDefinitionInput
         { Key = "in_process", Name = "P", ScriptTemplate = "x", Engine = "runspace", Isolated = true }, "u", CancellationToken.None);
-        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
 
         var result = await NewExecutor(db).ExecuteAsync(
             Ctx(), Config(new { __customDefinitionId = def.Id.ToString(), __customKey = "in_process" }), CancellationToken.None);
@@ -276,7 +276,7 @@ public class CustomActivityExecutorBranchTests
                 new CustomActivityOutputParameter("status", "string")
             ]),
         }, "u", CancellationToken.None);
-        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
 
         var result = await NewExecutor(db).ExecuteAsync(
             Ctx(),
@@ -306,7 +306,7 @@ public class CustomActivityExecutorBranchTests
                 new CustomActivityOutputParameter("status", "string")
             ]),
         }, "u", CancellationToken.None);
-        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
 
         var result = await NewExecutor(db).ExecuteAsync(
             Ctx(),

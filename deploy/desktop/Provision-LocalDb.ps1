@@ -74,6 +74,13 @@ $RenderedConfig = Join-Path $AppPath 'appsettings.Production.json'
 function Write-Step([string] $m) { Write-Host "==> $m" -ForegroundColor Cyan }
 
 . (Join-Path $PSScriptRoot 'DesktopRuntime.ps1')
+# Installed packages stage the shared read-only checks beside this script; source-tree
+# execution finds the same file one directory above. Reuse its secret-safe psql plumbing.
+$preflightPath = Join-Path $PSScriptRoot 'Preflight.ps1'
+if (-not (Test-Path -LiteralPath $preflightPath)) {
+    $preflightPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'Preflight.ps1'
+}
+. $preflightPath
 
 foreach ($p in @($InstallPath, $PgBinPath, $AppPath, $ApiExe, $initdb, $pg_ctl, $psql, $TemplatePath)) {
     if (-not (Test-Path -LiteralPath $p)) { throw "Required path not found: $p" }
@@ -313,6 +320,50 @@ function Invoke-Native([string] $exe, [string[]] $arguments, [hashtable] $env = 
     }
 }
 
+function Initialize-DesktopDatabase {
+    param(
+        [Parameter(Mandatory)][string]$PsqlPath,
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$SuperSecret,
+        [Parameter(Mandatory)][string]$Role,
+        [Parameter(Mandatory)][string]$RoleSecret,
+        [Parameter(Mandatory)][string]$Database
+    )
+
+    $arguments = @('-X', '-w', '-h', '127.0.0.1', '-p', "$Port", '-U', 'postgres',
+        '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-tA')
+    # Desktop's database is deliberately loopback-only without TLS. Secrets belong only
+    # to the child's environment/stdin, never the installer environment or command line.
+    $connectionEnvironment = @{ PGPASSWORD = $SuperSecret; PGSSLMODE = 'disable'; PGCONNECT_TIMEOUT = '10' }
+    $quotedRole = '"' + $Role.Replace('"', '""') + '"'
+    $quotedDatabase = '"' + $Database.Replace('"', '""') + '"'
+    $roleLiteral = "'" + $Role.Replace("'", "''") + "'"
+    $databaseLiteral = "'" + $Database.Replace("'", "''") + "'"
+    $passwordLiteral = "'" + $RoleSecret.Replace("'", "''") + "'"
+
+    function Invoke-DesktopStatement([string]$Statement, [string]$Operation) {
+        $result = Invoke-NodePilotPsql -PsqlPath $PsqlPath -Arguments $arguments `
+            -Sql $Statement -Environment $connectionEnvironment
+        if (-not $result.Succeeded) {
+            # PostgreSQL may echo the failing statement (including PASSWORD) in stderr.
+            # Do not forward either stream into the installer transcript or its exception.
+            throw "Desktop database provisioning failed during $Operation. PostgreSQL output was withheld because statements may contain credentials."
+        }
+        return $result.Output
+    }
+
+    $roleExists = Invoke-DesktopStatement "SELECT 1 FROM pg_roles WHERE rolname=$roleLiteral;" 'role lookup'
+    if ($roleExists -eq '1') {
+        $null = Invoke-DesktopStatement "ALTER ROLE $quotedRole LOGIN PASSWORD $passwordLiteral;" 'role password update'
+    } else {
+        $null = Invoke-DesktopStatement "CREATE ROLE $quotedRole LOGIN PASSWORD $passwordLiteral;" 'role creation'
+    }
+    $databaseExists = Invoke-DesktopStatement "SELECT 1 FROM pg_database WHERE datname=$databaseLiteral;" 'database lookup'
+    if ($databaseExists -ne '1') {
+        $null = Invoke-DesktopStatement "CREATE DATABASE $quotedDatabase OWNER $quotedRole;" 'database creation'
+    }
+}
+
 # --- 0. idempotency: remove any prior NodePilot services -------------------------------------
 # A re-run or upgrade must not collide with a running postmaster on the reused data directory,
 # and must free the old binaries. Both services are registered again under the same names below,
@@ -415,23 +466,10 @@ $dbSecret = if (Test-Path -LiteralPath $roleSecretFile) {
 }
 
 Invoke-Native $pg_ctl @('-D', $PgData, '-o', "-p $PgPort -c listen_addresses=127.0.0.1", '-w', 'start')
-# PGPASSWORD covers the whole block so every psql call authenticates non-interactively; -w
-# (--no-password) makes psql fail fast instead of prompting on a console.
-$prevPgPassword = $env:PGPASSWORD
-$env:PGPASSWORD = $superPw
 try {
-    $roleExists = (& $psql '-w' '-h' '127.0.0.1' '-p' "$PgPort" '-U' 'postgres' '-d' 'postgres' '-tAc' "SELECT 1 FROM pg_roles WHERE rolname='$DbRole'" 2>$null)
-    if ("$roleExists".Trim() -ne '1') {
-        Invoke-Native $psql @('-w','-h','127.0.0.1','-p',"$PgPort",'-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',"CREATE ROLE $DbRole LOGIN PASSWORD '$dbSecret'")
-    } else {
-        Invoke-Native $psql @('-w','-h','127.0.0.1','-p',"$PgPort",'-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',"ALTER ROLE $DbRole LOGIN PASSWORD '$dbSecret'")
-    }
-    $dbExists = (& $psql '-w' '-h' '127.0.0.1' '-p' "$PgPort" '-U' 'postgres' '-d' 'postgres' '-tAc' "SELECT 1 FROM pg_database WHERE datname='$DbName'" 2>$null)
-    if ("$dbExists".Trim() -ne '1') {
-        Invoke-Native $psql @('-w','-h','127.0.0.1','-p',"$PgPort",'-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',"CREATE DATABASE $DbName OWNER $DbRole")
-    }
+    Initialize-DesktopDatabase -PsqlPath $psql -Port $PgPort -SuperSecret $superPw `
+        -Role $DbRole -RoleSecret $dbSecret -Database $DbName
 } finally {
-    $env:PGPASSWORD = $prevPgPassword
     Invoke-Native $pg_ctl @('-D', $PgData, '-w', 'stop')
 }
 
@@ -507,11 +545,13 @@ $envValue = @(
     'DOTNET_PRINT_TELEMETRY_MESSAGE=false',
     "ConnectionStrings__Postgres=$connString"
 )
-New-ItemProperty -Path $svcRegPath -Name 'Environment' -PropertyType MultiString -Value $envValue -Force | Out-Null
-
-# Lock the service registry key so only SYSTEM + Administrators can read the connection string.
+# Protect the key before publishing any credentials. Also remove explicit grants from a
+# previously existing key; disabling inheritance alone does not remove those grants.
 $regAcl = Get-Acl -Path $svcRegPath
 $regAcl.SetAccessRuleProtection($true, $false)
+foreach ($rule in @($regAcl.GetAccessRules($true, $false, [System.Security.Principal.SecurityIdentifier]))) {
+    $regAcl.RemoveAccessRuleSpecific($rule)
+}
 foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
     $id = New-Object System.Security.Principal.SecurityIdentifier($sid)
     $regAcl.AddAccessRule((New-Object System.Security.AccessControl.RegistryAccessRule(
@@ -521,6 +561,7 @@ foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
         [System.Security.AccessControl.AccessControlType]::Allow)))
 }
 Set-Acl -Path $svcRegPath -AclObject $regAcl
+New-ItemProperty -Path $svcRegPath -Name 'Environment' -PropertyType MultiString -Value $envValue -Force | Out-Null
 
 # --- 8. installer -> Electron handoff (non-secret) -------------------------------------------
 Write-Step 'Writing desktop.json handoff'

@@ -9,7 +9,8 @@ import { isMinimalSkin, useThemeStore } from '../../../stores/themeStore';
 import { summarizeActivityConfig } from '../../../lib/activityConfigFacts';
 import { TRIGGER_ACTIVITY_TYPES } from '../../../lib/activityCatalog.generated';
 import { ACTIVITY_ICON_COMPONENTS, FALLBACK_ACTIVITY_ICON } from '../../../lib/activityIcons';
-import { previewSchedule, relativeFromNow } from '../../../lib/cronPreview';
+import { relativeFromNow } from '../../../lib/cronPreview';
+import { useSchedulePreview } from '../../../hooks/useSchedulePreview';
 import { formatDate } from '../../../lib/format';
 import { EDGE_PORT_SIDES, portToPosition, type EdgePortSide } from '../../../lib/edgePorts';
 import { getNodeShape, getNodeSizeMultiplier, getIconScaleMultiplier, getBadgePositions, getHandleInset, getIconOffsetX, getIconOffsetY, getBackingClip, isControlFlowShape, SHAPE_CLIP_PATHS, type NodeShape, type BadgePosition } from './shapes';
@@ -94,8 +95,8 @@ function StandardActivityNode({ data, selected, isConnectable, positionAbsoluteX
   const ac = getActivityVisual(activityType);
   // memo() only shields this component from *other* nodes' updates — dragging this node, or
   // flipping any subscribed design-store value, still re-renders it. Both derivations below are
-  // pure functions of data that does not change during a drag, and previewSchedule runs a cron
-  // parser, so they are memoised on their real inputs instead of on every frame.
+  // pure functions of data that does not change during a drag, so they are memoised on their
+  // real inputs instead of on every frame.
   const summary = useMemo(() => summarizeActivityConfig(activityType, config), [activityType, config]);
   const isEntryTrigger = TRIGGER_ACTIVITY_TYPES.has(activityType);
 
@@ -169,23 +170,20 @@ function StandardActivityNode({ data, selected, isConnectable, positionAbsoluteX
     left: Math.round((handleInset.left ?? 0) * effectiveIconBox),
   };
 
-  // Schedule trigger inline preview: first upcoming fire, computed client-side via cron-parser.
-  // Re-renders on every node update so it stays live while the user edits the cron field; it
-  // can be stale by up to about a minute at idle. When the workflow is disabled
-  // (__workflowEnabled === false) it shows "Paused" instead of the countdown, since the Quartz
-  // job is deleted (see TriggerOrchestrator).
+  // Both schedule surfaces share the server's Quartz calculation and query cache.
+  // Disabled workflows show "Paused" because their Quartz job is deleted.
   const workflowDisabled = (data as Record<string, unknown>).__workflowEnabled === false;
   const cronExpression = (config.cronExpression as string) || '';
+  const schedule = useSchedulePreview(cronExpression, activityType === 'scheduleTrigger' && !workflowDisabled);
   const schedulePreview: { paused: true } | { paused: false; relative: string; absolute: string } | null
     = useMemo(() => {
       if (activityType !== 'scheduleTrigger') return null;
       if (workflowDisabled) return { paused: true as const };
       if (!cronExpression.trim()) return null;
-      const p = previewSchedule(cronExpression, 1);
-      if (p.error || p.fireTimes.length === 0) return null;
-      const next = p.fireTimes[0];
+      if (schedule.error || schedule.fireTimes.length === 0) return null;
+      const next = schedule.fireTimes[0];
       return { paused: false as const, relative: relativeFromNow(next), absolute: formatDate(next, { hour12: false }) };
-    }, [activityType, workflowDisabled, cronExpression]);
+    }, [activityType, workflowDisabled, cronExpression, schedule.error, schedule.fireTimes]);
   // Author-disabled: the engine treats this node as "skipped" (see WorkflowEngine.ExecuteAsync
   // -> disabledNodeIds). We signal that visually with dimmed opacity, a dashed border, and an
   // EyeOff badge; the node stays selectable and editable so the author can re-enable it later.

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { ActivityNode } from '../../components/designer/nodes/ActivityNode';
@@ -10,10 +11,12 @@ import { useThemeStore } from '../../stores/themeStore';
 // Resetting nodeIconStyle and autoHidePorts and clearing the pointer store keeps glyph-view
 // and port-reveal cases from leaking into later ones.
 beforeEach(() => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ fires: [new Date(Date.now() + 60_000).toISOString()] }));
   useDesignStore.setState({ nodeStyle: 'card', nodeIconStyle: 'shape', autoHidePorts: true, premiumCanvas: true });
   usePointerFlowPosition.setState({ x: null, y: null });
   useThemeStore.setState({ theme: 'light', resolvedTheme: 'light' });
 });
+afterEach(() => vi.restoreAllMocks());
 
 function renderActivityNode(data: Record<string, unknown>, selected = false) {
   // ActivityNode expects NodeProps, but only data and selected matter here.
@@ -39,9 +42,11 @@ function renderActivityNode(data: Record<string, unknown>, selected = false) {
   } as any;
 
   return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <ReactFlowProvider>
       <ActivityNode {...props} />
     </ReactFlowProvider>
+    </QueryClientProvider>
   );
 }
 
@@ -464,14 +469,14 @@ describe('ActivityNode', () => {
   });
 
   describe('scheduleTrigger countdown vs paused state', () => {
-    it('renders an upcoming-fire countdown when the workflow is enabled', () => {
+    it('renders an upcoming-fire countdown when the workflow is enabled', async () => {
       renderActivityNode({
         label: 'Every hour',
         activityType: 'scheduleTrigger',
         config: { cronExpression: '0 0 * * * ? *' },
       });
       // Card mode renders "Next: in Xm Ys"; relativeFromNow returns "in ..." or "now".
-      const countdown = screen.queryByText(/Next: (in |now)/);
+      const countdown = await screen.findByText(/Next: (in |now)/);
       expect(countdown).toBeTruthy();
       expect(screen.queryByText('Paused')).toBeNull();
     });

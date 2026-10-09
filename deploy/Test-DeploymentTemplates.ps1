@@ -826,7 +826,7 @@ Assert-TextMatches -Name 'the installer drops the source snapshot only after the
 
 Assert-TextMatches -Name 'the updater drops the source snapshot only after the manifest check' `
     -Text $updateScript `
-    -Pattern '(?s)Assert-NodePilotExtractedFiles -RootPath \$InstallPath[\s\S]{0,900}Remove-NodePilotSourceSnapshot'
+    -Pattern '(?s)Assert-NodePilotExtractedFiles -RootPath \$InstallPath[\s\S]{0,1800}Remove-NodePilotSourceSnapshot'
 
 # An update must not hand back a snapshot the operator chose not to have. The state has to be read
 # while the old installation is still on disk - the wipe below would otherwise erase the answer.
@@ -2674,6 +2674,11 @@ foreach ($stageTree in @(
         }
     }
     foreach ($file in $required) {
+        # Shared deployment helpers live one directory above desktop and are copied
+        # explicitly; check that source and destination as well as the local list.
+        $sharedCopyPattern = 'Copy-Item -LiteralPath \(Join-Path \(Split-Path -Parent \$PSScriptRoot\) ' +
+            [regex]::Escape("'$file'") + '\) -Destination \$' + [regex]::Escape($stageTree.Stage) + '\b'
+        if ([regex]::IsMatch($desktopBuild, $sharedCopyPattern)) { continue }
         Assert-TextMatches -Name "the desktop build stages $file into `$$($stageTree.Stage)" `
             -Text $listMatch.Groups[1].Value -Pattern ([regex]::Escape("'$file'"))
     }

@@ -21,6 +21,13 @@ public interface ISystemAlertSource
     /// <c>SystemAlertCatalog</c> at boot).</summary>
     string SourceId { get; }
 
+    /// <summary>
+    /// True only when every successful observation is a complete snapshot and an absent
+    /// instance positively means healthy. Event windows and partial/batched sources must
+    /// leave this false. Unavailable or failed observations never imply recovery.
+    /// </summary>
+    bool MissingInstancesAreHealthy => false;
+
     /// <summary>Pure metadata: field schema, query parameters, presets, scope capability, default
     /// severity.</summary>
     SystemAlertSourceDescriptor Describe();

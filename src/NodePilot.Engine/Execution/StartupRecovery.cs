@@ -96,10 +96,11 @@ public static class StartupRecovery
                             : "Execution was orphaned by an API process restart and auto-cancelled on startup.";
             }
 
-            // Any Running step under this batch's executions is equally orphaned.
+            // Any active step under this batch's executions is equally orphaned.
             var batchIds = batch.Select(e => e.Id).ToHashSet();
             var stepOrphans = await db.StepExecutions
-                .Where(s => s.Status == ExecutionStatus.Running && batchIds.Contains(s.WorkflowExecutionId))
+                .Where(s => (s.Status == ExecutionStatus.Running || s.Status == ExecutionStatus.Paused)
+                         && batchIds.Contains(s.WorkflowExecutionId))
                 .ToListAsync(ct);
             foreach (var s in stepOrphans)
             {

@@ -10,7 +10,7 @@ import type { WorkflowListItem } from '../../types/api';
 export interface WorkflowCallRef {
   sourceLabel: string;
   refName: string;
-  target: WorkflowListItem | null;
+  target: Pick<WorkflowListItem, 'id' | 'name'> | null;
 }
 
 /**
@@ -20,8 +20,8 @@ export interface WorkflowCallRef {
  */
 export function useWorkflowCallRefs(nodes: Node[]): WorkflowCallRef[] {
   const { data: workflows = [] } = useQuery({
-    queryKey: ['workflows'],
-    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
+    queryKey: ['workflows', 'names'],
+    queryFn: () => api.get<Array<Pick<WorkflowListItem, 'id' | 'name'>>>('/workflows/names'),
     staleTime: 30_000,
   });
 

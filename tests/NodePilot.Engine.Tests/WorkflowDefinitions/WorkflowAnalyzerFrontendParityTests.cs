@@ -240,18 +240,20 @@ public sealed class WorkflowAnalyzerFrontendParityTests
             f.Code == "duplicate-edge" && f.Severity == "error" && f.NodeId == "t");
     }
 
-    [Fact]
-    public void AnalyzeWorkflow_FlagsDuplicateOutputVariables_WithFrontendCode()
+    [Theory]
+    [InlineData("shared")]
+    [InlineData("SHARED")]
+    public void AnalyzeWorkflow_FlagsDuplicateOutputVariables_WithFrontendCode(string secondAlias)
     {
         var result = WorkflowAnalyzer.Analyze(E("""
         {"nodes":[
           {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
           {"id":"a","type":"activity","data":{"activityType":"log","label":"First","outputVariable":"shared","config":{}}},
-          {"id":"b","type":"activity","data":{"activityType":"log","label":"Second","outputVariable":"shared","config":{}}}],
+          {"id":"b","type":"activity","data":{"activityType":"log","label":"Second","outputVariable":"SECOND_ALIAS","config":{}}}],
          "edges":[
           {"id":"e1","source":"t","target":"a"},
           {"id":"e2","source":"t","target":"b"}]}
-        """));
+        """.Replace("SECOND_ALIAS", secondAlias)));
 
         result.Ok.Should().BeFalse();
         result.Findings.Should().Contain(f =>

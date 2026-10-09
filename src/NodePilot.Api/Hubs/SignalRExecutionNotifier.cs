@@ -32,6 +32,7 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier, I
 
     private static readonly TimeSpan FlushInterval = TimeSpan.FromMilliseconds(50);
     private const int MaxBatchSize = 1024;
+    internal TimeSpan BatchTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
     private readonly IHubContext<ExecutionHub> _hub;
     private readonly ILogger<SignalRExecutionNotifier> _logger;
@@ -243,45 +244,57 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier, I
 
     private async Task SendBatchAsync(List<QueuedLiveEvent> batch, CancellationToken ct)
     {
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(BatchTimeout);
+        await SendBatchUnderTreeLockAsync(batch, deadline.Token);
+    }
+
+    private async Task SendBatchUnderTreeLockAsync(List<QueuedLiveEvent> batch, CancellationToken ct)
+    {
         // Build all per-group sends first, then await them all concurrently via
         // Task.WhenAll. The old sequential foreach/await meant 200 parallel executions
         // produced 200 sequential SendAsync calls per flush — at ~1ms each that exceeds
         // the 50ms flush interval, causing event backlog and DropNewest losses.
         var sends = new List<Task>(batch.Count);
-        foreach (var group in batch.GroupBy(e => (e.ExecutionId, e.WorkflowId, e.IsStatusEvent)))
+        try
         {
-            var payload = new LiveEventsBatch(group.Select(e => e.Item).ToArray());
-
-            if (group.Key.IsStatusEvent)
+            foreach (var group in batch.GroupBy(e => (e.ExecutionId, e.WorkflowId, e.IsStatusEvent)))
             {
-                // Per-execution + per-workflow watchers (status badges in the editor).
-                if (_hasSubscribers(group.Key.ExecutionId, group.Key.WorkflowId))
-                    sends.Add(SendGroupSafeAsync(GroupsFor(group.Key.ExecutionId, group.Key.WorkflowId), payload, ct));
+                var payload = new LiveEventsBatch(group.Select(e => e.Item).ToArray());
 
-                // Live-ops "NOC" feed: resolve the workflow's folder, then send only to the
-                // ops-feed connections whose RBAC scope covers it. Status events ONLY reach
-                // this feed — step detail never does.
-                if (ExecutionHub.HasOpsFeedSubscribers())
+                if (group.Key.IsStatusEvent)
                 {
-                    var folderId = await _resolveFolder(group.Key.WorkflowId, ct);
-                    if (folderId is not null)
+                    // Per-execution + per-workflow watchers (status badges in the editor).
+                    if (_hasSubscribers(group.Key.ExecutionId, group.Key.WorkflowId))
+                        sends.Add(SendGroupSafeAsync(GroupsFor(group.Key.ExecutionId, group.Key.WorkflowId), payload, ct));
+
+                    // Resolve the folder before routing status-only events to the live ops feed.
+                    if (ExecutionHub.HasOpsFeedSubscribers())
                     {
-                        var conns = ExecutionHub.GetOpsFeedConnections(folderId.Value);
-                        if (conns.Count > 0)
-                            sends.Add(SendConnectionsSafeAsync(conns, payload, ct));
+                        var folderId = await _resolveFolder(group.Key.WorkflowId, ct);
+                        if (folderId is not null)
+                        {
+                            var conns = ExecutionHub.GetOpsFeedConnections(folderId.Value);
+                            if (conns.Count > 0)
+                                sends.Add(SendConnectionsSafeAsync(conns, payload, ct));
+                        }
                     }
                 }
-            }
-            else
-            {
-                // Step-level events go only to the per-execution group.
-                if (ExecutionHub.HasGroupSubscribers(group.Key.ExecutionId.ToString()))
-                    sends.Add(SendGroupSafeAsync(ExecutionOnlyGroups(group.Key.ExecutionId), payload, ct));
+                else
+                {
+                    // Step-level events go only to the per-execution group.
+                    if (ExecutionHub.HasGroupSubscribers(group.Key.ExecutionId.ToString()))
+                        sends.Add(SendGroupSafeAsync(ExecutionOnlyGroups(group.Key.ExecutionId), payload, ct));
+                }
             }
         }
-
-        if (sends.Count > 0)
-            await Task.WhenAll(sends);
+        finally
+        {
+            // A later lookup failure must not release the tree while earlier sends still run.
+            if (sends.Count > 0)
+                await Task.WhenAll(sends);
+        }
     }
 
     private async Task SendGroupSafeAsync(string[] targets, LiveEventsBatch payload, CancellationToken ct)

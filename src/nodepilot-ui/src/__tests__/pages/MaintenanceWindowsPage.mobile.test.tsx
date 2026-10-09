@@ -56,7 +56,7 @@ describe('MaintenanceWindowsPage — mobile', () => {
     server.use(http.get(`${BASE}/api/maintenance-windows`, () => HttpResponse.json(WINDOWS)));
     server.use(http.get(`${BASE}/api/shared-folders`, () => HttpResponse.json([])));
     server.use(http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json([])));
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json([])));
     renderPage();
 
     await waitFor(() => expect(screen.getByText('Weekend Blackout')).toBeInTheDocument());

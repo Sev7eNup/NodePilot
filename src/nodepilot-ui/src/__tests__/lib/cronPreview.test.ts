@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { normalizeQuartzCron, previewSchedule, relativeFromNow } from '../../lib/cronPreview';
+import { relativeFromNow } from '../../lib/cronPreview';
+import { normalizeQuartzCron, previewSchedule } from '../../../demo/run/schedulePreview';
 
-describe('normalizeQuartzCron', () => {
+describe('offline demo schedule normalization', () => {
   it('replacesQuestionMarkWildcardWithStar', () => {
     // Quartz uses ? in the day-of-month or day-of-week field as the not-specified marker.
     // cron-parser does not understand Quartz, so the marker is translated first.
@@ -9,27 +10,24 @@ describe('normalizeQuartzCron', () => {
     expect(normalizeQuartzCron('0 0 12 1 * ?')).toBe('0 0 12 1 * *');
   });
 
-  it('truncatesYearField_byDroppingTheSeventhField', () => {
-    // Quartz allows an optional seventh year field; cron-parser does not, so it is dropped.
-    expect(normalizeQuartzCron('0 0 12 * * ? 2026')).toBe('0 0 12 * * *');
+  it('does not silently discard a restrictive year', () => {
+    expect(() => normalizeQuartzCron('0 0 12 * * ? 2026')).toThrow('NodePilot server');
+    expect(normalizeQuartzCron('0 0 12 * * ? *')).toBe('0 0 12 * * *');
   });
 
   it('preservesValidSixFieldCron', () => {
     expect(normalizeQuartzCron('0 */5 * * * *')).toBe('0 */5 * * * *');
   });
 
-  it('leavesShortExpressionsUnpadded_paddingIsTheParsersJob', () => {
-    // The normalizer only truncates and translates `?`. Padding a short expression to six
-    // fields belongs to cron-parser, which prepends the missing leading fields, so a
-    // five-field Unix cron keeps reading minute-first. Padding here would shift every
-    // field by one.
-    expect(normalizeQuartzCron('0 2 * * *')).toBe('0 2 * * *');
-    expect(normalizeQuartzCron('20 15 * *')).toBe('20 15 * *');
+  it('rejects short expressions that Quartz cannot execute', () => {
+    expect(() => normalizeQuartzCron('0 2 * * *')).toThrow('six or seven');
+    expect(() => normalizeQuartzCron('20 15 * *')).toThrow('six or seven');
   });
 
-  it('emptyInput_returnsEmpty', () => {
-    expect(normalizeQuartzCron('')).toBe('');
-    expect(normalizeQuartzCron('   ')).toBe('');
+  it('translates the supported numeric weekday subset', () => {
+    expect(normalizeQuartzCron('0 0 8 ? * 1')).toBe('0 0 8 * * 0');
+    expect(normalizeQuartzCron('0 0 8 ? * 2-6')).toBe('0 0 8 * * 1-5');
+    expect(() => normalizeQuartzCron('0 0 8 ? * MON#2')).toThrow('NodePilot server');
   });
 });
 
@@ -67,36 +65,16 @@ describe('previewSchedule', () => {
     expect(result.fireTimes.length).toBeGreaterThan(0);
   });
 
-  // ── Short expressions ──────────────────────────────────────────────────────
-  // The designer accepts free text, so the preview also receives five-field Unix cron and
-  // four-field typos. Neither form is Quartz, and both must be padded from the leading end
-  // so the seconds default lands first rather than last.
-  //
-  // Both cases assert relative spacing rather than wall-clock times: previewSchedule reads
-  // `new Date()` internally, so there is no base date to pin.
-
-  it('fiveFieldUnixCron_readsMinuteFirst_matchingItsSixFieldEquivalent', () => {
-    // `0 2 * * *` (Unix) and `0 0 2 * * *` (Quartz) are the same schedule: 02:00 daily.
-    // Padding from the trailing end would collapse the five-field form to second 0 of
-    // minute 2 of every hour, and the two would diverge.
-    const short = previewSchedule('0 2 * * *', 3);
-    const long = previewSchedule('0 0 2 * * *', 3);
-
-    expect(short.error).toBeNull();
-    expect(short.fireTimes.map((d) => d.getTime())).toEqual(long.fireTimes.map((d) => d.getTime()));
+  it('never presents a Unix-only expression as an executable Quartz schedule', () => {
+    expect(previewSchedule('0 2 * * *', 3)).toMatchObject({ fireTimes: [], error: expect.any(String) });
+    expect(previewSchedule('0 0 2 * * ?', 3).fireTimes).toHaveLength(3);
   });
 
-  it('fourFieldCron_doesNotCollapseToEverySecond', () => {
-    // Padding `20 15 * *` from the trailing end would make it fire once per second. A
-    // preview claiming a per-second schedule for a daily job is worse than an error.
+  it('fourFieldCron_returnsAnError', () => {
     const { fireTimes, error } = previewSchedule('20 15 * *', 3);
 
-    expect(error).toBeNull();
-    expect(fireTimes.length).toBe(3);
-    for (let i = 1; i < fireTimes.length; i++) {
-      const gapSeconds = (fireTimes[i].getTime() - fireTimes[i - 1].getTime()) / 1000;
-      expect(gapSeconds).toBeGreaterThanOrEqual(60);
-    }
+    expect(error).not.toBeNull();
+    expect(fireTimes).toEqual([]);
   });
 });
 

@@ -26,7 +26,7 @@ export function ModalShell({
       <div
         className={`np-anim-backdrop fixed inset-0 ${z} overflow-y-auto bg-black/30 backdrop-blur-sm`}
         onClick={onClose}
-        onKeyDown={(e) => { if (e.key === 'Escape') onClose?.(); }}
+        onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.stopPropagation(); onClose?.(); } }}
         role="presentation"
         tabIndex={-1}
       >
@@ -36,7 +36,7 @@ export function ModalShell({
           <div
             className={panelClassName ?? `np-modal-panel bg-surface-lowest rounded-xl shadow-2xl ring-1 ring-outline-variant/20 p-4 sm:p-6 w-full ${maxWidth} shrink-0`}
             onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && !e.defaultPrevented) onClose?.(); }}
             role="presentation"
           >
             {children}

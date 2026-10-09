@@ -120,7 +120,8 @@ export function getWorkflowSnippets(): WorkflowSnippet[] {
     icon: 'shield',
     nodes: [
       { localId: 'try',     dx: 0,   dy: 0,   label: i18n.t('designer:snippets.tryCatch.nodes.try'), activityType: 'runScript',
-        config: { engine: 'auto', timeoutSeconds: 60, script: "# your script here\nWrite-Output 'hello'" } },
+        config: { engine: 'auto', timeoutSeconds: 60, script: "# your script here\nWrite-Output 'hello'" },
+        outputVariable: 'try' },
       { localId: 'catch',   dx: 260, dy: 150, label: i18n.t('designer:snippets.tryCatch.nodes.catch'), activityType: 'log',
         config: { level: 'error', message: 'Script failed: {{try.error}}' } },
       // Both paths merge here: only a junction may take more than one incoming edge.

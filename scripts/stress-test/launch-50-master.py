@@ -11,10 +11,12 @@ import urllib.request
 import urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from pathlib import Path
 
-BASE_URL = "http://localhost:5000"
-USER = "admin"
-PASSWORD = "admin123"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from nodepilot_http import credentials, find_workflow, login, request
+
+BASE_URL = os.environ.get("NODEPILOT_URL", "http://localhost:5000")
 WORKFLOW_NAME = os.environ.get("NODEPILOT_STRESS_WORKFLOW", "Muster — Alle Aktivitäten")
 PARALLEL = int(os.environ.get("NODEPILOT_STRESS_PARALLEL", "100"))
 LABEL_PREFIX = os.environ.get("NODEPILOT_STRESS_LABEL_PREFIX", "50x-sync")
@@ -25,48 +27,20 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}.{int(time.time()*1000)%1000:03d}] {msg}", flush=True)
 
 
-def http_json(method: str, path: str, token: str | None = None, body=None, timeout: int = 30, extra_headers=None):
-    url = f"{BASE_URL}{path}"
-    headers = {"Content-Type": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    if extra_headers:
-        headers.update(extra_headers)
-    data = None
-    if body is not None:
-        data = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read()
-            return resp.status, (json.loads(raw) if raw else None)
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        return e.code, body
+def http_json(method: str, path: str, **kwargs):
+    return request(BASE_URL, method, path, **kwargs)
 
 
 def main() -> int:
-    log(f"Login {USER} @ {BASE_URL}")
-    # Auth H-5 migration: the JWT now lives in an httpOnly np_auth cookie and the login
-    # body returns identity only (userId/username/role). Bearer clients like this stress
-    # harness must opt in via the X-Auth-Token-Response header to also get the raw token
-    # in the body (same mechanism the np CLI uses). Without it, resp has no "token" key.
-    status, resp = http_json("POST", "/api/auth/login",
-                             body={"username": USER, "password": PASSWORD},
-                             extra_headers={"X-Auth-Token-Response": "true"})
-    if status != 200:
-        log(f"login failed: {status} {resp}")
+    try:
+        identity = login(http_json, *credentials())
+        token = identity["token"]
+        target = find_workflow(http_json, token, WORKFLOW_NAME)
+    except (RuntimeError, ValueError, OSError) as error:
+        log(str(error))
         return 1
-    token = resp.get("token") if isinstance(resp, dict) else None
-    if not token:
-        log(f"login ok but no token in body (X-Auth-Token-Response opt-in missing/unsupported?): {resp}")
-        return 1
-
-    log(f"Lookup workflow '{WORKFLOW_NAME}'")
-    _, wfs = http_json("GET", "/api/workflows", token=token)
-    target = next((w for w in wfs if w["name"] == WORKFLOW_NAME), None)
-    if not target:
-        log(f"workflow not found: {WORKFLOW_NAME}")
+    if not target or not target.get("isEnabled"):
+        log(f"Published workflow not found: {WORKFLOW_NAME}")
         return 1
     wf_id = target["id"]
     log(f"Workflow id={wf_id} (enabled={target.get('isEnabled')})")
@@ -141,7 +115,7 @@ def main() -> int:
 
     log(f"Polling {len(exec_ids)} executions")
     status_map = {eid: "Unknown" for eid in exec_ids}
-    terminal = {"Succeeded", "Failed", "Cancelled"}
+    terminal = {"Succeeded", "Failed", "Cancelled", "Skipped"}
     poll_t0 = time.monotonic()
     deadline = poll_t0 + 600
     last_log = 0.0
@@ -152,7 +126,10 @@ def main() -> int:
             break
         try:
             for eid in pending:
-                _, item = http_json("GET", f"/api/executions/{eid}", token=token, timeout=10)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                _, item = http_json("GET", f"/api/executions/{eid}", token=token, timeout=min(10, remaining))
                 if isinstance(item, dict) and item.get("id") in status_map:
                     status_map[item["id"]] = item["status"]
         except Exception as e:
@@ -180,6 +157,8 @@ def main() -> int:
     durations = []
     step_counts = []
     for eid in exec_ids:
+        if status_map[eid] not in terminal:
+            continue
         try:
             _, d = http_json("GET", f"/api/executions/{eid}", token=token, timeout=10)
             if isinstance(d, dict) and d.get("startedAt") and d.get("completedAt"):
@@ -202,7 +181,7 @@ def main() -> int:
     if step_counts:
         log(f"per-execution steps: avg={statistics.mean(step_counts):.0f} "
             f"min={min(step_counts)} max={max(step_counts)}")
-    return 0
+    return 1 if failed or len(exec_ids) != PARALLEL or any(v != "Succeeded" for v in status_map.values()) else 0
 
 
 if __name__ == "__main__":

@@ -78,12 +78,12 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
 
     private StartWorkflowActivity CreateActivity(
         IWorkflowExecutionDispatcher? dispatcher = null,
-        IWorkflowConcurrencyGate? concurrency = null)
+        IWorkflowConcurrencyGate? concurrency = null,
+        ISubWorkflowAuthorizationResolver? authorization = null)
     {
         var gate = concurrency ?? new InMemoryWorkflowConcurrencyGate();
-        return dispatcher is null
-            ? new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate(), gate)
-            : new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate(), gate, dispatcher);
+        return new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(),
+            _db, new InMemorySubWorkflowGate(), gate, dispatcher, authorization);
     }
 
     private async Task<Workflow> InsertWorkflowAsync(string name)
@@ -122,6 +122,89 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
     };
 
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_SynchronousChild_PreservesParentPrincipal(bool usePublisher)
+    {
+        var parent = await InsertWorkflowAsync("parent");
+        var execution = await InsertExecutionAsync(parent.Id);
+        var child = await InsertWorkflowAsync("child");
+        var principal = Guid.NewGuid();
+        parent.PublishedByUserId = usePublisher ? principal : Guid.NewGuid();
+        execution.StartedByUserId = usePublisher ? null : principal;
+        child.PublishedByUserId = Guid.NewGuid();
+        await _db.SaveChangesAsync();
+        _engineMock.Setup(e => e.ExecuteAsync(
+                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                principal, execution.Id, 1, It.IsAny<Guid?>(), It.IsAny<bool>()))
+            .ReturnsAsync(new WorkflowExecution
+            {
+                Id = Guid.NewGuid(), WorkflowId = child.Id, Status = ExecutionStatus.Succeeded,
+            });
+
+        var result = await CreateActivity().ExecuteAsync(MakeContext(execution.Id),
+            Cfg("""{"workflowNameOrId":"child","waitForCompletion":true}"""), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        _engineMock.VerifyAll();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ChildDisabledWhileWaiting_DoesNotStart()
+    {
+        var parent = await InsertWorkflowAsync("parent");
+        var execution = await InsertExecutionAsync(parent.Id);
+        var child = await InsertWorkflowAsync("child");
+        child.MaxConcurrentExecutions = 1;
+        await _db.SaveChangesAsync();
+        var gate = new InMemoryWorkflowConcurrencyGate();
+        gate.TryAcquire(child.Id, 1).Should().BeTrue();
+        var run = CreateActivity(concurrency: gate).ExecuteAsync(MakeContext(execution.Id),
+            Cfg("""{"workflowNameOrId":"child","waitForCompletion":true}"""), CancellationToken.None);
+        run.IsCompleted.Should().BeFalse();
+        child.IsEnabled = false;
+        await _db.SaveChangesAsync();
+        gate.Release(child.Id);
+
+        var result = await run;
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("disabled");
+        _engineMock.Invocations.Should().BeEmpty();
+        gate.BlockedWorkflowIds.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ChildAuthorizationRevokedWhileWaiting_DoesNotStart()
+    {
+        var parent = await InsertWorkflowAsync("parent");
+        var execution = await InsertExecutionAsync(parent.Id);
+        var child = await InsertWorkflowAsync("child");
+        child.MaxConcurrentExecutions = 1;
+        await _db.SaveChangesAsync();
+        var authorization = new Mock<ISubWorkflowAuthorizationResolver>();
+        string? denial = null;
+        authorization.Setup(a => a.IsBlockedAsync(It.IsAny<WorkflowExecution>(),
+                It.IsAny<Workflow>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => denial);
+        var gate = new InMemoryWorkflowConcurrencyGate();
+        gate.TryAcquire(child.Id, 1).Should().BeTrue();
+        var run = CreateActivity(concurrency: gate, authorization: authorization.Object)
+            .ExecuteAsync(MakeContext(execution.Id),
+                Cfg("""{"workflowNameOrId":"child","waitForCompletion":true}"""), CancellationToken.None);
+        run.IsCompleted.Should().BeFalse();
+        denial = "Folder permission revoked";
+        gate.Release(child.Id);
+
+        var result = await run;
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain(denial);
+        _engineMock.Invocations.Should().BeEmpty();
+    }
 
     [Fact]
     public async Task ExecuteAsync_RejectsUserParameter_WithReservedDoubleUnderscorePrefix()
@@ -371,6 +454,88 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
     }
 
     // -------------------------------------------------- per-workflow concurrency limit
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ExecuteAsync_NestedSynchronousChild_CanProgressWithOneSubWorkflowSlot(
+        bool outerForEach, bool innerForEach)
+    {
+        var parent = await InsertWorkflowAsync("parent");
+        var parentExecution = await InsertExecutionAsync(parent.Id);
+        var child = await InsertWorkflowAsync("child");
+        var childExecution = await InsertExecutionAsync(child.Id);
+        var grandchild = await InsertWorkflowAsync("grandchild");
+        using var subWorkflowGate = new InMemorySubWorkflowGate(1);
+        var concurrency = new InMemoryWorkflowConcurrencyGate();
+        StartWorkflowActivity NewActivity() => new(
+            _scopeServices.GetRequiredService<IServiceScopeFactory>(), _db, subWorkflowGate, concurrency);
+        Task<ActivityResult> InvokeChild(Guid executionId, string name, bool forEach)
+            => forEach
+                ? new ForEachActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(),
+                    _db, subWorkflowGate, concurrency).ExecuteAsync(MakeContext(executionId),
+                    JsonSerializer.SerializeToElement(new
+                    {
+                        childWorkflowNameOrId = name, items = "one", timeoutSecondsPerItem = 1,
+                    }), CancellationToken.None)
+                : NewActivity().ExecuteAsync(MakeContext(executionId),
+                    JsonSerializer.SerializeToElement(new { workflowNameOrId = name, timeoutSeconds = 1 }),
+                    CancellationToken.None);
+        _engineMock.Setup(e => e.ExecuteAsync(
+                It.Is<Workflow>(w => w.Id == grandchild.Id), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<bool>()))
+            .ReturnsAsync(new WorkflowExecution
+            {
+                Id = Guid.NewGuid(), WorkflowId = grandchild.Id, Status = ExecutionStatus.Succeeded,
+            });
+        _engineMock.Setup(e => e.ExecuteAsync(
+                It.Is<Workflow>(w => w.Id == child.Id), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<bool>()))
+            .Returns(async () =>
+            {
+                var nested = await InvokeChild(childExecution.Id, "grandchild", innerForEach);
+                return new WorkflowExecution
+                {
+                    Id = childExecution.Id, WorkflowId = child.Id,
+                    Status = nested.Success ? ExecutionStatus.Succeeded : ExecutionStatus.Failed,
+                    ErrorMessage = nested.ErrorOutput,
+                };
+            });
+
+        var result = await InvokeChild(parentExecution.Id, "child", outerForEach);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        subWorkflowGate.Available.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PerWorkflowWait_DoesNotOccupyGlobalSubWorkflowSlot()
+    {
+        var parent = await InsertWorkflowAsync("parent");
+        var execution = await InsertExecutionAsync(parent.Id);
+        var child = await InsertWorkflowAsync("child");
+        child.MaxConcurrentExecutions = 1;
+        await _db.SaveChangesAsync();
+        using var global = new InMemorySubWorkflowGate(1);
+        var concurrency = new InMemoryWorkflowConcurrencyGate();
+        concurrency.TryAcquire(child.Id, 1).Should().BeTrue();
+        using var cancellation = new CancellationTokenSource();
+        var activity = new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(),
+            _db, global, concurrency);
+        var run = activity.ExecuteAsync(MakeContext(execution.Id),
+            Cfg("""{"workflowNameOrId":"child"}"""), cancellation.Token);
+
+        run.IsCompleted.Should().BeFalse();
+        global.Available.Should().Be(1);
+        await cancellation.CancelAsync();
+        (await run).Success.Should().BeFalse();
+        global.Available.Should().Be(1);
+        concurrency.Release(child.Id);
+    }
 
     [Fact]
     public async Task ExecuteAsync_SynchronousChildAtItsLimit_WaitsThenRunsWhenASlotFrees()

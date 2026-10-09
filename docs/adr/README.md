@@ -26,6 +26,7 @@ than rewriting it (amend in place only for small corrections, as ADR 0007 does).
 | [0015](0015-fail-closed-edge-conditions.md) | Fail-Closed Edge Conditions | Implemented |
 | [0016](0016-general-ai-agent-activities.md) | General AI Agent Activities | Accepted; sequential teams superseded by 0017 |
 | [0017](0017-parallel-team-delegation.md) | Parallel Team Delegation and Live Peer Pointers | Accepted |
+| [0018](0018-active-subworkflow-capacity.md) | Active Sub-Workflow Capacity | Accepted |
 
 ## When does a decision warrant an ADR?
 

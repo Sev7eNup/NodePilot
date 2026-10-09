@@ -2,9 +2,10 @@
 param(
   [string]$BaseUrl = 'http://localhost:5000',
   [string]$User    = 'admin',
-  [string]$Password = 'admin123',
+  [Parameter(Mandatory = $true)]
+  [string]$Password,
   [string]$WorkflowName = 'Stress-Test',
-  [int]$Parallel = 40,
+  [ValidateRange(1, 1000)][int]$Parallel = 40,
   [string]$DefinitionFile
 )
 
@@ -17,25 +18,34 @@ function Log($msg) { Write-Host ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss.fff'
 # 1) Login
 Log "Login $User @ $BaseUrl"
 $loginBody = @{ username = $User; password = $Password } | ConvertTo-Json
-$loginResp = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/auth/login" -ContentType 'application/json' -Body $loginBody
+$loginResp = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/auth/login" -Headers @{ 'X-Auth-Token-Response' = 'true' } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($loginBody))
 $token = $loginResp.token
+if (-not $token) { throw 'Login did not return a bearer token' }
 $headers = @{ Authorization = "Bearer $token" }
 
 # 2) Find or create workflow
 Log "Lookup workflow '$WorkflowName'"
-$existing = Invoke-RestMethod -Method GET -Uri "$BaseUrl/api/workflows" -Headers $headers
-$wf = $existing | Where-Object { $_.name -eq $WorkflowName } | Select-Object -First 1
+$existing = Invoke-RestMethod -Method GET -Uri "$BaseUrl/api/workflows/names" -Headers $headers
+$workflowMatches = @($existing | Where-Object { $_.name -eq $WorkflowName })
+if ($workflowMatches.Count -gt 1) { throw "Workflow name is ambiguous: $WorkflowName" }
+$wf = $workflowMatches | Select-Object -First 1
 
-$defJson = Get-Content -Raw -LiteralPath $DefinitionFile
+$defJson = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $DefinitionFile).Path)
+$payload = @{ name = $WorkflowName; description = 'Ad-hoc load-test workflow'; definitionJson = $defJson }
 if ($wf) {
-  Log "Update existing workflow id=$($wf.id)"
-  $body = @{ name = $WorkflowName; description = 'Ad-hoc load-test workflow'; definitionJson = $defJson; isEnabled = $true } | ConvertTo-Json -Depth 50
-  $wf = Invoke-RestMethod -Method PUT -Uri "$BaseUrl/api/workflows/$($wf.id)" -Headers $headers -ContentType 'application/json' -Body $body
+  $wf = Invoke-RestMethod -Method GET -Uri "$BaseUrl/api/workflows/$($wf.id)" -Headers $headers
+  if ($wf.checkedOutByUserId -and $wf.checkedOutByUserId -ne $loginResp.userId) { throw 'Workflow is locked by another user' }
+  $payload.folderId = $wf.folderId
+  if (-not $wf.checkedOutByUserId) {
+    $null = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/workflows/$($wf.id)/lock" -Headers $headers
+  }
 } else {
   Log "Create new workflow"
-  $body = @{ name = $WorkflowName; description = 'Ad-hoc load-test workflow'; definitionJson = $defJson; isEnabled = $true } | ConvertTo-Json -Depth 50
-  $wf = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/workflows" -Headers $headers -ContentType 'application/json' -Body $body
+  $body = $payload | ConvertTo-Json -Depth 50
+  $wf = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/workflows" -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
 }
+$body = $payload | ConvertTo-Json -Depth 50
+$wf = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/workflows/$($wf.id)/publish" -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
 Log "Workflow id=$($wf.id) name=$($wf.name)"
 
 # 3) Fire N parallel via RunspacePool
@@ -74,8 +84,8 @@ $launchResults = foreach ($j in $jobs) {
 $pool.Close(); $pool.Dispose()
 $launchSw.Stop()
 
-$accepted = $launchResults | Where-Object ok
-$failed   = $launchResults | Where-Object { -not $_.ok }
+$accepted = @($launchResults | Where-Object ok)
+$failed   = @($launchResults | Where-Object { -not $_.ok })
 Log ("Launched: accepted={0} failed={1} launch-wall={2}ms" -f $accepted.Count, $failed.Count, $launchSw.ElapsedMilliseconds)
 if ($failed) {
   $failed | Select-Object -First 5 | ForEach-Object { Log ("  FAIL idx={0}: {1}" -f $_.idx, $_.err) }
@@ -88,7 +98,9 @@ if ($execIds.Count -eq 0) {
 
 # 4) Poll until all terminal, with CPU sampling
 Log "Polling $($execIds.Count) executions"
-$apiPid = (Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
+$targetUri = [uri]$BaseUrl
+$listener = if ($targetUri.IsLoopback) { Get-NetTCPConnection -LocalPort $targetUri.Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
+$apiPid = if ($listener) { $listener.OwningProcess } else { $null }
 $proc = if ($apiPid) { Get-Process -Id $apiPid -ErrorAction SilentlyContinue } else { $null }
 if ($proc) { Log "API process pid=$apiPid name=$($proc.ProcessName)" }
 
@@ -97,12 +109,12 @@ $deadline = (Get-Date).AddMinutes(5)
 $status = @{}
 foreach ($id in $execIds) { $status[$id] = 'Unknown' }
 
-$terminal = @('Completed','Failed','Cancelled','TimedOut','PartialFailure')
+$terminal = @('Succeeded','Failed','Cancelled','Skipped')
 $lastLog = [Diagnostics.Stopwatch]::StartNew()
 $cpuSamples = New-Object System.Collections.Generic.List[object]
 
 while ((Get-Date) -lt $deadline) {
-  $pending = $status.GetEnumerator() | Where-Object { $_.Value -notin $terminal } | ForEach-Object { $_.Key }
+  $pending = @($status.GetEnumerator() | Where-Object { $_.Value -notin $terminal } | ForEach-Object { $_.Key })
   if (-not $pending -or $pending.Count -eq 0) { break }
 
   # Sample process CPU and working set. The CPU value is a running total, so the rate is
@@ -117,12 +129,13 @@ while ((Get-Date) -lt $deadline) {
     })
   }
 
-  # Fetch the execution list in one call, then map the statuses back by id.
   try {
-    $all = Invoke-RestMethod -Method GET -Uri "$BaseUrl/api/executions?pageSize=200" -Headers $headers -TimeoutSec 10
-    $items = if ($all.items) { $all.items } else { $all }
-    foreach ($item in $items) {
-      if ($status.ContainsKey($item.id)) { $status[$item.id] = $item.status }
+    foreach ($id in $pending) {
+      $remaining = ($deadline - (Get-Date)).TotalSeconds
+      if ($remaining -le 0) { break }
+      $requestTimeout = [int][math]::Ceiling([math]::Min(10, $remaining))
+      $item = Invoke-RestMethod -Method GET -Uri "$BaseUrl/api/executions/$id" -Headers $headers -TimeoutSec $requestTimeout
+      $status[$id] = $item.status
     }
   } catch {
     Log ("poll err: {0}" -f $_.Exception.Message)
@@ -161,6 +174,7 @@ Log ("total-wall-poll={0}s executions-launched={1}" -f [math]::Round($pollSw.Ela
 # Duration stats via individual detail calls (only for completed)
 $durations = New-Object System.Collections.Generic.List[double]
 foreach ($id in $execIds) {
+  if ($status[$id] -notin $terminal) { continue }
   try {
     $d = Invoke-RestMethod -Method GET -Uri "$BaseUrl/api/executions/$id" -Headers $headers -TimeoutSec 10
     if ($d.startedAt -and $d.completedAt) {
@@ -170,7 +184,7 @@ foreach ($id in $execIds) {
   } catch {}
 }
 if ($durations.Count -gt 0) {
-  $sorted = $durations | Sort-Object
+  $sorted = @($durations | Sort-Object)
   $p50 = $sorted[[int]($durations.Count * 0.5)]
   $p95 = $sorted[[math]::Min([int]($durations.Count * 0.95), $durations.Count - 1)]
   $mx  = $sorted[$durations.Count - 1]
@@ -194,3 +208,6 @@ if ($cpuSamples.Count -ge 2) {
   $maxTh = ($cpuSamples | Measure-Object threads -Maximum).Maximum
   Log ('peak ws=' + $maxWs + 'MB peak threads=' + $maxTh)
 }
+
+if ($failed.Count -gt 0 -or @($status.Values | Where-Object { $_ -ne 'Succeeded' }).Count -gt 0) { exit 1 }
+exit 0

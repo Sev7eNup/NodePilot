@@ -158,7 +158,8 @@ public class ScheduledTaskActivity : BaseRemoteActivity
                $"$__npTask = $__npFolder.GetTask({qName}); " +
                comOperation + "; " +
                "} catch { " +
-               $"throw \"Scheduled Task {qFullTaskPath}: CIM provider failed with 0x80041318 and the local fallback also failed: $($_.Exception.Message)\" " +
+               "throw ('Scheduled Task {0}: CIM provider failed with 0x80041318 and the local fallback also failed: {1}' -f " +
+               qFullTaskPath + ", $_.Exception.Message) " +
                "} finally { " +
                "foreach ($__npComObject in @($__npRunning, $__npTask, $__npFolder, $__npService)) { " +
                "if ($null -ne $__npComObject -and [Runtime.InteropServices.Marshal]::IsComObject($__npComObject)) { " +

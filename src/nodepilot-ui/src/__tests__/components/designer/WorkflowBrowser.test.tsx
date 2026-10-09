@@ -38,6 +38,22 @@ describe('WorkflowBrowser info card', () => {
     useWorkflowBrowserStore.setState({ viewMode: 'trigger', collapsedFolders: { __none__: false }, infoCardHeight: 200 });
   });
 
+  it('searches the server catalogue and pages to workflows outside the recent cap', async () => {
+    mockedGet.mockImplementation(async (path: string) => {
+      if (!path.startsWith('/workflows/paged?')) return [wf('new', 'Recent workflow')];
+      const params = new URL(path, 'http://test').searchParams;
+      return { items: [params.get('page') === '2' ? wf('old', 'Old workflow') : wf('new', 'Recent workflow')],
+        page: Number(params.get('page')), pageSize: 50, total: 51, totalPages: 2 };
+    });
+    renderBrowser('current');
+    await screen.findByRole('button', { name: /Recent workflow/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(await screen.findByRole('button', { name: /Old workflow/ })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'required job' } });
+    await screen.findByRole('button', { name: /Recent workflow/ });
+    expect(mockedGet).toHaveBeenCalledWith(expect.stringMatching(/search=required\+job.*page=1/));
+  });
+
   it('noHover_cardFallsBackToCurrentWorkflow', async () => {
     mockedGet.mockResolvedValue([wf('wf-A', 'Alpha'), wf('wf-B', 'Beta')]);
     renderBrowser('wf-B');

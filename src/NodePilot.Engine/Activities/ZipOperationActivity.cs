@@ -282,6 +282,9 @@ public class ZipOperationActivity : BaseRemoteActivity
             }
 
             $__npDestinationFull = [System.IO.Path]::GetFullPath($__npDestination)
+            if ($__npSourceFull.Equals($__npDestinationFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw 'Zip compression source and destination must be different paths'
+            }
             Assert-NodePilotNoReparsePath -Path $__npDestinationFull
             $__npDestinationAttributes = Get-NodePilotPathAttributes -Path $__npDestinationFull
             if ($null -ne $__npDestinationAttributes) {
@@ -291,7 +294,6 @@ public class ZipOperationActivity : BaseRemoteActivity
                 if (-not $__npForce) {
                     throw "Zip compression destination already exists: '$__npDestinationFull'"
                 }
-                [System.IO.File]::Delete($__npDestinationFull)
             }
 
             $__npDestinationParent = [System.IO.Path]::GetDirectoryName($__npDestinationFull)
@@ -303,10 +305,13 @@ public class ZipOperationActivity : BaseRemoteActivity
             }
 
             $__npCompressionLevel = [System.IO.Compression.CompressionLevel]::{{canonicalLevel}}
+            # Complete a sibling archive before replacing an existing backup. A failed input
+            # read must not destroy the last good destination.
+            $__npTemporaryArchive = [System.IO.Path]::Combine($__npDestinationParent,
+                '.nodepilot-zip-' + [Guid]::NewGuid().ToString('N') + '.tmp')
             $__npOutput = $null
             $__npArchive = $null
-            $__npCreatedDestination = $false
-            $__npCompleted = $false
+            $__npCreatedTemporary = $false
             $__npSizeBytes = 0
             try {
                 # CreateNew rejects a final-leaf swap. Existing parent components were checked
@@ -314,17 +319,20 @@ public class ZipOperationActivity : BaseRemoteActivity
                 # and ACLs beyond path-based PowerShell/.NET APIs.
                 Assert-NodePilotNoReparsePath -Path $__npDestinationParent
                 $__npOutput = [System.IO.File]::Open(
-                    $__npDestinationFull,
+                    $__npTemporaryArchive,
                     [System.IO.FileMode]::CreateNew,
                     [System.IO.FileAccess]::Write,
                     [System.IO.FileShare]::None)
-                $__npCreatedDestination = $true
+                $__npCreatedTemporary = $true
                 $__npArchive = [System.IO.Compression.ZipArchive]::new(
                     $__npOutput,
                     [System.IO.Compression.ZipArchiveMode]::Create,
                     $true)
 
                 foreach ($__npManifestEntry in $__npManifest) {
+                    if ($__npManifestEntry.Path.Equals($__npDestinationFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        continue # A backup inside the selected source tree is not its own input.
+                    }
                     if ($__npManifestEntry.IsDirectory) {
                         [void]$__npArchive.CreateEntry(
                             $__npManifestEntry.EntryName,
@@ -363,12 +371,25 @@ public class ZipOperationActivity : BaseRemoteActivity
                 $__npArchive.Dispose()
                 $__npArchive = $null
                 $__npSizeBytes = $__npOutput.Length
-                $__npCompleted = $true
+                $__npOutput.Dispose()
+                $__npOutput = $null
+                Assert-NodePilotNoReparsePath -Path $__npDestinationFull
+                if ([System.IO.File]::Exists($__npDestinationFull)) {
+                    if (-not $__npForce) { throw "Zip compression destination already exists: '$__npDestinationFull'" }
+                    [System.IO.File]::Replace($__npTemporaryArchive, $__npDestinationFull, [System.Management.Automation.Language.NullString]::Value)
+                } else {
+                    [System.IO.File]::Move($__npTemporaryArchive, $__npDestinationFull)
+                }
+                $__npCreatedTemporary = $false
             } finally {
-                if ($null -ne $__npArchive) { $__npArchive.Dispose() }
-                if ($null -ne $__npOutput) { $__npOutput.Dispose() }
-                if ($__npCreatedDestination -and -not $__npCompleted) {
-                    [System.IO.File]::Delete($__npDestinationFull)
+                try {
+                    if ($null -ne $__npArchive) { $__npArchive.Dispose() }
+                } finally {
+                    try {
+                        if ($null -ne $__npOutput) { $__npOutput.Dispose() }
+                    } finally {
+                        if ($__npCreatedTemporary) { [System.IO.File]::Delete($__npTemporaryArchive) }
+                    }
                 }
             }
 

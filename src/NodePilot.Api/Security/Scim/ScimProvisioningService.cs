@@ -520,7 +520,7 @@ public sealed partial class ScimProvisioningService(
             .ToListAsync(ct);
         db.DirectoryMemberships.RemoveRange(memberships);
         var authorizationError = await UpdateAuthorizationAsync(
-            affected, group.ExternalId, new HashSet<Guid>(), now, ct);
+            affected, group.ExternalId, affected.ToHashSet(), new HashSet<Guid>(), now, ct);
         if (authorizationError is not null)
             return ScimServiceResult<bool>.Fail(409, authorizationError);
         await db.SaveChangesAsync(ct);
@@ -620,7 +620,7 @@ public sealed partial class ScimProvisioningService(
         group.DisplayName = displayName;
         group.UpdatedAt = now;
         var authorizationError = await UpdateAuthorizationAsync(
-            affected, group.ExternalId, ids, now, ct);
+            affected, group.ExternalId, oldIds.ToHashSet(), ids, now, ct);
         if (authorizationError is not null) return authorizationError;
         await db.SaveChangesAsync(ct);
         if (userStateCache is not null)
@@ -634,6 +634,7 @@ public sealed partial class ScimProvisioningService(
     private async Task<string?> UpdateAuthorizationAsync(
         IReadOnlyCollection<Guid> userIds,
         string changedGroup,
+        IReadOnlySet<Guid> previousMemberIds,
         IReadOnlySet<Guid> newMemberIds,
         DateTime now,
         CancellationToken ct)
@@ -655,6 +656,14 @@ public sealed partial class ScimProvisioningService(
         var roleGroupChanged = oidcOptions.Value.GlobalRoleMappings
             .Any(mapping => string.Equals(mapping.GroupId, changedGroup, StringComparison.Ordinal));
         var authorizationGroupChanged = accessGroupChanged || roleGroupChanged;
+        // Folder grants are authorization too, even when the group grants no global role.
+        // Use the full membership delta, not only the fresh global-authorization snapshot:
+        // existing folder subscriptions may still have been authorized by an older membership.
+        var authority = GetAuthority();
+        var folderGroupChanged = await db.SharedFolderPermissions.AsNoTracking().AnyAsync(
+            grant => grant.PrincipalType == FolderPrincipalType.Group
+                     && grant.PrincipalAuthority == authority
+                     && grant.PrincipalKey == changedGroup, ct);
         foreach (var user in users)
         {
             var groups = membershipsBefore.GetValueOrDefault(user.Id) ?? [];
@@ -665,7 +674,9 @@ public sealed partial class ScimProvisioningService(
             postRoles[user.Id] = role;
             if (user.Role != role
                 || authorizationGroupChanged
-                   && hadMembership != newMemberIds.Contains(user.Id))
+                   && hadMembership != newMemberIds.Contains(user.Id)
+                || folderGroupChanged
+                   && previousMemberIds.Contains(user.Id) != newMemberIds.Contains(user.Id))
                 changedUsers.Add(user.Id);
         }
 

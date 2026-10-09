@@ -42,8 +42,8 @@ public sealed class DiagnosticsControllerExportTests
         public string? FileForAnyDate { get; init; }
         public string Directory => "";
         public string FileSearchPattern => "*.log";
-        public string? GetCurrentDayFile() => null;
-        public string? GetFileForDate(DateOnly date) => FileForAnyDate;
+        public IReadOnlyList<string> GetCurrentDayFiles() => [];
+        public IReadOnlyList<string> GetFilesForDate(DateOnly date) => FileForAnyDate is { } file ? [file] : [];
     }
 
     private static DiagnosticsController MakeController(
@@ -291,8 +291,8 @@ public sealed class DiagnosticsControllerExportTests
         public string? CurrentDay { get; init; }
         public string Directory => "";
         public string FileSearchPattern => "*.log";
-        public string? GetCurrentDayFile() => CurrentDay;
-        public string? GetFileForDate(DateOnly date) => null;
+        public IReadOnlyList<string> GetCurrentDayFiles() => CurrentDay is { } file ? [file] : [];
+        public IReadOnlyList<string> GetFilesForDate(DateOnly date) => [];
     }
 
     // ===== Download ==========================================================

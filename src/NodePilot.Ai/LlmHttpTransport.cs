@@ -60,7 +60,6 @@ internal sealed class LlmHttpTransport
     /// </param>
     public async Task<HttpResponseMessage> SendAsync(
         Dictionary<string, object?> body,
-        HttpCompletionOption completionOption,
         CancellationToken io,
         CancellationToken caller)
     {
@@ -78,7 +77,7 @@ internal sealed class LlmHttpTransport
         HttpResponseMessage resp;
         try
         {
-            resp = await http.SendAsync(req, completionOption, io);
+            resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, io);
         }
         catch (OperationCanceledException) when (!caller.IsCancellationRequested)
         {
@@ -112,7 +111,15 @@ internal sealed class LlmHttpTransport
         var url = _config.Endpoint.PostUrl;
 
         Exception innermost = ex;
-        while (innermost.InnerException is not null) innermost = innermost.InnerException;
+        while (true)
+        {
+            // DNS/TCP classification wraps a SocketException. Keep the guard's actionable
+            // stage message instead of discarding it for the raw operating-system text.
+            if (innermost is IOException io && io.Message.StartsWith("LLM endpoint ", StringComparison.Ordinal))
+                return io.Message;
+            if (innermost.InnerException is null) break;
+            innermost = innermost.InnerException;
+        }
 
         if (innermost is AuthenticationException auth)
         {
@@ -131,10 +138,7 @@ internal sealed class LlmHttpTransport
                  + "never negotiates.";
         }
 
-        // Messages from the connect guard already name their stage, so they pass through unwrapped.
-        return innermost is IOException io && io.Message.StartsWith("LLM endpoint ", StringComparison.Ordinal)
-            ? io.Message
-            : $"LLM endpoint unreachable ({url}): {innermost.Message}";
+        return $"LLM endpoint unreachable ({url}): {innermost.Message}";
     }
 
     /// <summary>
@@ -176,7 +180,8 @@ internal sealed class LlmHttpTransport
     /// reading the body; an upstream that omits Content-Length is still bounded by
     /// <see cref="LengthLimitedStream"/>.
     /// </summary>
-    public static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage resp, CancellationToken ct)
+    public async Task<JsonDocument> ReadJsonAsync(
+        HttpResponseMessage resp, CancellationToken io, CancellationToken caller)
     {
         if (resp.Content.Headers.ContentLength is long cl && cl > MaxResponseBytes)
         {
@@ -185,11 +190,16 @@ internal sealed class LlmHttpTransport
                 httpStatus: (int)resp.StatusCode);
         }
 
-        await using var rawStream = await resp.Content.ReadAsStreamAsync(ct);
-        await using var stream = new LengthLimitedStream(rawStream, MaxResponseBytes);
         try
         {
-            return await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            await using var rawStream = await resp.Content.ReadAsStreamAsync(io);
+            await using var stream = new LengthLimitedStream(rawStream, MaxResponseBytes);
+            return await JsonDocument.ParseAsync(stream, cancellationToken: io);
+        }
+        catch (OperationCanceledException) when (!caller.IsCancellationRequested)
+        {
+            throw new LlmException(LlmErrorKind.Timeout,
+                $"LLM response body stalled for more than {_config.TimeoutSeconds}s ({_config.Endpoint.PostUrl}).");
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Body-Limit", StringComparison.Ordinal))
         {
@@ -200,6 +210,10 @@ internal sealed class LlmHttpTransport
         {
             throw new LlmException(LlmErrorKind.MalformedResponse,
                 "LLM-Antwort war kein valides JSON.", inner: ex);
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException)
+        {
+            throw new LlmException(LlmErrorKind.Unreachable, DescribeUnreachable(ex), inner: ex);
         }
     }
 
@@ -298,24 +312,26 @@ internal sealed class LengthLimitedStream : Stream
 
     public override int Read(byte[] buffer, int offset, int count)
     {
-        var n = _inner.Read(buffer, offset, count);
+        var n = _inner.Read(buffer, offset, BoundedCount(count));
         Advance(n);
         return n;
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
     {
-        var n = await _inner.ReadAsync(buffer, ct);
+        var n = await _inner.ReadAsync(buffer[..BoundedCount(buffer.Length)], ct);
         Advance(n);
         return n;
     }
 
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct)
     {
-        var n = await _inner.ReadAsync(buffer.AsMemory(offset, count), ct);
+        var n = await _inner.ReadAsync(buffer.AsMemory(offset, BoundedCount(count)), ct);
         Advance(n);
         return n;
     }
+
+    private int BoundedCount(int count) => (int)Math.Min(count, Math.Max(1, _maxBytes - _read + 1));
 
     private void Advance(int n)
     {

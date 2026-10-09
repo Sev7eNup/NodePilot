@@ -2,6 +2,7 @@
 import {
   useOperationsStore, effectiveStatusFor,
 } from '../../stores/operationsStore';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 beforeEach(() => useOperationsStore.getState().reset());
 
@@ -13,6 +14,20 @@ function runningCount(workflowId: string): number | undefined {
 }
 
 describe('operationsStore', () => {
+  it('clears live and settled execution state when the authentication context changes', () => {
+    const { applyStatus } = useOperationsStore.getState();
+    applyStatus('running', 'workflow', 'Running');
+    applyStatus('finished', 'workflow', 'Failed');
+
+    clearLocalAuthBoundary();
+
+    const state = useOperationsStore.getState();
+    expect(state.runningExecsByWorkflow).toEqual({});
+    expect(state.liveStatusByWorkflow).toEqual({});
+    expect(state.terminalTombstones).toEqual({});
+    expect(state.locallySettled).toEqual({});
+  });
+
   it('seedRunning groups execution ids by workflow and parses startedAt', () => {
     useOperationsStore.getState().seedRunning(
       [

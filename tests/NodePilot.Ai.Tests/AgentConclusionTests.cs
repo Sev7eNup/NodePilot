@@ -64,6 +64,13 @@ public sealed class AgentConclusionTests
     public void InvalidAssessmentDoesNotBecomeSuccess(string json) => Assert.Throws<JsonException>(() => AgentConclusion.Parse(json, 1000));
 
     [Fact]
+    public void FinalInputRejectsAContextTooSmallForTheOriginalTask()
+    {
+        Assert.Throws<AgentBudgetExceededException>(() => AgentConclusion.Prompt(
+            new() { Task = new string('x', 30_000) }, "Draft", "Latest", null, null, 20_000));
+    }
+
+    [Fact]
     public void BoundedFinalInputRetainsEveryMembersIdentityAndEveryCheckStatus()
     {
         var findings = JsonSerializer.SerializeToElement(Enumerable.Range(0, 12).Select(i => new {

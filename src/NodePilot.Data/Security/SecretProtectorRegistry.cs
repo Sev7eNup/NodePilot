@@ -20,67 +20,18 @@ public static class SecretProtectorRegistry
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Active-provider selection and the cluster/DPAPI conflict check live in the factory,
-        // so the encrypting JSON configuration provider (which loads before DI exists) gets
-        // identical semantics. This registration only adds the migrating-fallback wrapper.
-        var active = SecretProtectorBootstrapFactory.FromConfigSnapshot(configuration);
-
-        // Optional legacy-provider config: when set, the active protector is wrapped in a
-        // MigratingSecretProtector that falls back to the legacy provider on read. This lets
-        // a deployment rotate providers without manual re-entry of every secret.
-        var legacyName = (configuration["Secrets:LegacyProvider"] ?? string.Empty).Trim();
-        var hasLegacy = !string.IsNullOrEmpty(legacyName);
-        ISecretProtector? legacyProtector = null;
-        if (hasLegacy)
-        {
-            legacyProtector = BuildProtector(legacyName, configuration, isLegacy: true);
-        }
-
-        if (legacyProtector is not null)
-        {
-            services.AddSingleton<ISecretProtector>(sp => new MigratingSecretProtector(
-                active, legacyProtector,
-                sp.GetService<ILoggerFactory>()?.CreateLogger<MigratingSecretProtector>()));
-            services.AddSingleton<IStartupLogger>(sp => new StartupLogger(
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger("Secrets"),
-                $"Migrating secret protector enabled: active={active.ProviderName}, " +
-                $"legacy={legacyProtector.ProviderName}. Run POST /api/secrets/reencrypt then " +
-                "remove Secrets:LegacyProvider once the legacy_reads counter is zero."));
-        }
-        else
-        {
-            services.AddSingleton<ISecretProtector>(_ => active);
-            services.AddSingleton<IStartupLogger>(sp => new StartupLogger(
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger("Secrets"),
-                $"Secret protector enabled. Provider: {active.ProviderName}."));
-        }
+        // Bootstrap and DI must read the same old ciphertext during the rotation window.
+        // Build now so invalid configuration still fails at registration/startup.
+        var protector = SecretProtectorBootstrapFactory.FromConfigSnapshot(configuration);
+        services.AddSingleton<ISecretProtector>(sp => protector is MigratingSecretProtector migrating
+            ? migrating.WithLogger(sp.GetService<ILoggerFactory>()?.CreateLogger<MigratingSecretProtector>())
+            : protector);
+        var message = $"Secret protector enabled. Provider: {protector.ProviderName}.";
+        if (protector is MigratingSecretProtector)
+            message += " Run POST /api/secrets/reencrypt and resolve every skip before removing Secrets:LegacyProvider.";
+        services.AddSingleton<IStartupLogger>(sp => new StartupLogger(
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger("Secrets"), message));
         return services;
-    }
-
-    /// <summary>
-    /// Builds a single protector instance from configuration, used both for the active
-    /// provider path and (when set) the legacy-fallback path. Legacy keys live under
-    /// <c>Secrets:Legacy*</c> so an operator can run both side-by-side during a rotation.
-    /// </summary>
-    private static ISecretProtector BuildProtector(string providerName, IConfiguration configuration, bool isLegacy)
-    {
-        var prefix = isLegacy ? "Secrets:Legacy" : "Secrets:";
-        if (string.Equals(providerName, "AesGcm", StringComparison.OrdinalIgnoreCase))
-        {
-            var keyB64 = SecretProtectorBootstrapFactory.ReadAesGcmMasterKeyMaterial(configuration, prefix);
-            return new AesGcmSecretProtector(AesGcmSecretProtector.DecodeMasterKey(keyB64));
-        }
-        if (string.Equals(providerName, "Dpapi", StringComparison.OrdinalIgnoreCase))
-        {
-            // Validates the scope value explicitly: a typo in Secrets:LegacyDpapiScope would
-            // otherwise silently fall back to CurrentUser, causing decryption to succeed
-            // with the wrong scope instead of failing loudly.
-            var scopeKey = $"{prefix}DpapiScope";
-            var scope = DpapiScopeResolver.Parse(configuration[scopeKey], scopeKey);
-            return new DpapiSecretProtector(scope);
-        }
-        throw new InvalidOperationException(
-            $"{prefix}Provider has unknown value '{providerName}'. Allowed: 'Dpapi' or 'AesGcm'.");
     }
 
     /// <summary>

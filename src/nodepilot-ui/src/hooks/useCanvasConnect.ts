@@ -47,6 +47,7 @@ export function useCanvasConnect({
   setEdges,
   setSelected,
   commitHistory,
+  markDirty,
   canvasRef,
   screenToFlowPosition,
 }: {
@@ -55,6 +56,7 @@ export function useCanvasConnect({
   setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
   setSelected: (s: SelectedItem) => void;
   commitHistory: (label?: string) => void;
+  markDirty: () => void;
   canvasRef: RefObject<HTMLElement | null>;
   screenToFlowPosition: (pos: { x: number; y: number }) => { x: number; y: number };
 }): CanvasConnectApi {
@@ -96,11 +98,12 @@ export function useCanvasConnect({
       data: { label: '', condition: '', disabled: false },
     };
     commitHistory('Add node');
+    markDirty();
     setNodes((nds: Node[]) => [...nds, newNode]);
     setEdges((eds: Edge[]) => addEdge(newEdge, eds));
     setSelected({ type: 'node', id: newNodeId });
     setQuickConnect(null);
-  }, [quickConnect, commitHistory, setNodes, setEdges, setSelected]);
+  }, [quickConnect, commitHistory, markDirty, setNodes, setEdges, setSelected]);
 
   const [insertAt, setInsertAt] = useState<EdgeInsertState>(null);
 
@@ -113,6 +116,7 @@ export function useCanvasConnect({
     const target = edges.find((e) => e.id === insertAt.edgeId);
     if (!target) { setInsertAt(null); return; }
     commitHistory('Insert node');
+    markDirty();
     const newNodeId = `step-${randomUuid()}`;
     // Both edge halves share the same UUID prefix so they stay recognizable as a pair.
     const edgePairId = randomUuid();
@@ -122,7 +126,7 @@ export function useCanvasConnect({
       position: { x: insertAt.x - 100, y: insertAt.y - 40 },
       data: { label, activityType: type, targetMachineId: null, credentialId: null, config: newActivityConfig(type) },
     };
-    // The first half is always unconditional, because the original condition belongs to what
+    // The first half is unconditional, because the original condition belongs to what
     // runs after the new node. The second half inherits label and condition, so a path such as
     // "On Success" keeps its meaning.
     const firstHalf: Edge = {
@@ -132,7 +136,8 @@ export function useCanvasConnect({
       sourceHandle: edgeSourcePort(target),
       targetHandle: oppositePort(edgeSourcePort(target)),
       type: 'labeled',
-      data: { label: '', condition: '', disabled: false },
+      // Splitting a disabled branch must not activate the newly inserted activity.
+      data: { label: '', condition: '', disabled: target.data?.disabled === true },
     };
     const secondHalf: Edge = {
       ...target,
@@ -146,7 +151,7 @@ export function useCanvasConnect({
     setEdges((eds: Edge[]) => eds.filter((e) => e.id !== target.id).concat([firstHalf, secondHalf]));
     setInsertAt(null);
     setSelected({ type: 'node', id: newNodeId });
-  }, [insertAt, edges, setNodes, setEdges, setSelected, commitHistory]);
+  }, [insertAt, edges, setNodes, setEdges, setSelected, commitHistory, markDirty]);
 
   return {
     quickConnect, setQuickConnect, handleConnectEnd, handleQuickConnectPick,

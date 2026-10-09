@@ -25,13 +25,14 @@ import { usePopover, MenuSectionLabel, MenuButton } from './menuPrimitives';
  * the button labels so tests can find them by title.
  */
 export function ToolsMenu({
-  workflowId, workflowName, nodes,
+  workflowId, workflowName, nodes, canWrite,
   setFindReplaceOpen, zoomToSelection, setDiffOpen,
   simulation, runSimulation, clearSimulation, setHelpOpen,
   tidyLayout, isTidying, layoutMode, restoreOrigLayout, hasOrigLayout,
   exportPng,
 }: Readonly<{
   workflowId: string | undefined;
+  canWrite: boolean;
   workflowName: string;
   nodes: Node[];
   setFindReplaceOpen: (o: boolean) => void;
@@ -91,10 +92,10 @@ export function ToolsMenu({
           </MenuButton>
 
           <MenuSectionLabel>{t('editor:tools.layoutHeader')}</MenuSectionLabel>
-          <MenuButton icon={<MagicWand size={15} />} title={t('editor:tidyTooltip', { mode: layoutMode })} disabled={isTidying} onClick={tidyLayout}>
+          <MenuButton icon={<MagicWand size={15} />} title={t('editor:tidyTooltip', { mode: layoutMode })} disabled={!canWrite || isTidying} onClick={tidyLayout}>
             {t('editor:tidy')} · {LAYOUT_LABELS[layoutMode]}
           </MenuButton>
-          <MenuButton icon={<Reset size={15} />} title={t('editor:restoreOrigLayout')} disabled={!hasOrigLayout} onClick={restoreOrigLayout}>
+          <MenuButton icon={<Reset size={15} />} title={t('editor:restoreOrigLayout')} disabled={!canWrite || !hasOrigLayout} onClick={restoreOrigLayout}>
             {t('editor:restoreOrigLayout')}
           </MenuButton>
 

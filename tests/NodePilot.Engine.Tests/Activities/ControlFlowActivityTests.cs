@@ -86,6 +86,34 @@ public sealed class ReturnDataActivityTests : IDisposable
 
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
 
+    [Theory]
+    [InlineData("smtpPassword")]
+    [InlineData("accessToken")]
+    public async Task ExecuteAsync_SensitiveNamedValue_RedactsPersistedEnvelopeOnly(string key)
+    {
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Return contract", DefinitionJson = "{}" };
+        var execution = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id };
+        _db.AddRange(workflow, execution);
+        await _db.SaveChangesAsync();
+        var redactor = new NodePilot.Engine.Security.OutputRedactor();
+        var activity = new ReturnDataActivity(_db, redactor);
+        var config = JsonSerializer.SerializeToElement(new { data = new Dictionary<string, string>
+        {
+            [key] = "opaque-sensitive-value", ["status"] = "ready",
+        } });
+
+        var result = await activity.ExecuteAsync(new StepExecutionContext
+            { WorkflowExecutionId = execution.Id, StepId = "return" }, config, CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.OutputParameters[key].Should().Be("opaque-sensitive-value");
+        var stored = await _db.WorkflowExecutions.AsNoTracking().SingleAsync(e => e.Id == execution.Id);
+        using var payload = JsonDocument.Parse(stored.ReturnData!);
+        payload.RootElement.GetProperty(key).GetString().Should().Be("***");
+        payload.RootElement.GetProperty("status").GetString().Should().Be("ready");
+        redactor.Redact(stored.ReturnData).Should().NotContain("opaque-sensitive-value");
+    }
+
     [Fact]
     public async Task ExecuteAsync_MissingData_ReturnsError()
     {

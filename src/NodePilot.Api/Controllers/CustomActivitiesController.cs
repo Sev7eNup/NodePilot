@@ -127,7 +127,8 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
         if (existing is null) return NotFound();
         if (MutationForbidden(existing, out var forbid)) return forbid!;
 
-        await store.SoftDeleteAsync(id, ct);
+        try { await store.SoftDeleteAsync(id, existing.ConcurrencyToken, ct); }
+        catch (CustomActivityConcurrencyException ex) { return Conflict(new { message = ex.Message }); }
         await audit.LogAsync(AuditActions.CustomActivityDeleted, "CustomActivity", id,
             AuditDetails.Json(("key", existing.Key)), ct);
         return NoContent();
@@ -142,8 +143,9 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
         if (MutationForbidden(existing, out var forbid)) return forbid!;
 
         CustomActivityDefinition def;
-        try { def = await store.RollbackAsync(id, version, this.GetCurrentUsername(), ct); }
+        try { def = await store.RollbackAsync(id, version, existing.ConcurrencyToken, this.GetCurrentUsername(), ct); }
         catch (KeyNotFoundException) { return NotFound(); }
+        catch (CustomActivityConcurrencyException ex) { return Conflict(new { message = ex.Message }); }
 
         await audit.LogAsync(AuditActions.CustomActivityRolledBack, "CustomActivity", id,
             AuditDetails.Json(("toVersion", version), ("newVersion", def.Version)), ct);
@@ -164,7 +166,8 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
     {
         var def = await store.GetByIdAsync(id, ct);
         if (def is null) return NotFound();
-        await store.SetEnabledAsync(id, enabled, this.GetCurrentUsername(), ct);
+        try { await store.SetEnabledAsync(id, enabled, def.ConcurrencyToken, this.GetCurrentUsername(), ct); }
+        catch (CustomActivityConcurrencyException ex) { return Conflict(new { message = ex.Message }); }
         await audit.LogAsync(
             enabled ? AuditActions.CustomActivityEnabled : AuditActions.CustomActivityDisabled,
             "CustomActivity", id, AuditDetails.Json(("key", def.Key)), ct);
@@ -219,7 +222,9 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
                 item.ScriptTemplate, engine, item.RunsRemote, item.Isolated,
                 item.MemoryLimitMb, item.MaxProcesses, item.DefaultTimeoutSeconds, item.SuccessExitCodes,
                 inputs, outputs);
-            var def = await store.CreateAsync(input, this.GetCurrentUsername(), ct); // created disabled
+            CustomActivityDefinition def;
+            try { def = await store.CreateAsync(input, this.GetCurrentUsername(), ct); } // created disabled
+            catch (CustomActivityDuplicateKeyException) { continue; } // a concurrent import/create won
             await audit.LogAsync(AuditActions.CustomActivityImported, "CustomActivity", def.Id,
                 AuditDetails.Json(("key", def.Key)), ct);
             imported.Add(ToResponse(def));

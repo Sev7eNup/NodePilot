@@ -16,11 +16,12 @@ public sealed record KnowledgeFileResult(bool Ok, string? Path, string? Content,
 /// Path guard and keyword file search shared by the docs and source-code knowledge readers.
 /// Separate from the config-bound <c>FileSystemOperation</c> PathGuard: a small, self-contained
 /// guard scoped to a single knowledge root. Every resolve confines the path under the root and
-/// rejects absolute paths, <c>..</c>, and any symlink or normalisation escape.
+/// rejects absolute paths, <c>..</c>, and reparse-point descendants. The configured root itself
+/// may be a link chosen by the administrator.
 /// </summary>
 internal static class KnowledgeFileSearch
 {
-    /// <summary>Upper bound on files scanned per search, so a search over a large source tree stays
+    /// <summary>Upper bound on files and directories scanned per search, so a large source tree stays
     /// bounded. The caller's per-source result cap bounds the returned hits.</summary>
     private const int ScanCap = 8_000;
 
@@ -40,7 +41,7 @@ internal static class KnowledgeFileSearch
         string rootFull, combined;
         try
         {
-            rootFull = Path.GetFullPath(root);
+            rootFull = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
             combined = Path.GetFullPath(Path.Combine(rootFull, relPath));
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
@@ -52,6 +53,18 @@ internal static class KnowledgeFileSearch
             ? rootFull
             : rootFull + Path.DirectorySeparatorChar;
         if (!combined.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase)) return false;
+
+        var current = combined;
+        while (!string.Equals(current, rootFull, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0) return false;
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException) { }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
+            current = Path.GetDirectoryName(current) ?? rootFull;
+        }
 
         fullPath = combined;
         return true;
@@ -84,8 +97,8 @@ internal static class KnowledgeFileSearch
         foreach (var file in WalkFiles(root))
         {
             if (scanned >= ScanCap) break;
-            if (!isEligible(file)) continue;
             scanned++;
+            if (!isEligible(file)) continue;
 
             string content;
             try
@@ -168,19 +181,28 @@ internal static class KnowledgeFileSearch
     {
         var stack = new Stack<string>();
         stack.Push(root);
-        while (stack.Count > 0)
+        var visitedDirectories = 0;
+        while (stack.Count > 0 && visitedDirectories++ < ScanCap)
         {
             var dir = stack.Pop();
 
             string[] files;
             try { files = Directory.GetFiles(dir); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { files = []; }
-            foreach (var f in files) yield return f;
+            foreach (var f in files)
+                if (IsOrdinaryEntry(f)) yield return f;
 
             string[] subdirs;
             try { subdirs = Directory.GetDirectories(dir); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { subdirs = []; }
-            foreach (var d in subdirs) stack.Push(d);
+            foreach (var d in subdirs)
+                if (IsOrdinaryEntry(d)) stack.Push(d);
         }
+    }
+
+    private static bool IsOrdinaryEntry(string path)
+    {
+        try { return (File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
     }
 }

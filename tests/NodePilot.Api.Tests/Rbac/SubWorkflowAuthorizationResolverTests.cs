@@ -55,11 +55,14 @@ public sealed class SubWorkflowAuthorizationResolverTests : IDisposable
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
     }
 
-    [Fact]
-    public async Task SameFolder_ActivePrincipal_IsAllowedWithoutFolderBoundaryCheck()
+    [Theory]
+    [InlineData(UserRole.Admin)]
+    [InlineData(UserRole.Operator)]
+    public async Task SameFolder_ActivePrincipal_IsAllowedWithoutFolderBoundaryCheck(UserRole role)
     {
         // Parent and child both in /Finance: account state is still checked, while no
         // second folder grant is required.
+        _adminUser.Role = role;
         var sibling = new Workflow { Id = Guid.NewGuid(), Name = "fwf2", DefinitionJson = "{}", FolderId = _financeId, Version = 1, IsEnabled = true };
         _db.Workflows.Add(sibling);
         _db.SaveChanges();
@@ -72,6 +75,49 @@ public sealed class SubWorkflowAuthorizationResolverTests : IDisposable
         var resolver = new SubWorkflowAuthorizationResolver(_db);
         var blocked = await resolver.IsBlockedAsync(exec, sibling, CancellationToken.None);
         blocked.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SameFolder_PrincipalDemotedDuringRun_IsBlocked(bool triggerDriven)
+    {
+        _financeParent.PublishedByUserId = _editorUser.Id;
+        var execution = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = _financeParent.Id,
+            Status = ExecutionStatus.Running,
+            StartedByUserId = triggerDriven ? null : _editorUser.Id,
+        };
+        await _db.SaveChangesAsync();
+        var resolver = new SubWorkflowAuthorizationResolver(_db);
+        (await resolver.IsBlockedAsync(execution, _financeParent, CancellationToken.None)).Should().BeNull();
+
+        _editorUser.Role = UserRole.Viewer;
+        await _db.SaveChangesAsync();
+
+        var blocked = await resolver.IsBlockedAsync(execution, _financeParent, CancellationToken.None);
+        blocked.Should().Contain("global role 'Viewer'");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SameFolder_InactiveOrTombstonedAdmin_IsBlocked(bool tombstoned)
+    {
+        _adminUser.IsActive = tombstoned;
+        _adminUser.IsTombstoned = tombstoned;
+        await _db.SaveChangesAsync();
+        var execution = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = _financeParent.Id,
+            Status = ExecutionStatus.Running, StartedByUserId = _adminUser.Id,
+        };
+
+        var blocked = await new SubWorkflowAuthorizationResolver(_db)
+            .IsBlockedAsync(execution, _financeParent, CancellationToken.None);
+
+        blocked.Should().Contain("inactive");
     }
 
     [Fact]
@@ -271,6 +317,23 @@ public sealed class SubWorkflowAuthorizationResolverTests : IDisposable
         var resolver = new SubWorkflowAuthorizationResolver(_db);
         (await resolver.IsBlockedAsync(exec, _salesChild, CancellationToken.None))
             .Should().BeNull("trigger-driven run uses the stable publish principal");
+    }
+
+    [Fact]
+    public async Task NestedExecution_PreservedInitiator_CannotBorrowItsWorkflowPublishersAdminRole()
+    {
+        _financeParent.PublishedByUserId = _adminUser.Id;
+        await _db.SaveChangesAsync();
+        var nestedExecution = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = _financeParent.Id,
+            Status = ExecutionStatus.Running, StartedByUserId = _editorUser.Id,
+        };
+
+        var blocked = await new SubWorkflowAuthorizationResolver(_db)
+            .IsBlockedAsync(nestedExecution, _salesChild, TestContext.Current.CancellationToken);
+
+        blocked.Should().Contain("editor").And.Contain("no folder-permission grant");
     }
 
     [Fact]
