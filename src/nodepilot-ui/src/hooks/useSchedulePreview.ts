@@ -20,7 +20,7 @@ export function useSchedulePreview(cron: string, enabled = true) {
     retry: false,
     meta: { silentError: true },
   });
-  const fireTimes = useMemo(() => ready && query.data
+  const fireTimes = useMemo(() => ready && query.data?.fires
     ? query.data.fires.map(value => new Date(value)) : [], [ready, query.data]);
   return {
     fireTimes,

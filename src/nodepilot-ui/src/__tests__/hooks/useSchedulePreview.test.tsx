@@ -41,3 +41,10 @@ it('hides the old schedule immediately and requests only the settled edit', asyn
   await act(async () => { await vi.advanceTimersByTimeAsync(10); });
   expect(result.current.fireTimes).toHaveLength(1);
 });
+
+it('shows no dates for a response without a fires list instead of crashing', async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({}));
+  const { result } = renderHook(() => useSchedulePreview('0 0 8 ? * 1'), { wrapper: wrapper() });
+  await waitFor(() => expect(result.current.isLoading).toBe(false));
+  expect(result.current.fireTimes).toEqual([]);
+});
