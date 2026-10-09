@@ -102,10 +102,12 @@ wins at load time and stays untouched. Left empty, `np` falls back to its own co
 is stored per user - the account that ran setup is not the account that runs the switcher, so that
 fallback usually fails with "No server URL configured".
 
-An update wipes and repopulates the install directory, so it reads the configured value before the
-wipe and writes it back afterwards. An installation that predates the setting has none to carry, so
-the update derives one from the installed `AllowedHosts` and the Kestrel HTTPS port. Install and
-update share one implementation, `deploy/SwitcherConfig.ps1`.
+An update preserves the entire configuration beside the executable, including SCOrch endpoints,
+allowlists and profiles. It reads and validates the file before replacing any files, then restores
+the original bytes after verifying the new artifact. An unreadable or invalid file aborts the update
+before the replacement. If the server URL is unset, the update derives one from the installed
+`AllowedHosts` and Kestrel HTTPS port. Install and update share the URL helper,
+`deploy/SwitcherConfig.ps1`.
 
 Both allowlist paths must be absolute paths and may point either to a local file (`C:\...`) or to a
 UNC share (`\\server\share\...`). Relative allowlist paths are rejected. The account that starts the
