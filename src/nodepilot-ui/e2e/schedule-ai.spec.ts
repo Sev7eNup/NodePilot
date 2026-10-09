@@ -38,13 +38,14 @@ test.describe('Schedule Next-Fires & AI Generate-Workflow (Teil 53)', () => {
     await installDefaultMocks(page);
   });
 
-  // ---------------- A) Next-Fires (client-side preview) ----------------
+  // ---------------- A) Next-Fires (server-computed preview) ----------------
 
   test('53.1 — schedule trigger lists upcoming fire times for a valid cron', async ({ page }) => {
-    let nextFiresHit = false;
+    let nextFiresCron: string | null = null;
+    const fires = Array.from({ length: 5 }, (_, i) => new Date(Date.now() + (i + 1) * 5 * 60_000).toISOString());
     await page.route('**/api/triggers/schedule/next-fires**', (route) => {
-      nextFiresHit = true; // should stay false — the SPA computes this locally
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ fires: [], summary: '' }) });
+      nextFiresCron = new URL(route.request().url()).searchParams.get('cron');
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ fires }) });
     });
     await page.route(`**/api/workflows/${WF_ID}`, (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: scheduleWorkflowJson('0 */5 * * * ?') }),
@@ -55,11 +56,11 @@ test.describe('Schedule Next-Fires & AI Generate-Workflow (Teil 53)', () => {
     await node(page, 'sched').click({ position: { x: 15, y: 15 } });
     await expect(page.getByText(/^Schedule$/).first()).toBeVisible({ timeout: 10_000 });
 
-    // "Next fire times" header + at least one concrete upcoming fire ("in …") rendered locally.
+    // "Next fire times" header + at least one concrete upcoming fire ("in …") from the server.
     await expect(page.getByText(/next fire times/i)).toBeVisible();
     await expect(page.getByText(/in \d/).first()).toBeVisible();
-    // The backend next-fires endpoint is not consulted by the designer.
-    expect(nextFiresHit).toBe(false);
+    // The designer asked the server to compute the dates for the configured expression.
+    expect(nextFiresCron).toBe('0 */5 * * * ?');
   });
 
   test('53.2 — empty cron shows no upcoming fires (preview empty, not crashing)', async ({ page }) => {

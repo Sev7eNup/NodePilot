@@ -547,11 +547,13 @@ test.describe('Custom Activities', () => {
 
     await expect.poll(() => postedBody, { timeout: 10_000 }).not.toBeNull();
 
-    // The modal stays open because warnings are present.
-    await expect(panel).toBeVisible();
+    // The modal stays open because warnings are present. The definition now exists, so the dialog
+    // continues as an edit of it and the next save updates instead of creating a duplicate.
+    const saved = createEditPanel(page, /edit custom node|custom node bearbeiten/i);
+    await expect(saved).toBeVisible();
     // lintWarnings heading = "Security lint warnings" (DE "Security-Lint-Warnungen").
-    await expect(panel.getByText(/security lint warnings|security-lint-warnungen/i)).toBeVisible();
+    await expect(saved.getByText(/security lint warnings|security-lint-warnungen/i)).toBeVisible();
     // The warning message itself is rendered in the amber <ul>.
-    await expect(panel.getByText(/invoke-expression is forbidden/i)).toBeVisible();
+    await expect(saved.getByText(/invoke-expression is forbidden/i)).toBeVisible();
   });
 });
