@@ -15,6 +15,11 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parent
 
 
+def windows_powershell_environment():
+    """Windows PowerShell must not inherit the module path of the PowerShell 7 that runs CI."""
+    return {name: value for name, value in os.environ.items() if name.upper() != "PSMODULEPATH"}
+
+
 def load_script(relative):
     spec = importlib.util.spec_from_file_location("admin_script", ROOT / relative)
     module = importlib.util.module_from_spec(spec)
@@ -183,7 +188,7 @@ class ScriptContracts(unittest.TestCase):
                 # Disable host-process sampling in this HTTP contract fixture.
                 command = f"function Get-NetTCPConnection {{ }}; & '{script}' -BaseUrl '{self.url}' -Password fixture-only -Parallel 1"
                 result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-                                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+                                        capture_output=True, text=True, encoding="utf-8", errors="replace", env=windows_powershell_environment(), timeout=120)
                 self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
 
     @unittest.skipUnless(os.name == "nt", "Windows PowerShell contract")
@@ -198,7 +203,7 @@ class ScriptContracts(unittest.TestCase):
                     command += f"& '{script}' -BaseUrl '{self.url}' -Credential $credential"
                     try:
                         result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-                                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+                                                capture_output=True, text=True, encoding="utf-8", errors="replace", env=windows_powershell_environment(), timeout=60)
                     except subprocess.TimeoutExpired as timeout:
                         partial = [(part.decode("utf-8", "replace") if isinstance(part, bytes) else part or "")
                                    for part in (timeout.stdout, timeout.stderr)]
@@ -220,7 +225,7 @@ class ScriptContracts(unittest.TestCase):
                 (demo_root / f"{name}.json").write_text('{"nodes":[],"edges":[]}', encoding="utf-8")
             result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-File", str(script),
                                      "-BaseUrl", self.url, "-AdminPassword", "fixture-only", "-Force"],
-                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace", env=windows_powershell_environment(), timeout=120)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         creates = [body for method, path, body in self.calls if method == "POST" and path == "/api/workflows"]
         publishes = [body for _, path, body in self.calls if path.endswith("/publish")]
@@ -242,7 +247,7 @@ class ScriptContracts(unittest.TestCase):
             result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-File",
                                      str(ROOT / "continuous-test-1min/Install-ContinuousTest1Min.ps1"),
                                      "-BaseUrl", self.url, "-Password", "fixture-only", "-DefinitionFile", str(definition)],
-                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace", env=windows_powershell_environment(), timeout=120)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual(10, sum(path.endswith("/publish") for _, path, _ in self.calls))
 
