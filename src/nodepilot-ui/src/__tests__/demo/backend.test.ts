@@ -80,6 +80,14 @@ describe('the fetch patch', () => {
     expect(response.headers.get('content-type')).toContain('application/json');
   });
 
+  it('previews the offline Quartz subset through the production endpoint contract', async () => {
+    const response = await api.get<{ fires: string[] }>('/triggers/schedule/next-fires?cron=0%200%208%20%3F%20*%201&count=3');
+    expect(response.fires).toHaveLength(3);
+    expect(response.fires.every(value => new Date(value).getDay() === 0)).toBe(true);
+    await expect(api.get('/triggers/schedule/next-fires?cron=0%200%208%20%3F%20*%20MON%202001'))
+      .rejects.toThrow(/require a NodePilot server/);
+  });
+
   it('answers /healthz/database, which sits outside /api', async () => {
     // The app polls this from boot and treats a non-JSON content type as an outage.
     const response = await fetch('/healthz/database');
@@ -143,6 +151,25 @@ describe('handler contracts', () => {
     expect(rows[0]).toHaveProperty('hasManualTriggerParameters');
     const one = await json<Record<string, unknown>>(`/workflows/${rows[0].id as string}`);
     expect(typeof one.definitionJson).toBe('string');
+  });
+
+  it('pages workflows after exact folder filtering and global sorting', async () => {
+    const base = getWorld().workflows[0];
+    getWorld().workflows = [
+      { ...base, id: 'c', name: 'Charlie', folderId: 'team' },
+      { ...base, id: 'a', name: 'Alpha', folderId: 'team' },
+      { ...base, id: 'x', name: 'Other folder', folderId: 'elsewhere' },
+      { ...base, id: 'b', name: 'Bravo', folderId: 'team' },
+    ];
+    const response = await getPage<{ id: string }>('/workflows/paged?folderId=team&sortBy=name&sortDir=asc', 2, 1);
+    expect(response).toMatchObject({ items: [{ id: 'b' }], page: 2, pageSize: 1, total: 3, totalPages: 3 });
+    expect(response.items[0]).not.toHaveProperty('definitionJson');
+    const match = await getPage<{ id: string }>('/workflows/paged?search=Charlie', 1, 50);
+    expect(match.items.map(w => w.id)).toEqual(['c']);
+    const recent = await getPage<{ id: string }>('/workflows/paged?ids=c&ids=a&sortBy=name&sortDir=asc', 1, 10);
+    expect(recent.items.map(w => w.id)).toEqual(['a', 'c']);
+    await expect(getPage(`/workflows/paged?${Array.from({ length: 11 }, (_, i) => `ids=${i}`).join('&')}`))
+      .rejects.toMatchObject({ status: 400 });
   });
 
   it('answers the dashboard with every key the page reads', async () => {

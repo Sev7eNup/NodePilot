@@ -105,6 +105,21 @@ function mockList() {
 }
 
 describe('ExecutionsPage', () => {
+  it('keeps filters available after a search returns no executions', async () => {
+    mockList();
+    server.use(http.get(`${BASE}/api/executions`, ({ request }) => {
+      const empty = new URL(request.url).searchParams.get('search') === 'no-match';
+      return HttpResponse.json({ items: empty ? [] : MOCK_EXECUTIONS, page: 1, pageSize: 200,
+        total: empty ? 0 : 2, totalPages: empty ? 0 : 1 });
+    }));
+    renderPage();
+    await screen.findByRole('button', { name: 'Disk Check' });
+    fireEvent.change(screen.getByPlaceholderText(/Search workflow/i), { target: { value: 'no-match' } });
+    await screen.findByText(/No executions yet/);
+    fireEvent.change(screen.getByPlaceholderText(/Search workflow/i), { target: { value: '' } });
+    expect(await screen.findByRole('button', { name: 'Disk Check' })).toBeInTheDocument();
+  });
+
   it('shows loading state initially', () => {
     server.use(
       http.get(`${BASE}/api/executions`, () => new Promise(() => {})),

@@ -22,7 +22,7 @@ export function missionPlan(workflowId: string, nodes: GraphNode[], edges: Graph
       : [['trg'], ['status'], ['dec'], ['start'], ['settle'], ['verify'], ['mail_recovered'], ['gather'], ['ret']];
   }
   if (!groups) return null;
-  const available = new Set(nodes.map(node => node.id));
+  const available = new Set(nodes.filter(node => !node.data?.disabled).map(node => node.id));
   const connections = new Set(edges.filter(edge => !edge.data?.disabled).map(edge => `${edge.source}->${edge.target}`));
   const required = workflowId === MISSION_WORKFLOW_IDS.decision
     ? ['trg->probe', 'probe->dec', 'dec->top_dirs', 'top_dirs->mail_critical', 'mail_critical->gather', 'log_warning->gather', 'log_ok->gather', 'gather->ret']

@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
@@ -67,7 +68,7 @@ const THREE = [
   workflow({ id: WF_C, name: 'Gamma' }),
 ];
 
-async function openList(page: Page, workflows: unknown[] = THREE) {
+async function openList(page: Page, workflows: ReturnType<typeof workflow>[] = THREE) {
   await page.route('**/api/shared-workflow-folders', (route) =>
     route.request().method() === 'GET'
       ? route.fulfill({
@@ -76,8 +77,8 @@ async function openList(page: Page, workflows: unknown[] = THREE) {
         })
       : route.continue(),
   );
-  await page.route('**/api/workflows', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflows) }),
+  await page.route('**/api/workflows/paged**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, workflows)) }),
   );
   await page.goto('/workflows');
   await expect(page.getByRole('button', { name: 'Alpha' })).toBeVisible({ timeout: 15_000 });

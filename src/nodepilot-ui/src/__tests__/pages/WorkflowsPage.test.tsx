@@ -109,14 +109,14 @@ const DISABLED_WORKFLOW: WorkflowListItem = mkWorkflow({
 
 describe('WorkflowsPage — basics', () => {
   it('shows loading state initially', () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => new Promise(() => {})));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => new Promise(() => {})));
     renderPage();
     expect(screen.getAllByText(/loading/i).length).toBeGreaterThan(0);
   });
 
   it('renders workflow names', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () =>
+      http.get(`${BASE}/api/workflows/paged`, () =>
         HttpResponse.json([WORKFLOW_WITH_SCHEDULE, DISABLED_WORKFLOW])
       )
     );
@@ -127,7 +127,7 @@ describe('WorkflowsPage — basics', () => {
 
   it('shows Schedule trigger badge', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE]))
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE]))
     );
     renderPage();
     await waitFor(() => expect(screen.getByText('Schedule')).toBeInTheDocument());
@@ -135,7 +135,7 @@ describe('WorkflowsPage — basics', () => {
 
   it('shows manualTrigger badge with Hand icon label', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () =>
+      http.get(`${BASE}/api/workflows/paged`, () =>
         HttpResponse.json([mkWorkflow({ triggerTypes: ['manualTrigger'] })])
       )
     );
@@ -145,7 +145,7 @@ describe('WorkflowsPage — basics', () => {
 
   it('shows version number', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE]))
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE]))
     );
     renderPage();
     await waitFor(() => expect(screen.getByText(/v3/)).toBeInTheDocument());
@@ -153,7 +153,7 @@ describe('WorkflowsPage — basics', () => {
 
   it('shows description when provided', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE]))
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE]))
     );
     renderPage();
     await waitFor(() => expect(screen.getByText('Daily backup')).toBeInTheDocument());
@@ -161,7 +161,7 @@ describe('WorkflowsPage — basics', () => {
 
   it('shows disabled state indicator', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([DISABLED_WORKFLOW]))
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([DISABLED_WORKFLOW]))
     );
     renderPage();
     await waitFor(() => expect(screen.getByText('Disabled Job')).toBeInTheDocument());
@@ -169,14 +169,14 @@ describe('WorkflowsPage — basics', () => {
   });
 
   it('empty workflows list shows "No workflows yet"', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderPage();
     await waitFor(() => expect(screen.getByText(/No workflows yet/)).toBeInTheDocument());
   });
 
   it('shows last run "just now" for recent execution', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE]))
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE]))
     );
     renderPage();
     await waitFor(() => expect(screen.getByText('Backup Workflow')).toBeInTheDocument());
@@ -185,7 +185,7 @@ describe('WorkflowsPage — basics', () => {
 
   it('shows "never" when no last execution', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () =>
+      http.get(`${BASE}/api/workflows/paged`, () =>
         HttpResponse.json([mkWorkflow({ lastExecution: null })])
       )
     );
@@ -205,7 +205,7 @@ describe('WorkflowsPage — import folder targeting', () => {
 
   function seedImport(capture: { url: string | null }) {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.get(`${BASE}/api/shared-workflow-folders`, () =>
         HttpResponse.json([
           folderRow(ROOT, 'Root', null, '/', 0),
@@ -255,7 +255,7 @@ describe('WorkflowsPage — import result toast', () => {
 
   function seedImportResponse(body: { created: number; workflows: unknown[]; errors: string[] }) {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.post(`${BASE}/api/workflows/import`, () => HttpResponse.json(body)),
     );
   }
@@ -295,7 +295,7 @@ describe('WorkflowsPage — import result toast', () => {
     const firstResponseGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
     let postCount = 0;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.post(`${BASE}/api/workflows/import`, async () => {
         postCount++;
         if (postCount === 1) await firstResponseGate;
@@ -329,7 +329,7 @@ describe('WorkflowsPage — import result toast', () => {
     const deferredRead = new Promise<ArrayBuffer>((resolve) => { finishRead = resolve; });
     let posted = false;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.post(`${BASE}/api/workflows/import-scorch`, () => {
         posted = true;
         return HttpResponse.json({ created: 0, workflows: [], variables: [], warnings: [], errors: [] });
@@ -358,7 +358,7 @@ describe('WorkflowsPage — import result toast', () => {
     const utf16 = new Uint8Array([0xff, 0xfe, 0x3c, 0x00, 0x50, 0x00, 0x2f, 0x00, 0x3e, 0x00]);
     let received: Uint8Array | null = null;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.post(`${BASE}/api/workflows/import-scorch`, async ({ request }) => {
         received = new Uint8Array(await request.arrayBuffer());
         return HttpResponse.json({ created: 0, workflows: [], variables: [], warnings: [], errors: [] });
@@ -388,7 +388,7 @@ describe('WorkflowsPage — import result toast', () => {
 
   it('refreshes the folder tree after a SCOrch import', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.post(`${BASE}/api/workflows/import-scorch`, () =>
         HttpResponse.json({ created: 1, workflows: [], variables: [], warnings: [], errors: [] })),
     );
@@ -406,21 +406,21 @@ describe('WorkflowsPage — import result toast', () => {
 
 describe('WorkflowsPage — RBAC', () => {
   it('shows Create Workflow button for Admin', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderPage('Admin');
     await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: /New Workflow/ })).toBeInTheDocument();
   });
 
   it('hides Create Workflow button for Viewer', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderPage('Viewer');
     await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /New Workflow/i })).not.toBeInTheDocument();
   });
 
   it('hides Import + SCOrch import buttons for Viewer', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderPage('Viewer');
     await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /^Import$/ })).not.toBeInTheDocument();
@@ -428,7 +428,7 @@ describe('WorkflowsPage — RBAC', () => {
   });
 
   it('Operator sees Run + Edit + Duplicate but not Delete', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
     renderPage('Operator');
     await waitFor(() => expect(screen.getByText('Backup Workflow')).toBeInTheDocument());
     expect(screen.getByTitle('Run Now')).toBeInTheDocument();
@@ -438,7 +438,7 @@ describe('WorkflowsPage — RBAC', () => {
   });
 
   it('Viewer sees only View (Pencil) + Export', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
     renderPage('Viewer');
     await waitFor(() => expect(screen.getByText('Backup Workflow')).toBeInTheDocument());
     expect(screen.queryByTitle('Run Now')).not.toBeInTheDocument();
@@ -467,7 +467,7 @@ describe('WorkflowsPage — folder permissions affordance', () => {
 
   beforeEach(() => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json(folderList())),
     );
   });
@@ -521,7 +521,7 @@ describe('WorkflowsPage — folder permissions affordance', () => {
 
 describe('WorkflowsPage — Create flow', () => {
   it('shows create form when New Workflow clicked', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderPage('Admin');
     await waitFor(() => expect(screen.getByRole('button', { name: /New Workflow/ })).toBeInTheDocument());
 
@@ -532,7 +532,7 @@ describe('WorkflowsPage — Create flow', () => {
   });
 
   it('cancel button closes create form and clears name', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderPage('Admin');
     await waitFor(() => expect(screen.getByRole('button', { name: /New Workflow/ })).toBeInTheDocument());
 
@@ -546,7 +546,7 @@ describe('WorkflowsPage — Create flow', () => {
   it('create button posts new workflow and navigates on success', async () => {
     let postBody: unknown = null;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.post(`${BASE}/api/workflows`, async ({ request }) => {
         postBody = await request.json();
         return HttpResponse.json(mkWorkflow({ id: 'wf-new', name: 'Foo' }));
@@ -565,7 +565,7 @@ describe('WorkflowsPage — Create flow', () => {
 
   it('Enter key in name input also creates the workflow', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.post(`${BASE}/api/workflows`, () => HttpResponse.json(mkWorkflow({ id: 'wf-x' }))),
     );
     renderPage('Admin');
@@ -582,7 +582,7 @@ describe('WorkflowsPage — Create flow', () => {
 
 describe('WorkflowsPage — Mutations', () => {
   it('clicking name button navigates to editor', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
     renderPage();
     await waitFor(() => expect(screen.getByText('Backup Workflow')).toBeInTheDocument());
 
@@ -591,7 +591,7 @@ describe('WorkflowsPage — Mutations', () => {
   });
 
   it('Edit button navigates to editor', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
     renderPage();
     await waitFor(() => expect(screen.getByText('Backup Workflow')).toBeInTheDocument());
 
@@ -602,7 +602,7 @@ describe('WorkflowsPage — Mutations', () => {
   it('Run Now button on workflow without manualTrigger params posts /execute directly', async () => {
     let executeCalled = false;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
       http.post(`${BASE}/api/workflows/wf-1/execute`, () => {
         executeCalled = true;
         return HttpResponse.json({ executionId: 'e-1' });
@@ -641,7 +641,7 @@ describe('WorkflowsPage — Mutations', () => {
       }),
     };
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([listRow])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([listRow])),
       http.get(`${BASE}/api/workflows/wf-manual`, () => HttpResponse.json(full)),
     );
     renderPage();
@@ -661,7 +661,7 @@ describe('WorkflowsPage — Mutations', () => {
     let definitionFetches = 0;
     let executed = false;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([listRow])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([listRow])),
       http.get(`${BASE}/api/workflows/wf-plain`, () => { definitionFetches++; return HttpResponse.json(listRow); }),
       http.post(`${BASE}/api/workflows/wf-plain/execute`, () => { executed = true; return HttpResponse.json({ id: 'exec-1' }); }),
     );
@@ -684,7 +684,7 @@ describe('WorkflowsPage — Mutations', () => {
     let executed = false;
     useToastStore.setState({ toasts: [] });
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([listRow])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([listRow])),
       http.get(`${BASE}/api/workflows/wf-manual`, () => new HttpResponse(null, { status: 500 })),
       http.post(`${BASE}/api/workflows/wf-manual/execute`, () => {
         executed = true;
@@ -705,7 +705,7 @@ describe('WorkflowsPage — Mutations', () => {
   it('Power button on enabled workflow calls /disable', async () => {
     let disabled = false;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
       http.post(`${BASE}/api/workflows/wf-1/disable`, () => { disabled = true; return new HttpResponse(null, { status: 204 }); }),
     );
     renderPage();
@@ -718,7 +718,7 @@ describe('WorkflowsPage — Mutations', () => {
   it('Power button on disabled workflow calls /enable', async () => {
     let enabled = false;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([DISABLED_WORKFLOW])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([DISABLED_WORKFLOW])),
       http.post(`${BASE}/api/workflows/wf-2/enable`, () => { enabled = true; return new HttpResponse(null, { status: 204 }); }),
     );
     renderPage();
@@ -731,7 +731,7 @@ describe('WorkflowsPage — Mutations', () => {
   it('Duplicate button posts /duplicate', async () => {
     let duplicated = false;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
       http.post(`${BASE}/api/workflows/wf-1/duplicate`, () => {
         duplicated = true;
         return HttpResponse.json(mkWorkflow({ id: 'wf-1-dup' }));
@@ -749,7 +749,7 @@ describe('WorkflowsPage — Mutations', () => {
   it('Delete button confirms then deletes', async () => {
     let deleted = false;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
       http.delete(`${BASE}/api/workflows/wf-1`, () => { deleted = true; return new HttpResponse(null, { status: 204 }); }),
     );
     const { queryClient } = renderPage();
@@ -765,7 +765,7 @@ describe('WorkflowsPage — Mutations', () => {
   it('updates the folder badge after deleting its last workflow', async () => {
     let deleted = false;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json(
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json(
         deleted ? [] : [mkWorkflow({ folderId: 'f-1' })],
       )),
       http.get(`${BASE}/api/shared-workflow-folders`, () =>
@@ -788,7 +788,7 @@ describe('WorkflowsPage — Mutations', () => {
     vi.mocked(confirmDialog).mockResolvedValueOnce(false);
     let deleted = false;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])),
       http.delete(`${BASE}/api/workflows/wf-1`, () => { deleted = true; return new HttpResponse(null, { status: 204 }); }),
     );
     renderPage();
@@ -802,132 +802,43 @@ describe('WorkflowsPage — Mutations', () => {
 });
 
 describe('WorkflowsPage — Sorting', () => {
-  it('sorts workflows by name when Name header clicked', async () => {
-    const wfA = mkWorkflow({ id: 'a', name: 'Alpha' });
-    const wfB = mkWorkflow({ id: 'b', name: 'Bravo' });
-    const wfC = mkWorkflow({ id: 'c', name: 'Charlie' });
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([wfC, wfA, wfB])));
+  it.each([
+    ['Name', 'name'], ['Activities', 'activities'], ['Triggers', 'triggers'],
+    ['Status', 'status'], ['Last Run', 'lastRun'], ['Success Rate', 'successRate'],
+    ['Ø Runtime', 'runtime'], ['Created', 'created'], ['Updated', 'updated'],
+  ])('requests global ordering for %s and renders server order', async (header, sortBy) => {
+    const requests: URLSearchParams[] = [];
+    server.use(http.get(`${BASE}/api/workflows/paged`, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      requests.push(params);
+      // Deliberately not alphabetic: the client must not re-sort a server page.
+      const items = params.has('sortBy')
+        ? [mkWorkflow({ id: 'z', name: 'Server first' }), mkWorkflow({ id: 'a', name: 'Another second' })]
+        : [mkWorkflow({ name: 'Initial' })];
+      return HttpResponse.json({ items, page: 1, pageSize: 50, total: items.length, totalPages: 1 });
+    }));
     renderPage();
-    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByText('Name'));
-
-    // After asc sort, Alpha should be first row, Charlie last
-    const rows = screen.getAllByRole('row');
-    // rows[0] is the header; data rows start at index 1
-    expect(rows[1].textContent).toContain('Alpha');
-    expect(rows[3].textContent).toContain('Charlie');
-  });
-
-  it('toggles sort direction on second click', async () => {
-    const wfA = mkWorkflow({ id: 'a', name: 'Alpha' });
-    const wfB = mkWorkflow({ id: 'b', name: 'Bravo' });
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([wfA, wfB])));
-    renderPage();
-    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-
-    // First click -> asc, Alpha first
-    fireEvent.click(screen.getByText('Name'));
-    let rows = screen.getAllByRole('row');
-    expect(rows[1].textContent).toContain('Alpha');
-
-    // Second click -> desc, Bravo first
-    fireEvent.click(screen.getByText('Name'));
-    rows = screen.getAllByRole('row');
-    expect(rows[1].textContent).toContain('Bravo');
-  });
-
-  it('sorts by Activities count', async () => {
-    server.use(
-      http.get(`${BASE}/api/workflows`, () =>
-        HttpResponse.json([
-          mkWorkflow({ id: 'a', name: 'Few', activityCount: 1 }),
-          mkWorkflow({ id: 'b', name: 'Many', activityCount: 10 }),
-          mkWorkflow({ id: 'c', name: 'Some', activityCount: 5 }),
-        ])
-      )
-    );
-    renderPage();
-    await waitFor(() => expect(screen.getByText('Few')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByText('Activities'));
-
-    const rows = screen.getAllByRole('row');
-    expect(rows[1].textContent).toContain('Few');
-    expect(rows[3].textContent).toContain('Many');
-  });
-
-  it('sorts by Status (enabled first when desc)', async () => {
-    server.use(
-      http.get(`${BASE}/api/workflows`, () =>
-        HttpResponse.json([
-          mkWorkflow({ id: 'a', name: 'OffOne', isEnabled: false }),
-          mkWorkflow({ id: 'b', name: 'OnOne', isEnabled: true }),
-        ])
-      )
-    );
-    renderPage();
-    await waitFor(() => expect(screen.getByText('OffOne')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByText('Status'));
-
-    const rows = screen.getAllByRole('row');
-    // Status sort uses Number(b.isEnabled) - Number(a.isEnabled), so enabled rows sort first asc
-    expect(rows[1].textContent).toContain('OnOne');
-  });
-
-  it('sorts by Triggers (lexicographic by trigger-type composition)', async () => {
-    // Seed in non-sorted order: webhook, schedule, manual. Asc key order is
-    // manualTrigger < scheduleTrigger < webhookTrigger.
-    server.use(
-      http.get(`${BASE}/api/workflows`, () =>
-        HttpResponse.json([
-          mkWorkflow({ id: 'w', name: 'W-WF', triggerTypes: ['webhookTrigger'] }),
-          mkWorkflow({ id: 's', name: 'S-WF', triggerTypes: ['scheduleTrigger'] }),
-          mkWorkflow({ id: 'm', name: 'M-WF', triggerTypes: ['manualTrigger'] }),
-        ])
-      )
-    );
-    renderPage();
-    await waitFor(() => expect(screen.getByText('W-WF')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByText('Triggers'));
-
-    const rows = screen.getAllByRole('row');
-    expect(rows[1].textContent).toContain('M-WF');
-    expect(rows[3].textContent).toContain('W-WF');
-  });
-
-  it('sorts empty-trigger workflows first in asc Triggers sort', async () => {
-    server.use(
-      http.get(`${BASE}/api/workflows`, () =>
-        HttpResponse.json([
-          mkWorkflow({ id: 't', name: 'Has-Trig', triggerTypes: ['scheduleTrigger'] }),
-          mkWorkflow({ id: 'e', name: 'Empty-Trig', triggerTypes: [] }),
-        ])
-      )
-    );
-    renderPage();
-    await waitFor(() => expect(screen.getByText('Has-Trig')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByText('Triggers'));
-
-    const rows = screen.getAllByRole('row');
-    // Empty composition ('') sorts before any non-empty key in asc order.
-    expect(rows[1].textContent).toContain('Empty-Trig');
+    await screen.findByText('Initial');
+    fireEvent.click(screen.getByRole('button', { name: header }));
+    await screen.findByText('Server first');
+    expect(requests.at(-1)?.get('sortBy')).toBe(sortBy);
+    expect(requests.at(-1)?.get('sortDir')).toBe('asc');
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent('Server first');
+    fireEvent.click(screen.getByRole('button', { name: header }));
+    await waitFor(() => expect(requests.at(-1)?.get('sortDir')).toBe('desc'));
+    await screen.findByText('Server first');
   });
 });
-
 describe('WorkflowsPage — Export & SCOrch result modal', () => {
   it('Export All button is disabled when there are no workflows', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderPage('Admin');
     await waitFor(() => expect(screen.getByRole('button', { name: /Export All/ })).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /Export All/ })).toBeDisabled();
   });
 
   it('Export All button is enabled when workflows present', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
     renderPage('Admin');
     await waitFor(() => expect(screen.getByText('Backup Workflow')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /Export All/ })).not.toBeDisabled();
@@ -944,7 +855,7 @@ describe('WorkflowsPage — LastRunCell variants', () => {
     ['Unknown', /just now/],
   ])('renders status %s without crashing', async (status, matcher) => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () =>
+      http.get(`${BASE}/api/workflows/paged`, () =>
         HttpResponse.json([
           mkWorkflow({
             id: 'wf-x', name: `WF-${status}`,
@@ -966,7 +877,7 @@ describe('WorkflowsPage — LastRunCell variants', () => {
 describe('WorkflowsPage — SuccessRateCell color thresholds', () => {
   it('renders dash when no executions', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () =>
+      http.get(`${BASE}/api/workflows/paged`, () =>
         HttpResponse.json([mkWorkflow({ successCount: 0, totalCount: 0 })])
       )
     );
@@ -977,7 +888,7 @@ describe('WorkflowsPage — SuccessRateCell color thresholds', () => {
   });
 
   it('renders ratio "5/6" with colored bar when executions exist', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
     renderPage();
     await waitFor(() => expect(screen.getByText('5/6')).toBeInTheDocument());
   });
@@ -985,7 +896,7 @@ describe('WorkflowsPage — SuccessRateCell color thresholds', () => {
 
 describe('WorkflowsPage — Column resize', () => {
   it('mousedown on resize handle starts a resize loop without throwing', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([WORKFLOW_WITH_SCHEDULE])));
     const { container } = renderPage();
     await waitFor(() => expect(screen.getByText('Backup Workflow')).toBeInTheDocument());
 
@@ -1018,14 +929,14 @@ describe('WorkflowsPage — AI workflow generation', () => {
   });
 
   it('KI-Generieren button visible for Admin (canWrite)', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderPage('Admin');
     await waitFor(() => expect(screen.getByText(/No workflows yet/)).toBeInTheDocument());
     expect(await screen.findByRole('button', { name: /New AI Workflow/i })).toBeInTheDocument();
   });
 
   it('KI-Generieren button hidden for Viewer', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderPage('Viewer');
     await waitFor(() => expect(screen.getByText(/No workflows yet/)).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /New AI Workflow/i })).not.toBeInTheDocument();
@@ -1033,7 +944,7 @@ describe('WorkflowsPage — AI workflow generation', () => {
 
   it('KI-Generieren button hidden when no LLM endpoint is usable', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.get(`${BASE}/api/ai/knowledge/capabilities`, () =>
         HttpResponse.json({ enabled: false, llm: false, docs: false, operational: false, sourceCode: false, db: false })
       ),
@@ -1046,7 +957,7 @@ describe('WorkflowsPage — AI workflow generation', () => {
   });
 
   it('clicking KI-Generieren opens the WorkflowGenerationDialog', async () => {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));
     renderPage('Admin');
     await waitFor(() => expect(screen.getByText(/No workflows yet/)).toBeInTheDocument());
 
@@ -1059,7 +970,7 @@ describe('WorkflowsPage — AI workflow generation', () => {
   it('happy path: prompt → generate → preview → create → navigate', async () => {
     let createBody: Record<string, unknown> | null = null;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.post(`${BASE}/api/ai/generate-workflow`, () =>
         HttpResponse.json({
           definitionJson: SAMPLE_DEFINITION,
@@ -1102,7 +1013,7 @@ describe('WorkflowsPage — AI workflow generation', () => {
 
   it('backend 503 LLM_DISABLED surfaces as error in the prompt stage', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])),
       http.post(`${BASE}/api/ai/generate-workflow`, () =>
         HttpResponse.json(
           { code: 'LLM_DISABLED', message: 'AI assistant is disabled.' },
@@ -1129,7 +1040,7 @@ describe('WorkflowsPage — load failure', () => {
   // to an empty installation.
   it('shows an error with a retry button instead of the empty state', async () => {
     server.use(
-      http.get(`${BASE}/api/workflows`, () =>
+      http.get(`${BASE}/api/workflows/paged`, () =>
         HttpResponse.json(
           { code: 'DATABASE_TIMEOUT', message: 'The database did not answer in time.' },
           { status: 503 },
@@ -1148,7 +1059,7 @@ describe('WorkflowsPage — load failure', () => {
   it('recovers when the retry succeeds', async () => {
     let attempt = 0;
     server.use(
-      http.get(`${BASE}/api/workflows`, () => {
+      http.get(`${BASE}/api/workflows/paged`, () => {
         attempt += 1;
         if (attempt === 1) {
           return HttpResponse.json({ code: 'DATABASE_TIMEOUT', message: 'busy' }, { status: 503 });
@@ -1162,6 +1073,77 @@ describe('WorkflowsPage — load failure', () => {
 
     expect(await screen.findByText('Recovered Workflow')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkflowsPage — server paging', () => {
+  it('requests only the current page and clears selection when changing pages', async () => {
+    const requests: number[] = [];
+    server.use(http.get(`${BASE}/api/workflows/paged`, ({ request }) => {
+      const page = Number(new URL(request.url).searchParams.get('page') ?? 1);
+      requests.push(page);
+      return HttpResponse.json({ items: [mkWorkflow({ id: `wf-${page}`, name: `Page ${page} workflow` })],
+        page, pageSize: 50, total: 501, totalPages: 11 });
+    }));
+    renderPage();
+    await screen.findByText('Page 1 workflow');
+    expect(requests).toEqual([1]);
+    fireEvent.click(screen.getByTestId('workflow-select-wf-1'));
+    expect(await screen.findByTestId('workflow-bulk-bar')).toHaveTextContent('1 selected');
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    await screen.findByText('Page 2 workflow');
+    expect(requests).toEqual([1, 2]);
+    expect(screen.queryByTestId('workflow-bulk-bar')).not.toBeInTheDocument();
+    expect(screen.queryByText('Page 1 workflow')).not.toBeInTheDocument();
+    expect(screen.getByText('Page 2 of 11')).toBeInTheDocument();
+  });
+
+  it('resets to page one and sends the selected folder and sort to the server', async () => {
+    const requests: URLSearchParams[] = [];
+    server.use(
+      http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json(bulkFolders())),
+      http.get(`${BASE}/api/workflows/paged`, ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        requests.push(params);
+        const page = Number(params.get('page') ?? 1);
+        return HttpResponse.json({ items: [mkWorkflow({ name: `Workflow ${requests.length}` })],
+          page, pageSize: 50, total: 501, totalPages: 11 });
+      }),
+    );
+    renderPage();
+    await screen.findByText('Workflow 1');
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    await screen.findByText('Workflow 2');
+    fireEvent.click(await screen.findByText('Finance'));
+    await screen.findByText('Workflow 3');
+    expect(requests.at(-1)?.get('page')).toBe('1');
+    expect(requests.at(-1)?.get('folderId')).toBe('f-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Name' }));
+    await screen.findByText('Workflow 4');
+    expect(requests.at(-1)?.get('sortBy')).toBe('name');
+    expect(requests.at(-1)?.get('sortDir')).toBe('asc');
+    expect(requests.at(-1)?.get('folderId')).toBe('f-1');
+  });
+
+  it('returns to the last remaining page after deleting the only row on a later page', async () => {
+    let deleted = false;
+    server.use(
+      http.delete(`${BASE}/api/workflows/wf-2`, () => { deleted = true; return new HttpResponse(null, { status: 204 }); }),
+      http.get(`${BASE}/api/workflows/paged`, ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get('page') ?? 1);
+        return HttpResponse.json({
+          items: deleted && page === 2 ? [] : [mkWorkflow({ id: `wf-${page}`, name: `Remaining ${page}` })],
+          page, pageSize: 50, total: deleted ? 50 : 51, totalPages: deleted ? 1 : 2,
+        });
+      }),
+    );
+    renderPage();
+    await screen.findByText('Remaining 1');
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    await screen.findByText('Remaining 2');
+    fireEvent.click(screen.getByTitle('Delete'));
+    await screen.findByText('Remaining 1');
+    expect(screen.queryByText('Remaining 2')).not.toBeInTheDocument();
   });
 });
 
@@ -1187,7 +1169,7 @@ describe('WorkflowsPage — bulk selection', () => {
   ];
 
   async function renderWithRows(rows: WorkflowListItem[] = TWO) {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(rows)));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json(rows)));
     renderPage('Admin');
     await waitFor(() => expect(screen.getByText(rows[0].name)).toBeInTheDocument());
   }
@@ -1258,7 +1240,7 @@ describe('WorkflowsPage — bulk actions', () => {
   ];
 
   async function selectBoth(rows: WorkflowListItem[] = TWO, role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(rows)));
+    server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json(rows)));
     renderPage(role);
     await waitFor(() => expect(screen.getByText(rows[0].name)).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('workflow-select-all'));
@@ -1343,7 +1325,7 @@ describe('WorkflowsPage — bulk actions', () => {
   it('moves a workflow when its row is dropped on a folder', async () => {
     const moved: string[] = [];
     server.use(
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([
+      http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([
         mkWorkflow({ id: 'wf-1', name: 'Alpha', folderId: BULK_ROOT }),
       ])),
       http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json(bulkFolders())),

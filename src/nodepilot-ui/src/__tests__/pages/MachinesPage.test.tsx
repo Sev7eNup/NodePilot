@@ -6,6 +6,12 @@ import { setupServer } from 'msw/node';
 import { MachinesPage } from '../../pages/MachinesPage';
 import { useAuthStore } from '../../stores/authStore';
 import type { ManagedMachine, Credential } from '../../types/api';
+import { confirmDialog } from '../../stores/confirmStore';
+
+vi.mock('../../stores/confirmStore', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../stores/confirmStore')>(),
+  confirmDialog: vi.fn().mockResolvedValue(true),
+}));
 
 const BASE = 'http://localhost';
 
@@ -72,6 +78,49 @@ function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
 }
 
 describe('MachinesPage', () => {
+  it('removes active column drag listeners when leaving the page', async () => {
+    server.use(
+      http.get(`${BASE}/api/machines`, () => HttpResponse.json(MACHINES)),
+      http.get(`${BASE}/api/credentials`, () => HttpResponse.json(CREDS)),
+    );
+    const { container, unmount } = renderPage();
+    await screen.findByText('Web-01');
+    const add = vi.spyOn(globalThis, 'addEventListener');
+    const remove = vi.spyOn(globalThis, 'removeEventListener');
+    fireEvent.mouseDown(container.querySelector('.cursor-col-resize')!, { clientX: 100 });
+    const drag = add.mock.calls.find(([type]) => type === 'mousemove')?.[1];
+    expect(drag).toBeDefined();
+    unmount();
+    expect(remove).toHaveBeenCalledWith('mousemove', drag);
+  });
+
+  it('bounds Test All requests and completes remaining targets after one fails', async () => {
+    vi.mocked(confirmDialog).mockResolvedValue(true);
+    let active = 0;
+    let peak = 0;
+    const completed: string[] = [];
+    server.use(
+      http.get(`${BASE}/api/machines`, () => HttpResponse.json(Array.from({ length: 12 }, (_, i) => ({
+        ...MACHINES[0], id: `m${i}`, name: `Machine ${i}`,
+      })))),
+      http.get(`${BASE}/api/credentials`, () => HttpResponse.json(CREDS)),
+      http.post(`${BASE}/api/machines/:id/test`, async ({ params }) => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise(resolve => setTimeout(resolve, 40));
+        active--;
+        completed.push(String(params.id));
+        return params.id === 'm0' ? HttpResponse.json({ message: 'offline' }, { status: 503 })
+          : HttpResponse.json({ success: true, computerName: params.id });
+      }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Test all' }));
+    await waitFor(() => expect(completed).toHaveLength(12));
+    expect(new Set(completed).size).toBe(12);
+    expect(peak).toBeLessThanOrEqual(4);
+  });
+
   it('rendersLoadingState', () => {
     server.use(http.get(`${BASE}/api/machines`, () => new Promise(() => {})));
     server.use(http.get(`${BASE}/api/credentials`, () => HttpResponse.json([])));

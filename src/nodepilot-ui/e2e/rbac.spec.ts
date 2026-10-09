@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
@@ -71,8 +72,8 @@ test.describe('RBAC Rollen-Crossings (Teil 26)', () => {
   // ---------- 26.1 — Viewer cannot write ----------
   test('26.1 — Viewer: no "New Workflow" and no edit/disable/delete row actions', async ({ page }) => {
     await asRole(page, ME_VIEWER);
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow()]) }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow()])) }),
     );
 
     await page.goto('/workflows');
@@ -105,8 +106,8 @@ test.describe('RBAC Rollen-Crossings (Teil 26)', () => {
   // ---------- 26.2 — Operator can edit but not delete ----------
   test('26.2 — Operator: workflow edit/duplicate visible, delete hidden', async ({ page }) => {
     await asRole(page, ME_OPERATOR);
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow()]) }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow()])) }),
     );
 
     await page.goto('/workflows');
@@ -163,8 +164,8 @@ test.describe('RBAC Rollen-Crossings (Teil 26)', () => {
 
     // Operator first.
     await asRole(page, ME_OPERATOR);
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([lockedByOther]) }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [lockedByOther])) }),
     );
     await page.goto('/workflows');
     await expect(page.getByRole('button', { name: 'WF_RBAC' })).toBeVisible({ timeout: 15_000 });

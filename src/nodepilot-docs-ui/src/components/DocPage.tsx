@@ -79,7 +79,7 @@ export default function DocPage({ lang, path }: { lang: Lang; path: string }) {
       </div>
 
       {/* Right-side on-this-page TOC (desktop only) */}
-      <Toc articleRef={articleRef} path={path} />
+      <Toc articleRef={articleRef} path={path} lang={lang} />
     </div>
   )
 }

@@ -66,7 +66,7 @@ function seed(opts: {
     http.get(`${BASE}/api/maintenance-windows`, () =>
       windows === null ? new Promise<Response>(() => {}) : HttpResponse.json(windows)),
     http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json(folders)),
-    http.get(`${BASE}/api/workflows`, () => HttpResponse.json(workflows)),
+    http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json(workflows)),
   );
 }
 
@@ -280,6 +280,19 @@ describe('MaintenanceWindowsPage', () => {
     fireEvent.change(screen.getByPlaceholderText(/Search by name/i), { target: { value: 'bravo' } });
     expect(screen.queryByText('Alpha Window')).not.toBeInTheDocument();
     expect(screen.getByText('Bravo Window')).toBeInTheDocument();
+  });
+
+  it('offers workflows beyond the capped overview when choosing a maintenance scope', async () => {
+    seed();
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json([{ id: 'older-wf', name: 'Older workflow outside overview' }])),
+    );
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /New window/i }));
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[2], { target: { value: 'Workflows' } });
+    expect(await screen.findByText('Older workflow outside overview')).toBeInTheDocument();
   });
 
   it('scopeWorkflows_revealsWorkflowChecklist', async () => {

@@ -94,6 +94,53 @@ function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
 }
 
 describe('CustomActivitiesPage', () => {
+  it('uses the saved revision when correcting lint warnings', async () => {
+    const definition = { ...entry(), scriptTemplate: 'Write-Output 1', engine: 'auto', isolated: false,
+      concurrencyToken: 'revision-1' };
+    const revisions: unknown[] = [];
+    seed();
+    server.use(
+      http.get(`${BASE}/api/custom-activities/ca-1`, () => HttpResponse.json(definition)),
+      http.put(`${BASE}/api/custom-activities/ca-1`, async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>;
+        revisions.push(body.concurrencyToken);
+        return HttpResponse.json({ definition: { ...definition, concurrencyToken: 'revision-2' },
+          warnings: revisions.length === 1 ? [{ rule: 'lint', message: 'Review script warning' }] : [] });
+      }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByTitle('Edit'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Update' }));
+    await screen.findByText('Review script warning');
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    await waitFor(() => expect(revisions).toHaveLength(2));
+    expect(revisions).toEqual(['revision-1', 'revision-2']);
+  });
+
+  it.each([[128, 2], [null, null]])('rename preserves existing isolation limits %s/%s', async (memoryLimitMb, maxProcesses) => {
+    const definition = {
+      ...entry(), scriptTemplate: 'Write-Output 1', engine: 'auto', isolated: true,
+      memoryLimitMb, maxProcesses, defaultTimeoutSeconds: 30, successExitCodes: '0',
+      concurrencyToken: 'current-revision', updatedAt: '2026-10-09T10:00:00Z', updatedBy: 'admin',
+    };
+    let saved: Record<string, unknown> | undefined;
+    seed();
+    server.use(
+      http.get(`${BASE}/api/custom-activities/ca-1`, () => HttpResponse.json(definition)),
+      http.put(`${BASE}/api/custom-activities/ca-1`, async ({ request }) => {
+        saved = await request.json() as Record<string, unknown>;
+        return HttpResponse.json({ definition, warnings: [] });
+      }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByTitle('Edit'));
+    const name = await screen.findByDisplayValue('Disk Check');
+    fireEvent.change(name, { target: { value: 'Renamed disk check' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved).toMatchObject({ name: 'Renamed disk check', isolated: true, memoryLimitMb, maxProcesses });
+  });
+
   it('rendersList_withStatusScopeAndVersion', async () => {
     seed([
       entry({ id: 'a', key: 'disk-check', name: 'Disk Check', isEnabled: true, version: 3 }),

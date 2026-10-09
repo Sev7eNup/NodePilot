@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
@@ -45,7 +46,7 @@ test.describe('Teil 82 — database outage', () => {
     // /api/workflows is the WorkflowsPage query (meta.silentError, never toasted); machines,
     // executions and the dashboard pollers run through the global QueryCache.onError, which has
     // to stay silent during an outage so the banner is the only message.
-    for (const path of ['**/api/workflows', '**/api/machines', '**/api/executions**', '**/api/dashboard/**']) {
+    for (const path of ['**/api/workflows/paged**', '**/api/machines', '**/api/executions**', '**/api/dashboard/**']) {
       await page.route(path, (route) =>
         route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify(OUTAGE_503) }),
       );
@@ -68,7 +69,7 @@ test.describe('Teil 82 — database outage', () => {
     await mockHealth(page, OUTAGE_HEALTH);
 
     let workflowListRequests = 0;
-    await page.route('**/api/workflows', (route) => {
+    await page.route('**/api/workflows/paged**', (route) => {
       workflowListRequests += 1;
       return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify(OUTAGE_503) });
     });
@@ -81,9 +82,9 @@ test.describe('Teil 82 — database outage', () => {
     // outage), the banner clears, every query refetches and one success toast marks the moment.
     // The recovery handler keeps counting requests because route registration is last-wins: a
     // non-counting 200 handler would freeze the counter and the refetch assertion would time out.
-    await page.route('**/api/workflows', (route) => {
+    await page.route('**/api/workflows/paged**', (route) => {
       workflowListRequests += 1;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [])) });
     });
     await mockHealth(page, { status: 'ok', sinceUtc: null, reason: null });
 

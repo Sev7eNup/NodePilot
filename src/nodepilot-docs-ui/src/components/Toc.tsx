@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { Lang } from '../i18n/languages'
 
 interface Heading {
   id: string
@@ -19,9 +20,11 @@ interface Heading {
 export default function Toc({
   articleRef,
   path,
+  lang,
 }: {
   articleRef: RefObject<HTMLElement | null>
   path: string
+  lang: Lang
 }) {
   const { t } = useTranslation()
   const [headings, setHeadings] = useState<Heading[]>([])
@@ -43,7 +46,7 @@ export default function Toc({
     }))
     setHeadings(hs)
     setActive(hs[0]?.id)
-  }, [articleRef, path])
+  }, [articleRef, path, lang])
 
   // Track the active section via IntersectionObserver.
   useEffect(() => {

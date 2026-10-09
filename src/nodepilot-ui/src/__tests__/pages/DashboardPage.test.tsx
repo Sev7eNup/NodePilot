@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { DashboardPage } from '../../pages/DashboardPage';
@@ -47,6 +47,11 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}{location.search}</output>;
+}
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   patchFetch();
@@ -54,6 +59,7 @@ function renderPage() {
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <DashboardPage />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -106,6 +112,17 @@ const BASE_STATS = {
 };
 
 describe('DashboardPage', () => {
+  it('opens the workflow live view when selecting a running execution', async () => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS,
+      running: [{ id: 'live-1', workflowId: 'wf-live', workflowName: 'Live workflow',
+        status: 'Running', startedAt: new Date().toISOString(), triggeredBy: 'manual' }],
+    })));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Live workflow/ }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/workflows/wf-live');
+  });
+
   it.each([false, true])('keeps chart data while reduced decoration is %s', async (reducedDecoration) => {
     vi.spyOn(chartTheme, 'useChartTokens').mockReturnValue({
       probeRef: { current: null }, tokens: { ...chartTheme.DEFAULT_CHART_TOKENS, reducedDecoration },

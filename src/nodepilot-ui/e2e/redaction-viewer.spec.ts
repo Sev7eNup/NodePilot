@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
@@ -74,8 +75,8 @@ function steps() {
 }
 
 async function mockExecutionsView(page: Page) {
-  await page.route('**/api/workflows', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow()]) }),
+  await page.route('**/api/workflows/paged**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow()])) }),
   );
   // The executions page labels its rows from /names; the route above matches the exact path only.
   await page.route('**/api/workflows/names', (route) =>

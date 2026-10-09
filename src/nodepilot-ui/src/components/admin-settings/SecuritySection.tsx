@@ -336,6 +336,15 @@ type ReencryptResult = {
   agentMcpSecretsRewritten?: number;
   agentMcpSecretsSkipped?: number;
   agentMcpSecretSkipDetails?: ReencryptionSkip[];
+  notificationRoutesRewritten: number;
+  notificationRoutesSkipped: number;
+  notificationRouteSkipDetails: ReencryptionSkip[];
+  dispatchParametersRewritten: number;
+  dispatchParametersSkipped: number;
+  dispatchParameterSkipDetails: ReencryptionSkip[];
+  runtimeSettingsFilesRewritten: number;
+  runtimeSettingsFilesSkipped: number;
+  runtimeSettingsFileSkipDetails: ReencryptionSkip[];
   partialSuccess: boolean;
 };
 
@@ -345,30 +354,49 @@ type ReencryptionSkip = {
   reason: string;
 };
 
-function ReencryptResultSummary({ result }: Readonly<{ result: ReencryptResult }>) {
-  const { t } = useTranslation('adminSettings');
-  const scopes = [
+function reencryptionScopes(result: ReencryptResult) {
+  return [
     {
-      key: 'credentials', label: t('sec.reencryptScopeCredentials'),
+      key: 'credentials', labelKey: 'sec.reencryptScopeCredentials',
       rewritten: result.credentialsRewritten, skipped: result.credentialsSkipped,
       details: result.credentialSkipDetails,
     },
     {
-      key: 'globals', label: t('sec.reencryptScopeGlobals'),
+      key: 'globals', labelKey: 'sec.reencryptScopeGlobals',
       rewritten: result.globalSecretsRewritten, skipped: result.globalSecretsSkipped,
       details: result.globalSecretSkipDetails,
     },
     {
-      key: 'workflowVersions', label: t('sec.reencryptScopeWorkflowVersions'),
+      key: 'workflowVersions', labelKey: 'sec.reencryptScopeWorkflowVersions',
       rewritten: result.workflowVersionsRewritten, skipped: result.workflowVersionsSkipped,
       details: result.workflowVersionSkipDetails,
     },
     {
-      key: 'agentMcp', label: t('agents:mcpServers'),
+      key: 'agentMcp', labelKey: 'agents:mcpServers',
       rewritten: result.agentMcpSecretsRewritten ?? 0, skipped: result.agentMcpSecretsSkipped ?? 0,
       details: result.agentMcpSecretSkipDetails ?? [],
     },
+    {
+      key: 'notificationRoutes', labelKey: 'sec.reencryptScopeNotificationRoutes',
+      rewritten: result.notificationRoutesRewritten, skipped: result.notificationRoutesSkipped,
+      details: result.notificationRouteSkipDetails,
+    },
+    {
+      key: 'dispatchParameters', labelKey: 'sec.reencryptScopeDispatchParameters',
+      rewritten: result.dispatchParametersRewritten, skipped: result.dispatchParametersSkipped,
+      details: result.dispatchParameterSkipDetails,
+    },
+    {
+      key: 'runtimeSettingsFiles', labelKey: 'sec.reencryptScopeRuntimeSettingsFiles',
+      rewritten: result.runtimeSettingsFilesRewritten, skipped: result.runtimeSettingsFilesSkipped,
+      details: result.runtimeSettingsFileSkipDetails,
+    },
   ];
+}
+
+function ReencryptResultSummary({ result }: Readonly<{ result: ReencryptResult }>) {
+  const { t } = useTranslation('adminSettings');
+  const scopes = reencryptionScopes(result);
 
   return (
     <div
@@ -383,7 +411,7 @@ function ReencryptResultSummary({ result }: Readonly<{ result: ReencryptResult }
       <dl className="mt-2 grid gap-1 sm:grid-cols-3">
         {scopes.map((scope) => (
           <div key={scope.key}>
-            <dt className="font-medium">{scope.label}</dt>
+              <dt className="font-medium">{t(scope.labelKey)}</dt>
             <dd>{t('sec.reencryptScopeCounts', { rewritten: scope.rewritten, skipped: scope.skipped })}</dd>
           </div>
         ))}
@@ -394,7 +422,7 @@ function ReencryptResultSummary({ result }: Readonly<{ result: ReencryptResult }
           <ul className="mt-1 max-h-64 space-y-1 overflow-y-auto">
             {scopes.flatMap((scope) => scope.details.map((skip) => (
               <li key={`${scope.key}:${skip.id}`} className="rounded bg-surface-lowest/60 px-2 py-1">
-                <span className="font-medium">{scope.label}: {skip.name}</span>
+                  <span className="font-medium">{t(scope.labelKey)}: {skip.name}</span>
                 {' — '}{skip.reason}{' — '}
                 <code className="break-all">{skip.id}</code>
               </li>
@@ -412,19 +440,15 @@ function SecretsReencryptCard() {
   const reencrypt = useMutation({
     mutationFn: () => api.post<ReencryptResult>('/secrets/reencrypt'),
     onSuccess: (r) => {
+      const scopes = reencryptionScopes(r);
+      const rewritten = scopes.reduce((sum, scope) => sum + scope.rewritten, 0);
+      const skipped = scopes.reduce((sum, scope) => sum + scope.skipped, 0);
       // 207 Multi-Status (partial) also resolves — fetch treats 2xx as ok. Surface
       // partial sweeps as an error toast so skipped rows can't slip by unnoticed.
       if (r.partialSuccess) {
-        toast.error(t('sec.reencryptPartial', {
-          rewritten: r.credentialsRewritten + r.globalSecretsRewritten + r.workflowVersionsRewritten + (r.agentMcpSecretsRewritten ?? 0),
-          skipped: r.credentialsSkipped + r.globalSecretsSkipped + r.workflowVersionsSkipped + (r.agentMcpSecretsSkipped ?? 0),
-        }));
+        toast.error(t('sec.reencryptPartial', { rewritten, skipped }));
       } else {
-        toast.success(t('sec.reencryptDone', {
-          credentials: r.credentialsRewritten,
-          globals: r.globalSecretsRewritten,
-          workflowVersions: r.workflowVersionsRewritten,
-        }));
+        toast.success(t('sec.reencryptDone', { rewritten }));
       }
     },
     onError: (err: Error) => toast.error(err.message),

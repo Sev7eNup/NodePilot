@@ -1,3 +1,4 @@
+import { useSectionEditor } from './SectionFormHelpers';
 import {
   Activity,
   Add,
@@ -12,15 +13,11 @@ import {
 } from '@carbon/icons-react';
 import { useEffect, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   adminSettings,
-  SettingsApiError,
-  type SettingsSectionResponse,
 } from '../../api/adminSettings';
 import { SecretField, serializeSecretField, type SecretFieldMode } from './SecretField';
 import { EnvOverrideBadge } from './EnvOverrideBadge';
-import { EtagConflictDialog } from './EtagConflictDialog';
 import { TestProbeModal } from './TestProbeModal';
 import { CompactCard } from './SectionFormHelpers';
 
@@ -103,15 +100,10 @@ const emptyScim = (): ScimDto => ({
  */
 export function AuthenticationSection() {
   const { t } = useTranslation(['adminSettings']);
-  const queryClient = useQueryClient();
-  const [conflict, setConflict] = useState<SettingsSectionResponse<AuthDto> | null>(null);
-  const [errors, setErrors] = useState<string[] | null>(null);
   const [showLdapTest, setShowLdapTest] = useState(false);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-settings', 'Authentication'],
-    queryFn: () => adminSettings.getSection<AuthDto>('Authentication'),
-  });
+  const editor = useSectionEditor<AuthDto>('Authentication');
+  const { data, isLoading, errors } = editor;
 
   const [form, setForm] = useState<AuthDto>({
     ldap: {
@@ -224,32 +216,6 @@ export function AuthenticationSection() {
     LocalLoginMode: form.localLoginMode ?? 'BreakGlassOnly',
     SessionAbsoluteLifetimeHours: form.sessionAbsoluteLifetimeHours ?? 8,
     MaxAuthorizationStalenessMinutes: form.maxAuthorizationStalenessMinutes ?? 15,
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      setErrors(null);
-      if (!data) throw new Error('No section snapshot loaded yet.');
-      return adminSettings.putSection<AuthDto>('Authentication', buildPayload(), data.etag);
-    },
-    onSuccess: (fresh) => {
-      queryClient.setQueryData(['admin-settings', 'Authentication'], fresh);
-      queryClient.invalidateQueries({ queryKey: ['admin-settings', 'status'] });
-    },
-    onError: (err: unknown) => {
-      if (err instanceof SettingsApiError && err.status === 412 && err.body?.current) {
-        setConflict(err.body.current as SettingsSectionResponse<AuthDto>);
-        return;
-      }
-      if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
-        setErrors(err.body.errors.map((e) => {
-          const fields = e.fields?.length ? `${e.fields.join(', ')}: ` : '';
-          return `${fields}${e.message ?? JSON.stringify(e)}`;
-        }));
-        return;
-      }
-      setErrors([err instanceof Error ? err.message : String(err)]);
-    },
   });
 
   if (isLoading || !data) {
@@ -560,32 +526,14 @@ export function AuthenticationSection() {
       <div className="flex justify-end">
         <button
           type="button"
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
+          onClick={() => editor.save(buildPayload())}
+          disabled={editor.isPending}
           className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 rounded-md"
         >
           <Chip size={14} /> {t('adminSettings:saveButton')}
         </button>
       </div>
-      <EtagConflictDialog
-        open={!!conflict}
-        serverSnapshot={conflict}
-        localDraft={buildPayload()}
-        onKeepMine={() => {
-          if (!conflict) return;
-          queryClient.setQueryData(['admin-settings', 'Authentication'], conflict);
-          setConflict(null);
-          adminSettings.putSection<AuthDto>('Authentication', buildPayload(), conflict.etag)
-            .then((fresh) => queryClient.setQueryData(['admin-settings', 'Authentication'], fresh))
-            .catch((e: unknown) => setErrors([e instanceof Error ? e.message : String(e)]));
-        }}
-        onTakeTheirs={() => {
-          if (!conflict) return;
-          queryClient.setQueryData(['admin-settings', 'Authentication'], conflict);
-          setConflict(null);
-        }}
-        onCancel={() => setConflict(null)}
-      />
+      {editor.dialog(buildPayload())}
       <TestProbeModal
         title={t('adminSettings:auth.ldapTestTitle')}
         open={showLdapTest}

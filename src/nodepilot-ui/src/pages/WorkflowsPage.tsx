@@ -1,12 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation, Trans } from 'react-i18next';
+import { useColumnResize } from '../hooks/useColumnResize';
 import { api, downloadFromApi } from '../api/client';
+import { getPage, type PagedResponse } from '../api/paging';
 import type { Workflow, WorkflowListItem, LastExecutionInfo } from '../types/api';
 import { formatDate, formatDuration, formatRelative } from '../lib/format';
 import { TRIGGER_BADGE_META } from '../lib/triggerBadgeMeta';
 import {
-  Add, Apps, ChatBot, CheckmarkFilled, ChevronDown, ChevronUp, CircleDash, Copy, DocumentExport,
+  Add, Apps, ChatBot, CheckmarkFilled, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, CircleDash, Copy, DocumentExport,
   Download, Edit, ErrorFilled, FlashFilled, Locked, Play, Power, Queued,
   SubtractAlt, Time, Touch_1, TrashCan, Unlocked, Upload,
 } from '@carbon/icons-react';
@@ -62,6 +64,9 @@ type ScorchImportResponse = {
 
 /** Module-level so the identity stays stable across renders; useBulkSelection memoizes on it. */
 const workflowKey = (w: WorkflowListItem) => w.id;
+type ColKey = 'name' | 'activities' | 'triggers' | 'status' | 'lastRun' | 'successRate' | 'runtime' | 'created' | 'updated';
+const PAGE_SIZE = 50;
+const EMPTY_WORKFLOWS: WorkflowListItem[] = [];
 
 function buildTriggerMeta(t: (k: string) => string): Record<string, { label: string; icon: typeof Time; className: string }> {
   return {
@@ -122,8 +127,7 @@ export function WorkflowsPage() {
   const [newName, setNewName] = useState('');
   const [showAiGenerate, setShowAiGenerate] = useState(false);
   // Left-sidebar shared-folder filter (part of the folder-permissions/RBAC feature).
-  // null shows all folders unfiltered; a folder id pins the list to that folder and
-  // its descendants.
+  // null shows all folders unfiltered; a folder id pins the list to that exact folder.
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   // Modal for managing permissions on a folder. Only available to a user with
   // FolderAdmin (capabilities.canAdmin) on the selected folder.
@@ -167,18 +171,41 @@ export function WorkflowsPage() {
   // through to the "no workflows" empty state, which would make an overloaded database look like
   // an empty installation. silentError suppresses the global toast because this page shows the
   // failure in place, with a retry button.
+  const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState<ColKey | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const {
-    data: workflows,
+    data: workflowPage,
     isLoading,
     isError,
     error: workflowsError,
     refetch: refetchWorkflows,
     isFetching: isRefetchingWorkflows,
   } = useQuery({
-    queryKey: ['workflows'],
-    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
+    queryKey: ['workflows', 'page', page, selectedFolderId, sortBy, sortDir],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (selectedFolderId) params.set('folderId', selectedFolderId);
+      if (sortBy) { params.set('sortBy', sortBy); params.set('sortDir', sortDir); }
+      return getPage<WorkflowListItem>(`/workflows/paged?${params}`, page, PAGE_SIZE);
+    },
     meta: { silentError: true },
   });
+  const workflows = workflowPage?.items ?? EMPTY_WORKFLOWS;
+  const totalPages = Math.max(1, workflowPage?.totalPages ?? 1);
+  // A deletion or folder move can remove the last row of the last page.
+  useEffect(() => {
+    if (workflowPage && page > totalPages) setPage(totalPages);
+  }, [workflowPage, page, totalPages]);
+
+  const updateWorkflowPages = (id: string, patch: Partial<WorkflowListItem>) => {
+    queryClient.setQueriesData<PagedResponse<WorkflowListItem>>(
+      { queryKey: ['workflows', 'page'] },
+      old => old ? { ...old, items: old.items.map(w => w.id === id ? { ...w, ...patch } : w) } : old,
+    );
+    // Status changes may move the row to another page of the server-side sort.
+    void queryClient.invalidateQueries({ queryKey: ['workflows'] });
+  };
 
   const createMutation = useMutation({
     mutationFn: (name: string) =>
@@ -237,17 +264,13 @@ export function WorkflowsPage() {
 
   const enableMutation = useMutation({
     mutationFn: (id: string) => api.post(`/workflows/${id}/enable`, {}),
-    onSuccess: (_, id) =>
-      queryClient.setQueryData<WorkflowListItem[]>(['workflows'], old =>
-        old?.map(w => w.id === id ? { ...w, isEnabled: true } : w) ?? []),
+    onSuccess: (_, id) => updateWorkflowPages(id, { isEnabled: true }),
     onError: (err: Error) => toast.error(t('common:updateFailed', { message: err.message })),
   });
 
   const disableMutation = useMutation({
     mutationFn: (id: string) => api.post(`/workflows/${id}/disable`, {}),
-    onSuccess: (_, id) =>
-      queryClient.setQueryData<WorkflowListItem[]>(['workflows'], old =>
-        old?.map(w => w.id === id ? { ...w, isEnabled: false } : w) ?? []),
+    onSuccess: (_, id) => updateWorkflowPages(id, { isEnabled: false }),
     onError: (err: Error) => toast.error(t('common:updateFailed', { message: err.message })),
   });
 
@@ -257,8 +280,7 @@ export function WorkflowsPage() {
     mutationFn: ({ id, limit }: { id: string; limit: number | null }) =>
       api.put(`/workflows/${id}/concurrency-limit`, { maxConcurrentExecutions: limit }),
     onSuccess: (_, { id, limit }) => {
-      queryClient.setQueryData<WorkflowListItem[]>(['workflows'], old =>
-        old?.map(w => w.id === id ? { ...w, maxConcurrentExecutions: limit } : w) ?? []);
+      updateWorkflowPages(id, { maxConcurrentExecutions: limit });
       setConcurrencyTarget(null);
     },
     onError: (err: Error) => toast.error(t('common:saveFailed', { message: err.message })),
@@ -477,7 +499,6 @@ export function WorkflowsPage() {
   // ColKey covers all columns (sort uses it). ResizableColKey excludes Name —
   // Name auto-flexes to fill remaining horizontal space under table-layout:fixed,
   // so it has no inline width and no drag-handle.
-  type ColKey = 'name' | 'activities' | 'triggers' | 'status' | 'lastRun' | 'successRate' | 'runtime' | 'created' | 'updated';
   type ResizableColKey = Exclude<ColKey, 'name'>;
   const NAME_MIN_WIDTH = 280;
   const ACTIONS_WIDTH = 220; // ≤7 buttons × ~28px + gap-1 + px-4 cell padding
@@ -490,79 +511,25 @@ export function WorkflowsPage() {
   // status badge text ("Fehlgeschlagen" = "Failed", or a locked-workflow badge) —
   // otherwise the non-wrapping pill gets clipped when the column is dragged narrow.
   const MIN_WIDTHS: Partial<Record<ResizableColKey, number>> = { status: 160 };
-  const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS);
-  const resizeRef = useRef<{ col: ResizableColKey; startX: number; startWidth: number } | null>(null);
+  const { colWidths, startResize } = useColumnResize(DEFAULT_WIDTHS, MIN_WIDTHS);
 
-  const startResize = (col: ResizableColKey, e: React.MouseEvent) => {
-    e.preventDefault();
-    resizeRef.current = { col, startX: e.clientX, startWidth: colWidths[col] };
-    const onMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      const { col, startWidth, startX } = resizeRef.current;
-      const w = Math.max(MIN_WIDTHS[col] ?? 50, startWidth + ev.clientX - startX);
-      setColWidths(prev => ({ ...prev, [col]: w }));
-    };
-    const onUp = () => {
-      resizeRef.current = null;
-      globalThis.removeEventListener('mousemove', onMove);
-      globalThis.removeEventListener('mouseup', onUp);
-    };
-    globalThis.addEventListener('mousemove', onMove);
-    globalThis.addEventListener('mouseup', onUp);
-  };
-
-  // --- Column sorting ---
-  const [sortBy, setSortBy] = useState<ColKey | null>(null);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-
+  // The server orders the entire authorized set before taking this page.
   const handleSort = (col: ColKey) => {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortBy(col); setSortDir('asc'); }
+    changePage(1);
   };
-
-  // Folder filter: null = no filter (all visible workflows). A selected folder id
-  // shows only workflows directly in that folder (exact folderId match) — subfolders
-  // are not included. Consistent with WorkflowBrowser in the designer.
-  const filteredWorkflows = useMemo(() => {
-    if (!workflows) return [];
-    if (!selectedFolderId) return workflows;
-    return workflows.filter(w => w.folderId === selectedFolderId);
-  }, [workflows, selectedFolderId]);
-
-  const sortedWorkflows = useMemo(() => {
-    if (!filteredWorkflows.length || !sortBy) return filteredWorkflows;
-    return [...filteredWorkflows].sort((a, b) => {
-      let cmp = 0;
-      switch (sortBy) {
-        case 'name':        cmp = a.name.localeCompare(b.name); break;
-        case 'activities':  cmp = (a.activityCount ?? 0) - (b.activityCount ?? 0); break;
-        case 'triggers': {
-          // triggerTypes is a string[] of trigger-type keys; sort by the lexicographically
-          // ordered composition so workflows sharing the same trigger(s) group together.
-          // Empty trigger sets sort first in asc (empty string < any non-empty).
-          const ka = (a.triggerTypes ?? []).slice().sort().join(',');
-          const kb = (b.triggerTypes ?? []).slice().sort().join(',');
-          cmp = ka.localeCompare(kb); break;
-        }
-        case 'status':      cmp = Number(b.isEnabled) - Number(a.isEnabled); break;
-        case 'lastRun':     cmp = (a.lastExecution?.startedAt ?? '').localeCompare(b.lastExecution?.startedAt ?? ''); break;
-        case 'successRate': {
-          const ra = (a.totalCount ?? 0) > 0 ? (a.successCount ?? 0) / a.totalCount! : -1;
-          const rb = (b.totalCount ?? 0) > 0 ? (b.successCount ?? 0) / b.totalCount! : -1;
-          cmp = ra - rb; break;
-        }
-        case 'runtime':  cmp = (a.avgDurationMs ?? -1) - (b.avgDurationMs ?? -1); break;
-        case 'created':  cmp = a.createdAt.localeCompare(b.createdAt); break;
-        case 'updated':  cmp = a.updatedAt.localeCompare(b.updatedAt); break;
-      }
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-  }, [filteredWorkflows, sortBy, sortDir]);
-
+  const sortedWorkflows = workflows;
   // Row multi-selection for the bulk action bar. Bound to `sortedWorkflows` — the list as
   // rendered — so shift-range follows the visible order and the hook prunes ids that leave the
-  // list (folder switch, refetch, and the rows a bulk delete just removed).
+  // list (page/folder switch, refetch, and rows removed by a bulk delete).
   const selection = useBulkSelection(sortedWorkflows, workflowKey);
+  const changePage = (next: number) => {
+    selection.clear();
+    setPage(next);
+    const scroll = document.getElementById('np-main-scroll');
+    if (scroll) scroll.scrollTop = 0;
+  };
   const bulkActions = useWorkflowBulkActions(selection.retain);
   const selectAllRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -744,13 +711,13 @@ export function WorkflowsPage() {
       <div className="flex flex-col lg:flex-row">
         {/* Org-level shared-folder tree. Desktop: a resizable left rail. Mobile:
             a collapsible disclosure stacked above the list so it doesn't steal the
-            whole first screen. Selecting a folder scopes the list to it + descendants;
+            whole first screen. Selecting a folder scopes the list to that exact folder;
             the tree is permission-filtered server-side. */}
         {(() => {
           const folderTree = (
             <SharedFolderTree
               selectedFolderId={selectedFolderId}
-              onFolderSelected={setSelectedFolderId}
+              onFolderSelected={(id) => { setSelectedFolderId(id); changePage(1); }}
               onManagePermissions={setPermissionsModalFolderId}
               bulkDeleteEnabled
               onTreeMutated={() => {
@@ -1352,6 +1319,27 @@ export function WorkflowsPage() {
               })()}
             </tbody>
           </table>
+          </div>
+        </div>
+      )}
+      {!isLoading && !isError && workflowPage && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-3 text-xs text-on-surface-variant">
+          <p>{t('workflows:pagination.showing', { count: workflows.length, total: workflowPage.total })}</p>
+          <p>{t('workflows:pagination.selectionScope')}</p>
+          <div className="flex items-center gap-2">
+            <button type="button" aria-label={t('workflows:pagination.previous')}
+              disabled={page <= 1 || isRefetchingWorkflows || bulkActions.running}
+              onClick={() => changePage(page - 1)}
+              className="p-1.5 rounded-md border border-outline-variant disabled:opacity-40">
+              <ChevronLeft size={14} />
+            </button>
+            <span className="tabular-nums">{t('workflows:pagination.pageOf', { page, totalPages })}</span>
+            <button type="button" aria-label={t('workflows:pagination.next')}
+              disabled={page >= totalPages || isRefetchingWorkflows || bulkActions.running}
+              onClick={() => changePage(page + 1)}
+              className="p-1.5 rounded-md border border-outline-variant disabled:opacity-40">
+              <ChevronRight size={14} />
+            </button>
           </div>
         </div>
       )}

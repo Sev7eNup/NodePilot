@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, capsJson, mockCaps } from './fixtures/mockApi';
 
@@ -116,9 +117,9 @@ test.describe('Mobile responsiveness', () => {
   });
 
   test('executions: cards with no horizontal overflow on a phone', async ({ page }) => {
-    await page.route('**/api/workflows', (route) => route.fulfill({
+    await page.route('**/api/workflows/paged**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify([{ id: 'wf1', name: 'Nightly Backup', version: 1, activityCount: 3, triggerTypes: [], isEnabled: true, createdAt: '2026-06-01T00:00:00Z', updatedAt: '2026-06-01T00:00:00Z' }]),
+      body: JSON.stringify(workflowPage(route, [{ id: 'wf1', name: 'Nightly Backup', version: 1, activityCount: 3, triggerTypes: [], isEnabled: true, createdAt: '2026-06-01T00:00:00Z', updatedAt: '2026-06-01T00:00:00Z' }])),
     }));
     // The executions page labels its rows from /names; the route above matches the exact path only.
     await page.route('**/api/workflows/names', (route) => route.fulfill({
@@ -138,9 +139,9 @@ test.describe('Mobile responsiveness', () => {
   });
 
   test('workflows: cards + collapsible folder tree, no horizontal overflow on a phone', async ({ page }) => {
-    await page.route('**/api/workflows', (route) => route.fulfill({
+    await page.route('**/api/workflows/paged**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify([{ id: 'wf1', name: 'Nightly Backup', version: 2, activityCount: 5, triggerTypes: ['scheduleTrigger'], isEnabled: true, successCount: 9, totalCount: 10, avgDurationMs: 1200, createdAt: '2026-06-01T00:00:00Z', updatedAt: '2026-06-02T00:00:00Z', createdBy: 'admin', updatedBy: 'admin' }]),
+      body: JSON.stringify(workflowPage(route, [{ id: 'wf1', name: 'Nightly Backup', version: 2, activityCount: 5, triggerTypes: ['scheduleTrigger'], isEnabled: true, successCount: 9, totalCount: 10, avgDurationMs: 1200, createdAt: '2026-06-01T00:00:00Z', updatedAt: '2026-06-02T00:00:00Z', createdBy: 'admin', updatedBy: 'admin' }])),
     }));
     await page.setViewportSize(PHONE);
     await page.goto('/workflows');

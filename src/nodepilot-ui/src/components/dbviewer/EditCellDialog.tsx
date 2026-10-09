@@ -140,15 +140,15 @@ export function EditCellDialog({ tableName, column, currentValue, onSave, onClos
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
-      onClick={onClose}
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+      onClick={() => { if (!isSaving) onClose(); }}
+      onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.stopPropagation(); if (!isSaving) onClose(); } }}
       role="presentation"
       tabIndex={-1}
     >
       <div
         className="bg-surface rounded-xl shadow-xl border border-outline-variant/30 w-full max-w-lg mx-4"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && !e.defaultPrevented && !isSaving) onClose(); }}
         role="presentation"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/20">
