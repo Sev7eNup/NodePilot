@@ -176,6 +176,31 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
     }
 
     [Fact]
+    public async Task MoveAndMoveWorkflow_AdvanceTheFolderTreeEpoch()
+    {
+        // Dashboard reads run outside the tree lock and read again when this epoch moved, so every
+        // structural change must advance it.
+        await using var db = TestDbFactory.Create();
+        var root = SharedWorkflowFolder.RootFolderId;
+        var a = AddFolder(db, root, "A", "/A", 1);
+        var b = AddFolder(db, root, "B", "/B", 1);
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "W", FolderId = a };
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var tree = FolderTreeMutationLock.SharedWorkflowFolders;
+
+        var beforeMove = tree.Epoch;
+        (await NewCtrl(db).Move(a, new MoveSharedFolderRequest(b), CancellationToken.None))
+            .Should().BeOfType<NoContentResult>();
+        tree.Epoch.Should().BeGreaterThan(beforeMove);
+
+        var beforeWorkflowMove = tree.Epoch;
+        (await NewCtrl(db).MoveWorkflow(workflow.Id, new MoveWorkflowToFolderRequest(b), CancellationToken.None))
+            .Should().BeOfType<NoContentResult>();
+        tree.Epoch.Should().BeGreaterThan(beforeWorkflowMove);
+    }
+
+    [Fact]
     public async Task Move_ConcurrentInverseMoves_LeaveTheTreeAcyclic()
     {
         // A under B and B under A, each checked against the same old tree, together form a

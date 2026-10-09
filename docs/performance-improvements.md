@@ -678,6 +678,42 @@ auf SQLite laufen.
 **Korrektur (2026-09-17):** Die Annahme stimmt nicht — Npgsql 10 übersetzt Datumsteile von
 `timestamptz` mit `AT TIME ZONE 'UTC'`; ein Translation-Test pinnt das.
 
+### 30-Tage-Fenster trotz Buckets langsam (Session 2026-10-09)
+
+Auslöser: 7-/30-Tage-Dashboard blieb ab ~250k Läufen langsam, obwohl Buckets, Cache und Warmup
+liefen. Gemessen auf der Dev-Instanz (Postgres, 188k Läufe, 1,68 Mio Steps, Historie 24 Tage).
+
+| Stelle | Was war | Was jetzt |
+|---|---|---|
+| `DashboardRollupReader.CoversAsync` | Verlangte `CoverageStartUtc <= now − Fenster`. Der Backfill endet aber am ältesten Lauf — ist die Historie jünger als das Fenster, galt 30 d nie als gedeckt und lief bei jedem Cache-Miss über Rohzeilen (Retry-Quote = Parallel Seq Scan über **ganz** StepExecutions). | Ein abgeschlossener Backfill deckt jedes Fenster; davor existiert kein Lauf. |
+| `DashboardAggregateWarmup` | Prüft die Abdeckung nur für 720 h: wegen der Zeile darüber 10 min Wartezeit nach jedem Start und kein Warmhalten ohne Zuschauer — für **alle** Fenster. Nach einem Cache-Clear (Ordner-Mutation) wurde nie neu geprimt. | Folgt der Abdeckung; primt nach einem Clear im nächsten Sweep neu. |
+| Dauer-Trend | Einzige Kachel ohne Buckets: sortierte jeden Lauf des Fensters (720 h: 394 ms, Sort spillt auf Platte), nie warmgehalten. | Log-Histogramm (8 Bins je Verdopplung) je Stunde und Workflow in `ExecutionHourlyStat.DurationHistogram`; Median/P95 mit den Rangregeln der Roh-SQL, ≤ 4,5 % Abweichung. Die Migration löscht den Rollup-State, der Dienst baut neu auf (Dev: 8 s). |
+| Ordnerbaum-Lock | Alle drei Endpunkte hielten den prozessweiten `SemaphoreSlim(1,1)` über den ganzen Request — Kachel-Requests, Live-Events und Hub-Joins warteten aufeinander. | Lock nur um die Berechtigungsauflösung, globale Admins lesen ganz ohne ihn; Mutationen erhöhen `FolderTreeMutationLock.Epoch`. Hat sich die Epoch während des Lesens geändert, liest der Endpunkt einmal mit gehaltenem Lock neu. Begründung und Abgrenzung zur Audit-Entscheidung: `docs/audit-rounds/round-2-api-core.md`. |
+| `RunPassAsync` | Ein scheiternder Backfill-Chunk verwarf auch den Forward-Pass und den Frische-Stempel; nach 10 min fielen alle Fenster auf Rohzeilen zurück. | Forward-Pass und `UpdatedAt` werden vor dem Backfill gespeichert. |
+| `DashboardPage` | Fensterwechsel ersetzte die ganze Seite durch „Loading…". | Seite bleibt stehen; nur fensterabhängige Karten zeigen den Ladezustand. |
+
+**Gemessen** (Dev, Postgres, nach dem Umbau; Admin-Scope):
+
+| Aufruf | vorher (Rohpfad, Cache-Miss) | nachher |
+|---|---|---|
+| `dashboard?windowHours=720` | Aggregat ~0,41 s DB (Slots + COUNT + Retry-Scan) | 32–35 ms |
+| `failure-causes?windowHours=720` | ~0,29 s | 3 ms |
+| `duration-trend?windowHours=720` | 0,39 s | 3 ms (kalt, Workflow-Filter: 8 ms) |
+| `duration-trend?windowHours=168` | 57 ms | 3 ms (kalt: 16 ms) |
+
+Gegenprobe Dauer-Trend 720 h gegen exakte Roh-SQL: Median max. 4,2 %, P95 max. 4,4 % Abweichung
+über 14 Buckets.
+
+**Retry-Quote ohne Tabellenscan.** Das 1-h-Fenster rechnet immer aus Rohzeilen, und seine
+Retry-Quote suchte `AttemptCount > 1` über die **ganze** StepExecutions-Tabelle — gemessen auf CM1
+(SQL Server, 2,5 Mio Steps): 13,3 s kalt nach Dienst-Neustart, 0,35–0,7 s warm, für 596 Läufe im
+Fenster. Dieselbe Suche steckt im Backfill und im Rohpfad-Fallback; auf CM1 liefen Rollup-Abfragen
+2026-10-05 bis -08 ins 120-s-Timeout (`docs/audit-rounds/cm1-log-review-20261009.md`). Der
+gefilterte Index `IX_StepExecutions_Retried` (`WorkflowExecutionId`, nur `AttemptCount > 1`) enthält
+nur wiederholte Steps und macht daraus Index-Zugriffe. Preis: Der Index wird beim ersten Start nach
+dem Update einmal über die ganze Tabelle aufgebaut und blockiert solange Schreibzugriffe auf
+StepExecutions.
+
 ### Remote / WinRM
 
 | Commit | Bereich | Was wurde verbessert |

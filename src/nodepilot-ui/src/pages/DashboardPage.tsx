@@ -22,7 +22,7 @@ import {
   WarningAltFilled,
 } from '@carbon/icons-react';
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import type { EChartsOption } from 'echarts';
@@ -134,6 +134,14 @@ function healthColor(rate: number | null): string {
   return HEALTH.bad;
 }
 
+// Whether the cards of the selected window can show its figures, or why not.
+type WindowStatus = 'ready' | 'loading' | 'failed';
+
+const dashboardStatsQuery = (windowHours: number) => ({
+  queryKey: ['dashboard-stats', windowHours],
+  queryFn: () => api.get<DashboardStats>(`/stats/dashboard?windowHours=${windowHours}`),
+  refetchInterval: 120_000,
+});
 
 export function DashboardPage() {
   const { t } = useTranslation(['dashboard', 'executions', 'common']);
@@ -143,6 +151,9 @@ export function DashboardPage() {
   // failing lists stay on a fixed 7-day window from the backend, so they do not empty out when
   // windowHours is 1.
   const [windowHours, setWindowHours] = useState(24);
+  // The window whose own figures were on screen when the selection last changed. Its cached
+  // response keeps the window-independent tiles available if the selected window fails to load.
+  const [shownWindowHours, setShownWindowHours] = useState(24);
   const [durationWorkflowId, setDurationWorkflowId] = useState('');
   const windowLabel = t(`dashboard:window.${WINDOW_KEY[windowHours] ?? '24h'}`);
   // Live status transitions from the SignalR ops feed (JoinOperationsFeed). It invalidates
@@ -150,11 +161,16 @@ export function DashboardPage() {
   // Running, Queue and Recent KPIs stay near-live. The polling below covers reconnects and
   // missed events.
   useDashboardFeed();
-  const { data: stats, isLoading } = useQuery({
-    queryKey: ['dashboard-stats', windowHours],
-    queryFn: () => api.get<DashboardStats>(`/stats/dashboard?windowHours=${windowHours}`),
-    refetchInterval: 120_000,
-  });
+  // While a newly selected window loads, placeholder data keeps the window-independent tiles on
+  // screen. The cards of the selected window never show figures from it; they show a loading state.
+  const statsQuery = useQuery({ ...dashboardStatsQuery(windowHours), placeholderData: keepPreviousData });
+  // Placeholder data ends when the request fails; the shown window's cached response takes over.
+  const { data: shownStats } = useQuery({ ...dashboardStatsQuery(shownWindowHours), enabled: false });
+  const stats = statsQuery.data ?? shownStats;
+  // A failed refetch keeps the window's own data, so only a window without data counts as failed.
+  const windowStatus: WindowStatus = statsQuery.isPlaceholderData ? 'loading'
+    : statsQuery.isLoadingError ? 'failed'
+    : 'ready';
   // Started here, rendered further down by <FailureCauses/>. That component sits behind the
   // loading gate below, so leaving the request to it made the page's two most expensive queries
   // run in sequence. Same query key, so the component reads this result rather than refetching.
@@ -164,7 +180,8 @@ export function DashboardPage() {
   // returns the latest 10 rows, so this filters within those; full filtering lives on /executions.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
-  if (isLoading || !stats) {
+  // Nothing to show until a first response has arrived.
+  if (!stats) {
     return (
       <div ref={probeRef} className="max-w-[1600px] mx-auto">
         <p className="text-outline">{t('common:loadingDots')}</p>
@@ -195,13 +212,26 @@ export function DashboardPage() {
             <button
               key={h}
               type="button"
-              onClick={() => { setWindowHours(h); setStatusFilter(null); }}
+              onClick={() => {
+                if (windowStatus === 'ready') setShownWindowHours(windowHours);
+                setWindowHours(h);
+                setStatusFilter(null);
+              }}
               className={`np-segment ${h === windowHours ? 'is-active' : ''}`}
             >
               {t(`dashboard:window.${WINDOW_KEY[h]}`)}
             </button>
           ))}
         </div>
+        {windowStatus === 'failed' && (
+          <div role="alert" className="flex items-center gap-2 text-sm text-on-surface-variant">
+            <WarningAltFilled size={14} className="text-error shrink-0" />
+            {t('common:loadError')}
+            <button type="button" className="np-btn np-btn-secondary" onClick={() => void statsQuery.refetch()}>
+              {t('common:retry')}
+            </button>
+          </div>
+        )}
       </div>
       {/* Hero row: radial gauge on the left, KPI cluster in the centre, live runs on the right. */}
       <div className="relative grid grid-cols-1 xl:grid-cols-4 gap-5 mb-5 has-[details[open]]:z-30">
@@ -213,10 +243,11 @@ export function DashboardPage() {
             running={stats.last24h.running}
             windowLabel={windowLabel}
             tokens={tokens}
+            windowStatus={windowStatus}
           />
         </div>
         <div className="relative xl:col-span-2 np-fade-up has-[details[open]]:z-10" style={{ animationDelay: '60ms' }}>
-          <KpiGrid stats={stats} windowLabel={windowLabel} />
+          <KpiGrid stats={stats} windowLabel={windowLabel} windowStatus={windowStatus} />
         </div>
         <div className="np-fade-up flex flex-col" style={{ animationDelay: '90ms' }}>
           <div className="np-card p-5 flex flex-col overflow-hidden flex-1">
@@ -234,7 +265,7 @@ export function DashboardPage() {
         </div>
       </div>
       {/* Trend over the selected window, drawn as a gradient area chart. */}
-      <div className="np-card p-5 mb-5 np-fade-up" style={{ animationDelay: '120ms' }}>
+      <div className="np-card p-5 mb-5 np-fade-up" style={{ animationDelay: '120ms' }} aria-busy={windowStatus === 'loading'}>
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-semibold text-on-surface flex items-center gap-2">
             <Activity size={16} className="text-primary" />
@@ -246,13 +277,17 @@ export function DashboardPage() {
             <span className="flex items-center gap-1"><span className="np-chart-legend-cancelled w-2 h-2 bg-outline-variant rounded-sm" /> {t('dashboard:cancelled')}</span>
           </div>
         </div>
-        <HourlyAreaChart buckets={stats.last24hBuckets} windowHours={windowHours} tokens={tokens} />
+        {windowStatus === 'ready'
+          ? <HourlyAreaChart buckets={stats.last24hBuckets} windowHours={windowHours} tokens={tokens} />
+          : <WindowPending status={windowStatus} className="h-36 flex items-center justify-center" />}
       </div>
       {/* Run status, execution duration and recurring failure messages. */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-5">
         <div className="np-fade-up" style={{ animationDelay: '160ms' }}>
-          <Panel title={t('dashboard:runStatusWindow', { window: windowLabel })} icon={Time} iconClass="text-emerald-500" className="h-full">
-            <RunStatusSummary counts={stats.last24h} windowLabel={windowLabel} selectedStatus={statusFilter} onSelect={setStatusFilter} />
+          <Panel title={t('dashboard:runStatusWindow', { window: windowLabel })} icon={Time} iconClass="text-emerald-500" className="h-full" busy={windowStatus === 'loading'}>
+            {windowStatus === 'ready'
+              ? <RunStatusSummary counts={stats.last24h} windowLabel={windowLabel} selectedStatus={statusFilter} onSelect={setStatusFilter} />
+              : <WindowPending status={windowStatus} className="h-40 flex items-center justify-center" />}
           </Panel>
         </div>
         <div className="np-fade-up" style={{ animationDelay: '200ms' }}>
@@ -352,13 +387,14 @@ export function DashboardPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function HeroGauge({
-  successRate, succeeded, failed, running, windowLabel, tokens,
+  successRate, succeeded, failed, running, windowLabel, tokens, windowStatus,
 }: Readonly<{
   successRate: number | null; succeeded: number; failed: number; running: number;
-  windowLabel: string; tokens: ChartTokens;
+  windowLabel: string; tokens: ChartTokens; windowStatus: WindowStatus;
 }>) {
   const { t } = useTranslation(['dashboard']);
-  const color = healthColor(successRate);
+  // The colour encodes the rate, so it stays neutral until the selected window has loaded.
+  const color = healthColor(windowStatus === 'ready' ? successRate : null);
   const track = tokens.grid;
   const option = useMemo<EChartsOption>(() => ({
     series: [{
@@ -389,24 +425,26 @@ function HeroGauge({
 
   const runningSuffix = running > 0 ? ` · ${running}↻` : '';
   return (
-    <div className="np-card np-card-hero p-4 sm:p-6 h-full flex flex-col">
+    <div className="np-card np-card-hero p-4 sm:p-6 h-full flex flex-col" aria-busy={windowStatus === 'loading'}>
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-on-surface-variant">
         <CheckmarkFilled size={12} className="shrink-0" style={{ color }} />
         <span className="truncate">{t('dashboard:successRateWindow', { window: windowLabel })}</span>
       </div>
       <div className="relative flex-1 min-h-[150px] sm:min-h-[210px]">
-        <EChart option={option} className="absolute inset-0" ariaLabel={t('dashboard:successRateWindow', { window: windowLabel })} />
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span
-            className="text-4xl sm:text-5xl font-bold tabular-nums leading-none"
-            style={{ color, textShadow: `0 0 28px ${color}55` }}
-          >
-            {successRate == null ? '–' : `${successRate}%`}
-          </span>
-          <span className="text-xs text-on-surface-variant mt-2 tabular-nums">
-            {succeeded}✓ · {failed}✗{runningSuffix}
-          </span>
-        </div>
+        {windowStatus !== 'ready' ? <WindowPending status={windowStatus} className="absolute inset-0 flex items-center justify-center" /> : <>
+          <EChart option={option} className="absolute inset-0" ariaLabel={t('dashboard:successRateWindow', { window: windowLabel })} />
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span
+              className="text-4xl sm:text-5xl font-bold tabular-nums leading-none"
+              style={{ color, textShadow: `0 0 28px ${color}55` }}
+            >
+              {successRate == null ? '–' : `${successRate}%`}
+            </span>
+            <span className="text-xs text-on-surface-variant mt-2 tabular-nums">
+              {succeeded}✓ · {failed}✗{runningSuffix}
+            </span>
+          </div>
+        </>}
       </div>
     </div>
   );
@@ -416,7 +454,7 @@ function HeroGauge({
 // KPI cluster
 // ─────────────────────────────────────────────────────────────────────────────
 
-function KpiGrid({ stats, windowLabel }: Readonly<{ stats: DashboardStats; windowLabel: string }>) {
+function KpiGrid({ stats, windowLabel, windowStatus }: Readonly<{ stats: DashboardStats; windowLabel: string; windowStatus: WindowStatus }>) {
   const { t } = useTranslation(['dashboard', 'common']);
   const machinesAllOnline = stats.machinesTotal === 0 || stats.machinesReachable === stats.machinesTotal;
   const scheduler = stats.healthHeartbeats.find((h) => h.serviceName.toLowerCase().includes('scheduler')
@@ -435,7 +473,7 @@ function KpiGrid({ stats, windowLabel }: Readonly<{ stats: DashboardStats; windo
         hint={t('dashboard:machinesReachable', { count: stats.machinesReachable })}
         hintColor={machinesAllOnline ? undefined : 'text-amber-600'}
       />
-      <RetryKpiCard retryStats={stats.retryStats} windowLabel={windowLabel} />
+      <RetryKpiCard retryStats={stats.retryStats} windowLabel={windowLabel} windowStatus={windowStatus} />
       <QueueKpiCard stats={stats} />
       <KpiCard
         icon={Activity}
@@ -494,7 +532,7 @@ function QueueKpiCard({ stats }: Readonly<{ stats: DashboardStats }>) {
   );
 }
 
-function RetryKpiCard({ retryStats, windowLabel }: Readonly<{ retryStats: DashboardStats['retryStats']; windowLabel: string }>) {
+function RetryKpiCard({ retryStats, windowLabel, windowStatus }: Readonly<{ retryStats: DashboardStats['retryStats']; windowLabel: string; windowStatus: WindowStatus }>) {
   const { t, i18n } = useTranslation(['dashboard']);
   // An older server may not yet include the additive field during a frontend/backend rollout.
   const { finishedCount = 0, retriedCount = 0 } = retryStats ?? {};
@@ -511,12 +549,13 @@ function RetryKpiCard({ retryStats, windowLabel }: Readonly<{ retryStats: Dashbo
         ? t('dashboard:retryStats.affected', { count: retriedCount, formattedCount: formatNumber(retriedCount) })
         : t('dashboard:retryStats.empty')}
       description={t('dashboard:retryStats.description', { formattedCount: formatNumber(finishedCount) })}
+      windowStatus={windowStatus}
     />
   );
 }
 
 function KpiCard({
-  icon: Icon, iconColor, label, value, valueColor, compactValue, hint, hintColor, hintIcon: HintIcon, description,
+  icon: Icon, iconColor, label, value, valueColor, compactValue, hint, hintColor, hintIcon: HintIcon, description, windowStatus,
 }: Readonly<{
   icon: React.ElementType;
   iconColor: string;
@@ -528,41 +567,45 @@ function KpiCard({
   hintColor?: string;
   hintIcon?: React.ElementType;
   description?: string;
+  /** Set on window-dependent cards; value, hint and description wait for the selected window. */
+  windowStatus?: WindowStatus;
 }>) {
   const { t } = useTranslation(['dashboard']);
   return (
-    <div className="np-card p-4 min-w-0 flex flex-col justify-center">
+    <div className="np-card p-4 min-w-0 flex flex-col justify-center" aria-busy={windowStatus ? windowStatus === 'loading' : undefined}>
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-on-surface-variant">
         <Icon size={12} className={`${iconColor} shrink-0`} />
         <span className={description ? 'min-w-0 flex-1 whitespace-normal tracking-normal' : 'truncate'}>{label}</span>
       </div>
-      <div className="mt-2.5 flex items-center justify-between gap-2">
-        <p
-          className={`${compactValue ? 'text-xl sm:text-[1.7rem]' : 'text-[1.7rem]'} font-bold tabular-nums leading-none truncate ${valueColor ?? 'text-on-surface'}`}
-          title={value}
-        >
-          {value}
-        </p>
-        {description && (
-          <details className="shrink-0 text-on-surface-variant">
-            <summary
-              aria-label={t('dashboard:retryStats.explain')}
-              className="cursor-pointer list-none rounded focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
-            >
-              <Information size={14} />
-            </summary>
-            <p className="absolute inset-x-0 top-full z-20 mt-1 rounded-xl border border-outline-variant bg-surface-lowest p-3 text-xs leading-relaxed text-on-surface shadow-lg">
-              {description}
-            </p>
-          </details>
+      {windowStatus && windowStatus !== 'ready' ? <WindowPending status={windowStatus} className="mt-2.5" /> : <>
+        <div className="mt-2.5 flex items-center justify-between gap-2">
+          <p
+            className={`${compactValue ? 'text-xl sm:text-[1.7rem]' : 'text-[1.7rem]'} font-bold tabular-nums leading-none truncate ${valueColor ?? 'text-on-surface'}`}
+            title={value}
+          >
+            {value}
+          </p>
+          {description && (
+            <details className="shrink-0 text-on-surface-variant">
+              <summary
+                aria-label={t('dashboard:retryStats.explain')}
+                className="cursor-pointer list-none rounded focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
+              >
+                <Information size={14} />
+              </summary>
+              <p className="absolute inset-x-0 top-full z-20 mt-1 rounded-xl border border-outline-variant bg-surface-lowest p-3 text-xs leading-relaxed text-on-surface shadow-lg">
+                {description}
+              </p>
+            </details>
+          )}
+        </div>
+        {hint && (
+          <p className={`text-xs mt-2 flex items-center gap-1 ${hintColor ?? 'text-outline'}`}>
+            {HintIcon && <HintIcon size={10} className="shrink-0" />}
+            <span className={description ? '[overflow-wrap:anywhere]' : 'truncate'}>{hint}</span>
+          </p>
         )}
-      </div>
-      {hint && (
-        <p className={`text-xs mt-2 flex items-center gap-1 ${hintColor ?? 'text-outline'}`}>
-          {HintIcon && <HintIcon size={10} className="shrink-0" />}
-          <span className={description ? '[overflow-wrap:anywhere]' : 'truncate'}>{hint}</span>
-        </p>
-      )}
+      </>}
     </div>
   );
 }
@@ -1027,10 +1070,10 @@ function LiveDuration({ startedAt, longRunningSeconds, nowMs }: Readonly<{ start
 }
 
 function Panel({
-  title, icon: Icon, iconClass, divided = false, className, children,
-}: Readonly<{ title: string; icon: React.ElementType; iconClass?: string; divided?: boolean; className?: string; children: React.ReactNode }>) {
+  title, icon: Icon, iconClass, divided = false, className, busy, children,
+}: Readonly<{ title: string; icon: React.ElementType; iconClass?: string; divided?: boolean; className?: string; busy?: boolean; children: React.ReactNode }>) {
   return (
-    <div className={`np-card p-5 ${className ?? ''}`}>
+    <div className={`np-card p-5 ${className ?? ''}`} aria-busy={busy}>
       <h3 className={`font-semibold text-on-surface flex items-center gap-2 ${divided ? 'pb-3 mb-0 border-b border-outline-variant/25' : 'mb-3'}`}>
         <Icon size={16} className={iconClass ?? 'text-outline'} />
         {title}
@@ -1042,6 +1085,14 @@ function Panel({
 
 function EmptyState({ text }: Readonly<{ text: string }>) {
   return <p className="text-outline text-sm py-4 text-center">{text}</p>;
+}
+
+/** Takes the place of the selected window's figures while they load or after they failed to load. */
+function WindowPending({ status, className }: Readonly<{ status: Exclude<WindowStatus, 'ready'>; className: string }>) {
+  const { t } = useTranslation(['common']);
+  return status === 'loading'
+    ? <p role="status" className={`text-outline text-sm ${className}`}>{t('common:loadingDots')}</p>
+    : <p className={`text-on-surface-variant text-sm ${className}`}>{t('common:loadError')}</p>;
 }
 
 function TelemetrySection() {

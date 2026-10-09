@@ -282,6 +282,11 @@ public class NodePilotDbContext : DbContext
             e.HasIndex(x => x.Status)
                 .HasDatabaseName("IX_StepExecutions_Running")
                 .HasFilter("\"Status\" = 'Running'");
+            // Retried steps are rare, so the dashboard's retry share and the stats rollup seek this
+            // small index instead of scanning the largest table in the schema.
+            e.HasIndex(x => x.WorkflowExecutionId)
+                .HasDatabaseName("IX_StepExecutions_Retried")
+                .HasFilter("\"AttemptCount\" > 1");
         });
 
         modelBuilder.Entity<ManagedMachine>(e =>

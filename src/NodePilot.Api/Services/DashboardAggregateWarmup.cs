@@ -15,10 +15,10 @@ namespace NodePilot.Api.Services;
 /// </para>
 ///
 /// <para>
-/// It refreshes only what somebody has actually requested recently (see
-/// <see cref="DashboardAggregateCache.RefreshDueAsync"/>), so an instance nobody is looking at does
-/// no aggregation at all. Not leader-gated: the cache lives in this process, so every node warms
-/// its own.
+/// The primed admin windows stay warm while the hourly buckets answer them, which keeps their
+/// refresh cheap; every other entry is refreshed only while somebody requests it (see
+/// <see cref="DashboardAggregateCache.RefreshDueAsync"/>). Not leader-gated: the cache lives in
+/// this process, so every node warms its own.
 /// </para>
 /// </summary>
 public sealed class DashboardAggregateWarmup : BackgroundService
@@ -57,6 +57,9 @@ public sealed class DashboardAggregateWarmup : BackgroundService
     private readonly NodePilot.Engine.Security.OutputRedactor _redactor;
     private readonly IConfiguration _configuration;
     private readonly ILogger<DashboardAggregateWarmup> _logger;
+
+    /// <summary>The cache generation the last complete priming filled; -1 until one completes.</summary>
+    private long _primedGeneration = -1;
 
     public DashboardAggregateWarmup(
         DashboardAggregateCache cache,
@@ -100,11 +103,7 @@ public sealed class DashboardAggregateWarmup : BackgroundService
                     return;
                 try
                 {
-                    // Pinned entries are only cheap while the buckets answer them; on the raw
-                    // fallback they are refreshed like any other entry, i.e. only when requested.
-                    var covered = await RollupCoversWindowAsync(stoppingToken).ConfigureAwait(false);
-                    await _cache.RefreshDueAsync(RefreshLead, ActiveWindow, stoppingToken, covered)
-                        .ConfigureAwait(false);
+                    await SweepAsync(stoppingToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -124,6 +123,18 @@ public sealed class DashboardAggregateWarmup : BackgroundService
                 "Dashboard aggregate warm-up stopped. The dashboard still works; its first call " +
                 "per window pays for the aggregation again.");
         }
+    }
+
+    /// <summary>One refresh pass: prime again after the cache was cleared, then renew what is due.</summary>
+    internal async Task SweepAsync(CancellationToken ct)
+    {
+        // Pinned entries are only cheap while the buckets answer them; on the raw fallback they are
+        // refreshed like any other entry, i.e. only when requested.
+        var covered = await RollupCoversWindowAsync(ct).ConfigureAwait(false);
+        // A folder mutation clears the whole cache; prime again instead of waiting for a restart.
+        if (covered && _cache.Generation != _primedGeneration)
+            await PrimeAsync(ct).ConfigureAwait(false);
+        await _cache.RefreshDueAsync(RefreshLead, ActiveWindow, ct, covered).ConfigureAwait(false);
     }
 
     private async Task<bool> RollupCoversWindowAsync(CancellationToken ct)
@@ -157,6 +168,8 @@ public sealed class DashboardAggregateWarmup : BackgroundService
     /// </summary>
     internal async Task PrimeAsync(CancellationToken ct)
     {
+        var generation = _cache.Generation;
+        var failed = 0;
         var accessible = AccessibleFolderSet.Unrestricted;
         var redactor = _redactor;
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -180,27 +193,28 @@ public sealed class DashboardAggregateWarmup : BackgroundService
                         .ReadWindowAsync(accessible, windowHours, token),
                     ct, keepWarm: true).ConfigureAwait(false);
 
-                // Raw-row query with no bucket form, so it is primed but not kept warm unasked.
                 await _cache.PrimeAsync(
                     DashboardAggregateCache.Key("duration-trend:all", accessible, windowHours),
                     DashboardCacheSettings.Ttl,
                     (db, token) => new DashboardDurationTrend(db).ReadAsync(
                         accessible, windowHours, null, token),
-                    ct).ConfigureAwait(false);
+                    ct, keepWarm: true).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 // Warming is best-effort per window: a failure here costs speed, not correctness.
+                failed++;
                 _logger.LogDebug(ex,
                     "Could not pre-compute dashboard aggregates for {WindowHours} h.", windowHours);
             }
         }
 
+        // Only a complete priming counts; after a failure the next sweep primes again.
+        if (failed == 0) _primedGeneration = generation;
         _logger.LogInformation(
-            "Dashboard aggregates pre-computed for {Count} window(s) in {ElapsedMs} ms. Further " +
-            "refreshes happen only for windows somebody opens.",
-            PrimedWindows.Length, sw.ElapsedMilliseconds);
+            "Dashboard aggregates pre-computed for {Count} window(s) in {ElapsedMs} ms.",
+            PrimedWindows.Length - failed, sw.ElapsedMilliseconds);
     }
 }
 

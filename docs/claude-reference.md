@@ -1105,8 +1105,8 @@ Die Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](../src/Nod
 | `NotificationRetentionService` | Trimmt den Delivery-Ledger + stale Suppression-States (90 d) | opt-out `Retention:Notifications:Enabled`, leader-only |
 | `IdempotencyKeyCleanupService` | Prunt Idempotency-Keys nach 24 h TTL | always-on (nicht abschaltbar) |
 | `WorkflowStatsRefresher` | Berechnet `WorkflowStats`-Aggregat (siehe Stats) | always-on |
-| `ExecutionStatsRollupService` | Schreibt die Stunden-Buckets `ExecutionHourlyStat` + `FailureCauseHourlyStat` fort (Sweep 60 s, Start nach 25 s, Backfill in Tages-Chunks) | opt-out `Stats:Rollup:Enabled`, leader-only |
-| `DashboardAggregateWarmup` | Berechnet die Dashboard-Aggregate für 24 h / 7 d / 30 d nach dem Start vor und hält abgerufene Einträge warm (Sweep 20 s, Start nach 15 s) | opt-out `Dashboard:Warmup:Enabled` (prozesslokaler Cache, nicht leader-gated) |
+| `ExecutionStatsRollupService` | Schreibt die Stunden-Buckets `ExecutionHourlyStat` (inkl. Laufzeit-Histogramm für Median/P95) + `FailureCauseHourlyStat` fort (Sweep 60 s, Start nach 25 s, Backfill in Tages-Chunks; ein abgeschlossener Backfill deckt jedes Fenster, auch bei kürzerer Historie) | opt-out `Stats:Rollup:Enabled`, leader-only |
+| `DashboardAggregateWarmup` | Berechnet die Dashboard-Aggregate für 24 h / 7 d / 30 d nach dem Start vor, hält sie warm und primt nach einem Cache-Clear (Ordner-Mutation) neu (Sweep 20 s, Start nach 15 s) | opt-out `Dashboard:Warmup:Enabled` (prozesslokaler Cache, nicht leader-gated) |
 | `WorkflowDefinitionFactsWarmup` | Füllt den kalten `WorkflowDefinitionFactsCache` einmalig in 50er-Batches (Start nach 10 s) | always-on |
 | `RevokedTokensCleanupService` | Täglicher Sweep der `RevokedTokens` (Audit M12) | always-on |
 | `HubRevocationSweeper` | Schließt SignalR-Verbindungen bei Logout/Deaktivierung (Audit M2) | always-on |

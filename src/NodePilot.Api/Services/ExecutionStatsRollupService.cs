@@ -166,6 +166,10 @@ public sealed class ExecutionStatsRollupService : BackgroundService
         }
 
         state.CoverageEndUtc = currentHour;
+        // Saved before the backfill: a backfill chunk that fails must not discard the current hours
+        // or the freshness stamp, or every window would turn stale and fall back to raw rows.
+        state.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
         // Backfill walks backwards from the oldest covered hour towards the retention horizon.
         if (!state.BackfillComplete)
@@ -221,6 +225,9 @@ public sealed class ExecutionStatsRollupService : BackgroundService
 
         if (cursor <= horizon)
         {
+            // Also when no chunk ran because every execution lies in the current hour; a missing
+            // start would leave every window uncovered for good.
+            state.CoverageStartUtc = cursor;
             state.BackfillComplete = true;
             _logger.LogInformation(
                 "Execution stats backfill complete back to {Horizon:u} ({Chunks} chunk(s), " +
@@ -326,6 +333,11 @@ public sealed class ExecutionStatsRollupService : BackgroundService
             row.DurationMsSum = g.Where(e => e.CompletedAt != null)
                 .Sum(e => (long)(e.CompletedAt!.Value - e.StartedAt).TotalMilliseconds);
             row.DurationMsCount = g.Count(e => e.CompletedAt != null);
+            // Same runs the duration trend reads: succeeded or failed with a valid completion.
+            row.DurationHistogram = DurationHistogram.Encode(g
+                .Where(e => e.Status is ExecutionStatus.Succeeded or ExecutionStatus.Failed
+                            && e.CompletedAt >= e.StartedAt)
+                .Select(e => (e.CompletedAt!.Value - e.StartedAt).TotalMilliseconds));
             row.IsFinal = !openHours.Contains(g.Key.Hour);
             row.ComputedAt = now;
         }
