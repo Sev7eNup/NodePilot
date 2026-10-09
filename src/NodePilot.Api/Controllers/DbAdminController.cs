@@ -155,7 +155,7 @@ public class DbAdminController : ControllerBase
         // Hold this across lookup, commit and revoke so an in-flight join cannot retain the old scope.
         using var treeLock = table?.EntityType.ClrType == typeof(Workflow)
             && string.Equals(req.Column, nameof(Workflow.FolderId), StringComparison.OrdinalIgnoreCase)
-                ? await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct)
+                ? await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct)
                 : null;
         if (table?.EntityType.ClrType != typeof(User))
             return await PatchRowCore(name, pk, req, ct);

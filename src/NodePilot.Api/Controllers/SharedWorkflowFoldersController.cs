@@ -100,7 +100,7 @@ public class SharedWorkflowFoldersController : ControllerBase
             return BadRequest(new { message = "Name is required" });
         if (req.Name.Length > 120)
             return BadRequest(new { message = "Name max length is 120 characters" });
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
 
         // Parent defaults to Root. Caller needs FolderEditor on the parent, since creating
         // a child is a parent-edit. Root carries the global Admin + bootstrap-default grants,
@@ -155,7 +155,7 @@ public class SharedWorkflowFoldersController : ControllerBase
             return BadRequest(new { message = "Root folder cannot be renamed" });
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 120)
             return BadRequest(new { message = "Name is required and max 120 chars" });
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
@@ -187,7 +187,7 @@ public class SharedWorkflowFoldersController : ControllerBase
             return BadRequest(new { message = "Root folder cannot be moved" });
         // Taken before the first read: the cycle and depth checks below are only valid against
         // a tree nobody else is changing at the same time.
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
@@ -271,7 +271,7 @@ public class SharedWorkflowFoldersController : ControllerBase
 
         if (id == SharedWorkflowFolder.RootFolderId)
             return BadRequest(new { message = "Root folder cannot be deleted" });
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
@@ -449,7 +449,7 @@ public class SharedWorkflowFoldersController : ControllerBase
     [HttpPost("/api/workflows/{workflowId:guid}/move-folder")]
     public async Task<IActionResult> MoveWorkflow(Guid workflowId, MoveWorkflowToFolderRequest req, CancellationToken ct)
     {
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
         var workflow = await _db.Workflows.AsNoTracking().FirstOrDefaultAsync(w => w.Id == workflowId, ct);
         if (workflow is null) return NotFound();
         if (await this.RequireWorkflowAccessAsync(_authz, workflow, ResourceOp.Edit, ct,

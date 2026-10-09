@@ -30,6 +30,7 @@ public class DashboardController : ControllerBase
     private readonly IConfiguration? _configuration;
     private readonly OutputRedactor _redactor;
     private readonly DashboardAggregateCache? _aggregates;
+    private readonly FolderTreeMutationLock _folderTree;
 
     /// <summary>Named so the per-action audit queries can be merged in memory before projection.</summary>
     private sealed record AuditRow(
@@ -42,7 +43,8 @@ public class DashboardController : ControllerBase
         IMaintenanceWindowEvaluator? maintenance = null,
         IConfiguration? configuration = null,
         OutputRedactor? redactor = null,
-        DashboardAggregateCache? aggregates = null)
+        DashboardAggregateCache? aggregates = null,
+        FolderTreeMutationLock? folderTree = null)
     {
         _db = db;
         _authz = authz;
@@ -52,50 +54,85 @@ public class DashboardController : ControllerBase
         _configuration = configuration;
         _redactor = redactor ?? new OutputRedactor(configuration);
         _aggregates = aggregates;
+        // The process-wide lock in production; tests pass their own so parallel tests that mutate
+        // folders do not change what a dashboard test observes.
+        _folderTree = folderTree ?? FolderTreeMutationLock.SharedWorkflowFolders;
     }
 
     [HttpGet("duration-trend")]
     public async Task<ActionResult<DurationTrendResponse>> GetDurationTrend(
         CancellationToken ct, [FromQuery] int windowHours = 24, [FromQuery] Guid? workflowId = null)
     {
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
-        _authz.InvalidateAll();
         if (windowHours is not (1 or 24 or 168 or 720)) windowHours = 24;
-        var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        if (_aggregates is null)
-            return Ok(await new DashboardDurationTrend(_db).ReadAsync(accessible, windowHours, workflowId, ct));
-
-        return Ok(await _aggregates.GetOrComputeAsync(
-            DashboardAggregateCache.Key($"duration-trend:{workflowId?.ToString() ?? "all"}", accessible, windowHours),
-            DashboardCacheSettings.Ttl,
-            (db, token) => new DashboardDurationTrend(db).ReadAsync(accessible, windowHours, workflowId, token), ct));
+        return Ok(await ReadScopedAsync(accessible => _aggregates is null
+            ? new DashboardDurationTrend(_db).ReadAsync(accessible, windowHours, workflowId, ct)
+            : _aggregates.GetOrComputeAsync(
+                DashboardAggregateCache.Key($"duration-trend:{workflowId?.ToString() ?? "all"}", accessible, windowHours),
+                DashboardCacheSettings.Ttl,
+                (db, token) => new DashboardDurationTrend(db).ReadAsync(accessible, windowHours, workflowId, token), ct),
+            ct));
     }
 
     [HttpGet("failure-causes")]
     public async Task<ActionResult<FailureCausesResponse>> GetFailureCauses(CancellationToken ct, [FromQuery] int windowHours = 24)
     {
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
-        _authz.InvalidateAll();
         if (windowHours <= 0 || windowHours > 720) windowHours = 24;
-        var now = DateTime.UtcNow;
-        var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        if (_db.WorkflowExecutions.AsNoTracking().ScopeToAccessibleFolders(accessible) is null)
-            return Ok(new FailureCausesResponse(0, [], 0));
+        return Ok(await ReadScopedAsync(accessible =>
+        {
+            if (_db.WorkflowExecutions.AsNoTracking().ScopeToAccessibleFolders(accessible) is null)
+                return Task.FromResult(new FailureCausesResponse(0, [], 0));
 
-        // The most expensive single query on the dashboard: it groups failed runs by their error
-        // text, which is an unbounded column. Purely historical and folder-scoped — nothing in the
-        // answer depends on the caller's role — so it belongs in the same cache as the window
-        // aggregates.
-        if (_aggregates is null)
-            return Ok(await new DashboardFailureCauses(_db, _redactor)
-                .ReadWindowAsync(accessible, windowHours, ct));
+            // The most expensive single query on the dashboard: it groups failed runs by their error
+            // text, which is an unbounded column. Purely historical and folder-scoped — nothing in the
+            // answer depends on the caller's role — so it belongs in the same cache as the window
+            // aggregates.
+            if (_aggregates is null)
+                return new DashboardFailureCauses(_db, _redactor).ReadWindowAsync(accessible, windowHours, ct);
 
-        return Ok(await _aggregates.GetOrComputeAsync(
-            DashboardAggregateCache.Key("failure-causes", accessible, windowHours),
-            DashboardCacheSettings.Ttl,
-            (db, token) => new DashboardFailureCauses(db, _redactor)
-                .ReadWindowAsync(accessible, windowHours, token),
-            ct));
+            return _aggregates.GetOrComputeAsync(
+                DashboardAggregateCache.Key("failure-causes", accessible, windowHours),
+                DashboardCacheSettings.Ttl,
+                (db, token) => new DashboardFailureCauses(db, _redactor)
+                    .ReadWindowAsync(accessible, windowHours, token),
+                ct);
+        }, ct));
+    }
+
+    /// <summary>
+    /// Runs a folder-scoped read without holding the folder-tree lock across it, so dashboards,
+    /// live events and hub joins do not queue behind an aggregation. A folder-scoped caller's scope
+    /// is resolved under the lock; if a folder mutation started before the read finished, the read
+    /// is repeated with the lock held, so no answer combines an outdated scope or cache entry with
+    /// newer data.
+    /// </summary>
+    private async Task<T> ReadScopedAsync<T>(Func<AccessibleFolderSet, Task<T>> read, CancellationToken ct)
+    {
+        // A global Admin's unrestricted scope and data do not depend on where folders or workflows
+        // sit, so a folder mutation cannot outdate them: no lock, no second read.
+        if (User.IsInRole(nameof(UserRole.Admin)))
+        {
+            _authz.InvalidateAll();
+            var scope = await _authz.GetAccessibleFolderIdsAsync(User, ct);
+            if (scope.IsUnrestricted) return await read(scope);
+        }
+
+        AccessibleFolderSet accessible;
+        long epoch;
+        using (await _folderTree.AcquireAsync(ct))
+        {
+            _authz.InvalidateAll();
+            accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
+            epoch = _folderTree.Epoch;
+        }
+
+        var result = await read(accessible);
+        if (_folderTree.Epoch == epoch) return result;
+
+        using (await _folderTree.AcquireAsync(ct))
+        {
+            _authz.InvalidateAll();
+            return await read(await _authz.GetAccessibleFolderIdsAsync(User, ct));
+        }
     }
 
     /// <summary>
@@ -132,29 +169,31 @@ public class DashboardController : ControllerBase
     [HttpGet("dashboard")]
     public async Task<ActionResult<DashboardStats>> Get(CancellationToken ct, [FromQuery] int windowHours = 24)
     {
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
-        _authz.InvalidateAll();
         // The dashboard charts honour the caller-selected window.
         // Allowed: 1/24/168/720. Out-of-range values clamp to a sane default rather than
         // rejecting — the dashboard is a glance surface, not a strict API contract.
         if (windowHours <= 0 || windowHours > 720) windowHours = 24;
+        return Ok(await ReadScopedAsync(accessible => BuildStatsAsync(accessible, windowHours, ct), ct));
+    }
+
+    private async Task<DashboardStats> BuildStatsAsync(AccessibleFolderSet accessible, int windowHours, CancellationToken ct)
+    {
         var now = DateTime.UtcNow;
         var sinceWindow = now.AddHours(-windowHours);
         var since7d = now.AddDays(-7);
         var longRunningSeconds = LongRunningSeconds();
         var longRunningCutoff = now.AddSeconds(-longRunningSeconds);
 
-        // RBAC: dashboard aggregates must respect folder permissions. Compute the
-        // accessible-folder set once and reuse for every workflow + execution query
-        // below. Global Admin gets the unrestricted set and skips filtering.
-        var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
+        // RBAC: dashboard aggregates must respect folder permissions. Every workflow and
+        // execution query below reuses the caller's accessible-folder set. Global Admin gets
+        // the unrestricted set and skips filtering.
         var workflowQuery = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessible);
         var execQuery = _db.WorkflowExecutions.AsNoTracking().ScopeToAccessibleFolders(accessible);
         if (workflowQuery is null || execQuery is null)
         {
             // User has zero folder access — return an empty dashboard rather than a
             // potentially confusing partial one.
-            return Ok(EmptyStats(sinceWindow, windowHours, NormalizeProvider(_db.Database.ProviderName), GetClusterRole(), GetLlmEnabled(), longRunningSeconds));
+            return EmptyStats(sinceWindow, windowHours, NormalizeProvider(_db.Database.ProviderName), GetClusterRole(), GetLlmEnabled(), longRunningSeconds);
         }
 
         // Select TriggerTypesJson, not DefinitionJson: the definition holds the whole graph and
@@ -530,7 +569,7 @@ public class DashboardController : ControllerBase
             RetryStats = retryStats,
         };
 
-        return Ok(stats);
+        return stats;
     }
 
     /// <summary>

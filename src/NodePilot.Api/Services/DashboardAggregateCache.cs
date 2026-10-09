@@ -40,6 +40,7 @@ public sealed class DashboardAggregateCache
         internal readonly ConcurrentDictionary<string, Lazy<Task<object?>>> InFlight = new();
     }
     private CacheState _state = new();
+    private long _generation;
 
     public DashboardAggregateCache(IServiceScopeFactory scopeFactory)
         => _scopeFactory = scopeFactory;
@@ -237,10 +238,14 @@ public sealed class DashboardAggregateCache
         }
     }
 
+    /// <summary>Advances with every <see cref="Clear"/>, so the warm-up knows when to prime again.</summary>
+    internal long Generation => Interlocked.Read(ref _generation);
+
     /// <summary>Invalidates after a committed folder mutation; old warm-up work stays in its old generation.</summary>
     internal void Clear()
     {
         Interlocked.Exchange(ref _state, new CacheState());
+        Interlocked.Increment(ref _generation);
     }
 
     /// <summary>Test seam: how many entries are currently tracked.</summary>
