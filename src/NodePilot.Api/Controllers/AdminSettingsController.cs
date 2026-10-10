@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authorization;
-using k = NodePilot.Core.Configuration.PerformanceSizing.ConfigKeys;
+using PerfKeys = NodePilot.Core.Configuration.PerformanceSizing.ConfigKeys;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using NodePilot.Ai;
@@ -227,18 +227,18 @@ public sealed class AdminSettingsController : ControllerBase
             ManualTuning = plan.ManualTuning,
             // Read live, not from the plan: after a save the desired mode differs from the booted
             // one until the operator restarts, and that difference is what the UI must surface.
-            DesiredManualTuning = _configRoot.GetValue(k.ManualTuning, false),
+            DesiredManualTuning = _configRoot.GetValue(PerfKeys.ManualTuning, false),
             ProcessorCount = plan.Resources.ProcessorCount,
             UsableMemoryBytes = plan.Resources.UsableMemoryBytes,
             IsDesktop = plan.Resources.IsDesktop,
             Values =
             [
-                V(k.MinRunspaces, plan.MinRunspaces),
-                V(k.MaxRunspaces, plan.MaxRunspaces),
-                V(k.MaxConcurrentSteps, plan.MaxConcurrentSteps),
-                V(k.MinWorkerThreads, plan.MinWorkerThreads),
-                V(k.MinIoCompletionThreads, plan.MinIoCompletionThreads),
-                V(k.DispatchWorkerCount, plan.DispatchWorkerCount),
+                V(PerfKeys.MinRunspaces, plan.MinRunspaces),
+                V(PerfKeys.MaxRunspaces, plan.MaxRunspaces),
+                V(PerfKeys.MaxConcurrentSteps, plan.MaxConcurrentSteps),
+                V(PerfKeys.MinWorkerThreads, plan.MinWorkerThreads),
+                V(PerfKeys.MinIoCompletionThreads, plan.MinIoCompletionThreads),
+                V(PerfKeys.DispatchWorkerCount, plan.DispatchWorkerCount),
             ],
         });
     }

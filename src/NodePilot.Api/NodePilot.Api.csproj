@@ -2,10 +2,10 @@
 
   <PropertyGroup>
     <!-- Emit XML doc file so Swashbuckle can surface triple-slash comments in Swagger UI.
-         NoWarn 1591 suppresses "missing XML comment on public member" — we annotate where
-         it helps operators, not exhaustively. -->
+         NoWarn 1591 / 1573 suppress "missing XML comment on public member" and "missing
+         param tag" — we annotate where it helps operators, not exhaustively. -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591</NoWarn>
+    <NoWarn>$(NoWarn);1591;1573</NoWarn>
     <UserSecretsId>37f6eb5a-82da-486c-ad19-f48b59916ab9</UserSecretsId>
   </PropertyGroup>
 

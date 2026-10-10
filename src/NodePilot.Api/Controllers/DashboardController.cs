@@ -580,12 +580,7 @@ public class DashboardController : ControllerBase
     private bool GetLlmEnabled() => _llmOptions?.CurrentValue.IsUsable ?? false;
 
     /// <summary>
-    /// Scans a workflow definition for scheduleTrigger nodes, parses their cron expressions
-    /// via Quartz and returns the next-fire UTCs. Malformed cron expressions are silently
-    /// skipped — the workflow simply appears without a NextFireUtc on the dashboard.
-    /// </summary>
-    /// <summary>
-    /// Reads the denormalized <see cref="Workflow.TriggerTypesJson"/> column and drops the manual
+    /// Reads the denormalized <see cref="NodePilot.Core.Models.Workflow.TriggerTypesJson"/> column and drops the manual
     /// trigger, matching what the definition-based path derives via <c>IsManual</c> (exactly
     /// <c>Type == "manualTrigger"</c>). Returns an empty list for malformed JSON instead of
     /// throwing, so a broken column does not take down the whole dashboard.

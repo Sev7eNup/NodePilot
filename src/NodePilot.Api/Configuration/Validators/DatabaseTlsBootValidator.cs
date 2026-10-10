@@ -71,7 +71,7 @@ public sealed class DatabaseTlsBootValidator : IBootValidator
             {
                 ValidateInsecureTlsOverride(
                     configuration,
-                    builder.Host.Split(',', StringSplitOptions.TrimEntries)
+                    (builder.Host ?? string.Empty).Split(',', StringSplitOptions.TrimEntries)
                         .All(IsLoopbackDatabaseHost),
                     issues);
                 return;
