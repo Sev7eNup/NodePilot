@@ -324,6 +324,37 @@ public sealed class BackupRestoreServiceTests : IDisposable
         (await dst.Workflows.SingleAsync(w => w.Id == parentId, ct)).DefinitionJson.Should().Be(EmptyDefinition);
     }
 
+    [Fact]
+    public async Task Restore_DanglingChildWorkflowReference_KeepsReferenceAsStored()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        var deletedChildId = Guid.NewGuid();
+        src.Workflows.AddRange(
+            new Workflow { Id = Guid.NewGuid(), Name = "Imported", DefinitionJson = StartWorkflowDefinition(Guid.Empty) },
+            new Workflow { Id = Guid.NewGuid(), Name = "Orphaned", DefinitionJson = StartWorkflowDefinition(deletedChildId) });
+        await src.SaveChangesAsync(ct);
+        var backup = await ExportAsync(src, [BackupSections.Workflows]);
+        using var dst = TestDbFactory.Create();
+
+        await Restore(dst).RestoreAsync(backup, Passphrase,
+            new Dictionary<string, RestoreConflictPolicy> { [BackupSections.Workflows] = RestoreConflictPolicy.Skip },
+            RestoreActor, ct);
+
+        ChildWorkflowIds(await dst.Workflows.SingleAsync(w => w.Name == "Imported", ct)).Should().Equal(Guid.Empty);
+        ChildWorkflowIds(await dst.Workflows.SingleAsync(w => w.Name == "Orphaned", ct)).Should().Equal(deletedChildId);
+
+        static string StartWorkflowDefinition(Guid childId) => System.Text.Json.JsonSerializer.Serialize(new
+        {
+            nodes = new[] { new { id = "call", type = "startWorkflow", data = new
+                { config = new { workflowNameOrId = childId.ToString() } } } },
+            edges = Array.Empty<object>(),
+        });
+        static IEnumerable<Guid> ChildWorkflowIds(Workflow w)
+            => NodePilot.Core.WorkflowDefinitions.WorkflowResourceReferences.Enumerate(JsonNode.Parse(w.DefinitionJson))
+                .Where(r => r.Kind == "workflow").Select(r => r.Id);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
