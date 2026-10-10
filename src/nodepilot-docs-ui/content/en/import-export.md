@@ -116,4 +116,4 @@ The complete configuration payload, including its metadata and section list, is 
 
 UI: `/backup` (admin). CLI: `np backup manifest|export|preview|restore` — the passphrase via `--passphrase-env` / `--passphrase-file` / a prompt, **never** as a flag.
 
-Audit: `BACKUP_EXPORTED`, `BACKUP_RESTORED`.
+Audit: `BACKUP_EXPORTED`, `BACKUP_RESTORE_DB_COMMITTED` (commit marker written inside the restore transaction), `BACKUP_RESTORED`.

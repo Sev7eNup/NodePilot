@@ -63,7 +63,7 @@ A source can appear as **unavailable** if the required data is missing. Examples
 - Machines with no connection test yet are not evaluated as unreachable.
 - Credentials without a maintained expiry date are not monitored.
 - Workflow-related sources need existing execution or schedule data.
-- "Trigger not registered" is only available while a trigger is actually affected. In high-availability operation, only the active node knows that state; on the passive node the source appears as unavailable even though the active node alerts correctly.
+- "Trigger not registered" is available on the active node even when no trigger is affected; an empty state counts as healthy and ends earlier failure episodes. In high-availability operation, only the active node knows that state; on the passive node the source appears as unavailable even though the active node alerts correctly.
 
 ### Configuring a policy
 

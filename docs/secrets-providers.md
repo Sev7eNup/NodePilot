@@ -244,8 +244,8 @@ DPAPI in Step 1. Step 2 + 3 unchanged.
 - [ ] Boot log (logger category `Secrets`) shows the expected provider line. Two shapes:
       - Single provider, no migration: `Secret protector enabled. Provider: AesGcm.`
       - Migration window with legacy fallback: `Secret protector enabled. Provider: AesGcm+Dpapi-fallback.` Run `POST /api/secrets/reencrypt`, resolve every reported skip and follow the rotation procedure above before removing the legacy provider.
-- [ ] The re-encrypt response is `200`, `partialSuccess=false`, and credential/global/history
-      skip counters are all zero before removing any legacy-provider setting.
+- [ ] The re-encrypt response is `200`, `partialSuccess=false`, and all seven skip counters
+      are zero (on every node) before removing any legacy-provider setting.
 - [ ] After cluster-mode switch, smoke-test one credential decrypt on each node.
 
 ## Bewusst nicht in V1

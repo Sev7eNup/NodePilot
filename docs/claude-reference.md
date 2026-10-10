@@ -865,7 +865,7 @@ Renderer wird auch ohne ihn gerufen (`Program.cs`).
 - `MAINTENANCE_WINDOW_CREATED|UPDATED|DELETED|OVERRIDDEN` | `EXECUTION_BLOCKED_MAINTENANCE_WINDOW`
 - `ALERT_RULE_CREATED|UPDATED|DELETED|ENABLED|DISABLED|TEST_FIRED` (Alerting / Notification-Rules — siehe `docs/alerting.md`)
 - `SYSTEM_ALERT_POLICY_CREATED|UPDATED|DELETED|ENABLED|DISABLED|TEST_FIRED` (System-Alert-Policies, ADR 0008)
-- `BACKUP_EXPORTED|BACKUP_RESTORED` (System-Configuration Backup, ADR 0001)
+- `BACKUP_EXPORTED|BACKUP_RESTORED|BACKUP_RESTORE_DB_COMMITTED` (System-Configuration Backup, ADR 0001)
 - `AUDIT_LOG_EXPORTED` | `SUPPORT_EVENTS_EXPORTED` | `SUPPORT_LOG_DOWNLOADED` (sensible Diagnose-/Compliance-Exporte)
 - `CLUSTER_LEADERSHIP_ACQUIRED` (HA-Lease mit Node-ID und Fencing-Epoch)
 - `DATABASE_RECOVERED` (genau einmal pro echter `Unavailable -> Available`-Episode; kein Trip-Audit, da die Datenbank dabei nicht schreibbar ist)

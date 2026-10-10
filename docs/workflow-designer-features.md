@@ -79,7 +79,7 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
   - **Simulation** ("will run" / "skipped").
 - **Live status overlay:** Running (amber, pulsing ring), Succeeded (green), Failed (red), Skipped (grey, dashed), Paused (dark orange, pulsing).
 - **Heatmaps & paths:** failure tint (red, scaled by failure rate), critical-path glow (orange) plus slack badge, coverage greying (never/rare).
-- **Schedule preview:** for `scheduleTrigger`, the next fire time is shown (client-side via cron-parser), "⏸ Paused" when the workflow is disabled.
+- **Schedule preview:** for `scheduleTrigger`, the next fire time is shown (computed by the server's Quartz in the server time zone via `GET /api/triggers/schedule/next-fires`), "⏸ Paused" when the workflow is disabled.
 - **Health sparkline / stats:** the last up to 8 outcomes as dots — they stay visible during a running or canvas-pinned run as well (only the dry-run simulation hides them); performance stats (runs, failure rate, avg/p95 duration) in the hover tooltip (400 ms delay).
 - **Output variable & description:** `→ {{var.output}}` in the tooltip; a description indicator bottom right.
 - **Variable-flow highlight:** producer/consumer rings when hovering over variables.
@@ -201,7 +201,7 @@ Each activity type has its own config component (`properties/activities/`, regis
 | Trigger | Key fields (with real option values) |
 |---|---|
 | `manualTrigger` | **title**, **description**, **input parameters** (name plus **type** string/number/boolean/select plus required plus default); a live hint shows the access syntax |
-| `scheduleTrigger` | **cronExpression** plus 4 presets (`0 */5 * * * ?`, `0 0 * * * ?`, `0 0 6 * * ?`, `0 0 8 ? * MON-FRI`), a **live preview of the next 5 fire times** (client-side, Quartz normalised to cron-parser, relative times, red parse errors), description |
+| `scheduleTrigger` | **cronExpression** plus 4 presets (`0 */5 * * * ?`, `0 0 * * * ?`, `0 0 6 * * ?`, `0 0 8 ? * MON-FRI`), a **live preview of the next 5 fire times** (server-side Quartz via `GET /api/triggers/schedule/next-fires`, relative times, red parse errors), description |
 | `webhookTrigger` | **HTTP method** (POST/PUT/GET), **webhook path** (template-capable), optional **secret** (password field, HMAC) |
 | `fileWatcherTrigger` | **directory**, **fileFilter** (default `*.*`, comma-separated globs), **watchType** (created/changed/deleted/renamed/any), **includeSubdirectories** |
 | `databaseTrigger` | **connectionRef** (a reference into `Trigger:Database:Connections`), **pollingIntervalSeconds** (default 30, minimum 5; alias `intervalSeconds`), **query** (multiline, with an SQL template warning on `{{`) |

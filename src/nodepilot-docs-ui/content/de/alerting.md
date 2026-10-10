@@ -63,7 +63,7 @@ Eine Quelle kann als **Nicht verfügbar** erscheinen, wenn die benötigten Daten
 - Maschinen ohne bisherigen Verbindungstest werden nicht als nicht erreichbar bewertet.
 - Credentials ohne gepflegtes Ablaufdatum werden nicht überwacht.
 - Workflow-bezogene Quellen benötigen vorhandene Ausführungs- oder Zeitplandaten.
-- „Trigger nicht registriert" ist nur verfügbar, solange tatsächlich ein Trigger betroffen ist. Im Hochverfügbarkeits-Betrieb kennt nur der aktive Knoten diesen Zustand; auf dem passiven Knoten erscheint die Quelle als nicht verfügbar, obwohl der aktive Knoten korrekt alarmiert.
+- „Trigger nicht registriert" ist auf dem aktiven Knoten auch dann verfügbar, wenn kein Trigger betroffen ist; ein leerer Zustand gilt als gesund und beendet frühere Störungsepisoden. Im Hochverfügbarkeits-Betrieb kennt nur der aktive Knoten diesen Zustand; auf dem passiven Knoten erscheint die Quelle als nicht verfügbar, obwohl der aktive Knoten korrekt alarmiert.
 
 ### Policy konfigurieren
 
