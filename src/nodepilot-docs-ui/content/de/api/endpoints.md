@@ -39,6 +39,7 @@ csrf_token() {
 | Endpoint | Zweck |
 |---|---|
 | `GET /api/workflows` | Liste (Array, 500-Row-Cap, folder-RBAC-gefiltert). Zeilen tragen **kein** `definitionJson` — den Graphen liefert der Einzelabruf |
+| `GET /api/workflows/paged` | Seitenweise Liste für die UI: `page`, `pageSize` (1–200, Default 50), `folderId`, `search` (Name und Beschreibung), `sortBy`/`sortDir` (Default `updated`/`desc`), bis zu 10 `ids`; folder-RBAC-gefiltert; liefert `{items, page, pageSize, total, totalPages}`. Bewusst **ohne** `np`-Befehl und ohne MCP-Tool — `np workflow list` liefert dieselben Workflows |
 | `GET /api/workflows/names` | Nur Id und Name, nach Name sortiert, folder-RBAC-gefiltert. Für Flächen, die Workflow-Namen anbieten, ohne sonst etwas darzustellen — der Executions-Filter nutzt ihn statt der vollen Liste. Bewusst **ohne** `np`-Befehl und ohne MCP-Tool — `np workflow list` liefert dieselben Namen |
 | `POST /api/workflows` | Neu (Admin/Op) — 201 |
 | `PUT /api/workflows/{id}` | Update — 204 (423 ohne Lock, 409 bei Version-Konflikt) |

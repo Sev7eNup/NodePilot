@@ -147,8 +147,8 @@ Expected: 40–60 s until `/healthz/leader` turns green on node-b. The audit log
 - **Provider migration** via a `MigratingSecretProtector` wrapper: for the duration
   of the rotation a second (legacy) provider runs in parallel. Reads try active
   first and fall back to legacy. Writes always use active. An admin-triggered
-  bulk sweep (`POST /api/secrets/reencrypt`) runs credentials, secret globals and
-  workflow history through decrypt→encrypt and
+  bulk sweep (`POST /api/secrets/reencrypt`) runs credentials, secret globals, workflow versions, agent MCP secrets, notification routes, pending
+  dispatch parameters and runtime settings files through decrypt→encrypt and
   ends the migration window. Skipped rows (e.g. corrupt ciphertexts) are listed by name
   in the response. HTTP `207 Multi-Status` signals "not everything
   migrated", `200 OK` only on a clean cutover.
@@ -191,10 +191,11 @@ Expected: 40–60 s until `/healthz/leader` turns green on node-b. The audit log
   active implementation the legacy implementation takes over. If the plaintext stays empty,
   a combined `CryptographicException` diagnostic is thrown that names both
   attempts.
-- **`POST /api/secrets/reencrypt`** (admin-only) reads every credential, every secret
-  global variable and every encrypted `WorkflowVersion.DefinitionJson`, decrypts it via
+- **`POST /api/secrets/reencrypt`** (admin-only) reads every credential, secret global
+  variable, encrypted `WorkflowVersion.DefinitionJson`, agent MCP secret, notification route,
+  pending dispatch parameter and runtime settings file (rollback files included), decrypts it via
   the (possibly wrapping) protector, re-encrypts it under the active provider and writes it
-  back. All three areas return their own rewritten/skipped counters and
+  back. Each of the seven families returns its own rewritten/skipped counters and
   `(id, name, reason)` details. `LegacyProvider` stays set as long as, in particular, a
   history skip is outstanding.
 - **DI disambiguation via `[ActivatorUtilitiesConstructor]`**: `CredentialStore` and
@@ -247,7 +248,7 @@ key is in plain text in `appsettings.json`.
 
 | Endpoint | Auth | Purpose |
 |---|---|---|
-| `POST /api/secrets/reencrypt` | Admin | Bulk sweep of all credentials, secret globals and workflow version definitions under the active provider. Returns `200 OK` (clean) or `207 Multi-Status` (separate skip details per area). |
+| `POST /api/secrets/reencrypt` | Admin | Bulk sweep of all credentials, secret globals, workflow versions, agent MCP secrets, notification routes, pending dispatch parameters and runtime settings files under the active provider. Returns `200 OK` (clean) or `207 Multi-Status` (separate skip details per family). |
 
 ### Key files
 
@@ -291,18 +292,18 @@ $env:Secrets__LegacyProvider='Dpapi'
 $env:Secrets__LegacyDpapiScope='LocalMachine'
 
 # 3. Boot. The boot log shows:
-#    "[Secrets] Migrating secret protector enabled: active=AesGcm, legacy=Dpapi.
-#     Run POST /api/secrets/reencrypt then remove Secrets:LegacyProvider once the
-#     legacy_reads counter is zero."
+#    "Secret protector enabled. Provider: AesGcm+Dpapi-fallback. Run POST
+#     /api/secrets/reencrypt and resolve every skip before removing
+#     Secrets:LegacyProvider."
 
 # 4. Trigger the bulk re-encrypt.
 $body = @{username='admin'; password='admin123'} | ConvertTo-Json
 $login = Invoke-RestMethod -Uri http://localhost:5000/api/auth/login -Method POST -Body $body -ContentType 'application/json'
 $headers = @{ Authorization = "Bearer $($login.token)" }
 Invoke-RestMethod -Uri http://localhost:5000/api/secrets/reencrypt -Method POST -Headers $headers
-#  → Remove the legacy config only on 200 OK + partialSuccess:false + workflowVersionsSkipped:0
+#  → Remove the legacy config only on 200 OK + partialSuccess:false (all seven skip counters zero)
 
-# 5. Only after a clean credential/global/history sweep: stop, remove the legacy config
+# 5. Only after a clean sweep (all seven skip counters zero, on every node): stop, remove the legacy config
 #    and boot again. The provider is now pure AES-GCM.
 Remove-Item Env:Secrets__LegacyProvider, Env:Secrets__LegacyDpapiScope
 ```
