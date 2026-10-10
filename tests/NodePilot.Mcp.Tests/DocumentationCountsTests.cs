@@ -44,6 +44,10 @@ public class DocumentationCountsTests
     private static int DocSitePages() =>
         CountFiles(RepoPath("src", "nodepilot-docs-ui", "content", "en"), f => f.EndsWith(".md"));
 
+    // Numbered parts of the manual E2E catalogue; the e2e README quotes the total.
+    private static int E2eCatalogueParts() =>
+        CountMatches(new[] { RepoPath("docs", "testing", "E2ETests.md") }, @"(?m)^## Teil \d+");
+
     public static IEnumerable<object[]> DocClaims()
     {
         var toolTotal = McpToolTotal();
@@ -79,6 +83,8 @@ public class DocumentationCountsTests
         // a hand-measured snapshot.
         yield return Row("CLAUDE.md", @"(\d+) Vitest-Dateien", vitestFiles, "Vitest files (CLAUDE.md test scope)");
         yield return Row("CLAUDE.md", @"(\d+) E2E-Specs", e2eSpecs, "E2E specs (CLAUDE.md test scope)");
+        yield return Row("src/nodepilot-ui/e2e/README.md", @"catalogue \((\d+) Teile\)", E2eCatalogueParts(),
+            "E2E catalogue parts (e2e README)");
         // The README's "Beyond the N executable Activity types…" annotation-node claim was retired
         // when the README stopped duplicating the documentation site. The count is still guarded
         // twice — in the highlights row above, and in both language versions of the doc site's
