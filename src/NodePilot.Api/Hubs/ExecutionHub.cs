@@ -404,7 +404,7 @@ public class ExecutionHub : Hub
         // is not a GUID so callers cannot join a group by spelling it however they like.
         if (!Guid.TryParse(executionId, out var parsed))
             throw new HubException("executionId must be a GUID");
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(Context.ConnectionAborted);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireSharedAsync(Context.ConnectionAborted);
         _authz.InvalidateAll();
 
         // RBAC: prevent connection-time leak of execution events. Resolve the execution's
@@ -451,7 +451,7 @@ public class ExecutionHub : Hub
     {
         if (!Guid.TryParse(workflowId, out var parsed))
             throw new HubException("workflowId must be a GUID");
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(Context.ConnectionAborted);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireSharedAsync(Context.ConnectionAborted);
         _authz.InvalidateAll();
 
         // RBAC: same gate as JoinExecution — Read on the workflow's folder. Mask
@@ -502,7 +502,7 @@ public class ExecutionHub : Hub
         if (Context.User is null) throw new HubException("not authenticated");
         // Serialize the snapshot with subtree moves so an in-flight join cannot restore
         // permissions from the old ancestry after the move refreshed existing subscribers.
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(Context.ConnectionAborted);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireSharedAsync(Context.ConnectionAborted);
         _authz.InvalidateAll();
         var accessible = await _authz.GetAccessibleFolderIdsAsync(Context.User);
         if (!accessible.IsUnrestricted && accessible.FolderIds.Count == 0)

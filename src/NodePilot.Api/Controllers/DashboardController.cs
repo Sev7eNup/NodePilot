@@ -118,7 +118,7 @@ public class DashboardController : ControllerBase
 
         AccessibleFolderSet accessible;
         long epoch;
-        using (await _folderTree.AcquireAsync(ct))
+        using (await _folderTree.AcquireSharedAsync(ct))
         {
             _authz.InvalidateAll();
             accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
@@ -128,7 +128,7 @@ public class DashboardController : ControllerBase
         var result = await read(accessible);
         if (_folderTree.Epoch == epoch) return result;
 
-        using (await _folderTree.AcquireAsync(ct))
+        using (await _folderTree.AcquireSharedAsync(ct))
         {
             _authz.InvalidateAll();
             return await read(await _authz.GetAccessibleFolderIdsAsync(User, ct));
