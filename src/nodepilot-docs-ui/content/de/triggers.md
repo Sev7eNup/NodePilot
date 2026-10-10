@@ -45,7 +45,12 @@ Der Zeitplan-Trigger startet einen Workflow anhand eines Cron-Ausdrucks. Vorlage
 | täglich um 06:00 Uhr | `0 0 6 * * ?` |
 | Montag bis Freitag um 08:00 Uhr | `0 0 8 ? * MON-FRI` |
 
-Die Vorschau im Eigenschaften-Panel zeigt die nächsten Ausführungszeiten und weist auf einen ungültigen Ausdruck hin.
+Die Vorschau im Eigenschaften-Panel zeigt die nächsten Ausführungszeiten und weist auf einen ungültigen Ausdruck hin. Eine Schrittweite von 0 (etwa `0/0`) und Jahre nach 2199 lehnt NodePilot beim Veröffentlichen ab. Beide Tagesfelder dürfen `*` sein, `0 0 2 * * *` ist also gültig.
+
+Zeitumstellung:
+
+- Bei der Umstellung auf Sommerzeit läuft ein Zeitpunkt in der ausgefallenen Stunde am Ende dieser Lücke. Ein Zeitplan für `02:30` löst um `03:00` aus, nicht um `03:30`.
+- Bei der Umstellung auf Winterzeit löst ein Zeitplan, der stündlich oder öfter läuft, auch in der wiederholten Stunde erneut aus, statt sie zu überspringen. Darf ein Workflow in dieser Stunde nicht doppelt laufen, sichert man das im Workflow selbst ab.
 
 Ausgabedaten:
 
