@@ -173,6 +173,12 @@ jobs:
           .\deploy\Test-DesktopDatabaseProvisioning.ps1
           .\deploy\Test-PostgresProvisioning.ps1
           .\deploy\Test-SitePublish.ps1
+          .\deploy\Test-DesktopUpdatePayload.ps1
+          .\deploy\Test-FailoverFixtures.ps1
+          .\deploy\Test-ServerRuntimeStaging.ps1
+          .\scripts\release-lab\server\Test-RemoteSqlCleanup.ps1
+          .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
+          .\scripts\test-suite\Test-WorkflowCatalogue.ps1
           .\scripts\Test-DevReset.ps1
 
       - name: Deployment security contracts (PowerShell 7)
@@ -186,6 +192,12 @@ jobs:
           .\deploy\Test-DesktopDatabaseProvisioning.ps1
           .\deploy\Test-PostgresProvisioning.ps1
           .\deploy\Test-SitePublish.ps1
+          .\deploy\Test-DesktopUpdatePayload.ps1
+          .\deploy\Test-FailoverFixtures.ps1
+          .\deploy\Test-ServerRuntimeStaging.ps1
+          .\scripts\release-lab\server\Test-RemoteSqlCleanup.ps1
+          .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
+          .\scripts\test-suite\Test-WorkflowCatalogue.ps1
           .\scripts\Test-DevReset.ps1
 
       - name: Build
