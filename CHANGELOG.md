@@ -12,7 +12,8 @@ exhaustive.
 
 ## [Unreleased]
 
-Planned version: **1.4.5**.
+Planned version: **1.5.0**. The AI agent features and the architecture and security audit
+below make this a minor release, not 1.4.5.
 
 ### Release highlight: AI Agent & AI Agent Team
 
@@ -40,6 +41,10 @@ identities. [Learn how to configure agents and teams →](docs/ai-agents.md)
 - Configurable agent budgets and optional **Power mode**, which removes call, delegation
   and overall agent-time budgets. Permissions, cancellation and workflow timeouts still
   apply. Power mode is off by default and can increase runtime and provider costs.
+- Draft an AI Agent Team from a description: the server resolves machines and credentials
+  by name against your inventory, and unresolved ones block adoption until you pick them.
+  A preview is required before anything is applied. The agent run history is grouped so
+  assignments, observations and reviews are easier to follow.
 - Workflow imports can map referenced resources to matching destination resources and
   workflows imported together. Missing or ambiguous references are reported for correction.
 
@@ -59,6 +64,16 @@ identities. [Learn how to configure agents and teams →](docs/ai-agents.md)
   precomputed hourly histograms and is accurate to within a few percent. The upgrade
   rebuilds the dashboard history once; until it finishes, the dashboard reads raw executions.
 - The desktop app runs on Electron 44.5.1 (Chromium 152, Node 24).
+- **Upgrade note:** custom activity keys are now unique among all non-deleted definitions,
+  drafts included. If a database already holds duplicates, the first start of the new
+  version stops without changing anything and the updater rolls back. The conflict query and
+  the procedure are on the Production deployment page of the documentation website.
+- Several configuration lists are read whole from the highest-priority provider instead of
+  being merged entry by entry: `RestApi:AllowedHosts`, `WaitForCondition:AllowedHosts`,
+  the proxy bypass lists, the LDAP and OIDC group and role lists, and
+  `Agents:ReadOnlyMcpTools`. An override must repeat every entry that should remain.
+- Schedule triggers and cron maintenance windows already run on Quartz 4 (see 1.4.4); the
+  documentation website now describes the daylight saving behaviour.
 
 ### Fixed
 
@@ -93,6 +108,44 @@ identities. [Learn how to configure agents and teams →](docs/ai-agents.md)
 - Server upgrades repair data-directory permissions that could otherwise prevent the service
   from reading its JWT key and force an update rollback.
 - Updated DOMPurify to 3.4.16 and patched locked build dependencies, including `source-map-js`.
+
+### Architecture and security audit
+
+An audit of the whole product, from the engine and API to the clients, installers and
+documentation, ran in several rounds. It led to **more than 120 fixes**. Most are corrections
+in edge cases. The full list, written for operators, is in
+[docs/audit-rounds/fix-list.md](docs/audit-rounds/fix-list.md). The main themes:
+
+- **Permissions stay current.** Sub-workflows run as the actual caller and are checked again
+  before they start, also from manual queues. Moving a workflow, a SCIM group removal, a
+  restore, or a change of folder in the database editor now ends live subscriptions the user
+  may no longer hold. Removed login groups, roles, MCP read grants and network exceptions
+  stay removed.
+- **Secrets stay hidden.** Contract defaults, secret return fields in history, SQL star
+  queries over renamed columns, and database passwords in provisioning arguments or SQL
+  errors no longer reveal protected values. Key rotation covers every stored secret area
+  and its rollback files, and CLI export and import keep global secrets intact.
+- **Outbound calls and files are checked the same way everywhere.** HTTP callers share one
+  target check, SCOrch redirects and follow-up pages stay on the configured server, LLM
+  responses are size-limited while they are read, and file watchers, archive checks and the
+  knowledge search no longer follow links out of their folder.
+- **Backup, restore and upgrades fail safely.** A failed ZIP backup keeps the previous
+  archive, a failed SQL preflight never drops an existing database, a lost commit
+  acknowledgement no longer undoes a finished restore, restored agents use the machines
+  and credentials created by the restore, and desktop rollbacks and full updates replace
+  the whole delivery. Installer directories need a trusted owner.
+- **Execution state is consistent.** Paused steps finish cleanly after a restart, rejected
+  starts are not stored as running, nested workflows no longer block themselves at the
+  execution limit, PowerShell output that was already received is not lost, and scripts
+  are not retried silently by PowerShell or WinRM.
+- **Alerting and triggers are reliable.** The alert for missed schedules detects frequent
+  schedules, a trigger that fails again alerts again, disabled notifications are not
+  delivered, retries keep their filter and urgency, and the event log trigger skips old
+  events on start.
+- **The interface matches what runs.** The script editor's Run executes the text you see,
+  read-only views offer no paste, search and paging cover large installations, dialogs
+  close on Escape from their input field, and the schedule preview shows the times the
+  server computes.
 
 ## [1.4.4] - 2026-10-03
 
