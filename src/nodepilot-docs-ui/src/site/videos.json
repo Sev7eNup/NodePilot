@@ -7,16 +7,16 @@
       "text": {
         "de": {
           "title": "Was ist NodePilot?",
-          "video": "media/training/00-intro-de.eb1649be8e.mp4",
+          "video": "media/training/00-intro-de.e335184678.mp4",
           "poster": "training/00-intro-de.253e998e5f.webp",
-          "bytes": 15817132,
+          "bytes": 15785155,
           "duration": 116
         },
         "en": {
           "title": "What is NodePilot?",
-          "video": "media/training/00-intro-en.e93750904f.mp4",
+          "video": "media/training/00-intro-en.480a46f601.mp4",
           "poster": "training/00-intro-en.be40aa9327.webp",
-          "bytes": 15642942,
+          "bytes": 15612422,
           "duration": 116
         }
       }
@@ -522,6 +522,48 @@
           "poster": "training/24-mcp-en.a2794481f6.webp",
           "bytes": 14554889,
           "duration": 95
+        }
+      }
+    },
+    {
+      "number": 25,
+      "slug": "25-ai-agents",
+      "publishedAt": "2026-10-10",
+      "text": {
+        "de": {
+          "title": "KI-Agenten",
+          "video": "media/training/25-ai-agents-de.1f561146e2.mp4",
+          "poster": "training/25-ai-agents-de.0bcf9f32a1.webp",
+          "bytes": 19084904,
+          "duration": 115
+        },
+        "en": {
+          "title": "AI agents",
+          "video": "media/training/25-ai-agents-en.f002d0f34e.mp4",
+          "poster": "training/25-ai-agents-en.10689082bc.webp",
+          "bytes": 18114593,
+          "duration": 115
+        }
+      }
+    },
+    {
+      "number": 26,
+      "slug": "26-ai-chat",
+      "publishedAt": "2026-10-10",
+      "text": {
+        "de": {
+          "title": "Der AI Chat",
+          "video": "media/training/26-ai-chat-de.d2702c7dba.mp4",
+          "poster": "training/26-ai-chat-de.6f4ff1c60b.webp",
+          "bytes": 18721007,
+          "duration": 118
+        },
+        "en": {
+          "title": "AI Chat",
+          "video": "media/training/26-ai-chat-en.379c83312f.mp4",
+          "poster": "training/26-ai-chat-en.da0fe1e44c.webp",
+          "bytes": 17771883,
+          "duration": 118
         }
       }
     }

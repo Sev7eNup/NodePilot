@@ -563,6 +563,9 @@ html.dark .np-card {
 
 /* ── Prose / markdown content ─────────────────────────────────────────────── */
 .np-prose { color: var(--color-on-surface); line-height: 1.7; font-size: 0.95rem; }
+/* A page with a table uses the full article width for every element, so the table does not stick out.
+   Pages without a table keep the narrower reading measure. */
+.np-prose:not(:has(> table)) > * { max-width: 43rem; }
 .np-prose h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 1rem; color: var(--color-on-surface); }
 .np-prose h2 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.01em; margin: 2.25rem 0 0.85rem; padding-top: 0.25rem; border-top: 1px solid var(--color-outline-variant); color: var(--color-on-surface); }
 .np-prose h3 { font-size: 1.12rem; font-weight: 600; margin: 1.6rem 0 0.6rem; color: var(--color-on-surface); }

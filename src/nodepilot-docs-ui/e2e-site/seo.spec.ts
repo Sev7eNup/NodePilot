@@ -48,7 +48,7 @@ test.describe('static SEO content', () => {
         }
         if (route === 'tutorials/') {
           // Without script a card is a plain link to the file of this language.
-          await expect(page.locator('a.video-card')).toHaveCount(25)
+          await expect(page.locator('a.video-card')).toHaveCount(27)
           await expect(page.locator('a.video-card').first()).toHaveAttribute('href', new RegExp(`^/media/training/00-intro-${language}\\.[0-9a-f]{10}\\.mp4$`))
         }
       }
