@@ -8,12 +8,21 @@
   available options: several sources carry two policies (a Warning and a Critical threshold),
   per-policy sustain windows, severity overrides, and a source parameter (cancel-rate window).
 
-  Run against a local dev instance, where the localhost bypass grants in-process admin and no
-  token is needed:
-      pg_ctl start ... ; dotnet run --project src/NodePilot.Api --urls http://localhost:5000
-      powershell -File scripts/seed-system-alert-policies.ps1
+  Run against an authenticated development instance:
+      ./scripts/seed-system-alert-policies.ps1 -Credential (Get-Credential)
 #>
-param([string]$BaseUrl = 'http://localhost:5000')
+[CmdletBinding()]
+param(
+  [string]$BaseUrl = 'http://localhost:5000',
+  [Parameter(Mandatory = $true)][PSCredential]$Credential
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version 3.0
+$loginBody = @{ username = $Credential.UserName; password = $Credential.GetNetworkCredential().Password } | ConvertTo-Json
+$login = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/auth/login" -Headers @{ 'X-Auth-Token-Response' = 'true' } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($loginBody))
+if (-not $login.token) { throw 'Login did not return a bearer token' }
+$headers = @{ Authorization = "Bearer $($login.token)" }
 
 function Cond($field, $op, $val) {
   @{ type = 'comparison'; left = @{ kind = 'variable'; source = 'event'; name = $field }; op = $op; right = @{ kind = 'literal'; value = "$val" } } |
@@ -50,7 +59,7 @@ foreach ($p in $policies) {
     cooldownMinutes = 0; minOccurrences = 1; occurrenceWindowMinutes = 0
   } | ConvertTo-Json -Depth 8
   try {
-    Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/alerting/system/policies" -ContentType 'application/json' -Body $body | Out-Null
+    Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/alerting/system/policies" -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
     Write-Host "  + $($p.name)  [$($p.sourceId), $($p.sev)]"
     $created++
   } catch {
@@ -58,3 +67,4 @@ foreach ($p in $policies) {
   }
 }
 Write-Host "Created $created/14 disabled system-alert policies. Add a route and enable them under /alerts → System-Alarme."
+if ($created -ne $policies.Count) { exit 1 }

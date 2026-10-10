@@ -1,5 +1,25 @@
 # API endpoints
 
+## Agent activities
+
+| Method | Route | Access |
+|---|---|---|
+| GET | `/api/agents/runs?executionId=…` | Owning workflow read permission |
+| GET | `/api/agents/runs/{id}/events?after=0&pageSize=200` | Owning workflow read permission; max 500/page |
+| GET | `/api/agents/mcp-servers` | Admin/Operator; no secrets |
+| GET | `/api/agents/mcp-servers/{id}/tools` | Admin/Operator; starts a registered connection |
+| PUT, DELETE | `/api/agents/mcp-servers/{id}` | Admin |
+| GET | `/api/agents/skills` | Admin/Operator |
+| POST | `/api/agents/skills` | Admin; version and base64 ZIP, max 10 MB |
+| PUT | `/api/agents/skills/{id}/enabled` | Admin; `{ "enabled": true }` |
+| DELETE | `/api/agents/skills/{id}` | Admin |
+
+Events persist before live notification and contain a per-run sequence and optional
+member ID. Catch up with `after` after reconnect. MCP writes accept write-only `secrets`
+and require the current `updatedAt` when editing. Skill versions are immutable.
+
+## General
+
 The REST API manages workflows, executions, infrastructure and administration. In the local development environment it runs on port 5000. Live status is pushed over SignalR at `/hubs/execution`. Mutating workflow endpoints return `423 Locked` if the calling user does not hold the edit lock; `disable` is exempt from that.
 
 > **JSON format:** property names use `camelCase`. Enum values are serialized as the .NET name in PascalCase, for example `"role":"Admin"` and `"status":"Succeeded"`. Sign-in uses the httpOnly cookie `np_auth` by default. `curl` stores and sends it with `-c cookie.jar -b cookie.jar`. The examples use `$NP = "http://localhost:5000"`.
@@ -18,6 +38,7 @@ csrf_token() {
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/workflows` | The list (an array, 500-row cap, filtered by folder RBAC). Rows carry no `definitionJson` — read a single workflow for the graph |
+| `GET /api/workflows/paged` | Paged list for the UI: `page`, `pageSize` (1–200, default 50), `folderId`, `search` (name and description), `sortBy`/`sortDir` (default `updated`/`desc`), up to 10 `ids`; filtered by folder RBAC; returns `{items, page, pageSize, total, totalPages}`. Deliberately has neither an `np` command nor an MCP tool — `np workflow list` covers the same workflows |
 | `GET /api/workflows/names` | Id and name only, ordered by name, filtered by folder RBAC. For surfaces that offer workflow names without rendering anything else — the executions filter uses it instead of the full list. Deliberately has neither an `np` command nor an MCP tool — `np workflow list` covers the same names |
 | `POST /api/workflows` | Create (Admin/Operator) — 201 |
 | `PUT /api/workflows/{id}` | Update — 204 (423 without the lock, 409 on a version conflict) |
@@ -81,6 +102,8 @@ curl -s -b cookie.jar "$NP/api/workflows/by-name/deploy-prod/contract" | jq
 #   "inputs":[{"name":"version","type":"string","required":true,...}],
 #   "outputs":[{"name":"__executionId","source":"system"},{"name":"deployResult","source":"single"}] }
 ```
+
+Callers without Edit permission on the workflow's folder see `"***"` instead of every non-null input `default`. The mask only affects the display: a parameter left unset still receives the real default when the workflow runs.
 
 ## Step test & coverage
 
@@ -314,11 +337,11 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/admin/set
 | Folder permissions | `GET/POST /api/shared-workflow-folders/{folderId}/permissions`, `PUT/DELETE /{permissionId}` |
 | Settings | `GET /api/admin/settings`, `GET\|PUT /{section}`, `GET /status\|system-info\|effective-sizing`, `POST /test/smtp\|test/llm\|test/ldap` (Admin; an Authentication PUT in a cluster returns 409) |
 | Database admin | `GET /api/dbadmin/tables`, `GET\|PATCH\|DELETE /tables/{name}/rows`, `GET /info`, `POST /query` (Admin) |
-| Dashboard | `GET /api/stats/dashboard`, `GET /api/stats/failure-causes?windowHours=N` (1..720, default 24 — recent failures grouped by their normalized message; folder-scoped like the dashboard), `GET /api/stats/sidebar-counts` (three nav-badge counters for the SPA, folder-scoped; deliberately has neither an `np` command nor an MCP tool — `np stats dashboard` covers the same numbers), `GET /api/stats/duration-trend?windowHours=N&workflowId=` (1/24/168/720, default 24, anything else falls back to 24 — median and P95 execution duration per bucket for all workflows or one, folder-scoped; SPA chart series, deliberately without an `np` command or MCP tool — `np stats dashboard` reports the same executions) |
+| Dashboard | `GET /api/stats/dashboard`, `GET /api/stats/failure-causes?windowHours=N` (1..720, default 24 — recent failures grouped by their normalized message; folder-scoped like the dashboard), `GET /api/stats/sidebar-counts` (three nav-badge counters for the SPA, folder-scoped; deliberately has neither an `np` command nor an MCP tool — `np stats dashboard` covers the same numbers), `GET /api/stats/duration-trend?windowHours=N&workflowId=` (1/24/168/720, default 24, anything else falls back to 24 — median and P95 execution duration per bucket for all workflows or one, folder-scoped; from 24 h upward taken from precomputed hourly histograms, accurate to within a few percent; SPA chart series, deliberately without an `np` command or MCP tool — `np stats dashboard` reports the same executions) |
 | Activity catalog | `GET /api/activity-catalog` |
 | Scheduler | `GET /api/triggers/schedule/next-fires` |
 | System | `GET /api/system/host-info` (all roles) |
-| AI | `POST /api/ai/generate-script\|generate-workflow` (Admin/Operator), `POST /api/ai/chat` (all roles; applying changes is Admin/Operator), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Operator, folder RBAC) — opt-in, SSE streaming |
+| AI | `POST /api/ai/generate-script\|generate-workflow\|generate-agent-team` (Admin/Operator), `POST /api/ai/chat` (all roles; applying changes is Admin/Operator), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Operator, folder RBAC) — opt-in, SSE streaming |
 | Secrets | `POST /api/secrets/reencrypt` (Admin, no body) |
 
 The shared-folder permission grant body: `{"principalType":"User","principalKey":"<guid>","role":"FolderEditor"}` — roles `FolderViewer|FolderOperator|FolderEditor|FolderAdmin`, `principalType` `User|Group` (`Group` = an AD SID `S-1-5-21-...`).

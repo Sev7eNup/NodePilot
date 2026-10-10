@@ -40,6 +40,7 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
       - ./grafana-dashboard.json:/var/lib/grafana/dashboards/nodepilot.json:ro
 
 volumes:

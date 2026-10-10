@@ -3,11 +3,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../../../api/client';
+import { getPage } from '../../../api/paging';
+import { WorkflowPageControls } from '../WorkflowPageControls';
 import type { WorkflowListItem } from '../../../types/api';
 
 const RECENT_KEY = 'nodepilot.recentWorkflows';
 const MAX_RECENT = 10;
+const EMPTY_WORKFLOWS: WorkflowListItem[] = [];
 
 /** Read recent workflow IDs from localStorage. Newest first. */
 export function readRecentWorkflows(): string[] {
@@ -15,7 +17,7 @@ export function readRecentWorkflows(): string[] {
     const raw = localStorage.getItem(RECENT_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string') : [];
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string').slice(0, MAX_RECENT) : [];
   } catch { return []; }
 }
 
@@ -40,11 +42,23 @@ export function WorkflowQuickSwitcher({ onClose }: Readonly<Props>) {
   const { id: currentId } = useParams<{ id: string }>();
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
+  const [page, setPage] = useState(1);
+  const [recentIds] = useState(() => readRecentWorkflows()
+    .filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)));
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { data: workflows = [] } = useQuery({
-    queryKey: ['workflows'],
-    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
+  const params = new URLSearchParams({ sortBy: 'name', sortDir: 'asc' });
+  if (query.trim()) params.set('search', query.trim());
+  const { data: workflowPage, isFetching, isError, refetch } = useQuery({
+    queryKey: ['workflows', 'page', page, null, query, 'name', 'asc'],
+    queryFn: () => getPage<WorkflowListItem>(`/workflows/paged?${params}`, page, 50),
+    staleTime: 30_000,
+  });
+  const workflows = workflowPage?.items ?? EMPTY_WORKFLOWS;
+  const { data: recentPage } = useQuery({
+    queryKey: ['workflows', 'recents', recentIds],
+    queryFn: () => getPage<WorkflowListItem>(`/workflows/paged?${new URLSearchParams(recentIds.map(id => ['ids', id]))}`, 1, 10),
+    enabled: recentIds.length > 0 && !query.trim(),
     staleTime: 30_000,
   });
 
@@ -53,12 +67,11 @@ export function WorkflowQuickSwitcher({ onClose }: Readonly<Props>) {
 
   // Recents (most recent first), filtered to workflows that still exist.
   const recents = useMemo(() => {
-    if (!workflows.length) return [];
     const ids = readRecentWorkflows();
     return ids
-      .map((id) => workflows.find((w) => w.id === id))
+      .map((id) => recentPage?.items.find((w) => w.id === id) ?? workflows.find((w) => w.id === id))
       .filter((w): w is WorkflowListItem => !!w);
-  }, [workflows]);
+  }, [workflows, recentPage]);
 
   // Build the filtered + ordered list. When query is empty: recents first, then the rest.
   // When query is non-empty: fuzzy match across all workflows, recents get a boost.
@@ -132,7 +145,7 @@ export function WorkflowQuickSwitcher({ onClose }: Readonly<Props>) {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1); setActiveIdx(0); }}
             onKeyDown={onKeyDown}
             placeholder={t('quickSwitcher.placeholder')}
             className="flex-1 bg-transparent border-none outline-none text-sm font-label text-on-surface placeholder:text-outline"
@@ -140,6 +153,7 @@ export function WorkflowQuickSwitcher({ onClose }: Readonly<Props>) {
           <span className="text-[10px] font-label text-outline">{t('quickSwitcher.hint')}</span>
         </div>
         <div className="max-h-[420px] overflow-y-auto">
+          {isError && <button type="button" onClick={() => void refetch()}>{t('common:retry')}</button>}
           {items.length === 0 && (
             <div className="px-4 py-8 text-center text-xs font-label text-outline">
               {query ? t('switcherNoMatch', { query }) : t('switcherEmpty')}
@@ -166,6 +180,8 @@ export function WorkflowQuickSwitcher({ onClose }: Readonly<Props>) {
             </button>
           ))}
         </div>
+        <WorkflowPageControls page={page} totalPages={workflowPage?.totalPages ?? 0} busy={isFetching}
+          onChange={(next) => { setPage(next); setActiveIdx(0); }} />
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.PowerShell;
 using NodePilot.Engine.Security;
+using NodePilot.Engine.Agents;
 
 namespace NodePilot.Engine.Activities;
 
@@ -61,6 +62,7 @@ public class WmiQueryActivity : BaseRemoteActivity
 
     protected override string BuildScript(JsonElement config, StepExecutionContext context)
     {
+        if (AgentReadOnlyWorkflowScope.IsActive) AgentReadOnlyWorkflowScope.ValidateStep(ActivityType, config);
         var mode = (config.GetStringOrNull("mode") ?? "query").Trim().ToLowerInvariant();
         var ns = config.TryGetProperty("namespace", out var nsVal) ? nsVal.GetString() : "root\\cimv2";
         var qNs = PowerShellQuoter.Literal(ns);
@@ -72,6 +74,8 @@ public class WmiQueryActivity : BaseRemoteActivity
             "query" => BuildQueryScript(config, qNs),
             _ => throw new InvalidOperationException($"WMI Query: unknown mode '{mode}' (expected 'query', 'wql', or 'invokeMethod')"),
         };
+        if (AgentReadOnlyWorkflowScope.IsActive)
+            coreScript = AgentPermissionPolicy.PrepareShell("powershell", coreScript);
 
         var captureProperties = ParseCaptureProperties(config);
         if (captureProperties.Count == 0)

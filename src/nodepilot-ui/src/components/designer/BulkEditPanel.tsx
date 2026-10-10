@@ -5,6 +5,7 @@ import type { Node } from '@xyflow/react';
 import type { MachineOption } from '../../types/api';
 
 interface Props {
+  canWrite: boolean;
   selectedNodes: Node[];
   machines: MachineOption[];
   onApply: (nodeIds: string[], patch: Record<string, unknown>, configPatch?: Record<string, unknown>) => void;
@@ -20,7 +21,7 @@ interface Props {
  *   - top-level node.data fields (targetMachineId, disabled, outputVariable prefix)
  *   - nested config fields (timeoutSeconds, retry.*)
  */
-export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width }: Readonly<Props>) {
+export function BulkEditPanel({ canWrite, selectedNodes, machines, onApply, onClose, width }: Readonly<Props>) {
   const { t } = useTranslation('designer');
   const [machineId, setMachineId] = useState<string>('');
   const [disabled, setDisabled] = useState<'true' | 'false' | ''>('');
@@ -29,10 +30,12 @@ export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width
   const [retryBackoff, setRetryBackoff] = useState<'fixed' | 'linear' | 'exponential' | ''>('');
 
   const ids = selectedNodes.map((n) => n.id);
+  const includesAgent = selectedNodes.some(n => n.data.activityType === 'aiAgent' || n.data.activityType === 'aiAgentTeam');
   const activityCount = selectedNodes.filter((n) => n.type === 'activity').length;
   const nonActivityCount = selectedNodes.length - activityCount;
 
   const apply = (patch: Record<string, unknown>, configPatch?: Record<string, unknown>) => {
+    if (!canWrite) return;
     onApply(ids, patch, configPatch);
   };
 
@@ -55,7 +58,7 @@ export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width
           <Close size={16} />
         </button>
       </div>
-      <div className="px-4 py-3 space-y-4 text-xs font-label">
+      <fieldset disabled={!canWrite} className="px-4 py-3 space-y-4 text-xs font-label">
         {/* Target machine */}
         <BulkField label={t('bulkEdit.targetMachine')}>
           <select
@@ -131,7 +134,7 @@ export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width
             </select>
           </div>
           <ApplyBtn
-            disabled={!retryAttempts || !retryBackoff}
+            disabled={includesAgent || !retryAttempts || !retryBackoff}
             onClick={() => apply({}, {
               retry: {
                 maxAttempts: Number(retryAttempts),
@@ -150,7 +153,7 @@ export function BulkEditPanel({ selectedNodes, machines, onApply, onClose, width
             {t('bulkEdit.note')}
           </p>
         </div>
-      </div>
+      </fieldset>
     </aside>
   );
 }

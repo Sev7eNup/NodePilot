@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.SignalR;
 using NodePilot.Api.Audit;
 using NodePilot.Api.Hubs;
 using NodePilot.Api.Security;
+using NodePilot.Api.Services;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Enums;
@@ -27,19 +28,22 @@ public class SharedWorkflowFoldersController : ControllerBase
     private readonly IResourceAuthorizationService _authz;
     private readonly IHubContext<ExecutionHub> _hub;
     private readonly IWorkflowFolderProjection _folderProjection;
+    private readonly DashboardAggregateCache? _aggregates;
 
     public SharedWorkflowFoldersController(
         NodePilotDbContext db,
         IAuditWriter audit,
         IResourceAuthorizationService authz,
         IHubContext<ExecutionHub> hub,
-        IWorkflowFolderProjection folderProjection)
+        IWorkflowFolderProjection folderProjection,
+        DashboardAggregateCache? aggregates = null)
     {
         _db = db;
         _audit = audit;
         _authz = authz;
         _hub = hub;
         _folderProjection = folderProjection;
+        _aggregates = aggregates;
     }
 
     /// <summary>
@@ -49,25 +53,11 @@ public class SharedWorkflowFoldersController : ControllerBase
     /// filter. Both are corrected here so a listener who just lost Read stops receiving step
     /// output instead of streaming until they happen to disconnect.
     /// </summary>
-    private async Task RevokeLiveSubscriptionsAsync(IReadOnlyCollection<Guid> workflowIds, CancellationToken ct)
-    {
-        if (workflowIds.Count == 0) return;
+    private Task<WorkflowLiveSubscriptions> CaptureLiveSubscriptionsAsync(IReadOnlyCollection<Guid> workflowIds, CancellationToken ct)
+        => WorkflowLiveSubscriptions.CaptureAsync(_db, workflowIds, ct);
 
-        foreach (var workflowId in workflowIds)
-            _folderProjection.InvalidateWorkflowFolder(workflowId);
-
-        // Only executions somebody is actually watching can leak, so narrow the lookup to those
-        // instead of scanning the whole retention window for the moved workflows.
-        var watched = ExecutionHub.SubscribedExecutionIds();
-        var executionIds = watched.Count == 0
-            ? []
-            : await _db.WorkflowExecutions.AsNoTracking()
-                .Where(e => watched.Contains(e.Id) && workflowIds.Contains(e.WorkflowId))
-                .Select(e => e.Id)
-                .ToListAsync(ct);
-
-        await ExecutionHub.RevokeSubscriptionsAsync(_hub, workflowIds, executionIds, ct);
-    }
+    private Task RevokeLiveSubscriptionsAsync(WorkflowLiveSubscriptions subscriptions)
+        => subscriptions.RevokeAsync(_hub, _folderProjection, _aggregates);
 
     /// <summary>Returns the full folder tree the caller can read, plus per-folder
     /// capabilities for client-side affordance gating. Folders the caller can't read
@@ -110,7 +100,7 @@ public class SharedWorkflowFoldersController : ControllerBase
             return BadRequest(new { message = "Name is required" });
         if (req.Name.Length > 120)
             return BadRequest(new { message = "Name max length is 120 characters" });
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
 
         // Parent defaults to Root. Caller needs FolderEditor on the parent, since creating
         // a child is a parent-edit. Root carries the global Admin + bootstrap-default grants,
@@ -165,7 +155,7 @@ public class SharedWorkflowFoldersController : ControllerBase
             return BadRequest(new { message = "Root folder cannot be renamed" });
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 120)
             return BadRequest(new { message = "Name is required and max 120 chars" });
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
@@ -197,7 +187,7 @@ public class SharedWorkflowFoldersController : ControllerBase
             return BadRequest(new { message = "Root folder cannot be moved" });
         // Taken before the first read: the cycle and depth checks below are only valid against
         // a tree nobody else is changing at the same time.
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
@@ -241,6 +231,11 @@ public class SharedWorkflowFoldersController : ControllerBase
         if (allFolders.Any(f => f.ParentFolderId == newParentId && f.Name == folder.Name && f.Id != id))
             return Conflict(new { message = $"A sibling named '{folder.Name}' already exists in the destination" });
 
+        var subtreeWorkflowIds = await _db.Workflows.AsNoTracking()
+            .Where(w => subtreeFolderIds.Contains(w.FolderId))
+            .Select(w => w.Id)
+            .ToListAsync(ct);
+        var subscriptions = await CaptureLiveSubscriptionsAsync(subtreeWorkflowIds, ct);
         var oldPath = folder.Path;
         folder.ParentFolderId = newParentId;
         folder.Depth = newParent.Depth + 1;
@@ -248,14 +243,10 @@ public class SharedWorkflowFoldersController : ControllerBase
 
         await _db.SaveChangesAsync(ct);
         _authz.InvalidateAll();
-
-        // The subtree's inherited permissions just changed, so every workflow below it may
-        // now have a different reader set.
-        var subtreeWorkflowIds = await _db.Workflows.AsNoTracking()
-            .Where(w => subtreeFolderIds.Contains(w.FolderId))
-            .Select(w => w.Id)
-            .ToListAsync(ct);
-        await RevokeLiveSubscriptionsAsync(subtreeWorkflowIds, ct);
+        await RevokeLiveSubscriptionsAsync(subscriptions);
+        // Authorization changes survive a cancelled HTTP request, including moves of empty
+        // folders that may receive workflows later.
+        await ExecutionHub.RefreshOperationsFeedScopesAsync(_authz, CancellationToken.None);
 
         await _audit.LogAsync(AuditActions.FolderMoved, "SharedWorkflowFolder", folder.Id,
             AuditDetails.Json(("oldPath", oldPath), ("newPath", folder.Path),
@@ -280,7 +271,7 @@ public class SharedWorkflowFoldersController : ControllerBase
 
         if (id == SharedWorkflowFolder.RootFolderId)
             return BadRequest(new { message = "Root folder cannot be deleted" });
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
@@ -331,7 +322,7 @@ public class SharedWorkflowFoldersController : ControllerBase
             .Where(w => subtreeIds.Contains(w.FolderId))
             .Select(w => w.Id)
             .ToListAsync(ct);
-        await RevokeLiveSubscriptionsAsync(watchedWorkflowIds, ct);
+        await RevokeLiveSubscriptionsAsync(await CaptureLiveSubscriptionsAsync(watchedWorkflowIds, ct));
 
         var strategy = _db.Database.CreateExecutionStrategy();
         var outcome = await strategy.ExecuteAsync(async () =>
@@ -458,6 +449,7 @@ public class SharedWorkflowFoldersController : ControllerBase
     [HttpPost("/api/workflows/{workflowId:guid}/move-folder")]
     public async Task<IActionResult> MoveWorkflow(Guid workflowId, MoveWorkflowToFolderRequest req, CancellationToken ct)
     {
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
         var workflow = await _db.Workflows.AsNoTracking().FirstOrDefaultAsync(w => w.Id == workflowId, ct);
         if (workflow is null) return NotFound();
         if (await this.RequireWorkflowAccessAsync(_authz, workflow, ResourceOp.Edit, ct,
@@ -481,6 +473,7 @@ public class SharedWorkflowFoldersController : ControllerBase
         if (dest is null) return BadRequest(new { message = "Destination folder not found" });
 
         var oldFolderId = workflow.FolderId;
+        var subscriptions = await CaptureLiveSubscriptionsAsync([workflowId], ct);
         var updatedAt = DateTime.UtcNow;
         var updatedBy = this.GetCurrentUsername();
         var moved = await _db.Workflows
@@ -518,7 +511,7 @@ public class SharedWorkflowFoldersController : ControllerBase
             });
         }
 
-        await RevokeLiveSubscriptionsAsync([workflowId], ct);
+        await RevokeLiveSubscriptionsAsync(subscriptions);
 
         await _audit.LogAsync(AuditActions.WorkflowMoved, "Workflow", workflow.Id,
             AuditDetails.Json(("fromFolderId", oldFolderId), ("toFolderId", req.TargetFolderId),

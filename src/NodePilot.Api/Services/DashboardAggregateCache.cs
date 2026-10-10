@@ -34,8 +34,13 @@ namespace NodePilot.Api.Services;
 public sealed class DashboardAggregateCache
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ConcurrentDictionary<string, Entry> _entries = new();
-    private readonly ConcurrentDictionary<string, Lazy<Task<object?>>> _inFlight = new();
+    private sealed class CacheState
+    {
+        internal readonly ConcurrentDictionary<string, Entry> Entries = new();
+        internal readonly ConcurrentDictionary<string, Lazy<Task<object?>>> InFlight = new();
+    }
+    private CacheState _state = new();
+    private long _generation;
 
     public DashboardAggregateCache(IServiceScopeFactory scopeFactory)
         => _scopeFactory = scopeFactory;
@@ -51,6 +56,8 @@ public sealed class DashboardAggregateCache
         public DateTime ExpiresAtUtc;
         public DateTime LastRequestedUtc;
         public TimeSpan Ttl;
+        /// <summary>Set by <see cref="PrimeAsync{T}"/> with keepWarm: refreshed without needing a recent request.</summary>
+        public bool Pinned;
         public required Func<NodePilotDbContext, CancellationToken, Task<object?>> Factory;
     }
 
@@ -87,17 +94,18 @@ public sealed class DashboardAggregateCache
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(compute);
+        var state = Volatile.Read(ref _state);
 
         var now = DateTime.UtcNow;
-        if (_entries.TryGetValue(key, out var cached) && cached.ExpiresAtUtc > now)
+        if (state.Entries.TryGetValue(key, out var cached) && cached.ExpiresAtUtc > now)
         {
             cached.LastRequestedUtc = now;
             return (T)cached.Value!;
         }
 
-        var entry = Remember(key, ttl, compute);
+        var entry = Remember(state, key, ttl, compute);
         entry.LastRequestedUtc = now;
-        return (T)(await RunAsync(key, entry, ct).ConfigureAwait(false))!;
+        return (T)(await RunAsync(state, key, entry, ct).ConfigureAwait(false))!;
     }
 
     /// <summary>
@@ -117,16 +125,23 @@ public sealed class DashboardAggregateCache
     /// scan their own few rows, so recomputing one is cheap enough to keep warm.
     /// </para>
     /// </summary>
+    /// <param name="keepWarm">
+    /// Keep refreshing the entry even when nobody requests it (see
+    /// <see cref="RefreshDueAsync"/>). Only for aggregates that are cheap to recompute.
+    /// </param>
     public async Task PrimeAsync<T>(
         string key,
         TimeSpan ttl,
         Func<NodePilotDbContext, CancellationToken, Task<T>> compute,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool keepWarm = false)
     {
         ArgumentNullException.ThrowIfNull(compute);
-        var entry = Remember(key, ttl, compute);
+        var state = Volatile.Read(ref _state);
+        var entry = Remember(state, key, ttl, compute);
         entry.LastRequestedUtc = DateTime.UtcNow;
-        await RunAsync(key, entry, ct).ConfigureAwait(false);
+        if (keepWarm) entry.Pinned = true;
+        await RunAsync(state, key, entry, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -135,13 +150,16 @@ public sealed class DashboardAggregateCache
     /// </summary>
     /// <param name="dueWithin">Refresh entries expiring within this span.</param>
     /// <param name="activeWithin">Ignore entries nobody has asked for in this long.</param>
+    /// <param name="includePinned">Also refresh pinned entries regardless of the last request.</param>
     public async Task<int> RefreshDueAsync(
-        TimeSpan dueWithin, TimeSpan activeWithin, CancellationToken ct)
+        TimeSpan dueWithin, TimeSpan activeWithin, CancellationToken ct, bool includePinned = false)
     {
         var now = DateTime.UtcNow;
-        var due = _entries
+        var state = Volatile.Read(ref _state);
+        var due = state.Entries
             .Where(kv => kv.Value.ExpiresAtUtc <= now + dueWithin
-                         && kv.Value.LastRequestedUtc >= now - activeWithin)
+                         && ((includePinned && kv.Value.Pinned)
+                             || kv.Value.LastRequestedUtc >= now - activeWithin))
             .Select(kv => kv.Key)
             .ToList();
 
@@ -149,17 +167,18 @@ public sealed class DashboardAggregateCache
         foreach (var key in due)
         {
             ct.ThrowIfCancellationRequested();
-            if (!_entries.TryGetValue(key, out var entry)) continue;
-            await RunAsync(key, entry, ct).ConfigureAwait(false);
+            if (!state.Entries.TryGetValue(key, out var entry)) continue;
+            await RunAsync(state, key, entry, ct).ConfigureAwait(false);
             refreshed++;
         }
 
         // Drop what is long expired and unused, so a system with many distinct folder scopes does
         // not accumulate entries nobody reads.
-        foreach (var (key, entry) in _entries)
+        foreach (var (key, entry) in state.Entries)
         {
-            if (entry.ExpiresAtUtc < now - activeWithin && entry.LastRequestedUtc < now - activeWithin)
-                _entries.TryRemove(key, out _);
+            if (!entry.Pinned && entry.ExpiresAtUtc < now - activeWithin
+                && entry.LastRequestedUtc < now - activeWithin)
+                state.Entries.TryRemove(key, out _);
         }
 
         return refreshed;
@@ -167,12 +186,12 @@ public sealed class DashboardAggregateCache
 
     /// <summary>Registers (or updates) what produces this key, keeping any value already held.</summary>
     private Entry Remember<T>(
-        string key, TimeSpan ttl, Func<NodePilotDbContext, CancellationToken, Task<T>> compute)
+        CacheState state, string key, TimeSpan ttl, Func<NodePilotDbContext, CancellationToken, Task<T>> compute)
     {
         async Task<object?> Boxed(NodePilotDbContext db, CancellationToken token)
             => await compute(db, token).ConfigureAwait(false);
 
-        return _entries.AddOrUpdate(
+        return state.Entries.AddOrUpdate(
             key,
             _ => new Entry { Factory = Boxed, Ttl = ttl, ExpiresAtUtc = DateTime.MinValue },
             (_, existing) =>
@@ -187,12 +206,12 @@ public sealed class DashboardAggregateCache
     /// Runs an entry's factory, sharing one computation across concurrent callers and storing the
     /// result. A failure is never stored as an answer.
     /// </summary>
-    private async Task<object?> RunAsync(string key, Entry entry, CancellationToken ct)
+    private async Task<object?> RunAsync(CacheState state, string key, Entry entry, CancellationToken ct)
     {
         // ExecutionAndPublication: the factory runs once even when several callers miss together;
         // everyone else awaits the same task.
-        var lazy = _inFlight.GetOrAdd(key, _ => new Lazy<Task<object?>>(
-            () => ComputeAsync(key, entry),
+        var lazy = state.InFlight.GetOrAdd(key, _ => new Lazy<Task<object?>>(
+            () => ComputeAsync(state, key, entry),
             LazyThreadSafetyMode.ExecutionAndPublication));
 
         // WaitAsync, not a cancellable compute: a caller walking away must not cancel the shared
@@ -200,7 +219,7 @@ public sealed class DashboardAggregateCache
         return await lazy.Value.WaitAsync(ct).ConfigureAwait(false);
     }
 
-    private async Task<object?> ComputeAsync(string key, Entry entry)
+    private async Task<object?> ComputeAsync(CacheState state, string key, Entry entry)
     {
         try
         {
@@ -215,17 +234,20 @@ public sealed class DashboardAggregateCache
         {
             // Always drop the in-flight marker, including on failure: a failed computation must be
             // retried by the next caller, never cached as an answer.
-            _inFlight.TryRemove(key, out _);
+            state.InFlight.TryRemove(key, out _);
         }
     }
 
-    /// <summary>Test seam: forgets everything, so a test can assert recomputation.</summary>
+    /// <summary>Advances with every <see cref="Clear"/>, so the warm-up knows when to prime again.</summary>
+    internal long Generation => Interlocked.Read(ref _generation);
+
+    /// <summary>Invalidates after a committed folder mutation; old warm-up work stays in its old generation.</summary>
     internal void Clear()
     {
-        _entries.Clear();
-        _inFlight.Clear();
+        Interlocked.Exchange(ref _state, new CacheState());
+        Interlocked.Increment(ref _generation);
     }
 
     /// <summary>Test seam: how many entries are currently tracked.</summary>
-    internal int Count => _entries.Count;
+    internal int Count => Volatile.Read(ref _state).Entries.Count;
 }

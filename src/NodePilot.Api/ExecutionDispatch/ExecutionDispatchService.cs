@@ -450,21 +450,19 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
             }
         }
 
-        if (automated)
-        {
-            var authorization = services.GetService<IResourceAuthorizationService>();
-            if (authorization is null)
-                return "authorization_service_unavailable";
-            var identity = new ClaimsIdentity(
-            [
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString("D")),
-                new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Role, user.Role.ToString()),
-            ], "automated-dispatch");
-            if (!await authorization.CanAccessWorkflowAsync(
-                    new ClaimsPrincipal(identity), workflow.FolderId, ResourceOp.Run, ct))
-                return "effective_principal_not_authorized";
-        }
+        // Pending work may outlive its admission permissions, including interactive starts.
+        var authorization = services.GetService<IResourceAuthorizationService>();
+        if (authorization is null)
+            return "authorization_service_unavailable";
+        var identity = new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString("D")),
+            new Claim(ClaimTypes.Name, user.Username),
+            new Claim(ClaimTypes.Role, user.Role.ToString()),
+        ], "execution-dispatch");
+        if (!await authorization.CanAccessWorkflowAsync(
+                new ClaimsPrincipal(identity), workflow.FolderId, ResourceOp.Run, ct))
+            return "effective_principal_not_authorized";
 
         return null;
     }

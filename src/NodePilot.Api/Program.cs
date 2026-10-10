@@ -209,6 +209,8 @@ builder.Services.AddScoped<NodePilot.Core.Interfaces.ISettingsKnowledgeReader, N
 // Read-only, cell-redacted App-DB schema + query reader for the text2sql knowledge tools
 // (global-Admin-only).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.ISqlKnowledgeReader, NodePilot.Api.Ai.SqlKnowledgeReader>();
+// Inventory (machines, credentials, skills, MCP tools, runnable workflows) for agent-team drafting.
+builder.Services.AddScoped<NodePilot.Api.Ai.AgentTeamInventoryBuilder>();
 builder.Services.AddScoped<IMaintenanceWindowStore, MaintenanceWindowStore>();
 builder.Services.AddScoped<INotificationRuleStore, NotificationRuleStore>();
 // Singleton evaluator: an immutable in-memory snapshot read on the dispatch hot path, refreshed
@@ -365,6 +367,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<NodePilot.Api.Hubs
 // NodePilot.Engine.ServiceCollectionExtensions.AddNodePilotActivities.
 builder.Services.AddNodePilotActivities();
 builder.Services.AddNodePilotEngineOptions(builder.Configuration);
+builder.Services.AddHostedService<NodePilot.Api.Services.AgentRecoveryService>();
 
 // Retention sweeper settings — bound once, consumed by three BackgroundServices via IOptions.
 builder.Services.Configure<NodePilot.Scheduler.Options.RetentionOptions>(
@@ -396,6 +399,7 @@ builder.Services.AddSingleton<NodePilot.Engine.Security.RestApiHttpClientProvide
 // block local endpoints (e.g. Ollama at 127.0.0.1:11434). Master switch is Llm:Enabled (default
 // false).
 builder.Services.AddNodePilotAi(builder.Configuration);
+builder.Services.ConfigureOptions<NodePilot.Api.Configuration.LlmProxyOptionsPostConfigure>();
 
 builder.Services.AddSingleton<NodePilot.Api.Hubs.DatabaseAvailabilityHubFilter>();
 builder.Services.AddSignalR(options =>

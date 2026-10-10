@@ -1,0 +1,1 @@
+CimCmdlets\Get-CimInstance -ClassName 'Win32_Service' -Filter "Name='wuauserv' OR Name='BITS' OR Name='TrustedInstaller'" -Property 'Name','State','StartMode' | Microsoft.PowerShell.Utility\Select-Object -Property 'Name','State','StartMode' | Microsoft.PowerShell.Utility\ConvertTo-Json -Depth 3

@@ -334,6 +334,21 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
       return prompt ? `${model} · ${first}${prompt.length > 50 ? '…' : ''}` : model;
     },
   },
+  [ACTIVITY_TYPES.AI_AGENT]: {
+    requiredConfig: config => !hasValueOrTemplate(config.task) ? i18n.t('agents:taskRequired') : config.retry ? i18n.t('agents:noRetry') : null,
+    summarize: config => String(config.task ?? '').slice(0, 80),
+    smartDefaults: inheritExecutionContext,
+  },
+  [ACTIVITY_TYPES.AI_AGENT_TEAM]: {
+    requiredConfig: config => {
+      if (!hasValueOrTemplate(config.task)) return i18n.t('agents:taskRequired');
+      if (config.retry) return i18n.t('agents:noRetry');
+      if (!Array.isArray(config.members) || config.members.length < 2 || config.members.filter(m => m?.isSupervisor).length !== 1)
+        return i18n.t('agents:teamHint');
+      return null;
+    },
+    summarize: config => String(config.task ?? '').slice(0, 80),
+  },
   [ACTIVITY_TYPES.XML_QUERY]: {
     requiredConfig: (config) => {
       if (!hasValueOrTemplate(config.path) && !hasValueOrTemplate(config.content)) return i18n.t('activities:validation.pathOrContentRequired');

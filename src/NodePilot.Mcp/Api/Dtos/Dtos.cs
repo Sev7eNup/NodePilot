@@ -99,7 +99,9 @@ public sealed record WorkflowVersionDetail(
     int Version, string Name, string? Description, string DefinitionJson,
     DateTime CreatedAt, string? CreatedBy, string? ChangeNote, bool IsCurrent);
 
-public sealed record WorkflowExportItem(string Name, string? Description, JsonElement Definition, bool? IsEnabled = null, int? MaxConcurrentExecutions = null);
+public sealed record WorkflowExportItem(string Name, string? Description, JsonElement Definition,
+    bool? IsEnabled = null, int? MaxConcurrentExecutions = null,
+    Guid? SourceId = null, List<NodePilot.Core.WorkflowDefinitions.WorkflowDependency>? Dependencies = null);
 public sealed record WorkflowExportEnvelope(
     string Schema, int ExportVersion, DateTime ExportedAt,
     WorkflowExportItem? Workflow, List<WorkflowExportItem>? Workflows);

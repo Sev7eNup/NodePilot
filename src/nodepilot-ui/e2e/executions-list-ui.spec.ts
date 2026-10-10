@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
@@ -56,8 +57,8 @@ async function mockExecutions(page: Page) {
   let listRequests = 0;
   // The page resolves names through /names; the full list route stays for anything else that
   // mounts alongside it.
-  await page.route('**/api/workflows', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflows()) }),
+  await page.route('**/api/workflows/paged**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, workflows())) }),
   );
   await page.route('**/api/workflows/names', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflows()) }),
@@ -66,7 +67,16 @@ async function mockExecutions(page: Page) {
     // /executions/{id}/steps is registered separately; never shadow it here.
     if (route.request().url().includes('/steps')) return route.fallback();
     listRequests += 1;
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(executions()) });
+    const query = new URL(route.request().url()).searchParams;
+    const search = query.get('search')?.toLowerCase();
+    const rows = executions().filter(row => !search || [
+      workflows().find(workflow => workflow.id === row.workflowId)?.name,
+      row.id, row.triggeredBy, row.errorMessage,
+    ].some(value => value?.toLowerCase().includes(search)));
+    return route.fulfill({ json: {
+      items: rows, page: Number(query.get('page') ?? 1), pageSize: Number(query.get('pageSize') ?? 50),
+      total: rows.length, totalPages: rows.length ? 1 : 0,
+    } });
   });
   return () => listRequests;
 }
@@ -121,11 +131,12 @@ test.describe('Executions list UI (Teil 57)', () => {
     await expect(table.getByText('Nightly Report')).toBeVisible();
     await expect(table.getByText('Backup Job')).toHaveCount(0);
     // With count=1 i18n picks the singular form; "execution" is a substring of both forms.
-    await expect(page.getByText('1 of 3 execution')).toBeVisible();
+    await expect(page.getByText('1 of 1 execution')).toBeVisible();
 
-    // A term that matches nothing surfaces the "no match" empty-state (not "no executions yet").
+    // A server-side search with no match returns an empty page. The search remains usable.
     await search.fill('zzz-nothing-here');
-    await expect(page.getByText(/no executions match the current filters/i)).toBeVisible();
+    await expect(table).toHaveCount(0);
+    await expect(search).toBeVisible();
 
     // Clearing the box brings every run back.
     await search.fill('');

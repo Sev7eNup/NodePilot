@@ -294,6 +294,7 @@ Kontextmenü-Eintrag „Ziel lösen": das Zielende hängt am Cursor, der nächst
 - **Mehrere manualTrigger**: Parameter werden per Name dedupliziert. Bei divergierendem `type`/`default` zwischen zwei Triggers gewinnt die erste Deklaration, `HasConflict=true` wird gesetzt — UI rendert Warning, kein Hard-Fail. `Required` wird OR-aggregiert.
 - **Reserved Output-Keys** (`__executionId`, `__status`, `__workflowId`, `__workflowName`) werden aus user-deklarierten `returnData.data` stillschweigend gefiltert und vom Engine separat injiziert.
 - **Disabled Nodes** (manualTrigger / returnData mit `data.disabled=true`) werden ignoriert — matcht Engine-Skip-Verhalten.
+- **Defaults sind für Nicht-Editoren maskiert:** ohne Edit auf den Ordner liefern `GET /{id}/contract` und `GET /by-name/{name}/contract` bei jedem Input mit Default `"***"` (`WorkflowsController.ScopedContractAsync`). Reine Anzeige — ein ungesetzter Parameter bekommt zur Laufzeit den echten Default; `null` bleibt `null`.
 - **By-name-Lookup:** exact-case gewinnt, sonst case-insensitive; mehrdeutige Namen (Name ist nicht unique) → `409 Conflict` statt stillem Zufallstreffer. Geteilte Semantik über `NodePilot.Data.WorkflowNameResolver` — identisch in `GET /by-name/{name}`, `GET /by-name/{name}/contract`, `POST /api/trigger/{name}` (Ambiguität kollabiert dort ins uniforme 404, M-29), Webhook-Route und Engine (`startWorkflow`/`forEach`, Ambiguität = Step-Fehler). UI zeigt damit nie einen Contract, den die Runtime nicht findet.
 
 UI: [ContractMappingTable.tsx](../src/nodepilot-ui/src/components/designer/properties/ContractMappingTable.tsx) ersetzt die freie `ParameterTable` in [StartWorkflowConfig.tsx](../src/nodepilot-ui/src/components/designer/properties/activities/StartWorkflowConfig.tsx) wenn ein Contract derive-bar ist; bei Variable-Expression / unbekanntem Workflow / Loading bleibt die alte ParameterTable als Fallback. Required-Validation: red-border + Error nur wenn `required && !default && !value`. Empty-out eines Felds **entfernt** den Key (statt ihn auf `""` zu setzen) damit der Child-Default greift. Stale-Keys (im Parameter-Dict, nicht im Contract) werden mit Warning + Remove-Button gerendert, nicht still gepflegt.
@@ -613,10 +614,17 @@ statt an `Enumerable.Contains`, was EF Core nicht zuverlässig zu `NOT IN (…)`
 gegenseitige Rekursion (A→B→A) durch einen limitierten Workflow — beide Waits hängen am Step- bzw.
 Per-Item-Timeout und scheitern mit klarer Meldung statt zu hängen.
 
-**Sperrreihenfolge:** in beiden Sub-Workflow-Aktivitäten erst `ISubWorkflowGate`, dann
-`IWorkflowConcurrencyGate`, und der Wait liegt innerhalb der Step-Gate-Freigabe
+**Sperrreihenfolge:** in beiden Sub-Workflow-Aktivitäten erst `IWorkflowConcurrencyGate`, dann
+`ISubWorkflowGate`, und der Wait liegt innerhalb der Step-Gate-Freigabe
 (`RunWithCurrentStepGateReleasedAsync`), damit Wartende keine `Engine:MaxConcurrentSteps`-Slots
-halten.
+halten. Wartende auf ein Workflow-Limit belegen keinen globalen Sub-Workflow-Slot.
+
+**Aktive Sub-Workflows (ADR 0018):** Der gemeinsame Cap zählt Child-Workflows mit aktiver Arbeit.
+Der Scheduler zählt jeden aktiven Schritt separat innerhalb einer gemeinsamen Workflow-Lease:
+Ein laufender Geschwisterschritt hält den Slot; sobald kein Schritt mehr aktiv ist, etwa weil
+alle auf Unter-Workflows warten, wird er freigegeben. Fortsetzungen erwerben ihn erneut. Vollständig wartende Vorfahren bleiben
+durch den unveränderten globalen Engine-Cap begrenzt. Das Per-Item-Timeout von `forEach` umfasst
+beide Kapazitäts-Wartezeiten und die Child-Ausführung.
 
 **`0` wird abgelehnt** (400): `Engine:MaxConcurrentExecutions` liest einen nicht-positiven Cap als
 „aus", dieselbe Zahl dürfte hier nicht „nie laufen" heißen. Gemeinsamer Validator
@@ -665,7 +673,7 @@ Step ist damit sichtbar, aber `StepsTotal` bleibt die Zahl der **bislang materia
 Step-Zeilen, nicht die Größe des noch auszuführenden Graphen. Loops und erst später erreichte Zweige
 können den Nenner weiter verändern, während `StepsCompleted` den laufenden Step noch nicht mitzählt.
 
-Deshalb zeigt Live-Ops bewusst **keinen Prozentbalken**, sondern die Zahl fertiger Steps plus Stagnations-Alter. Auch `Workflow.ActivityCount` taugt nicht als Ersatz-Nenner: es zählt Trigger und deaktivierte Nodes nicht mit ([WorkflowDefinitionDocument.cs](../src/NodePilot.Core/WorkflowDefinitions/WorkflowDefinitionDocument.cs), `BuildMetadata`), während `StepExecution`-Zeilen ausgeführte Trigger und `Skipped`-Zeilen enthalten — dazu kommen dynamische Loop-Iterationen.
+Deshalb zeigt Live-Ops bewusst **keinen Prozentbalken**, sondern die Zahl fertiger Steps plus Stagnations-Alter. Auch `Workflow.ActivityCount` taugt nicht als Ersatz-Nenner: es zählt zwar Trigger mit, aber keine deaktivierten Nodes und keine Annotationen (Notizen, Gruppen) ([WorkflowDefinitionDocument.cs](../src/NodePilot.Core/WorkflowDefinitions/WorkflowDefinitionDocument.cs), `BuildMetadata`), während `StepExecution`-Zeilen ausgeführte Trigger und `Skipped`-Zeilen enthalten — dazu kommen dynamische Loop-Iterationen.
 
 ---
 
@@ -848,6 +856,7 @@ Renderer wird auch ohne ihn gerufen (`Program.cs`).
 - `WEBHOOK_TRIGGERED` | `EXTERNAL_TRIGGER_FIRED` (nur erfolgreiche Fires)
 - `TRIGGER_FIRE_SUPPRESSED`
 - `WORKFLOW_IMPORTED_SCORCH` | `WORKFLOW_EXPORTED` | `WORKFLOW_EXPORTED_BULK` | `WORKFLOW_IMPORTED` | `CUSTOM_ACTIVITY_EXPORTED`
+- `AI_AGENT_TEAM_GENERATED` (Team-Entwurf aus Beschreibung; Details: model/promptChars/memberCount/blockingIssues/warnings/retried/durationMs — kein Prompt-Text, keine Ressourcennamen)
 - `AI_SCRIPT_GENERATED|AI_WORKFLOW_GENERATED|AI_WORKFLOW_EXPLAINED|AI_PROPOSAL_APPLIED` (Chat-Assistent; Details: nur Counts model/durationMs/modifyProposed/nodeCount/turnCount bzw. Node-/Edge-Counts bei Applied — kein Prompt-/JSON-Text)
 - `AI_KNOWLEDGE_ASKED` (globaler Wissens-Chat `/ai-chat`; Details: model/durationMs/toolCalls/turnCount/cancelled, die vier Quellen-Flags und bei text2sql `dbQueryCount` + stabile `dbQueryFingerprints` — **kein** Prompt- und kein SQL-Text)
 - `DBADMIN_ROWS_VIEWED` | `DBADMIN_ROW_UPDATED` | `DBADMIN_ROW_DELETED`
@@ -858,7 +867,7 @@ Renderer wird auch ohne ihn gerufen (`Program.cs`).
 - `MAINTENANCE_WINDOW_CREATED|UPDATED|DELETED|OVERRIDDEN` | `EXECUTION_BLOCKED_MAINTENANCE_WINDOW`
 - `ALERT_RULE_CREATED|UPDATED|DELETED|ENABLED|DISABLED|TEST_FIRED` (Alerting / Notification-Rules — siehe `docs/alerting.md`)
 - `SYSTEM_ALERT_POLICY_CREATED|UPDATED|DELETED|ENABLED|DISABLED|TEST_FIRED` (System-Alert-Policies, ADR 0008)
-- `BACKUP_EXPORTED|BACKUP_RESTORED` (System-Configuration Backup, ADR 0001)
+- `BACKUP_EXPORTED|BACKUP_RESTORED|BACKUP_RESTORE_DB_COMMITTED` (System-Configuration Backup, ADR 0001)
 - `AUDIT_LOG_EXPORTED` | `SUPPORT_EVENTS_EXPORTED` | `SUPPORT_LOG_DOWNLOADED` (sensible Diagnose-/Compliance-Exporte)
 - `CLUSTER_LEADERSHIP_ACQUIRED` (HA-Lease mit Node-ID und Fencing-Epoch)
 - `DATABASE_RECOVERED` (genau einmal pro echter `Unavailable -> Available`-Episode; kein Trip-Audit, da die Datenbank dabei nicht schreibbar ist)
@@ -1065,6 +1074,8 @@ Die Guard-Flags sind **hardened by default**: appsettings.json shippt sie als `t
 | `Database:AllowInsecureTls` | `false` | Relaxation: deaktiviert die strikte DB-TLS-Prüfung (`Encrypt=Strict` / `SSL Mode=VerifyFull`) — greift nur bei Loopback-Host + (Development **oder** `Deployment:Mode=Desktop`). Prod-Default fail-closed; Dev: `true` |
 | `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` | `false` | `/metrics` anonym erreichbar |
 
+**Listen pro Provider atomar (`ProviderAtomicList`):** `RestApi:AllowedHosts`, `WaitForCondition:AllowedHosts`, `RestApi:Proxy:BypassList`, `Llm:Proxy:BypassList`, `Authentication:Ldap:AllowedGroupSids`/`GlobalRoleMappings`, `Authentication:Oidc:AllowedGroupIds`/`GlobalRoleMappings`/`Scopes` und `Agents:ReadOnlyMcpTools` werden vollständig aus dem höchstprioren Provider gelesen, der sie deklariert, nie indexweise gemischt. Eine leere Liste (`[]`) auf höherer Ebene ersetzt also eine gefüllte darunter; eine Deklaration als Skalar **und** Array gleichzeitig ist ein Fehler.
+
 ## Maintenance Windows — Semantik
 
 Endpoints: siehe CLAUDE.md "API Endpoints" (Maintenance Windows-Zeile). CLI: `np maintenance`. Modelle/Enums in `src/NodePilot.Core/Models/MaintenanceWindow.cs` + `src/NodePilot.Core/Enums/Maintenance*.cs`, Evaluator `IMaintenanceWindowEvaluator`.
@@ -1098,8 +1109,8 @@ Die Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](../src/Nod
 | `NotificationRetentionService` | Trimmt den Delivery-Ledger + stale Suppression-States (90 d) | opt-out `Retention:Notifications:Enabled`, leader-only |
 | `IdempotencyKeyCleanupService` | Prunt Idempotency-Keys nach 24 h TTL | always-on (nicht abschaltbar) |
 | `WorkflowStatsRefresher` | Berechnet `WorkflowStats`-Aggregat (siehe Stats) | always-on |
-| `ExecutionStatsRollupService` | Schreibt die Stunden-Buckets `ExecutionHourlyStat` + `FailureCauseHourlyStat` fort (Sweep 60 s, Start nach 25 s, Backfill in Tages-Chunks) | opt-out `Stats:Rollup:Enabled`, leader-only |
-| `DashboardAggregateWarmup` | Berechnet die Dashboard-Aggregate für 24 h / 7 d / 30 d nach dem Start vor und hält abgerufene Einträge warm (Sweep 20 s, Start nach 15 s) | opt-out `Dashboard:Warmup:Enabled` (prozesslokaler Cache, nicht leader-gated) |
+| `ExecutionStatsRollupService` | Schreibt die Stunden-Buckets `ExecutionHourlyStat` (inkl. Laufzeit-Histogramm für Median/P95) + `FailureCauseHourlyStat` fort (Sweep 60 s, Start nach 25 s, Backfill in Tages-Chunks; ein abgeschlossener Backfill deckt jedes Fenster, auch bei kürzerer Historie) | opt-out `Stats:Rollup:Enabled`, leader-only |
+| `DashboardAggregateWarmup` | Berechnet die Dashboard-Aggregate für 24 h / 7 d / 30 d nach dem Start vor, hält sie warm und primt nach einem Cache-Clear (Ordner-Mutation) neu (Sweep 20 s, Start nach 15 s) | opt-out `Dashboard:Warmup:Enabled` (prozesslokaler Cache, nicht leader-gated) |
 | `WorkflowDefinitionFactsWarmup` | Füllt den kalten `WorkflowDefinitionFactsCache` einmalig in 50er-Batches (Start nach 10 s) | always-on |
 | `RevokedTokensCleanupService` | Täglicher Sweep der `RevokedTokens` (Audit M12) | always-on |
 | `HubRevocationSweeper` | Schließt SignalR-Verbindungen bei Logout/Deaktivierung (Audit M2) | always-on |
@@ -1175,7 +1186,7 @@ Der Rug ersetzt einen anteiligen Outcome-Stapel, der bei dieser Skala nicht funk
 
 **Freeze ist ein Darstellungs-Freeze.** Eingefroren werden nur die Render-Inputs (Snapshot, `locallySettled`, Uhr). Der SignalR-Feed bleibt verbunden, `seedRunning` reconciled weiter, und Hintergrund-Invalidierungen dürfen weiterhin Requests auslösen. `useOperationsFeed()` darf **niemals** bedingt aufgerufen werden: ohne den Feed schriebe `applyStatus` keine Tombstones mehr, und ein Refetch nach dem Auftauen könnte Läufe wiederbeleben, die währenddessen terminiert sind. Der Query-Key ist `['operations-graph', windowMinutes]`; beim Fensterwechsel verliert die alte Query ihren Observer und pollt von selbst nicht weiter.
 
-**Schritt-Aktivität statt Fortschritt.** `OpsRunningExecution` trägt `StepsFinished`, `LastCompletedStepName`, `LastProgressAt` und `ActiveStepCount` — **nullable**, und `null` heißt „nicht angereichert", nie „nichts passiert" (Cap: die 300 ältesten laufenden Läufe; `0` wäre eine Falschaussage). Bewusst **kein** Prozentsatz: jeder verfügbare Nenner ist falsch (Step-Zeilen enthalten ausgeführte Trigger und `Skipped`, `ActivityCount` enthält beides nicht, Loops führen Nodes mehrfach aus). `LastProgressAt` ignoriert `Skipped`-Zeilen — ein nie ausgeführter Zweig ist kein Fortschritt und würde die Stagnations-Uhr gratis zurücksetzen. Die Anreicherung wird bei leerem `running[]` komplett übersprungen; ein idles System zahlt nichts.
+**Schritt-Aktivität statt Fortschritt.** `OpsRunningExecution` trägt `StepsFinished`, `LastCompletedStepName`, `LastProgressAt` und `ActiveStepCount` — **nullable**, und `null` heißt „nicht angereichert", nie „nichts passiert" (Cap: die 300 ältesten laufenden Läufe; `0` wäre eine Falschaussage). Bewusst **kein** Prozentsatz: jeder verfügbare Nenner ist falsch (Step-Zeilen enthalten `Skipped`, `ActivityCount` lässt deaktivierte Nodes weg, Loops führen Nodes mehrfach aus). `LastProgressAt` ignoriert `Skipped`-Zeilen — ein nie ausgeführter Zweig ist kein Fortschritt und würde die Stagnations-Uhr gratis zurücksetzen. Die Anreicherung wird bei leerem `running[]` komplett übersprungen; ein idles System zahlt nichts.
 
 **Overdue-Schwellwert kommt aus dem Alerting, nicht aus der UI.** `OpsSnapshotMeta.OverdueSeconds` liest `Alerting:LongRunningSeconds` mit demselben Default (600) und demselben `Math.Max(1, …)`-Floor wie `LongRunningExecutionCollector` — die Timeline hebt einen Lauf also exakt in dem Moment hervor, in dem die Alerting-Regel für ihn feuern würde. Roh pro Request gelesen (Sektion ist hot-reloadbar). Die Semantik ist ebenfalls gespiegelt: nur `Running` zählt als überfällig. `Pending` (noch nicht gestartet) und `Paused` (Breakpoint) sind andere Zustände und werden mit diesem Schwellwert nicht bewertet. `DashboardStats.LongRunningCount` liest denselben Key mit demselben Default und demselben Floor (`DashboardController.LongRunningSeconds`, ebenfalls roh pro Request) — dort stand vorher ein hart kodierter 30-min-Wert, mit dem Dashboard und Live-Ops-Konsole unterschiedliche Läufe als überfällig zählten.
 

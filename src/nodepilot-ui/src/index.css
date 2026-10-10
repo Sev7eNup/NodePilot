@@ -756,8 +756,8 @@ html.dark[data-skin="dark-lila"] .np-designer {
 
 /* ════════════════════════════════════════════════════════════════════════════
    SKIN "dark-bank": a pure red accent (#FF0002) over a neutral near-black grey ramp with
-   no red tint in the surfaces. Dark base, like dark-lila. Palette source:
-   palette/dark-mode-palette.json. Secondary tokens are set in .np-shell only, not in
+   no red tint in the surfaces. Dark base, like dark-lila.
+   Secondary tokens are set in .np-shell only, not in
    .np-designer, so --color-secondary-container does not leak into the React Flow canvas
    and the REST method badges in ActivityNode stay the neutral base-dark grey-blue. */
 html.dark[data-skin="dark-bank"] .np-shell {
@@ -866,7 +866,7 @@ html.dark[data-skin="dark-bank"] .np-execution-panel {
    ramp with an electric-cyan accent and a violet secondary glow. Dark base, like
    dark-lila and dark-bank. Unlike the other dark skins it also carries an extra depth
    layer further down (glass cards, cyan glow, mesh backdrop), modelled on the light-bank
-   layer. Palette source: palette/nebula-palette.json. These blocks only override the dark
+   layer. These blocks only override the dark
    default, so every other scheme is unaffected. */
 html.dark[data-skin="dark-nebula"] .np-shell {
   /* PIN: would otherwise inherit from the default dark skin. Declared here so changes
@@ -1274,6 +1274,8 @@ html[data-skin="light-bank"] .np-tooltip-portal {
   --act-delay-color:#6b7280;              --act-delay-bg:#f3f4f6;              --act-delay-border:#d1d5db;
   --act-generateText-color:#059669;       --act-generateText-bg:#d1fae5;       --act-generateText-border:#6ee7b7;
   --act-llmQuery-color:#7c3aed;           --act-llmQuery-bg:#ede9fe;           --act-llmQuery-border:#c4b5fd;
+  --act-aiAgent-color:#7c3aed;           --act-aiAgent-bg:#ede9fe;           --act-aiAgent-border:#c4b5fd;
+  --act-aiAgentTeam-color:#9333ea;       --act-aiAgentTeam-bg:#f3e8ff;       --act-aiAgentTeam-border:#d8b4fe;
   --act-log-color:#475569;                --act-log-bg:#f1f5f9;                --act-log-border:#cbd5e1;
   --act-junction-color:#4f46e5;           --act-junction-bg:#eef2ff;           --act-junction-border:#c7d2fe;
   --act-decision-color:#4338ca;           --act-decision-bg:#e0e7ff;           --act-decision-border:#a5b4fc;
@@ -1314,6 +1316,8 @@ html.dark {
   --act-delay-color:#c0c6d2;              --act-delay-bg:#34383f;              --act-delay-border:#6b7079;
   --act-generateText-color:#6ee7b7;       --act-generateText-bg:#143f30;       --act-generateText-border:#2b7a5b;
   --act-llmQuery-color:#c4b5fd;           --act-llmQuery-bg:#2a1a52;           --act-llmQuery-border:#6d28d9;
+  --act-aiAgent-color:#c4b5fd;           --act-aiAgent-bg:#2a1a52;           --act-aiAgent-border:#6d28d9;
+  --act-aiAgentTeam-color:#d8b4fe;       --act-aiAgentTeam-bg:#3b165b;       --act-aiAgentTeam-border:#9333ea;
   --act-log-color:#bcc6da;                --act-log-bg:#2f3749;                --act-log-border:#5a688c;
   --act-junction-color:#a5b4fc;           --act-junction-bg:#2d2d62;           --act-junction-border:#5454ad;
   --act-decision-color:#a5b4fc;           --act-decision-bg:#2d2e62;           --act-decision-border:#5354ad;

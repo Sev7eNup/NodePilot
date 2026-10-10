@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
 using FluentAssertions;
 using NodePilot.Core.Activities;
+using NodePilot.Core.Agents;
+using System.Text.Json;
 using NodePilot.Engine.Tests.Triggers;
 using Xunit;
 
@@ -63,6 +65,14 @@ public class ActivityConfigReferenceTests
             foreach (var key in entry.ConfigKeys)
             {
                 if (exempt.Contains(key.Key, StringComparer.Ordinal)) continue;
+                // Agent executors deserialize a typed shared contract instead of reading literal
+                // keys. Check the actual serializer contract, not an exemption list of keys.
+                if (AgentConfiguration.IsAgent(activity.Type))
+                {
+                    var shape = JsonSerializer.SerializeToElement(new AgentActivityConfiguration(), AgentConfiguration.JsonOptions);
+                    if (!shape.TryGetProperty(key.Key, out _)) phantom.Add($"{activity.Type}.{key.Key}");
+                    continue;
+                }
                 if (!source.Contains($"\"{key.Key}\"", StringComparison.Ordinal))
                     phantom.Add($"{activity.Type}.{key.Key}");
             }

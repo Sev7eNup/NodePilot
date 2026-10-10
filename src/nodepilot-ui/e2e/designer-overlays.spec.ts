@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
@@ -44,14 +45,14 @@ function definition() {
 async function openEditor(page: Page) {
   await seedExpertMode(page); // designer overlays live in the expert-mode toolbar
   // The quick switcher and the palette read GET /api/workflows, so provide two entries.
-  await page.route('**/api/workflows', (route) =>
+  await page.route('**/api/workflows/paged**', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify([
+      body: JSON.stringify(workflowPage(route, [
         { id: WF_ID, name: 'Overlays_E2E_WF', description: '', isEnabled: false },
         { id: OTHER_WF_ID, name: 'Payroll Nightly Sync', description: 'runs payroll', isEnabled: true },
-      ]),
+      ])),
     }),
   );
   await page.route(`**/api/workflows/${WF_ID}`, (route) =>

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NodePilot.Api.Controllers;
+using NodePilot.Api.Configuration;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Services;
 using NodePilot.Core.Interfaces;
@@ -42,7 +43,10 @@ public class SecretsControllerTests
             .ReturnsAsync(globalsResult);
         return new SecretsController(
             credMock.Object, globalsMock.Object, db,
-            versionDefinitions ?? VersionDefinitions(), NoopAuditWriter.Instance);
+            versionDefinitions ?? VersionDefinitions(), NoopAuditWriter.Instance,
+            new AesGcmSecretProtector(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray()),
+            new RuntimeOverridesWriter(Path.Combine(Path.GetTempPath(), "nodepilot-rotation-" + Guid.NewGuid().ToString("N"), "runtime.json"),
+                NullLogger<RuntimeOverridesWriter>.Instance));
     }
 
     private static WorkflowVersionDefinitionProtector VersionDefinitions() =>

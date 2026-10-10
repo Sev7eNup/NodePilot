@@ -21,6 +21,12 @@ NodePilot integriert einen LLM für drei No-Code-Helfer:
    jede Einzelselektion im Canvas (Klick, Drop, Suche, Tastatur-Navigation) gibt den Slot
    zurück; eine Mehrfachauswahl lässt den Chat offen — sie ist sein „Auswahl (N)"-Kontext.
 
+Zusätzlich stehen die Laufzeit-Activities `llmQuery`, `aiAgent` und `aiAgentTeam` bereit.
+Die Agenten können ausgewählte Werkzeuge autonom verwenden und unabhängige Aufgaben in begrenzten parallelen Bündeln
+delegieren; sie sind nicht auf Windows-Diagnose beschränkt. Konfiguration, Rechte und
+Budgets: [KI-Agenten](ai-agents.md). Die Klickgrenzen der bestehenden Chats bleiben
+bestehen; bei Agenten autorisiert die Veröffentlichung die konfigurierten Aktionen.
+
 Die KI-Features sind **opt-in** und Default-aus: `appsettings.json` liefert `Llm:Enabled=false`
 aus (ein default-aktiver LLM-Egress wäre ein authentifizierter Ausgangspfad, den ein Operator
 bewusst freischalten muss). Operator schaltet sie via `Llm:Enabled=true` in `appsettings.json`
@@ -350,8 +356,8 @@ beim Startup eine Hardening-Warnung in den Logs aus.
   die 503-Fehlerpfade sind nur noch bei einem Config-Flip mid-session erreichbar.
   Frontend-seitig läuft das über den geteilten Hook `useAiCapabilities` (eine Query, ein Cache);
   LLM-/AiKnowledge-Saves in den Admin-Settings refreshen die Query sofort.
-- **Rollen**: Die Generierungs-Endpoints (`POST /api/ai/generate-script`, `POST /api/ai/generate-workflow`)
-  sind nur für `Admin` und `Operator` zugänglich. Der Chat-Assistent (`POST /api/ai/chat`) ist für alle Rollen
+- **Rollen**: Die Generierungs-Endpoints (`POST /api/ai/generate-script`, `POST /api/ai/generate-workflow`,
+  `POST /api/ai/generate-agent-team`) sind nur für `Admin` und `Operator` zugänglich. Der Chat-Assistent (`POST /api/ai/chat`) ist für alle Rollen
   lesbar (Erklären), aber das **Anwenden** von Vorschlägen bleibt Admin/Operator. Viewer sehen die Schreib-KI-Buttons im UI nicht
   (der Script-Editor-KI-Button wird für Viewer zusätzlich zum LLM-Gating ausgeblendet).
 - **Script-Kontext**: Das aktuelle PowerShell-Skript wird standardmäßig nicht an das LLM
@@ -372,7 +378,7 @@ beim Startup eine Hardening-Warnung in den Logs aus.
 - **Sandbox-Schutz**: KI-generiertes PowerShell wird **am Cursor eingefügt** (Default),
   nicht stumm den ganzen Editor ersetzen. User sieht das Script bevor er Run klickt.
 - **Audit**: Erfolgreiche Generierungen schreiben `AI_SCRIPT_GENERATED` bzw.
-  `AI_WORKFLOW_GENERATED` ins AuditLog, der Workflow-Chat `AI_WORKFLOW_EXPLAINED` und beim Übernehmen
+  `AI_WORKFLOW_GENERATED` (Team-Entwurf: `AI_AGENT_TEAM_GENERATED`) ins AuditLog, der Workflow-Chat `AI_WORKFLOW_EXPLAINED` und beim Übernehmen
   eines Vorschlags `AI_PROPOSAL_APPLIED` (mit Node-/Edge-Counts); der Wissens-Assistent schreibt
   `AI_KNOWLEDGE_ASKED`. Details enthalten Modell, Dauer, Token-Counts — **niemals** den Prompt-Text (PII).
 

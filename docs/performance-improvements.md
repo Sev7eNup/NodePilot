@@ -241,7 +241,7 @@ max_connections = 600
 shared_buffers  = 512MB
 ```
 
-**Live im Code:** Default-Cap **128** gleichzeitige Sub-Workflow-Aufrufe (geteilt zwischen `startWorkflow` und `forEach`), über die injizierte [`ISubWorkflowGate`](../src/NodePilot.Core/Interfaces/ISubWorkflowGate.cs) / [`InMemorySubWorkflowGate`](../src/NodePilot.Engine/Activities/InMemorySubWorkflowGate.cs) — **kein** prozess-weiter statischer Semaphore mehr (frühere `SubWorkflowLimiter`-Klasse; die Session-Logs unten beschreiben den damaligen Stand).
+**Live im Code:** Default-Cap **128** Child-Workflows mit aktiver Arbeit (geteilt zwischen `startWorkflow` und `forEach`), über die injizierte [`ISubWorkflowGate`](../src/NodePilot.Core/Interfaces/ISubWorkflowGate.cs) / [`InMemorySubWorkflowGate`](../src/NodePilot.Engine/Activities/InMemorySubWorkflowGate.cs). Vollständig auf Unter-Workflows wartende Vorfahren geben ihren Slot bis zur Fortsetzung frei; aktive Geschwisterschritte halten ihn. Der globale Engine-Cap begrenzt weiterhin alle laufenden Executions einschließlich wartender Vorfahren ([ADR 0018](adr/0018-active-subworkflow-capacity.md)). Die Session-Logs unten beschreiben den damaligen Stand.
 
 Das Preset ist ausgelegt für **bis zu 500 parallele Workflows** auf einem 20-Core-Host — das ist die Topologie, für die es gemessen wurde, nicht die, auf der es zwangsläufig läuft. Skalierungs-Heuristiken für andere Topologien siehe [Default-Tuning für 500-par.-WF-Topologie](#default-tuning-für-500-par-wf-topologie) weiter unten.
 
@@ -678,6 +678,42 @@ auf SQLite laufen.
 **Korrektur (2026-09-17):** Die Annahme stimmt nicht — Npgsql 10 übersetzt Datumsteile von
 `timestamptz` mit `AT TIME ZONE 'UTC'`; ein Translation-Test pinnt das.
 
+### 30-Tage-Fenster trotz Buckets langsam (Session 2026-10-09)
+
+Auslöser: 7-/30-Tage-Dashboard blieb ab ~250k Läufen langsam, obwohl Buckets, Cache und Warmup
+liefen. Gemessen auf der Dev-Instanz (Postgres, 188k Läufe, 1,68 Mio Steps, Historie 24 Tage).
+
+| Stelle | Was war | Was jetzt |
+|---|---|---|
+| `DashboardRollupReader.CoversAsync` | Verlangte `CoverageStartUtc <= now − Fenster`. Der Backfill endet aber am ältesten Lauf — ist die Historie jünger als das Fenster, galt 30 d nie als gedeckt und lief bei jedem Cache-Miss über Rohzeilen (Retry-Quote = Parallel Seq Scan über **ganz** StepExecutions). | Ein abgeschlossener Backfill deckt jedes Fenster; davor existiert kein Lauf. |
+| `DashboardAggregateWarmup` | Prüft die Abdeckung nur für 720 h: wegen der Zeile darüber 10 min Wartezeit nach jedem Start und kein Warmhalten ohne Zuschauer — für **alle** Fenster. Nach einem Cache-Clear (Ordner-Mutation) wurde nie neu geprimt. | Folgt der Abdeckung; primt nach einem Clear im nächsten Sweep neu. |
+| Dauer-Trend | Einzige Kachel ohne Buckets: sortierte jeden Lauf des Fensters (720 h: 394 ms, Sort spillt auf Platte), nie warmgehalten. | Log-Histogramm (8 Bins je Verdopplung) je Stunde und Workflow in `ExecutionHourlyStat.DurationHistogram`; Median/P95 mit den Rangregeln der Roh-SQL, ≤ 4,5 % Abweichung. Die Migration löscht den Rollup-State, der Dienst baut neu auf (Dev: 8 s). |
+| Ordnerbaum-Lock | Alle drei Endpunkte hielten den prozessweiten `SemaphoreSlim(1,1)` über den ganzen Request — Kachel-Requests, Live-Events und Hub-Joins warteten aufeinander. | Lock nur um die Berechtigungsauflösung, globale Admins lesen ganz ohne ihn; Mutationen erhöhen `FolderTreeMutationLock.Epoch`. Hat sich die Epoch während des Lesens geändert, liest der Endpunkt einmal mit gehaltenem Lock neu. Begründung und Abgrenzung zur Audit-Entscheidung: `docs/audit-rounds/round-2-api-core.md`. |
+| `RunPassAsync` | Ein scheiternder Backfill-Chunk verwarf auch den Forward-Pass und den Frische-Stempel; nach 10 min fielen alle Fenster auf Rohzeilen zurück. | Forward-Pass und `UpdatedAt` werden vor dem Backfill gespeichert. |
+| `DashboardPage` | Fensterwechsel ersetzte die ganze Seite durch „Loading…". | Seite bleibt stehen; nur fensterabhängige Karten zeigen den Ladezustand. |
+
+**Gemessen** (Dev, Postgres, nach dem Umbau; Admin-Scope):
+
+| Aufruf | vorher (Rohpfad, Cache-Miss) | nachher |
+|---|---|---|
+| `dashboard?windowHours=720` | Aggregat ~0,41 s DB (Slots + COUNT + Retry-Scan) | 32–35 ms |
+| `failure-causes?windowHours=720` | ~0,29 s | 3 ms |
+| `duration-trend?windowHours=720` | 0,39 s | 3 ms (kalt, Workflow-Filter: 8 ms) |
+| `duration-trend?windowHours=168` | 57 ms | 3 ms (kalt: 16 ms) |
+
+Gegenprobe Dauer-Trend 720 h gegen exakte Roh-SQL: Median max. 4,2 %, P95 max. 4,4 % Abweichung
+über 14 Buckets.
+
+**Retry-Quote ohne Tabellenscan.** Das 1-h-Fenster rechnet immer aus Rohzeilen, und seine
+Retry-Quote suchte `AttemptCount > 1` über die **ganze** StepExecutions-Tabelle — gemessen auf CM1
+(SQL Server, 2,5 Mio Steps): 13,3 s kalt nach Dienst-Neustart, 0,35–0,7 s warm, für 596 Läufe im
+Fenster. Dieselbe Suche steckt im Backfill und im Rohpfad-Fallback; auf CM1 liefen Rollup-Abfragen
+2026-10-05 bis -08 ins 120-s-Timeout (`docs/audit-rounds/cm1-log-review-20261009.md`). Der
+gefilterte Index `IX_StepExecutions_Retried` (`WorkflowExecutionId`, nur `AttemptCount > 1`) enthält
+nur wiederholte Steps und macht daraus Index-Zugriffe. Preis: Der Index wird beim ersten Start nach
+dem Update einmal über die ganze Tabelle aufgebaut und blockiert solange Schreibzugriffe auf
+StepExecutions.
+
 ### Remote / WinRM
 
 | Commit | Bereich | Was wurde verbessert |
@@ -1103,7 +1139,7 @@ Stress-Profil identisch zu den älteren Sessions: [`scripts/stress-test/launch-5
 
 | Datei | Änderung | Effekt |
 |---|---|---|
-| [`OutputRedactor.cs:98-105`](../src/NodePilot.Engine/Security/OutputRedactor.cs#L98-L105) | **Fast-Path:** vor den 16 compiled Regex-Pässen ein `IndexOf`-Probe gegen die Trigger-Substring-Liste (`password`, `token`, `Authorization`, `-----BEGIN`, `AKIA`, `eyJ`, `xox`, `glpat-`, `ghp_`, …). Inputs ohne irgendeinen Trigger gehen direkt zurück. Custom-Patterns aus `Logging:Redaction:Patterns` erzwingen weiterhin den Slow-Path. | In-Noise auf der 500-WF-Wall, aber jeder Step-Output (stdout + stderr + OutputParameters + TraceOutput) flutet hier durch. Bei 57 000 Step-Outputs pro Stress-Test entlastet der Probe vermutlich CPU-Time, die unter Saturation woanders fehlt — schwer separat messbar. **Risiko:** wenn ein Custom-Trigger neue Pattern-Form ergänzt wird, muss `DefaultTriggerKeywords` angepasst werden, sonst rutschen Matches durch. Tests in [`OutputRedactorTests.cs`](../tests/NodePilot.Engine.Tests/Security/OutputRedactorTests.cs) decken jeden Default-Pattern ab. |
+| [`OutputRedactor.cs:340-370`](../src/NodePilot.Engine/Security/OutputRedactor.cs#L340-L370) | **Fast-Path:** vor den 16 Redaction-Pässen (14 Regex, zwei PEM-Marker-Pässe) ein `OrdinalIgnoreCase`-Probe gegen die Trigger-Substring-Liste (`password`, `token`, `Authorization`, `-----BEGIN`, `AKIA`, `eyJ`, `xox`, `glpat-`, `ghp_`, …). Inputs ohne irgendeinen Trigger gehen direkt zurück. Custom-Patterns aus `Logging:Redaction:Patterns` erzwingen weiterhin den Slow-Path. | In-Noise auf der 500-WF-Wall, aber jeder Step-Output (stdout + stderr + OutputParameters + TraceOutput) flutet hier durch. Bei 57 000 Step-Outputs pro Stress-Test entlastet der Probe vermutlich CPU-Time, die unter Saturation woanders fehlt — schwer separat messbar. **Risiko:** wenn ein Custom-Trigger neue Pattern-Form ergänzt wird, muss `DefaultTriggerKeywords` angepasst werden, sonst rutschen Matches durch. Tests in [`OutputRedactorTests.cs`](../tests/NodePilot.Engine.Tests/Security/OutputRedactorTests.cs) decken jeden Default-Pattern ab. |
 | [`MachineResolver.cs:11-21,42-48`](../src/NodePilot.Engine/Execution/MachineResolver.cs#L11-L48) | **Negative-Cache** (process-wide `ConcurrentDictionary<string, DateTime>`, TTL 30 s): wenn ein `targetMachineId`-String zur Ad-hoc-Fallback-Maschine resolvet (= keine `ManagedMachine` mit dieser ID/Hostname/Name in der DB), wird der negative Befund gemerkt. Hits gegen registrierte Maschinen werden **nicht** gecacht (EF-Tracking-Semantik braucht frisch tracked entities pro Scope). Invalidierung: `MachineResolver.InvalidateCache()` (Hook für Test/Admin nach Machine-Insert). | Bei einem 500-WF-Run gegen `localhost` werden ~12 000 redundante `Find` + `FirstOrDefault` SELECTs eliminiert. Per-Hit-Kosten waren 1–2 ms, also ~12–24 s kumulativ über alle Steps; parallelisiert über 600 In-Flight-Slots ergibt das ein paar 10 ms Wall-Clock-Ersparnis. Marginal, aber kostenfrei. |
 | [`SubWorkflowLimiter.cs`](../src/NodePilot.Engine/Activities/InMemorySubWorkflowGate.cs) | **`ChildSemaphore` 64 → 128** (process-wide Cap auf gleichzeitige Sub-Workflow-Aufrufe). Default-Annahme bisher: 64 reicht überall. Tatsächlich: bei 500 Parents × 3 `startWorkflow`-Calls = 1500 Sub-Workflow-Invocations, die seriell durch 64 Slots fließen. | r1-Win 161.6 s vs. 162.4 s default — innerhalb der Run-zu-Run-Varianz. Begründung trotzdem stichhaltig (siehe Iteration 10 unten zur Falle, das nicht auf 600 zu heben). Konstante seit 2026-05-08 in `SubWorkflowLimiter` extrahiert (vorher private in `StartWorkflowActivity`). |
 | [`appsettings.json`](../src/NodePilot.Api/appsettings.json) | `Logging:LogLevel:Default = "Information"`; Framework-/EF-Kategorien bleiben `Warning` | Der frühere `Warning`-Default brachte im synthetischen Saturationstest ~3 % über drei Runs, filterte aber zugleich erfolgreiche Support- und SIEM-Ereignisse vor den Sub-Sinks. Der Observability-Vertrag hat Vorrang; laute Framework-Kategorien bleiben separat gedämpft. |

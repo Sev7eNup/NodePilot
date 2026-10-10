@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, useDeferredValue } from 'react';
 import type { HubConnection } from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { agentRunsKey, agentEventsKey } from './useAgentRuns';
+import type { AgentEventNotification } from '../types/agents';
 import { getAllPages } from '../api/paging';
 import { createExecutionHubConnection } from '../lib/hubConnection';
 import {
@@ -139,6 +141,8 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
   // event handlers) so they can also bail out after unmount.
   const mountedRef = useRef<boolean>(true);
   const [liveExecutionsById, setLiveExecutionsById] = useState<LiveExecutionsById>({});
+  const liveExecutionsRef = useRef(liveExecutionsById);
+  useLayoutEffect(() => { liveExecutionsRef.current = liveExecutionsById; }, [liveExecutionsById]);
   const [connected, setConnected] = useState(false);
 
   /** Handles every hub invocation promise at the shared choke point. */
@@ -299,15 +303,18 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
   /**
    * Bulk refresh of currently-relevant executions for the active workflow. Runs on
    * initial connect, on SignalR auto-reconnect, and periodically as a safety net for
-   * runs the SignalR subscription might have missed. `mode='periodic'` only picks up
-   * runs not yet known at all, since dropped step events for already-known runs are
-   * recovered by the terminal-event handler in the LiveEventsBatch listener. No
-   * execution cap here — the server's GET /executions Take(100) is the ceiling.
+   * runs the SignalR subscription might have missed. Missing known active IDs are
+   * checked individually for a missed terminal transition. `mode='periodic'` leaves
+   * the other known runs alone; their step events are handled by LiveEventsBatch.
    * Terminal runs get an eviction timer sized for elapsed time, so a run hydrated
    * after navigating away and back does not stay pinned in the Live tab.
    */
   const hydrateActive = useCallback(async (wfid: string, mode: 'initial' | 'periodic' = 'initial') => {
     const authBoundaryGeneration = captureAuthBoundaryGeneration();
+    // Capture before the snapshot request: a run discovered by SignalR while it is in flight
+    // must not be mistaken for a run that disappeared from that earlier snapshot.
+    const previouslyActive = Object.values(liveExecutionsRef.current)
+      .filter((execution) => execution.workflowId === wfid && isActiveExecution(execution));
     let all: ApiExecutionItem[];
     try {
       all = await getAllPages<ApiExecutionItem>(`/executions?workflowId=${wfid}&activeOnly=true`);
@@ -318,6 +325,38 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
       }
       return;
     }
+    if (!mountedRef.current || workflowIdRef.current !== wfid) return;
+
+    // The active-only snapshot cannot report runs that finished during a transport outage
+    // (or whose terminal event was dropped). Resolve just those missing, already-known IDs;
+    // absence alone is not a terminal verdict, because the snapshot and live feed can race.
+    const activeIds = new Set(all.map((execution) => execution.id));
+    await Promise.all(previouslyActive.filter((execution) => !activeIds.has(execution.executionId)).map(async (execution) => {
+      try {
+        const current = await rateLimitedHydration(() => {
+          assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+          return api.get<ApiExecutionItem>(`/executions/${execution.executionId}`);
+        });
+        assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+        if (!mountedRef.current || workflowIdRef.current !== wfid || current.workflowId !== wfid) return;
+        if (current.status !== 'Succeeded' && current.status !== 'Failed' && current.status !== 'Cancelled') return;
+        setLiveExecutionsById((prev) => applyLiveEvents(prev, [{ type: 'ExecutionStatusChanged', evt: {
+          executionId: current.id, workflowId: wfid, status: current.status,
+          completedAt: current.completedAt, errorMessage: current.errorMessage,
+        } }]));
+        const elapsed = current.completedAt ? Date.now() - new Date(current.completedAt).getTime() : 0;
+        scheduleEviction(current.id, COMPLETED_EXECUTION_TTL_MS - elapsed);
+        // Expanded runs also need the output/steps missed while offline. Listing-only runs
+        // remain cheap; their authoritative terminal status is sufficient.
+        if (elapsed < COMPLETED_EXECUTION_TTL_MS && hydratedExecsRef.current.delete(current.id))
+          await hydrateStepsForExecution(current.id, wfid);
+        scheduleQueryInvalidate(wfid);
+      } catch (err) {
+        if (!(err instanceof AuthBoundaryChangedError))
+          console.warn(`[useWorkflowSignalR] execution reconciliation for ${execution.executionId} failed`, err);
+      }
+    }));
+    if (!mountedRef.current || workflowIdRef.current !== wfid || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
     const cutoff = Date.now() - COMPLETED_EXECUTION_TTL_MS * 2;
     let relevant = all.filter((e) =>
       e.status === 'Running' ||
@@ -405,7 +444,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
 
     if (!mountedRef.current || workflowIdRef.current !== wfid || Object.keys(result).length === 0) return;
     setLiveExecutionsById((prev) => mergeHydrated(result, prev));
-  }, [scheduleEviction]);
+  }, [scheduleEviction, hydrateStepsForExecution, scheduleQueryInvalidate]);
 
   const flushPendingEvents = useCallback(() => {
     if (flushTimerRef.current !== null) {
@@ -543,6 +582,14 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     connection.on('LiveEventsBatch', (batch: LiveEventsBatch) => {
       const items = Array.isArray(batch) ? batch : (batch.events ?? batch.Events ?? []);
       for (const item of items) {
+        if ((item.type ?? item.Type) === 'AgentEvent') {
+          const notification = (item.event ?? item.Event ?? item.evt) as unknown as AgentEventNotification;
+          if (notification?.executionId && notification.agentRunId) {
+            void queryClient.invalidateQueries({ queryKey: agentRunsKey(notification.executionId) });
+            void queryClient.invalidateQueries({ queryKey: agentEventsKey(notification.agentRunId) });
+          }
+          continue;
+        }
         const event = normalizeBatchItem(item);
         if (!event) continue;
         enqueueLiveEvent(event);
@@ -576,6 +623,8 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
         if (!mountedRef.current) return;
         setConnected(true);
         await reconcileSubscriptions(workflowId);
+        void queryClient.invalidateQueries({ queryKey: ['agent-runs'] });
+        void queryClient.invalidateQueries({ queryKey: ['agent-events'] });
       },
       () => {
         // The automatic-reconnect policy gave up, so the indicator must stop claiming
@@ -614,7 +663,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
       connection.stop();
       setConnected(false);
     };
-  }, [enqueueLiveEvent, workflowId, hydrateActive, hydrateStepsForExecution, reconcileSubscriptions, scheduleQueryInvalidate]);
+  }, [enqueueLiveEvent, workflowId, hydrateActive, hydrateStepsForExecution, reconcileSubscriptions, scheduleQueryInvalidate, queryClient]);
 
   return { liveExecution, liveExecutions, liveActiveCount, connected, clearLive, joinExecution, leaveExecution };
 }

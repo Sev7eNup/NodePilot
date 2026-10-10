@@ -94,6 +94,7 @@ interface FormState {
   id: string | null;
   key: string; name: string; description: string; icon: string; color: string;
   scriptTemplate: string; engine: string; runsRemote: boolean; isolated: boolean;
+  memoryLimitMb: number | null; maxProcesses: number | null;
   defaultTimeoutSeconds: string; successExitCodes: string;
   inputs: InputParam[]; outputs: OutputParam[];
   concurrencyToken: string | null; isEnabled: boolean;
@@ -102,6 +103,7 @@ interface FormState {
 const EMPTY: FormState = {
   id: null, key: '', name: '', description: '', icon: 'extension', color: '',
   scriptTemplate: '', engine: 'auto', runsRemote: false, isolated: false,
+  memoryLimitMb: null, maxProcesses: null,
   defaultTimeoutSeconds: '', successExitCodes: '', inputs: [], outputs: [],
   concurrencyToken: null, isEnabled: false,
 };
@@ -142,6 +144,7 @@ export function CustomActivitiesPage() {
         name: f.name.trim(), description: f.description.trim() || null, icon: f.icon.trim() || 'extension',
         color: f.color.trim() || null, scriptTemplate: f.scriptTemplate, engine: f.engine,
         runsRemote: f.runsRemote, isolated: f.isolated,
+        memoryLimitMb: f.memoryLimitMb, maxProcesses: f.maxProcesses,
         defaultTimeoutSeconds: f.defaultTimeoutSeconds ? Number(f.defaultTimeoutSeconds) : null,
         successExitCodes: f.successExitCodes.trim() || null,
         inputs: f.inputs, outputs: f.outputs,
@@ -158,6 +161,8 @@ export function CustomActivitiesPage() {
       invalidate();
       setWarnings(res.warnings ?? []);
       if (!res.warnings || res.warnings.length === 0) { setShowDialog(false); setForm(EMPTY); }
+      else setForm((current) => ({ ...current, id: res.definition.id, key: res.definition.key,
+        concurrencyToken: res.definition.concurrencyToken, isEnabled: res.definition.isEnabled }));
     },
     onError: (err: Error) => toast.error(t('common:saveFailed', { message: err.message })),
   });
@@ -180,6 +185,7 @@ export function CustomActivitiesPage() {
     setForm({
       id: d.id, key: d.key, name: d.name, description: d.description ?? '', icon: d.icon, color: d.color ?? '',
       scriptTemplate: d.scriptTemplate, engine: d.engine, runsRemote: d.runsRemote, isolated: d.isolated,
+      memoryLimitMb: d.memoryLimitMb ?? null, maxProcesses: d.maxProcesses ?? null,
       defaultTimeoutSeconds: d.defaultTimeoutSeconds?.toString() ?? '', successExitCodes: d.successExitCodes ?? '',
       inputs: d.inputs ?? [], outputs: d.outputs ?? [], concurrencyToken: d.concurrencyToken, isEnabled: d.isEnabled,
     });

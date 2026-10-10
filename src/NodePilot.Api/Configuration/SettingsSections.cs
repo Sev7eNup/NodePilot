@@ -9,6 +9,7 @@ using NodePilot.Api.Security.Oidc;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Options;
+using NodePilot.Engine.Security;
 using NodePilot.Scheduler.Options;
 using NodePilot.Telemetry;
 
@@ -75,6 +76,16 @@ public static class SettingsSectionAdapters
     {
         return new SettingsSectionAdapterRegistry(new ISettingsSectionAdapter[]
         {
+            new DelegateSettingsSectionAdapter<AgentSettingsDto>(
+                Descriptor("Agents"),
+                ["Agents:Enabled", "Agents:PowerMode", "Agents:AllowServiceIdentity", "Agents:MaxConcurrentRuns", "Agents:SingleModelCalls",
+                    "Agents:SingleToolCalls", "Agents:SingleTimeoutSeconds", "Agents:TeamModelCalls", "Agents:TeamToolCalls",
+                    "Agents:TeamDelegations", "Agents:TeamMaxParallelMembers", "Agents:TeamTimeoutSeconds", "Agents:MaxContextCharacters",
+                    "Agents:ModelCallTimeoutSeconds", "Agents:ModelMaxOutputTokens",
+                    "Agents:MaxToolOutputCharacters", "Agents:MaxResultCharacters", "Agents:ReadOnlyMcpTools"],
+                () => BuildAgentDto(configRoot),
+                section => section?.Deserialize<AgentSettingsDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? new(),
+                (dto, _) => JsonSerializer.SerializeToNode(dto)!.AsObject()),
             new DelegateSettingsSectionAdapter<SmtpSettingsDto>(
                 Descriptor("Smtp"),
                 ["Smtp:Host", "Smtp:Port", "Smtp:Username", "Smtp:Password", "Smtp:From", "Smtp:EnableSsl"],
@@ -161,7 +172,7 @@ public static class SettingsSectionAdapters
                 () => new FileSystemOperationSettingsDto
                 {
                     RejectTraversal = BoolDefaultTrue(configRoot["FileSystemOperation:RejectTraversal"]),
-                    AllowedRoots = ReadStringArray(configRoot, "FileSystemOperation:AllowedRoots"),
+                    AllowedRoots = PathGuard.ReadConfiguredRoots(configRoot, "FileSystemOperation:AllowedRoots", out _).ToList(),
                 },
                 BuildFileSystemOperationDtoFromJson,
                 (dto, _) => new JsonObject
@@ -859,11 +870,10 @@ public static class SettingsSectionAdapters
                 DisplayName = config["Authentication:Oidc:DisplayName"] ?? "Single Sign-On",
                 NameClaimType = config["Authentication:Oidc:NameClaimType"] ?? "preferred_username",
                 GroupsClaimType = config["Authentication:Oidc:GroupsClaimType"] ?? "groups",
-                Scopes = config.GetSection("Authentication:Oidc:Scopes").Get<List<string>>()
+                Scopes = ProviderAtomicList.Read<string>(config, "Authentication:Oidc:Scopes")
                     ?? ["openid", "profile", "email"],
-                AllowedGroupIds = config.GetSection("Authentication:Oidc:AllowedGroupIds").Get<List<string>>() ?? [],
-                GlobalRoleMappings = (config.GetSection("Authentication:Oidc:GlobalRoleMappings")
-                    .Get<List<OidcRoleMapping>>() ?? [])
+                AllowedGroupIds = ProviderAtomicList.Read<string>(config, "Authentication:Oidc:AllowedGroupIds") ?? [],
+                GlobalRoleMappings = (ProviderAtomicList.Read<OidcRoleMapping>(config, "Authentication:Oidc:GlobalRoleMappings") ?? [])
                     .Select(mapping => new OidcRoleMappingDto
                     {
                         GroupId = mapping.GroupId,
@@ -1760,16 +1770,17 @@ public static class SettingsSectionAdapters
         }
     }
 
-    private static List<string> ReadStringArray(IConfigurationRoot configRoot, string sectionKey)
+    private static AgentSettingsDto BuildAgentDto(IConfigurationRoot configRoot)
     {
-        var list = new List<string>();
-        var section = configRoot.GetSection(sectionKey);
-        foreach (var child in section.GetChildren())
-        {
-            if (!string.IsNullOrEmpty(child.Value)) list.Add(child.Value);
-        }
-        return list;
+        var dto = configRoot.GetSection("Agents").Get<AgentSettingsDto>() ?? new();
+        dto.ReadOnlyMcpTools = (ProviderAtomicList.Read<NodePilot.Core.Agents.AgentMcpReadGrant>(
+            configRoot, "Agents:ReadOnlyMcpTools") ?? []).ToArray();
+        return dto;
     }
+
+    private static List<string> ReadStringArray(IConfigurationRoot configRoot, string sectionKey)
+        => (ProviderAtomicList.Read<string>(configRoot, sectionKey) ?? [])
+            .Where(value => !string.IsNullOrEmpty(value)).ToList();
 
     private static List<string> ReadStringArray(JsonObject section, string key)
     {

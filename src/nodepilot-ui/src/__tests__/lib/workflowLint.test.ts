@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Node, Edge } from '@xyflow/react';
 import { lintWorkflow } from '../../lib/workflowLint';
 import i18n from '../../i18n';
+import systemCheck from '../../../../../samples/04-system-health-observatory.workflow.json';
 
 // Helper to build an activity node with explicit position + measured size.
 function node(id: string, x: number, y: number, opts: Partial<{ w: number; h: number; activityType: string; label: string; config: Record<string, unknown> }> = {}): Node {
@@ -23,6 +24,32 @@ function edge(id: string, source: string, target: string): Edge {
 }
 
 describe('lintWorkflow — edge-occluded', () => {
+  it('does not confuse positions in separate groups with canvas positions', () => {
+    const group: Node = { id: 'group', type: 'group', position: { x: 1000, y: 800 }, data: {} };
+    const nodes = [node('src', 0, 0), node('tgt', 400, 0), group,
+      { ...node('elsewhere', 200, 0), parentId: group.id }];
+    expect(lintWorkflow(nodes, [edge('e', 'src', 'tgt')]).warnings
+      .filter((w) => w.code === 'edge-occluded')).toEqual([]);
+  });
+
+  it('finds actual collisions across nested group boundaries', () => {
+    const outer: Node = { id: 'outer', type: 'group', position: { x: 1000, y: 800 }, data: {} };
+    const inner: Node = { id: 'inner', type: 'group', parentId: 'outer', position: { x: 100, y: 100 }, data: {} };
+    const nodes = [outer, inner,
+      { ...node('src', 0, 0), parentId: inner.id },
+      { ...node('tgt', 400, 0), parentId: inner.id },
+      node('blocker', 1300, 900, { label: 'Real blocker' })];
+    const warnings = lintWorkflow(nodes, [edge('e', 'src', 'tgt')]).warnings
+      .filter((w) => w.code === 'edge-occluded');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('Real blocker');
+  });
+
+  it('validates the grouped system check sample without false warnings', () => {
+    const { nodes, edges } = systemCheck.workflow.definition;
+    expect(lintWorkflow(nodes as Node[], edges as Edge[])).toEqual({ errors: [], warnings: [] });
+  });
+
   it('flags an edge whose straight path cuts through another node', () => {
     // One source fans out to 3 targets stacked vertically on the same x-column. The edge
     // from `src` to the bottom target runs straight through the middle target's bounding box.
@@ -909,10 +936,10 @@ describe('lintWorkflow — localized messages', () => {
     }
   });
 
-  it('dupOutputVariable_keepsTheTemplateReferenceLiteral', () => {
+  it.each(['disk', 'DISK'])('dupOutputVariable_keepsTheTemplateReferenceLiteral (%s)', (firstAlias) => {
     const nodes: Node[] = [
       node('trig', 0, 0, { activityType: 'manualTrigger' }),
-      { ...node('a', 300, 0, { activityType: 'log', config: { message: 'x' } }), data: { label: 'A', activityType: 'log', outputVariable: 'disk', config: { message: 'x' } } },
+      { ...node('a', 300, 0, { activityType: 'log', config: { message: 'x' } }), data: { label: 'A', activityType: 'log', outputVariable: firstAlias, config: { message: 'x' } } },
       { ...node('b', 600, 0, { activityType: 'log', config: { message: 'x' } }), data: { label: 'B', activityType: 'log', outputVariable: 'disk', config: { message: 'x' } } },
     ];
     const edges: Edge[] = [edge('e1', 'trig', 'a'), edge('e2', 'a', 'b')];

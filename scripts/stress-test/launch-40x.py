@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """Stress-Test launcher: upload workflow, fire N parallel executions, poll, summarize."""
-import json
+import os
 import sys
 import time
-import threading
-import urllib.request
-import urllib.error
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-BASE_URL = "http://localhost:5000"
-USER = "admin"
-PASSWORD = "admin123"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from nodepilot_http import credentials, login, publish_workflow, request
+
+BASE_URL = os.environ.get("NODEPILOT_URL", "http://localhost:5000")
 WORKFLOW_NAME = "Stress-Test"
 DEFINITION_FILE = Path(__file__).parent / "main.json"
 PARALLEL = 40
@@ -21,49 +19,18 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}.{int(time.time()*1000)%1000:03d}] {msg}", flush=True)
 
 
-def http_json(method: str, path: str, token: str | None = None, body=None, timeout: int = 30):
-    url = f"{BASE_URL}{path}"
-    headers = {"Content-Type": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    data = None
-    if body is not None:
-        data = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read()
-            return resp.status, (json.loads(raw) if raw else None)
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        return e.code, body
+def http_json(method: str, path: str, **kwargs):
+    return request(BASE_URL, method, path, **kwargs)
 
 
 def main() -> int:
-    # 1) Login
-    log(f"Login {USER} @ {BASE_URL}")
-    status, resp = http_json("POST", "/api/auth/login",
-                             body={"username": USER, "password": PASSWORD})
-    if status != 200:
-        log(f"login failed: {status} {resp}")
+    try:
+        identity = login(http_json, *credentials())
+        wf = publish_workflow(http_json, identity, WORKFLOW_NAME, DEFINITION_FILE.read_text(encoding="utf-8"))
+    except (RuntimeError, ValueError, OSError) as error:
+        log(str(error))
         return 1
-    token = resp["token"]
-
-    # 2) Upsert workflow
-    log(f"Lookup workflow '{WORKFLOW_NAME}'")
-    _, wfs = http_json("GET", "/api/workflows", token=token)
-    existing = next((w for w in wfs if w["name"] == WORKFLOW_NAME), None)
-    def_text = DEFINITION_FILE.read_text(encoding="utf-8")
-    payload = {"name": WORKFLOW_NAME, "description": "Ad-hoc load-test", "definitionJson": def_text}
-    if existing:
-        log(f"Update existing workflow id={existing['id']}")
-        status, wf = http_json("PUT", f"/api/workflows/{existing['id']}", token=token, body=payload)
-    else:
-        log("Create new workflow")
-        status, wf = http_json("POST", "/api/workflows", token=token, body=payload)
-    if status not in (200, 201):
-        log(f"workflow upsert failed: {status} {wf}")
-        return 1
+    token = identity["token"]
     wf_id = wf["id"]
     log(f"Workflow id={wf_id}")
 
@@ -73,8 +40,11 @@ def main() -> int:
 
     def fire(idx: int):
         t0 = time.monotonic()
-        status, resp = http_json("POST", f"/api/workflows/{wf_id}/execute",
-                                 token=token, body=exec_body, timeout=30)
+        try:
+            status, resp = http_json("POST", f"/api/workflows/{wf_id}/execute",
+                                     token=token, body=exec_body, timeout=30)
+        except OSError as error:
+            status, resp = -1, str(error)
         ms = int((time.monotonic() - t0) * 1000)
         return idx, status, resp, ms
 
@@ -104,7 +74,7 @@ def main() -> int:
     # 4) Poll
     log(f"Polling {len(exec_ids)} executions")
     status_map = {eid: "Unknown" for eid in exec_ids}
-    terminal = {"Completed", "Failed", "Cancelled", "TimedOut", "PartialFailure"}
+    terminal = {"Succeeded", "Failed", "Cancelled", "Skipped"}
     poll_t0 = time.monotonic()
     deadline = poll_t0 + 300
     last_log = 0.0
@@ -114,11 +84,13 @@ def main() -> int:
         if not pending:
             break
         try:
-            _, all_exec = http_json("GET", "/api/executions?pageSize=200", token=token, timeout=10)
-            items = all_exec["items"] if isinstance(all_exec, dict) and "items" in all_exec else all_exec
-            for it in items:
-                if it["id"] in status_map:
-                    status_map[it["id"]] = it["status"]
+            for eid in pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                code, execution = http_json("GET", f"/api/executions/{eid}", token=token, timeout=min(10, remaining))
+                if code == 200:
+                    status_map[eid] = execution["status"]
         except Exception as e:
             log(f"poll err: {e}")
 
@@ -143,6 +115,8 @@ def main() -> int:
 
     durations = []
     for eid in exec_ids:
+        if status_map[eid] not in terminal:
+            continue
         try:
             _, d = http_json("GET", f"/api/executions/{eid}", token=token, timeout=10)
             if isinstance(d, dict) and d.get("startedAt") and d.get("completedAt"):
@@ -160,7 +134,7 @@ def main() -> int:
         p50 = durations[n // 2]
         p95 = durations[min(int(n * 0.95), n - 1)]
         log(f"per-execution seconds: min={durations[0]:.1f} p50={p50:.1f} p95={p95:.1f} max={durations[-1]:.1f}")
-    return 0
+    return 1 if failed or len(exec_ids) != PARALLEL or any(v != "Succeeded" for v in status_map.values()) else 0
 
 
 if __name__ == "__main__":

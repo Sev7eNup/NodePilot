@@ -156,6 +156,8 @@ ws-snapshot.md
 tmp_*
 !docker-compose.yml
 !prometheus.yml
+!grafana/grafana/provisioning/dashboards/dashboards.yml
+!tests/NodePilot.LoadTests/grafana-provisioning/**/*.yml
 !appsettings.loadtests.json
 !samples/**/*.yml
 # All GitHub config (workflows, dependabot, issue templates, release.yml) must stay addable
@@ -200,6 +202,8 @@ src/nodepilot-ui/coverage-sonar/
 
 # Codex CLI scratch artifacts
 .codex-artifacts/
+src/nodepilot-ui/reliability-current/
+src/nodepilot-ui/reliability-history/
 
 # Local blog article drafts and their images
 /docs/blogarticle/
@@ -211,6 +215,9 @@ src/nodepilot-ui/coverage-sonar/
 # Local investigation output (CM1 reviews, gcdumps, log pulls) - never part of the repo
 .artifacts/
 
+# Local image generation output (prompts and renders) - never part of the repo
+/output/imagegen/
+
 # Scratch bodies handed to `gh pr create --body-file` — never part of the repo
 /pr*-body.md
 
@@ -219,6 +226,10 @@ presentations/*
 
 # Local AI agent skills and notes (not part of the repo)
 .agents/
+/skills-lock.json
 
 # Web host credentials for deploy/Publish-Site.ps1 - see site-publish.example.json
 deploy/site-publish.local.json
+
+# Personal notes (not part of the repo)
+ideenAusFeedback.txt

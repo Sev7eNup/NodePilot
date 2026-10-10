@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using NodePilot.Core.Interfaces;
 
 namespace NodePilot.Api.Configuration;
 
@@ -57,6 +58,88 @@ public sealed class RuntimeOverridesWriter
     }
 
     public string OverridesPath => _path;
+
+    /// <summary>
+    /// Reseals active settings and every writer-created rollback file under the same
+    /// mutex as settings saves. Each file commits atomically and independently; a bad
+    /// value leaves that file intact and is reported as a skip. No old-key backup is created.
+    /// </summary>
+    public ReencryptionSummary ReencryptSecrets(ISecretProtector protector, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        using var mutex = AcquireMutex();
+        try
+        {
+            var rewritten = 0;
+            var skipped = new List<ReencryptionSkip>();
+            var directory = Path.GetDirectoryName(_path)!;
+            if (!Directory.Exists(directory)) return new ReencryptionSummary(0, 0, []);
+            var files = (File.Exists(_path) ? new[] { _path } : Array.Empty<string>())
+                .Concat(Directory.GetFiles(directory, Path.GetFileName(_path) + ".bak.*"));
+            foreach (var file in files)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    var root = JsonNode.Parse(File.ReadAllText(file)) as JsonObject
+                        ?? throw new JsonException("Settings root must be an object.");
+                    if (!ReencryptValues(root, protector, ct)) continue;
+                    ct.ThrowIfCancellationRequested();
+                    var timestamp = File.GetLastWriteTimeUtc(file);
+                    ReplaceWithoutBackup(file, root);
+                    // Preserve rollback retention order; rotation is not a new settings save.
+                    if (!string.Equals(file, _path, StringComparison.OrdinalIgnoreCase))
+                        File.SetLastWriteTimeUtc(file, timestamp);
+                    rewritten++;
+                }
+                catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException
+                    or InvalidOperationException or JsonException or IOException or UnauthorizedAccessException)
+                {
+                    skipped.Add(new ReencryptionSkip(Guid.Empty, Path.GetFileName(file), ex.GetType().Name));
+                }
+            }
+            return new ReencryptionSummary(rewritten, skipped.Count, skipped);
+        }
+        finally { mutex.ReleaseMutex(); }
+    }
+
+    private static bool ReencryptValues(JsonNode node, ISecretProtector protector, CancellationToken ct)
+    {
+        var changed = false;
+        if (node is JsonValue value && value.TryGetValue<string>(out var text)
+            && EncryptingJsonConfigurationProvider.LooksEncrypted(text))
+        {
+            ct.ThrowIfCancellationRequested();
+            var payload = Convert.FromBase64String(text[EncryptingJsonConfigurationProvider.EncryptedValuePrefix.Length..]);
+            node.ReplaceWith(EncryptingJsonConfigurationProvider.EncryptForPersist(protector.Unprotect(payload), protector));
+            return true;
+        }
+        var children = node switch
+        {
+            JsonObject obj => obj.Select(pair => pair.Value).ToArray(),
+            JsonArray array => array.ToArray(),
+            _ => Array.Empty<JsonNode?>(),
+        };
+        foreach (var child in children)
+            if (child is not null) changed |= ReencryptValues(child, protector, ct);
+        return changed;
+    }
+
+    internal static void ReplaceWithoutBackup(string path, JsonObject root)
+    {
+        var temporary = path + ".migration." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllText(temporary, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            try { File.Replace(temporary, path, destinationBackupFileName: null); }
+            catch (Exception ex) when (ex is IOException or PlatformNotSupportedException or UnauthorizedAccessException)
+            {
+                File.Move(temporary, path, overwrite: true);
+            }
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
 
     /// <summary>
     /// Read the current file as a JSON object. Returns an empty object when the file
@@ -123,9 +206,22 @@ public sealed class RuntimeOverridesWriter
     /// </summary>
     public string ComputeSectionEtag(string sectionPath)
     {
-        var root = ReadOrEmpty();
-        var section = NavigateSection(root, sectionPath);
-        return ComputeEtag(section);
+        return ComputeEtag(ReadSection(sectionPath));
+    }
+
+    public JsonObject? ReadSection(string sectionPath) => ProjectSection(ReadOrEmpty(), sectionPath);
+
+    // The settings screen groups host filtering with Security, but ASP.NET consumes the
+    // root AllowedHosts key. ETag, audit and responses must see the same logical section
+    // that the atomic write updates, including changes made directly to that root key.
+    private static JsonObject? ProjectSection(JsonObject root, string sectionPath)
+    {
+        var section = NavigateSection(root, sectionPath) as JsonObject;
+        if (!sectionPath.Equals("Security", StringComparison.OrdinalIgnoreCase)) return section;
+        if (!root.ContainsKey("AllowedHosts")) return section;
+        var projected = section?.DeepClone().AsObject() ?? new JsonObject();
+        projected["AllowedHosts"] = root["AllowedHosts"]?.DeepClone();
+        return projected;
     }
 
     public static string ComputeEtag(JsonNode? node)
@@ -177,7 +273,7 @@ public sealed class RuntimeOverridesWriter
         {
             EnsureDirectoryExists();
             var root = ReadOrEmpty();
-            var currentSection = NavigateSection(root, sectionPath);
+            var currentSection = ProjectSection(root, sectionPath);
             var currentEtag = ComputeEtag(currentSection);
 
             if (!string.Equals(currentEtag, expectedEtag, StringComparison.Ordinal))
@@ -219,7 +315,7 @@ public sealed class RuntimeOverridesWriter
 
             // Re-read the section we just wrote so the caller sees the canonical persisted
             // shape (post-merge, with any inherited keys) rather than just the override slice.
-            var persistedSection = NavigateSection(ReadOrEmpty(), sectionPath) as JsonObject ?? newSection;
+            var persistedSection = ProjectSection(ReadOrEmpty(), sectionPath) ?? newSection;
             var newEtag = ComputeEtag(persistedSection);
 
             return new AtomicSectionUpdateResult(
@@ -236,6 +332,15 @@ public sealed class RuntimeOverridesWriter
 
     private static void ApplySectionInternal(JsonObject root, string sectionPath, JsonObject newSection)
     {
+        if (sectionPath.Equals("Security", StringComparison.OrdinalIgnoreCase))
+        {
+            newSection = newSection.DeepClone().AsObject();
+            if (newSection.TryGetPropertyValue("AllowedHosts", out var hosts))
+                root["AllowedHosts"] = hosts?.DeepClone();
+            else
+                root.Remove("AllowedHosts"); // environment/CLI-locked field has no file override
+            newSection.Remove("AllowedHosts");
+        }
         var parts = sectionPath.Split(':', StringSplitOptions.RemoveEmptyEntries);
         JsonObject parent = root;
         for (var i = 0; i < parts.Length - 1; i++)

@@ -1,5 +1,26 @@
 # API-Endpoints
 
+## Agenten-Activities
+
+| Methode | Route | Berechtigung |
+|---|---|---|
+| GET | `/api/agents/runs?executionId=…` | Leserecht am zugehörigen Workflow |
+| GET | `/api/agents/runs/{id}/events?after=0&pageSize=200` | Workflow-Leserecht; maximal 500/Seite |
+| GET | `/api/agents/mcp-servers` | Admin/Operator; ohne Geheimnisse |
+| GET | `/api/agents/mcp-servers/{id}/tools` | Admin/Operator; startet registrierte Verbindung |
+| PUT, DELETE | `/api/agents/mcp-servers/{id}` | Admin |
+| GET | `/api/agents/skills` | Admin/Operator |
+| POST | `/api/agents/skills` | Admin; Version und Base64-ZIP, maximal 10 MB |
+| PUT | `/api/agents/skills/{id}/enabled` | Admin; `{ "enabled": true }` |
+| DELETE | `/api/agents/skills/{id}` | Admin |
+
+Ereignisse werden vor der Live-Meldung gespeichert und enthalten eine laufbezogene
+Sequenz sowie optional eine Mitglieds-ID. Nach Reconnect über `after` nachladen. MCP-
+Änderungen nehmen `secrets` nur schreibend entgegen und benötigen beim Bearbeiten das
+aktuelle `updatedAt`. Skillversionen sind unveränderlich.
+
+## Allgemeines
+
 Die REST-API verwaltet Workflows, Executions, Infrastruktur und Administration. In der lokalen Entwicklungsumgebung läuft sie auf Port 5000. Live-Status wird über SignalR unter `/hubs/execution` übertragen. Mutierende Workflow-Endpunkte liefern `423 Locked`, wenn der aufrufende Benutzer nicht den Edit-Lock besitzt; `disable` ist davon ausgenommen.
 
 > **JSON-Format:** Property-Namen verwenden `camelCase`. Enum-Werte werden als .NET-Name in PascalCase serialisiert, zum Beispiel `"role":"Admin"` und `"status":"Succeeded"`. Die Anmeldung verwendet standardmäßig das httpOnly-Cookie `np_auth`. `curl` speichert und sendet es mit `-c cookie.jar -b cookie.jar`. Die Beispiele verwenden `$NP = "http://localhost:5000"`.
@@ -18,6 +39,7 @@ csrf_token() {
 | Endpoint | Zweck |
 |---|---|
 | `GET /api/workflows` | Liste (Array, 500-Row-Cap, folder-RBAC-gefiltert). Zeilen tragen **kein** `definitionJson` — den Graphen liefert der Einzelabruf |
+| `GET /api/workflows/paged` | Seitenweise Liste für die UI: `page`, `pageSize` (1–200, Default 50), `folderId`, `search` (Name und Beschreibung), `sortBy`/`sortDir` (Default `updated`/`desc`), bis zu 10 `ids`; folder-RBAC-gefiltert; liefert `{items, page, pageSize, total, totalPages}`. Bewusst **ohne** `np`-Befehl und ohne MCP-Tool — `np workflow list` liefert dieselben Workflows |
 | `GET /api/workflows/names` | Nur Id und Name, nach Name sortiert, folder-RBAC-gefiltert. Für Flächen, die Workflow-Namen anbieten, ohne sonst etwas darzustellen — der Executions-Filter nutzt ihn statt der vollen Liste. Bewusst **ohne** `np`-Befehl und ohne MCP-Tool — `np workflow list` liefert dieselben Namen |
 | `POST /api/workflows` | Neu (Admin/Op) — 201 |
 | `PUT /api/workflows/{id}` | Update — 204 (423 ohne Lock, 409 bei Version-Konflikt) |
@@ -81,6 +103,8 @@ curl -s -b cookie.jar "$NP/api/workflows/by-name/deploy-prod/contract" | jq
 #   "inputs":[{"name":"version","type":"string","required":true,...}],
 #   "outputs":[{"name":"__executionId","source":"system"},{"name":"deployResult","source":"single"}] }
 ```
+
+Aufrufer ohne Edit-Recht auf den Ordner des Workflows sehen bei jedem Input mit Default statt des Werts `"***"`. Die Maske betrifft nur die Anzeige: Ein nicht gesetzter Parameter bekommt beim Lauf weiterhin den echten Default.
 
 ## Step-Test & Coverage
 
@@ -314,11 +338,11 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/admin/set
 | Folder-Permissions | `GET/POST /api/shared-workflow-folders/{folderId}/permissions`, `PUT/DELETE /{permissionId}` |
 | Settings | `GET /api/admin/settings`, `GET\|PUT /{section}`, `GET /status\|system-info\|effective-sizing`, `POST /test/smtp\|test/llm\|test/ldap` (Admin; Authentication-PUT im Cluster = 409) |
 | DB-Admin | `GET /api/dbadmin/tables`, `GET\|PATCH\|DELETE /tables/{name}/rows`, `GET /info`, `POST /query` (Admin) |
-| Dashboard | `GET /api/stats/dashboard`, `GET /api/stats/failure-causes?windowHours=N` (1..720, Default 24 — letzte Fehlschläge, gruppiert nach normalisierter Meldung; folder-gescopt wie das Dashboard), `GET /api/stats/sidebar-counts` (drei Nav-Badge-Zähler für die SPA, folder-gescopt; bewusst ohne `np`-Befehl und ohne MCP-Tool — `np stats dashboard` liefert dieselben Zahlen), `GET /api/stats/duration-trend?windowHours=N&workflowId=` (1/24/168/720, Default 24, alles andere fällt auf 24 zurück — Median- und P95-Laufzeit je Bucket, für alle Workflows oder einen, folder-gescopt; Chart-Serie der SPA, bewusst ohne `np`-Befehl und ohne MCP-Tool — `np stats dashboard` liefert dieselben Läufe) |
+| Dashboard | `GET /api/stats/dashboard`, `GET /api/stats/failure-causes?windowHours=N` (1..720, Default 24 — letzte Fehlschläge, gruppiert nach normalisierter Meldung; folder-gescopt wie das Dashboard), `GET /api/stats/sidebar-counts` (drei Nav-Badge-Zähler für die SPA, folder-gescopt; bewusst ohne `np`-Befehl und ohne MCP-Tool — `np stats dashboard` liefert dieselben Zahlen), `GET /api/stats/duration-trend?windowHours=N&workflowId=` (1/24/168/720, Default 24, alles andere fällt auf 24 zurück — Median- und P95-Laufzeit je Bucket, für alle Workflows oder einen, folder-gescopt; ab 24 h aus vorberechneten Stunden-Histogrammen, auf wenige Prozent genau; Chart-Serie der SPA, bewusst ohne `np`-Befehl und ohne MCP-Tool — `np stats dashboard` liefert dieselben Läufe) |
 | Activity-Catalog | `GET /api/activity-catalog` |
 | Scheduler | `GET /api/triggers/schedule/next-fires` |
 | System | `GET /api/system/host-info` (alle Rollen) |
-| AI | `POST /api/ai/generate-script\|generate-workflow` (Admin/Op), `POST /api/ai/chat` (all roles; applying changes Admin/Op), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Op, folder-RBAC) — opt-in, SSE streaming |
+| AI | `POST /api/ai/generate-script\|generate-workflow\|generate-agent-team` (Admin/Op), `POST /api/ai/chat` (all roles; applying changes Admin/Op), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Op, folder-RBAC) — opt-in, SSE streaming |
 | Secrets | `POST /api/secrets/reencrypt` (Admin, kein Body) |
 
 Shared-Folder-Permission-Grant-Body: `{"principalType":"User","principalKey":"<guid>","role":"FolderEditor"}` — Rollen `FolderViewer|FolderOperator|FolderEditor|FolderAdmin`, `principalType` `User|Group` (`Group` = AD-SID `S-1-5-21-...`).

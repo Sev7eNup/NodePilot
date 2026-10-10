@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { ReactFlowProvider, type NodeProps } from '@xyflow/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 /**
  * ActivityNode is the most expensive thing the canvas repeats per node, so it is memoized.
@@ -54,10 +55,13 @@ function projectedData() {
 
 /** The node's ports need a React Flow store above them. */
 function renderNode(props: Partial<NodeProps> = {}) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui = (overrides: Partial<NodeProps>) => (
+    <QueryClientProvider client={queryClient}>
     <ReactFlowProvider>
       <ActivityNode {...baseProps} data={projectedData()} {...overrides} />
     </ReactFlowProvider>
+    </QueryClientProvider>
   );
   const { rerender } = render(ui(props));
   return { rerender: (next: Partial<NodeProps> = {}) => rerender(ui(next)) };

@@ -1,0 +1,397 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-10-08T00:00:00Z",
+  "workflow": {
+    "name": "Example 02 - Event Log Review",
+    "description": "Read and group local Windows errors and critical events, extract the event count with a JSON node, and compare it with a configurable threshold. Ten nodes including the manual trigger.",
+    "isEnabled": false,
+    "maxConcurrentExecutions": 1,
+    "definition": {
+      "nodes": [
+        {
+          "id": "start",
+          "type": "activity",
+          "position": {
+            "x": 0,
+            "y": 240
+          },
+          "data": {
+            "label": "Manual: Review event logs",
+            "activityType": "manualTrigger",
+            "config": {
+              "parameters": [
+                {
+                  "name": "logName",
+                  "type": "string",
+                  "required": true,
+                  "default": "System"
+                },
+                {
+                  "name": "hours",
+                  "type": "string",
+                  "required": true,
+                  "default": "24"
+                },
+                {
+                  "name": "maxEvents",
+                  "type": "string",
+                  "required": true,
+                  "default": "100"
+                },
+                {
+                  "name": "threshold",
+                  "type": "string",
+                  "required": true,
+                  "default": "1"
+                }
+              ],
+              "description": "System or Application; last 1-168 hours. Errors and critical events, up to 500 records."
+            }
+          }
+        },
+        {
+          "id": "settings",
+          "type": "activity",
+          "position": {
+            "x": 400,
+            "y": 240
+          },
+          "data": {
+            "label": "WMI: Read server name",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT CSName FROM Win32_OperatingSystem",
+              "captureProperties": [
+                "CSName"
+              ]
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "events",
+          "type": "activity",
+          "position": {
+            "x": 720,
+            "y": 240
+          },
+          "data": {
+            "label": "PowerShell: Read and group events",
+            "activityType": "runScript",
+            "config": {
+              "script": "$requestedLog = {{start.param.logName}}\n$lookbackHours = 0\n$eventLimit = 0\n$reviewThreshold = 0\nif ($requestedLog -notin @('System', 'Application')) { throw 'logName must be System or Application.' }\nif (-not [int]::TryParse({{start.param.hours}}, [ref]$lookbackHours) -or $lookbackHours -lt 1 -or $lookbackHours -gt 168) { throw 'hours must be between 1 and 168.' }\nif (-not [int]::TryParse({{start.param.maxEvents}}, [ref]$eventLimit) -or $eventLimit -lt 1 -or $eventLimit -gt 500) { throw 'maxEvents must be between 1 and 500.' }\nif (-not [int]::TryParse({{start.param.threshold}}, [ref]$reviewThreshold) -or $reviewThreshold -lt 1 -or $reviewThreshold -gt 501) { throw 'threshold must be between 1 and 501.' }\n\n$milliseconds = [long]$lookbackHours * 3600000\n$xpath = \"*[System[(Level=1 or Level=2) and TimeCreated[timediff(@SystemTime) <= $milliseconds]]]\"\n$query = New-Object System.Diagnostics.Eventing.Reader.EventLogQuery($requestedLog, [System.Diagnostics.Eventing.Reader.PathType]::LogName, $xpath)\n$query.ReverseDirection = $true\n$reader = New-Object System.Diagnostics.Eventing.Reader.EventLogReader($query)\n$items = New-Object 'System.Collections.Generic.List[object]'\n$truncated = $false\ntry {\n    while ($null -ne ($entry = $reader.ReadEvent())) {\n        try {\n            if ($items.Count -ge $eventLimit) { $truncated = $true; break }\n            $items.Add([pscustomobject]@{ timeUtc = $entry.TimeCreated.ToUniversalTime().ToString('o'); provider = $entry.ProviderName; eventId = $entry.Id; level = $entry.Level })\n        } finally { $entry.Dispose() }\n    }\n} finally { $reader.Dispose() }\n$computerName = $env:COMPUTERNAME\n$eventCount = $items.Count\n$groups = @($items.ToArray() | Group-Object provider,eventId | Sort-Object Count -Descending | Select-Object -First 5 | ForEach-Object {\n    [pscustomobject]@{ count = $_.Count; provider = $_.Group[0].provider; eventId = $_.Group[0].eventId; latestUtc = $_.Group[0].timeUtc }\n})\n$groupsJson = ConvertTo-Json -InputObject $groups -Depth 4 -Compress\n\n$top = ($groups | ForEach-Object { '{0}x: {1}, ID {2}, latest (UTC): {3}' -f $_.count, $_.provider, $_.eventId, $_.latestUtc }) -join \"`r`n\"\nif ($eventCount -eq 0) { $top = 'No errors or critical events in the selected time window.' }\n$summary = \"Events reviewed: $eventCount`r`nEvent threshold: $reviewThreshold`r`nMost frequent providers and event IDs:`r`n$top`r`nResults limited: $truncated\"\n@{ eventCount=$eventCount; truncated=$truncated; topGroups=$groups } | ConvertTo-Json -Depth 5 -Compress | Write-Output",
+              "engine": "auto",
+              "timeoutSeconds": 60
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "summary",
+          "type": "activity",
+          "position": {
+            "x": 1040,
+            "y": 240
+          },
+          "data": {
+            "label": "JSON: Extract event count",
+            "activityType": "jsonQuery",
+            "config": {
+              "source": "inline",
+              "content": "{{events.output}}",
+              "jsonPath": "$.eventCount",
+              "resultMode": "single"
+            }
+          }
+        },
+        {
+          "id": "decision",
+          "type": "activity",
+          "position": {
+            "x": 1380,
+            "y": 240
+          },
+          "data": {
+            "label": "Decision: Check event threshold",
+            "activityType": "decision",
+            "config": {
+              "cases": [
+                {
+                  "name": "Review",
+                  "condition": {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "summary",
+                      "field": "param",
+                      "paramName": "result"
+                    },
+                    "op": ">=",
+                    "right": {
+                      "kind": "variable",
+                      "stepId": "start",
+                      "field": "param",
+                      "paramName": "threshold"
+                    }
+                  }
+                }
+              ],
+              "defaultCaseName": "BelowThreshold"
+            }
+          }
+        },
+        {
+          "id": "review",
+          "type": "activity",
+          "position": {
+            "x": 1760,
+            "y": 100
+          },
+          "data": {
+            "label": "Log: Events require review",
+            "activityType": "log",
+            "config": {
+              "level": "warning",
+              "message": "Event threshold reached. {{events.param.summary}}\nEvents are findings and do not establish a root cause."
+            }
+          }
+        },
+        {
+          "id": "clear",
+          "type": "activity",
+          "position": {
+            "x": 1760,
+            "y": 380
+          },
+          "data": {
+            "label": "Log: Below event threshold",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "Event threshold not reached. {{events.param.summary}}"
+            }
+          }
+        },
+        {
+          "id": "join",
+          "type": "activity",
+          "position": {
+            "x": 2140,
+            "y": 240
+          },
+          "data": {
+            "label": "Junction: Join selected branch",
+            "activityType": "junction",
+            "config": {
+              "mode": "waitAny"
+            }
+          }
+        },
+        {
+          "id": "log",
+          "type": "activity",
+          "position": {
+            "x": 2140,
+            "y": 600
+          },
+          "data": {
+            "label": "Log: Review completed",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "Read-only review: {{settings.param.CSName}} / {{start.param.logName}}. See the returned data for details."
+            }
+          }
+        },
+        {
+          "id": "result",
+          "type": "activity",
+          "position": {
+            "x": 1760,
+            "y": 600
+          },
+          "data": {
+            "label": "Return: Event log findings",
+            "activityType": "returnData",
+            "config": {
+              "data": {
+                "computerName": "{{settings.param.CSName}}",
+                "logName": "{{start.param.logName}}",
+                "eventCount": "{{summary.param.result}}",
+                "truncated": "{{events.param.truncated}}",
+                "assessment": "{{decision.param.case}}",
+                "summary": "{{events.param.summary}}",
+                "topGroups": "{{events.param.groupsJson}}"
+              }
+            }
+          }
+        },
+        {
+          "id": "help",
+          "type": "stickyNote",
+          "position": {
+            "x": 400,
+            "y": -60
+          },
+          "data": {
+            "label": "Note",
+            "activityType": "note",
+            "disabled": true,
+            "text": "Reads errors and critical events from the selected Windows log. Events are grouped by provider and event ID, then the event count is compared with the configured threshold.",
+            "fontSize": 16
+          },
+          "style": {
+            "width": 480,
+            "height": 180
+          }
+        },
+        {
+          "id": "limit",
+          "type": "stickyNote",
+          "position": {
+            "x": 1000,
+            "y": 600
+          },
+          "data": {
+            "label": "Note",
+            "activityType": "note",
+            "disabled": true,
+            "text": "Only the newest matching events are included. If truncated is True, counts and groups describe the limited selection. The junction continues after the selected branch completes.",
+            "fontSize": 16
+          },
+          "style": {
+            "width": 480,
+            "height": 180
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "start-settings",
+          "source": "start",
+          "target": "settings",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "settings-events",
+          "source": "settings",
+          "target": "events",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "events-summary",
+          "source": "events",
+          "target": "summary",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "summary-decision",
+          "source": "summary",
+          "target": "decision",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "decision-review",
+          "source": "decision",
+          "target": "review",
+          "type": "labeled",
+          "data": {
+            "label": "Threshold reached",
+            "conditionExpression": {
+              "type": "comparison",
+              "left": {
+                "kind": "variable",
+                "stepId": "decision",
+                "field": "param",
+                "paramName": "case"
+              },
+              "op": "==",
+              "right": {
+                "kind": "literal",
+                "value": "Review"
+              }
+            }
+          }
+        },
+        {
+          "id": "decision-clear",
+          "source": "decision",
+          "target": "clear",
+          "type": "labeled",
+          "data": {
+            "label": "Below threshold",
+            "conditionExpression": {
+              "type": "comparison",
+              "left": {
+                "kind": "variable",
+                "stepId": "decision",
+                "field": "param",
+                "paramName": "case"
+              },
+              "op": "==",
+              "right": {
+                "kind": "literal",
+                "value": "BelowThreshold"
+              }
+            }
+          }
+        },
+        {
+          "id": "review-join",
+          "source": "review",
+          "target": "join",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "clear-join",
+          "source": "clear",
+          "target": "join",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "join-log",
+          "source": "join",
+          "target": "log",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          },
+          "sourceHandle": "bottom",
+          "targetHandle": "top"
+        },
+        {
+          "id": "log-result",
+          "source": "log",
+          "target": "result",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          },
+          "sourceHandle": "left",
+          "targetHandle": "right"
+        }
+      ]
+    }
+  }
+}

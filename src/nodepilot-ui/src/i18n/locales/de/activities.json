@@ -22,6 +22,8 @@
     "delay": "Warten / Delay",
     "generateText": "Text generieren",
     "llmQuery": "LLM-Abfrage",
+    "aiAgent": "KI-Agent",
+    "aiAgentTeam": "KI-Agententeam",
     "junction": "Junction / Merge",
     "startWorkflow": "Workflow starten",
     "forEach": "For Each",

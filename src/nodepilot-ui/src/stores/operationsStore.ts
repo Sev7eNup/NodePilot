@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { OpsRunningExecution } from '../types/api';
+import { registerAuthBoundaryLiveStateClearer } from '../security/authBoundary';
 
 // Status strings that mean "a run is currently in flight".
 const ACTIVE = new Set(['Running', 'Pending']);
@@ -195,6 +196,8 @@ export const useOperationsStore = create<OpsState>((set) => ({
     locallySettled: {},
   }),
 }));
+
+registerAuthBoundaryLiveStateClearer(() => useOperationsStore.getState().reset());
 
 /**
  * Pending-sensitive effective status cascade. Order matters:

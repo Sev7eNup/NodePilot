@@ -4,7 +4,17 @@ Ein [Model-Context-Protocol](https://modelcontextprotocol.io)-Server, mit dem ei
 (Claude Desktop/Code oder ein beliebiger MCP-Client) **NodePilot-Workflows steuern und bearbeiten**
 sowie **Daten auslesen** kann. Wie die `np`-CLI ist er ein reiner HTTP-Client gegen die bestehende
 REST-API — **kein neuer Backend-Pfad**; jedes Tool ruft einen vorhandenen Endpoint auf oder rechnet
-in-proc gegen `NodePilot.Core`. 102 Tools über 10 Gruppen, plus 3 MCP-Resources.
+in-proc gegen `NodePilot.Core`. 112 Tools über 11 Gruppen, plus 3 MCP-Resources.
+
+## Agentenwerkzeuge
+
+Die Agentengruppe bietet `list_agent_runs`, `get_agent_events`, `list_agent_mcp_servers`,
+`discover_agent_mcp_tools`, `save_agent_mcp_server`, `list_agent_skills`,
+`import_agent_skill`, `set_agent_skill_enabled`, `delete_agent_mcp_server` und
+`delete_agent_skill`. Läufe/Ereignisse verwenden die Workflow-Leseberechtigung. Registry-
+Lesen benötigt Admin/Operator, Änderungen Admin, Löschen zusätzlich das Destruktiv-Gate.
+Discovery kann den registrierten stdio-Prozess starten. Die Transporte des Agenten-Clients
+sind unabhängig von diesem stdio-Server.
 
 ## Installation
 
@@ -81,7 +91,7 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
 - **Gated destructive:** `test_step` (führt eine echte Activity aus; Config-Override zusätzlich nur mit Edit + eigenem Lock), delete/force-unlock/cancel-all
 - **Executions:** list/get/steps/paused-steps, `execute_workflow`, cancel/retry/resume, `trigger_external_workflow`
 - **Telemetrie:** dashboard, coverage/step-health/step-stats, `get_failure_causes`, `get_operations_graph`, `query_audit_log` (Admin), `get_support_diagnostics` (Admin)
-- **DB / text2sql (Admin, nur lesend):** `list_db_tables` (Schema-Katalog; Secret-Spalten hidden, `GlobalVariable.Value` maskiert), `get_db_info` (Provider + Row-/Timeout-Limits), `run_readonly_sql` (ein Read-Only-Statement, Server erzwingt Keyword-Whitelist + Rollback; kein Write-Tool). Secret-Spalten sind auch über Raw-SQL unerreichbar — drei Schichten: Ein direkter Verweis liefert `protected_column`; ein `SELECT *` liefert die Werte als `***`; und wer eine **ganze Zeile** einer Tabelle mit Secret-Spalte serialisiert (`to_json`/`row_to_json`/`::text`/`FOR JSON`), bekommt `protected_row_projection` — genau dieser Weg trug die Werte an den ersten beiden, rein namensbasierten Schichten vorbei. Spalten explizit benennen funktioniert immer. Die Übersetzung natürlicher Sprache nach SQL übernimmt der Agent.
+- **DB / text2sql (Admin, nur lesend):** `list_db_tables` (Schema-Katalog; Secret-Spalten hidden, `GlobalVariable.Value` maskiert), `get_db_info` (Provider + Row-/Timeout-Limits), `run_readonly_sql` (ein Read-Only-Statement, Server erzwingt Keyword-Whitelist + Rollback; kein Write-Tool). Secret-Spalten sind auch über Raw-SQL unerreichbar — Ein direkter Verweis liefert `protected_column`; Wildcard-Projektionen (`SELECT *`, `alias.*`, PostgreSQL `TABLE t`) und die Serialisierung einer **ganzen Zeile** (`to_json`/`row_to_json`/`::text`/`FOR JSON`) einer Tabelle mit Secret-Spalte liefern `protected_row_projection`; Ergebnisspalten mit geschützten Namen werden zusätzlich als `***` maskiert. `COUNT(*)` funktioniert weiter, explizit benannte, ungeschützte Spalten funktionieren immer. Die Übersetzung natürlicher Sprache nach SQL übernimmt der Agent.
 - **Supporting:** Machines, Credentials, Globals (Secrets nie ausgegeben)
 - **Alerting:** `get_alerting_catalog` (Regel-Vokabular) + `list/get/create/update/test_fire_alerting_rule` + `list_alerting_deliveries` (Ledger) (+ gated `delete_alerting_rule`; Route-Secrets nie ausgegeben)
 - **System-Alerts (ADR 0008):** `get_system_alert_catalog` + `list/get/create/update/enable/disable/test_fire_system_alert_policy` (+ gated `delete_system_alert_policy`)

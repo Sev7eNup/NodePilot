@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Services.DbAdmin;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
@@ -38,7 +39,8 @@ public class DbAdminControllerTests
         var executor = new DbAdminQueryExecutor(db, new StaticOptionsMonitor<DbAdminOptions>(options ?? new DbAdminOptions()));
         var controller = new DbAdminController(db, meta, executor, new DbAdminSecretColumns(meta),
             new AuditStager(),
-            new MemoryCache(new MemoryCacheOptions()), NullLogger<DbAdminController>.Instance);
+            new MemoryCache(new MemoryCacheOptions()), NullLogger<DbAdminController>.Instance,
+            new RecordingHubContext(), new RecordingFolderProjection());
 
         var id = callerId ?? Guid.NewGuid();
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
@@ -843,10 +845,10 @@ public class DbAdminControllerTests
     }
 
     [Fact]
-    public async Task ExecuteQuery_ReadMode_MasksProtectedColumnsOfWildcardSelect()
+    public async Task ExecuteQuery_ReadMode_RejectsProtectedWildcardBeforeAliasesCanHideSecrets()
     {
-        // A wildcard select names no protected identifier, so it survives the rejection above —
-        // the result mask is what keeps the hash out of the response.
+        // Positional aliases can erase every result-column name. Require explicit columns
+        // consistently rather than allowing a wildcard whose mask can be bypassed.
         var (ctrl, db) = NewController();
         db.Users.Add(new User
         {
@@ -863,11 +865,9 @@ public class DbAdminControllerTests
         var result = await ctrl.ExecuteQuery(
             new DbAdminQueryRequest("SELECT * FROM Users", null), CancellationToken.None);
 
-        var resp = ((result as OkObjectResult)!.Value as DbAdminQueryResponse)!;
-        var hashIndex = resp.Columns.FindIndex(c => c.Name == "PasswordHash");
-        hashIndex.Should().BeGreaterThanOrEqualTo(0, "the wildcard select does return the column");
-        resp.Rows.Should().OnlyContain(row => (string)row[hashIndex]! == "***");
-        resp.Rows.SelectMany(r => r).Should().NotContain("SUPER_SECRET_HASH");
+        var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        bad.Value.Should().BeOfType<DbAdminQueryError>().Subject.Code
+            .Should().Be("protected_row_projection");
     }
 
     [Fact]

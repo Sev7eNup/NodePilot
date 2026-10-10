@@ -9,6 +9,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Execution;
+using NodePilot.Engine.Agents;
 using NodePilot.Engine.PowerShell;
 
 namespace NodePilot.Engine.Activities;
@@ -133,6 +134,11 @@ public class StartWorkflowActivity : IActivityExecutor
             };
         }
         var childWorkflow = resolvedWorkflow!;
+        if (AgentReadOnlyWorkflowScope.IsActive)
+        {
+            if (!waitForCompletion) throw new UnauthorizedAccessException("Agent child workflows must remain synchronous.");
+            AgentReadOnlyWorkflowScope.ValidateWorkflow(childWorkflow);
+        }
         if (outcome == SubWorkflowInvocation.ChildOutcome.Disabled)
         {
             return new ActivityResult
@@ -160,7 +166,7 @@ public class StartWorkflowActivity : IActivityExecutor
         // permissions can be revoked between publish and run, and a trigger-driven run may
         // execute under a different principal than the publishing user. The effective principal
         // is parentExec.StartedByUserId for a manual run, otherwise the parent workflow's
-        // LastModifiedByUserId. Without a principal the cross-folder call is refused.
+        // PublishedByUserId. Without a principal the cross-folder call is refused.
         var blocked = await SubWorkflowInvocation.GetAuthorizationBlockAsync(
             _subWorkflowAuthz, parentExec, childWorkflow, ct);
         if (blocked is not null)
@@ -270,115 +276,119 @@ public class StartWorkflowActivity : IActivityExecutor
         // while waiting for sub-workflow capacity and child completion.
         async Task<ActivityResult> ExecuteSynchronousChildAsync()
         {
-            var gateAcquired = false;
             var concurrencySlotHeld = false;
             try
             {
-                await _gate.WaitAsync(linkedCts.Token);
-                gateAcquired = true;
-
-                // Child's own concurrency limit. Acquired after the engine-wide gate and never
-                // before it, so both sub-workflow activities take the two gates in the same
-                // order. This waits rather than queueing because the caller is already running;
-                // linkedCts carries the step timeout, so a limit that can never be satisfied
-                // surfaces as a step timeout instead of hanging.
+                // Per-workflow waiters must not occupy global sub-workflow slots.
                 await _workflowConcurrency.AcquireAsync(
                     childWorkflow.Id, childWorkflow.MaxConcurrentExecutions, linkedCts.Token);
                 concurrencySlotHeld = true;
+                return await SubWorkflowGateLease.RunAsync(_gate, ExecuteChildAsync, linkedCts.Token);
 
-            // Use the execution-level CTS instead of the step-level `ct` so the child's lifetime
-            // is decoupled from step cancellation. A waitAny junction cancels the losing branch's
-            // step-level CTS, and that signal must not mark the child as Cancelled while the
-            // parent execution continues.
-            WorkflowEngine.TryGetExecutionCancellation(context.WorkflowExecutionId, out var execCancellation);
-            using var childExecCts = CancellationTokenSource.CreateLinkedTokenSource(execCancellation, timeoutCts.Token);
-
-            // Run the child in a fresh DI scope so it gets its own DbContext and cannot race
-            // the parent's _db on EF Core.
-            await using var scope = _scopeFactory.CreateAsyncScope();
-            var engine = scope.ServiceProvider.GetRequiredService<IWorkflowEngine>();
-            var childExec = await engine.ExecuteAsync(
-                childWorkflow,
-                $"startWorkflow:{context.StepId}",
-                childExecCts.Token,
-                childParams,
-                parentExecutionId: context.WorkflowExecutionId,
-                callDepth: childCallDepth);
-            span?.SetTag(NodePilot.Core.Telemetry.TelemetryConstants.Attributes.SubWorkflowChildExecutionId, childExec.Id.ToString());
-
-            // Re-read the row so the final ReturnData comes from the database instead of the
-            // engine's tracking state, which lives in its own DbContext.
-            var childRow = await scope.ServiceProvider.GetRequiredService<NodePilotDbContext>()
-                .WorkflowExecutions
-                .AsNoTracking()
-                .FirstOrDefaultAsync(e => e.Id == childExec.Id, CancellationToken.None);
-
-            var returnDataJson = childRow?.ReturnData;
-            var returned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (!string.IsNullOrWhiteSpace(returnDataJson))
-            {
-                try
+                async Task<ActivityResult> ExecuteChildAsync()
                 {
-                    using var doc = JsonDocument.Parse(returnDataJson);
-                    if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                    // Use the execution-level CTS instead of the step-level `ct` so the child's lifetime
+                    // is decoupled from step cancellation. A waitAny junction cancels the losing branch's
+                    // step-level CTS, and that signal must not mark the child as Cancelled while the
+                    // parent execution continues.
+                    WorkflowEngine.TryGetExecutionCancellation(context.WorkflowExecutionId, out var execCancellation);
+                    using var childExecCts = CancellationTokenSource.CreateLinkedTokenSource(execCancellation, timeoutCts.Token,
+                        context.PropagateChildCancellation ? ct : CancellationToken.None);
+
+                    // Run the child in a fresh DI scope so it gets its own DbContext and cannot race
+                    // the parent's _db on EF Core.
+                    await using var scope = _scopeFactory.CreateAsyncScope();
+                    var engine = scope.ServiceProvider.GetRequiredService<IWorkflowEngine>();
+                    childWorkflow = await SubWorkflowInvocation.ReloadAuthorizedChildAsync(
+                        scope.ServiceProvider.GetRequiredService<NodePilotDbContext>(), childWorkflow.Id,
+                        parentExec, scope.ServiceProvider.GetService<ISubWorkflowAuthorizationResolver>() ?? _subWorkflowAuthz,
+                        childExecCts.Token);
+                    if (AgentReadOnlyWorkflowScope.IsActive)
                     {
-                        foreach (var prop in doc.RootElement.EnumerateObject())
+                        AgentReadOnlyWorkflowScope.ValidateWorkflow(childWorkflow);
+                    }
+                    var childExec = await engine.ExecuteAsync(
+                        childWorkflow,
+                        $"startWorkflow:{context.StepId}",
+                        childExecCts.Token,
+                        childParams,
+                        startedByUserId: parentExec?.StartedByUserId,
+                        parentExecutionId: context.WorkflowExecutionId,
+                        callDepth: childCallDepth);
+                    span?.SetTag(NodePilot.Core.Telemetry.TelemetryConstants.Attributes.SubWorkflowChildExecutionId, childExec.Id.ToString());
+
+                    // Re-read the row so the final ReturnData comes from the database instead of the
+                    // engine's tracking state, which lives in its own DbContext.
+                    var childRow = await scope.ServiceProvider.GetRequiredService<NodePilotDbContext>()
+                        .WorkflowExecutions
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(e => e.Id == childExec.Id, CancellationToken.None);
+
+                    var returnDataJson = childRow?.ReturnData;
+                    var returned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    if (!string.IsNullOrWhiteSpace(returnDataJson))
+                    {
+                        try
                         {
-                            returned[prop.Name] = PowerShellOperation.JsonElementToScalarString(prop.Value);
+                            using var doc = JsonDocument.Parse(returnDataJson);
+                            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                            {
+                                foreach (var prop in doc.RootElement.EnumerateObject())
+                                {
+                                    returned[prop.Name] = PowerShellOperation.JsonElementToScalarString(prop.Value);
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // ReturnData was not JSON; leave `returned` empty.
                         }
                     }
-                }
-                catch
-                {
-                    // ReturnData was not JSON; leave `returned` empty.
+
+                    var childSucceeded = childExec.Status == ExecutionStatus.Succeeded;
+
+                    // Always expose metadata params alongside returned data
+                    returned["__executionId"] = childExec.Id.ToString();
+                    returned["__status"] = childExec.Status.ToString();
+                    returned["__workflowId"] = childWorkflow.Id.ToString();
+                    returned["__workflowName"] = childWorkflow.Name;
+
+                    return new ActivityResult
+                    {
+                        Success = childSucceeded,
+                        Output = returnDataJson ?? $"Child execution {childExec.Id} completed with status {childExec.Status}",
+                        ErrorOutput = childSucceeded ? null : (childExec.ErrorMessage ?? "child workflow did not succeed"),
+                        OutputParameters = returned,
+                        Duration = sw.Elapsed,
+                    };
                 }
             }
-
-            var childSucceeded = childExec.Status == ExecutionStatus.Succeeded;
-
-            // Always expose metadata params alongside returned data
-            returned["__executionId"] = childExec.Id.ToString();
-            returned["__status"] = childExec.Status.ToString();
-            returned["__workflowId"] = childWorkflow.Id.ToString();
-            returned["__workflowName"] = childWorkflow.Name;
-
-            return new ActivityResult
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
             {
-                Success = childSucceeded,
-                Output = returnDataJson ?? $"Child execution {childExec.Id} completed with status {childExec.Status}",
-                ErrorOutput = childSucceeded ? null : (childExec.ErrorMessage ?? "child workflow did not succeed"),
-                OutputParameters = returned,
-                Duration = sw.Elapsed,
-            };
-        }
-        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-        {
-            return new ActivityResult
+                return new ActivityResult
+                {
+                    Success = false,
+                    ErrorOutput = $"startWorkflow: child '{childWorkflow.Name}' timed out after {timeoutSeconds}s",
+                    Duration = sw.Elapsed,
+                };
+            }
+            catch (Exception ex)
             {
-                Success = false,
-                ErrorOutput = $"startWorkflow: child '{childWorkflow.Name}' timed out after {timeoutSeconds}s",
-                Duration = sw.Elapsed,
-            };
-        }
-        catch (Exception ex)
-        {
-            return new ActivityResult
+                return new ActivityResult
+                {
+                    Success = false,
+                    ErrorOutput = $"startWorkflow: {ex.GetType().Name}: {ex.Message}",
+                    Duration = sw.Elapsed,
+                };
+            }
+            finally
             {
-                Success = false,
-                ErrorOutput = $"startWorkflow: {ex.GetType().Name}: {ex.Message}",
-                Duration = sw.Elapsed,
-            };
-        }
-        finally
-        {
-            // Reverse acquisition order.
-            if (concurrencySlotHeld) _workflowConcurrency.Release(childWorkflow.Id);
-            if (gateAcquired) _gate.Release();
-        }
+                if (concurrencySlotHeld) _workflowConcurrency.Release(childWorkflow.Id);
+            }
         }
 
         return await WorkflowScheduler.RunWithCurrentStepGateReleasedAsync(
-            ExecuteSynchronousChildAsync,
+            () => SubWorkflowGateLease.RunWithCurrentSlotReleasedAsync(ExecuteSynchronousChildAsync, ct),
             ct);
     }
 

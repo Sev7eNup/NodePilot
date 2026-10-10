@@ -127,7 +127,8 @@ public sealed record NextFiresResponse(List<DateTime> Fires);
 
 public sealed record WorkflowExportItem(
     string Name, string? Description, JsonElement Definition,
-    bool? IsEnabled = null, int? MaxConcurrentExecutions = null);
+    bool? IsEnabled = null, int? MaxConcurrentExecutions = null,
+    Guid? SourceId = null, List<NodePilot.Core.WorkflowDefinitions.WorkflowDependency>? Dependencies = null);
 
 public sealed record WorkflowExportEnvelope(
     string Schema,

@@ -1,0 +1,162 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-10-08T00:00:00Z",
+  "workflow": {
+    "name": "Example 01 - Server Overview",
+    "description": "Read the local Windows version with WMI and the Windows Event Log service status, log the findings, and return the server overview. Five nodes including the manual trigger.",
+    "isEnabled": false,
+    "maxConcurrentExecutions": 1,
+    "definition": {
+      "nodes": [
+        {
+          "id": "start",
+          "type": "activity",
+          "position": {
+            "x": 0,
+            "y": 240
+          },
+          "data": {
+            "label": "Manual: Server overview",
+            "activityType": "manualTrigger",
+            "config": {}
+          }
+        },
+        {
+          "id": "system",
+          "type": "activity",
+          "position": {
+            "x": 400,
+            "y": 240
+          },
+          "data": {
+            "label": "WMI: Read Windows version",
+            "activityType": "wmiQuery",
+            "config": {
+              "mode": "wql",
+              "namespace": "root\\cimv2",
+              "query": "SELECT CSName, Caption, Version, TotalVisibleMemorySize FROM Win32_OperatingSystem",
+              "captureProperties": [
+                "CSName",
+                "Caption",
+                "Version",
+                "TotalVisibleMemorySize"
+              ]
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "service",
+          "type": "activity",
+          "position": {
+            "x": 720,
+            "y": 240
+          },
+          "data": {
+            "label": "Service: Read Event Log status",
+            "activityType": "serviceManagement",
+            "config": {
+              "serviceName": "EventLog",
+              "action": "status"
+            },
+            "targetMachineId": "localhost"
+          }
+        },
+        {
+          "id": "log",
+          "type": "activity",
+          "position": {
+            "x": 1040,
+            "y": 240
+          },
+          "data": {
+            "label": "Log: Server overview",
+            "activityType": "log",
+            "config": {
+              "level": "info",
+              "message": "Computer: {{system.param.CSName}}\nWindows: {{system.param.Caption}}\nVersion: {{system.param.Version}}\nEvent Log service: {{service.param.status}}"
+            }
+          }
+        },
+        {
+          "id": "result",
+          "type": "activity",
+          "position": {
+            "x": 1360,
+            "y": 240
+          },
+          "data": {
+            "label": "Return: Server overview",
+            "activityType": "returnData",
+            "config": {
+              "data": {
+                "computerName": "{{system.param.CSName}}",
+                "windows": "{{system.param.Caption}}",
+                "version": "{{system.param.Version}}",
+                "eventLogService": "{{service.param.status}}"
+              }
+            }
+          }
+        },
+        {
+          "id": "help",
+          "type": "stickyNote",
+          "position": {
+            "x": 400,
+            "y": -60
+          },
+          "data": {
+            "label": "Note",
+            "activityType": "note",
+            "disabled": true,
+            "text": "Reads the Windows version and Windows Event Log service status on the NodePilot server. The findings are written to the execution log and returned as workflow output.",
+            "fontSize": 16
+          },
+          "style": {
+            "width": 480,
+            "height": 180
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "start-system",
+          "source": "start",
+          "target": "system",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "system-service",
+          "source": "system",
+          "target": "service",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "service-log",
+          "source": "service",
+          "target": "log",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        },
+        {
+          "id": "log-result",
+          "source": "log",
+          "target": "result",
+          "type": "labeled",
+          "data": {
+            "label": "Continue"
+          }
+        }
+      ]
+    }
+  }
+}

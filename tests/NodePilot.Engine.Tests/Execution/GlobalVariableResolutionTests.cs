@@ -49,7 +49,7 @@ public class GlobalVariableResolutionTests
                     ? """[{"name":"Greeting","type":"string","default":"{{globals.GREETING}}"}]"""
                     : "[]",
             }, "test", CancellationToken.None);
-            await definitions.SetEnabledAsync(definition.Id, true, "test", CancellationToken.None);
+            await definitions.SetEnabledAsync(definition.Id, true, definition.ConcurrencyToken, "test", CancellationToken.None);
 
             PowerShellExecutionRequest? captured = null;
             var powershell = new Mock<IPowerShellExecutionEngine>();

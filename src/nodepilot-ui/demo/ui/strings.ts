@@ -43,7 +43,7 @@ const STRINGS: Record<DemoLanguage, DemoStrings> = {
 /**
  * Follows the app's own language choice.
  *
- * Reads the same `localStorage` key i18n uses, which `boot/language.ts` seeds to English on a
+ * Reads the same `localStorage` key i18n uses, which `boot/preferences.ts` seeds on a
  * first visit. Reading `navigator.language` instead left the banner in German while the app
  * around it was English.
  */

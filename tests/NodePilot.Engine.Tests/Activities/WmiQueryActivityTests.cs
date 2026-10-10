@@ -14,6 +14,19 @@ namespace NodePilot.Engine.Tests.Activities;
 
 public sealed class WmiQueryActivityTests : IDisposable
 {
+    [Theory]
+    [InlineData("{\"mode\":\"wql\",\"query\":\"SELECT Name FROM Win32_Service WHERE State='Running'\"}")]
+    [InlineData("{\"className\":\"Win32_Service\",\"filter\":\"State='Running'\"}")]
+    public async Task AgentReadScopeUsesCanonicalClassQuery(string json)
+    {
+        using var scope = NodePilot.Engine.Agents.AgentReadOnlyWorkflowScope.Enter();
+        var result = await CreateActivity().ExecuteAsync(Ctx(), Cfg(json), TestContext.Current.CancellationToken);
+        Assert.True(result.Success);
+        Assert.Contains("CimCmdlets\\Get-CimInstance", _capturedScript);
+        Assert.DoesNotContain("-Query", _capturedScript);
+        Assert.Contains("-ClassName 'Win32_Service'", _capturedScript);
+    }
+
     private readonly Data.NodePilotDbContext _db;
     private readonly Mock<ICredentialStore> _credentialStore;
     private readonly Mock<IRemoteSessionFactory> _sessionFactory;

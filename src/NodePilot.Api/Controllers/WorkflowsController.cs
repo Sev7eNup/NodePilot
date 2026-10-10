@@ -13,6 +13,7 @@ using NodePilot.Data;
 using NodePilot.Data.Availability;
 using NodePilot.Core.Telemetry;
 using NodePilot.Core.Validation;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Api.Controllers;
 
@@ -55,8 +56,8 @@ public class WorkflowsController : WorkflowsControllerBase
     /// <c>manualTrigger.parameters</c> + downstream-available outputs from
     /// <c>returnData.data</c> keys + engine-injected system outputs.
     ///
-    /// <para>Read-only and non-sensitive (no secret values, just declarations) — Viewer
-    /// role is allowed.</para>
+    /// <para>Viewer role may read declarations. Literal defaults are masked unless the
+    /// caller may edit this workflow, matching the workflow-definition read policy.</para>
     /// </summary>
     [HttpGet("{id:guid}/contract")]
     public async Task<ActionResult<WorkflowContractResponse>> GetContract(Guid id, CancellationToken ct)
@@ -64,7 +65,7 @@ public class WorkflowsController : WorkflowsControllerBase
         var workflow = await _db.Workflows.AsNoTracking().FirstOrDefaultAsync(w => w.Id == id, ct);
         if (workflow is null) return NotFound();
         if (await RequireWorkflowAccessAsync(workflow, ResourceOp.Read, ct) is { } denied) return denied;
-        return Ok(_contractDeriver.Derive(workflow));
+        return Ok(await ScopedContractAsync(workflow, ct));
     }
 
     /// <summary>
@@ -86,7 +87,24 @@ public class WorkflowsController : WorkflowsControllerBase
             return Conflict(new { message = $"Multiple workflows named '{name.Trim()}' — disambiguate with the GUID." });
         if (result.Workflow is not { } workflow) return NotFound();
         if (await RequireWorkflowAccessAsync(workflow, ResourceOp.Read, ct) is { } denied) return denied;
-        return Ok(_contractDeriver.Derive(workflow));
+        return Ok(await ScopedContractAsync(workflow, ct));
+    }
+
+    private async Task<WorkflowContractResponse> ScopedContractAsync(Workflow workflow, CancellationToken ct)
+    {
+        var contract = _contractDeriver.Derive(workflow);
+        if (await _authz.CanAccessWorkflowAsync(User, workflow.FolderId, ResourceOp.Edit, ct))
+            return contract;
+
+        // Keep null distinct from a present default: callers omit unset parameters so the
+        // runtime can use its original value. The mask is a display hint, not a replacement
+        // persisted into the definition or sent as an execution input.
+        return contract with
+        {
+            Inputs = contract.Inputs.Select(input => input.Default is null
+                ? input
+                : input with { Default = "***" }).ToList(),
+        };
     }
 
     /// <summary>
@@ -111,17 +129,42 @@ public class WorkflowsController : WorkflowsControllerBase
             .ToListAsync(ct));
     }
 
+    [HttpGet("paged")]
+    public async Task<ActionResult<PagedResponse<WorkflowListItemResponse>>> GetPaged(
+        CancellationToken ct = default, [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
+        [FromQuery] Guid? folderId = null, [FromQuery] string? search = null,
+        [FromQuery] string sortBy = "updated", [FromQuery] string sortDir = "desc",
+        [FromQuery] Guid[]? ids = null)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        if (ids is { Length: > 10 }) return BadRequest("At most 10 workflow IDs may be requested.");
+        var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
+        var query = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessible);
+        if (query is null)
+            return Ok(new PagedResponse<WorkflowListItemResponse>([], page, pageSize, 0, 0));
+        if (folderId.HasValue) query = query.Where(w => w.FolderId == folderId.Value);
+        if (ids is { Length: > 0 }) query = query.Where(w => ids.Contains(w.Id));
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLowerInvariant();
+            query = query.Where(w => w.Name.ToLower().Contains(term)
+                || (w.Description != null && w.Description.ToLower().Contains(term)));
+        }
+        using var budget = DatabaseCommandBudget.Apply(_db, 15);
+        var total = await query.LongCountAsync(ct);
+        var ordered = NodePilot.Api.Services.WorkflowListOrdering.Apply(_db, query, sortBy, sortDir == "asc");
+        var skip = (int)Math.Min((long)(page - 1) * pageSize, int.MaxValue);
+        var rows = await ReadListAsync(ordered.Skip(skip).Take(pageSize), ct);
+        return Ok(new PagedResponse<WorkflowListItemResponse>(rows, page, pageSize, total,
+            total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize)));
+    }
+
     [HttpGet]
     public async Task<ActionResult<List<WorkflowListItemResponse>>> GetAll(CancellationToken ct)
     {
-        const int StatsWindow = 20;
-        // Hard cap on how many workflows a single list call returns. Without this cap, a
-        // read-only user in an org with tens of thousands of workflows would load the entire
-        // catalogue including the ROW_NUMBER window query for every workflow — both a DB-load
-        // and a payload-size risk (the response grows linearly, and JSON serialization keeps
-        // the whole set in memory). 500 comfortably covers the list-page UI (which paginates
-        // and filters anyway); anyone who genuinely needs to pull every workflow programmatically
-        // should use /api/workflows/export instead.
+        // Existing CLI/MCP clients consume this bounded array contract. Interactive lists use
+        // /paged so older rows stay reachable without loading the full catalogue into memory.
         const int HardLimitWorkflows = 500;
 
         // RBAC list-filter: collapse to "every workflow whose folder I can read". Global
@@ -130,13 +173,18 @@ public class WorkflowsController : WorkflowsControllerBase
         var query = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessibleFolders);
         if (query is null)
             return Ok(new List<WorkflowListItemResponse>());
+        return Ok(await ReadListAsync(query.OrderByDescending(w => w.UpdatedAt).ThenBy(w => w.Id)
+            .Take(HardLimitWorkflows), ct));
+    }
+
+    private async Task<List<WorkflowListItemResponse>> ReadListAsync(IQueryable<Workflow> query, CancellationToken ct)
+    {
+        const int StatsWindow = 20;
         // Column projection, deliberately without DefinitionJson: it is unbounded text including
         // every inline script, and no surface that reads this list renders it. What the list did
         // need from it — whether starting the workflow asks for input — comes from the
         // revision-keyed facts cache below instead.
         var workflows = await query
-            .OrderByDescending(w => w.UpdatedAt)
-            .Take(HardLimitWorkflows)
             .Select(w => new WorkflowListRow(
                 w.Id, w.Name, w.Description, w.Version, w.IsEnabled, w.CreatedAt, w.UpdatedAt,
                 w.CreatedBy, w.UpdatedBy, w.ActivityCount, w.TriggerTypesJson,
@@ -205,7 +253,9 @@ public class WorkflowsController : WorkflowsControllerBase
 
             executionWindow = raw
                 .Select(r => new WorkflowExecutionListRow(
-                    r.Id, r.WorkflowId, ParseStatus(r.Status), r.StartedAt, r.CompletedAt))
+                    r.Id, r.WorkflowId, ParseStatus(r.Status),
+                    DateTime.SpecifyKind(r.StartedAt, DateTimeKind.Utc),
+                    r.CompletedAt.HasValue ? DateTime.SpecifyKind(r.CompletedAt.Value, DateTimeKind.Utc) : null))
                 .ToList();
         }
 
@@ -247,7 +297,7 @@ public class WorkflowsController : WorkflowsControllerBase
         // steady state reads no definitions at all.
         var facts = await _definitionFacts.ResolveAsync(
             workflows.Select(w => (w.Id, w.UpdatedAt)).ToList(),
-            async (ids, token) => await query
+            async (ids, token) => await _db.Workflows.AsNoTracking()
                 .Where(w => ids.Contains(w.Id))
                 .Select(w => new NodePilot.Api.Services.WorkflowDefinitionRow(w.Id, w.UpdatedAt, w.DefinitionJson))
                 .ToListAsync(token),
@@ -318,7 +368,7 @@ public class WorkflowsController : WorkflowsControllerBase
             };
         }).ToList();
 
-        return Ok(responses);
+        return responses;
     }
 
     /// <summary>The columns <see cref="GetAll"/> reads. Notably not DefinitionJson.</summary>
@@ -338,7 +388,8 @@ public class WorkflowsController : WorkflowsControllerBase
     /// <summary>
     /// Raw projection used for the ROW_NUMBER raw-SQL query. Status is read as a string
     /// because EF's HasConversion mapping does not apply to <c>SqlQueryRaw&lt;T&gt;</c>
-    /// result types — we re-parse it in C# via <see cref="ParseStatus"/>.
+    /// result types. Status is re-parsed via <see cref="ParseStatus"/> and stored UTC
+    /// timestamps are tagged explicitly, preserving the JSON 'Z' suffix on SQL Server.
     /// </summary>
     private sealed record WorkflowExecutionListRowRaw(
         Guid Id,
@@ -712,6 +763,8 @@ public class WorkflowsController : WorkflowsControllerBase
 
     private async Task<IActionResult> SetEnabled(Workflow workflow, bool enabled, bool requireUnlocked, CancellationToken ct)
     {
+        if (enabled && NodePilot.Core.WorkflowDefinitions.WorkflowResourceReferences.UnresolvedError(workflow.DefinitionJson) is { } dependencyError)
+            return BadRequest(new { code = "unresolved_workflow_dependency", message = dependencyError });
         if (workflow.IsEnabled == enabled)
             return NoContent(); // already in desired state; don't audit a no-op
 

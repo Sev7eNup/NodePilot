@@ -21,7 +21,7 @@ interface Props {
   /** Shared across segments — only one popover is mounted at a time. */
   popoverRef: RefObject<HTMLDivElement | null>;
   folders: SharedFolder[];
-  workflows: WorkflowSummary[];
+  currentWorkflow: WorkflowSummary;
   currentWorkflowId: string | undefined;
   onOpenWorkflow: (w: WorkflowSummary) => void;
   onEnter: (path: string) => void;
@@ -37,7 +37,7 @@ interface Props {
  * folder couldn't be resolved (RBAC-hidden ancestor) renders as plain, non-interactive text.
  */
 export function BreadcrumbSegment({
-  segment, isOpen, popoverRef, folders, workflows, currentWorkflowId, onOpenWorkflow,
+  segment, isOpen, popoverRef, folders, currentWorkflow, currentWorkflowId, onOpenWorkflow,
   onEnter, onLeave, onToggle, onPopoverEnter, onPopoverLeave,
 }: Readonly<Props>) {
   const { t } = useTranslation('designer');
@@ -67,7 +67,7 @@ export function BreadcrumbSegment({
             <FolderContentsBrowser
               startFolderId={folder.id}
               folders={folders}
-              workflows={workflows}
+              currentWorkflow={currentWorkflow}
               currentWorkflowId={currentWorkflowId}
               onOpenWorkflow={onOpenWorkflow}
               onMouseEnter={onPopoverEnter}

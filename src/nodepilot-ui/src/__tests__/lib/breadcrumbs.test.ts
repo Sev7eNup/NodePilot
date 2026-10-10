@@ -31,6 +31,11 @@ describe('resolveBreadcrumbs', () => {
       .toBe('adminSettings:tabPersonal');
   });
 
+  it('names the AI knowledge section instead of falling back to integrations', () => {
+    expect(resolveBreadcrumbs('/settings', '?tab=system&section=ai-knowledge', 'Admin').at(-1)?.labelKey)
+      .toBe('adminSettings:subTabAiKnowledge');
+  });
+
   it.each([
     ['/alerts', '?tab=custom', 'alerts:system.tabCustom'],
     ['/backup', '?tab=restore', 'backup:tabs.restore'],

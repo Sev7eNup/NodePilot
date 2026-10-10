@@ -561,7 +561,9 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Invalid credentials" });
         }
 
-        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        var verifiedPasswordHash = user.PasswordHash;
+        var verifiedSecurityStamp = user.SecurityStamp;
+        if (!BCrypt.Net.BCrypt.Verify(request.Password, verifiedPasswordHash))
         {
             var auditReason = localAttempt.TriggeredLockout
                 ? "invalid_password_locked_out"
@@ -589,6 +591,18 @@ public class AuthController : ControllerBase
         }
 
         await ResetUserAttemptsAsync(user, ct);
+        // Reset reloads the row. Never transfer proof of the old password to the
+        // authorization epoch installed by a concurrent administrator mutation.
+        if (!user.IsActive || user.IsTombstoned
+            || _db.Entry(user).State == EntityState.Detached
+            || user.SecurityStamp != verifiedSecurityStamp
+            || !string.Equals(user.PasswordHash, verifiedPasswordHash, StringComparison.Ordinal))
+        {
+            await _audit.LogAsync(AuditActions.LoginFailed, "User", user.Id,
+                AuditDetails.Json(("username", user.Username), ("reason", "credentials_changed")), ct);
+            RecordLoginAttempt("failure", "credentials_changed");
+            return Unauthorized(new { message = "Invalid credentials" });
+        }
 
         // PR0b: token-mint + cookie-set + LOGIN_SUCCESS audit are all centralised in
         // IAuthSessionIssuer so LDAP / Windows-Auth flows can reuse them. AuthSource.Local

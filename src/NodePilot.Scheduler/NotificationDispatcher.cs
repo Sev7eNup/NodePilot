@@ -338,7 +338,8 @@ public class NotificationDispatcher : BackgroundService
 
         var now = DateTime.UtcNow;
         var routeIds = pending.Select(a => a.NotificationRouteId).Distinct().ToList();
-        var routes = await db.NotificationRoutes.AsNoTracking().Where(r => routeIds.Contains(r.Id))
+        var routes = await db.NotificationRoutes.AsNoTracking().Include(r => r.Rule)
+            .Where(r => routeIds.Contains(r.Id))
             .ToDictionaryAsync(r => r.Id, ct);
 
         var sent = 0;
@@ -349,6 +350,12 @@ public class NotificationDispatcher : BackgroundService
             {
                 attempt.Status = NotificationDeliveryStatus.Failed;
                 attempt.Error = "route no longer exists";
+                continue;
+            }
+            if (!route.Rule.IsEnabled)
+            {
+                attempt.Status = NotificationDeliveryStatus.Failed;
+                attempt.Error = "notification rule was disabled before retry";
                 continue;
             }
             var ctx = await ReconstructContextAsync(db, attempt.EventKey, ct);

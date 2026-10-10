@@ -8,8 +8,8 @@ namespace NodePilot.Data.Security;
 /// Builds an <see cref="ISecretProtector"/> from a configuration snapshot, without DI.
 /// The encrypting JSON configuration provider needs this to decrypt <c>enc:v1:</c>
 /// values while <c>IConfiguration</c> loads, before the service provider exists.
-/// Handles only the active provider (DPAPI or AES-GCM); validation matches
-/// <see cref="SecretProtectorRegistry"/> and throws rather than falling back silently.
+/// Owns active and optional legacy-provider selection for bootstrap and DI alike.
+/// Invalid configuration throws rather than falling back silently.
 /// </summary>
 public static class SecretProtectorBootstrapFactory
 {
@@ -22,7 +22,24 @@ public static class SecretProtectorBootstrapFactory
     public static ISecretProtector FromConfigSnapshot(IConfiguration snapshot, ILogger? log = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        var active = BuildActive(snapshot, log);
+        var legacyName = (snapshot["Secrets:LegacyProvider"] ?? string.Empty).Trim();
+        if (legacyName.Length == 0) return active;
+        ISecretProtector legacy;
+        if (string.Equals(legacyName, "AesGcm", StringComparison.OrdinalIgnoreCase))
+            legacy = new AesGcmSecretProtector(AesGcmSecretProtector.DecodeMasterKey(
+                ReadAesGcmMasterKeyMaterial(snapshot, "Secrets:Legacy")));
+        else if (string.Equals(legacyName, "Dpapi", StringComparison.OrdinalIgnoreCase))
+            legacy = new DpapiSecretProtector(DpapiScopeResolver.Parse(
+                snapshot["Secrets:LegacyDpapiScope"], "Secrets:LegacyDpapiScope"));
+        else
+            throw new InvalidOperationException(
+                $"Secrets:LegacyProvider has unknown value '{legacyName}'. Allowed: 'Dpapi' or 'AesGcm'.");
+        return new MigratingSecretProtector(active, legacy, log);
+    }
 
+    private static ISecretProtector BuildActive(IConfiguration snapshot, ILogger? log)
+    {
         var providerName = (snapshot["Secrets:Provider"] ?? "Dpapi").Trim();
         var clusterEnabled = bool.TryParse(snapshot["Cluster:Enabled"], out var v) && v;
 

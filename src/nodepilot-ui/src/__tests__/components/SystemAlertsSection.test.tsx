@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { SystemAlertsSection } from '../../components/alerting/SystemAlertsSection';
+import { SystemPolicyEditor } from '../../components/alerting/SystemPolicyEditor';
 import { useAuthStore } from '../../stores/authStore';
 import type { SystemAlertCatalog, SystemAlertPolicy } from '../../api/systemAlerting';
 
@@ -60,6 +61,25 @@ function renderSection(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin', policies
 }
 
 describe('SystemAlertsSection', () => {
+  it('preserves API-configured occurrence thresholds and route filters when renaming a policy', async () => {
+    useAuthStore.setState({ isAuthenticated: true, username: 'u', role: 'Admin' });
+    patchFetch();
+    const condition = '{"type":"comparison","op":"==","left":{"kind":"variable","source":"event","name":"severity"},"right":{"kind":"literal","value":"Critical"}}';
+    const policy = { ...POLICIES[0], minOccurrences: 5, occurrenceWindowMinutes: 15,
+      routes: [{ ...POLICIES[0].routes[0], conditionExpressionJson: condition }] };
+    let saved: Record<string, unknown> | undefined;
+    server.use(http.put(`${BASE}/api/alerting/system/policies/p1`, async ({ request }) => {
+      saved = await request.json() as Record<string, unknown>;
+      return HttpResponse.json(policy);
+    }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><SystemPolicyEditor source={CATALOG.sources[0]} policy={policy} onClose={vi.fn()} /></QueryClientProvider>);
+    fireEvent.change(screen.getByDisplayValue('Backlog critical'), { target: { value: 'Renamed policy' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved).toMatchObject({ name: 'Renamed policy', minOccurrences: 5, occurrenceWindowMinutes: 15,
+      routes: [{ id: 'rt1', conditionExpressionJson: condition }] });
+  });
   it('rendersCatalogCards_groupedByCategory', async () => {
     renderSection();
     await waitFor(() => expect(screen.getByText('Execution backlog')).toBeInTheDocument());

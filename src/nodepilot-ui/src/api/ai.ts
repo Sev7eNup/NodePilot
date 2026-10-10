@@ -3,6 +3,7 @@ import {
   assertAuthBoundaryGenerationCurrent,
   captureAuthBoundaryGeneration,
 } from '../security/authBoundary';
+import type { AgentDefinition } from '../types/agents';
 
 /**
  * Frontend mirror of the backend's `UpstreamVariableDto` records. Deliberately uses the
@@ -39,6 +40,37 @@ export interface GenerateWorkflowResponse {
   suggestedDescription: string | null;
   nodeCount: number;
   edgeCount: number;
+  retried: boolean;
+  durationMs: number;
+  model: string;
+}
+
+export interface GenerateAgentTeamRequest {
+  prompt: string;
+  currentConfig: Record<string, unknown>;
+}
+
+export interface AgentTeamCandidate {
+  id: string;
+  name: string;
+  detail: string | null;
+}
+
+/** `blocking` issues stop the editor from applying the draft until each one is resolved. */
+export interface AgentTeamIssue {
+  severity: 'blocking' | 'warning';
+  memberId: string;
+  field: 'machine' | 'credential' | 'serviceIdentity' | 'tool' | 'skill' | 'team';
+  code: string;
+  message: string;
+  reference: string | null;
+  candidates: AgentTeamCandidate[];
+}
+
+export interface GenerateAgentTeamResponse {
+  patch: { members: AgentDefinition[]; task: string; maxParallelMembers: number | null };
+  names: Record<string, string>;
+  issues: AgentTeamIssue[];
   retried: boolean;
   durationMs: number;
   model: string;
@@ -290,6 +322,8 @@ export function chatActivity(workflowId: string, take = 20): Promise<ChatActivit
 export const aiApi = {
   generateWorkflow: (req: GenerateWorkflowRequest) =>
     api.post<GenerateWorkflowResponse>('/ai/generate-workflow', req),
+  generateAgentTeam: (req: GenerateAgentTeamRequest) =>
+    api.post<GenerateAgentTeamResponse>('/ai/generate-agent-team', req),
   chatStream,
   askStream,
   getKnowledgeCapabilities,

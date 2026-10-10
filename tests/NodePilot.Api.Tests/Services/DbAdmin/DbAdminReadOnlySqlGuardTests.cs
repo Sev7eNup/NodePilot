@@ -13,6 +13,36 @@ namespace NodePilot.Api.Tests.Services.DbAdmin;
 public class DbAdminReadOnlySqlGuardTests
 {
     [Theory]
+    [InlineData("SELECT * FROM Users")]
+    [InlineData("SELECT u.* FROM Users u")]
+    [InlineData("SELECT TOP (10) * FROM Users")]
+    [InlineData("WITH renamed(a,b,c) AS (SELECT * FROM Users) SELECT c FROM renamed")]
+    [InlineData("SELECT r.c FROM (SELECT * FROM Users) AS r(a,b,c)")]
+    [InlineData("SELECT NULL AS a, NULL AS b, NULL AS c UNION ALL SELECT * FROM Users")]
+    [InlineData("TABLE Users")]
+    [InlineData("WITH renamed AS (TABLE Users) SELECT * FROM renamed")]
+    public void WholeRowProjection_RejectsImplicitColumnsRegardlessOfAliases(string sql)
+        => DbAdminReadOnlySqlGuard.ReferencesWholeRowProjection(sql,
+            new HashSet<string>(["Users"], StringComparer.OrdinalIgnoreCase)).Should().BeTrue();
+
+    [Theory]
+    [InlineData("SELECT Username FROM Users")]
+    [InlineData("SELECT COUNT(*) FROM Users")]
+    [InlineData("SELECT COUNT /* nested /* * */ comment */ (*) FROM Users")]
+    [InlineData("SELECT COUNT(*) * 2 FROM Users")]
+    [InlineData("SELECT 2 * 3 FROM Users")]
+    [InlineData("SELECT (1 + 2) * (3 - 1) FROM Users")]
+    [InlineData("SELECT IsActive * -1 FROM Users")]
+    [InlineData("SELECT 2 * LENGTH(Username) FROM Users")]
+    [InlineData("SELECT '*' AS marker FROM Users -- SELECT * FROM Users")]
+    [InlineData("SELECT $$ * TABLE Users $$ FROM Users")]
+    [InlineData("SELECT \"*\", \"TABLE\" FROM Users")]
+    [InlineData("SELECT * FROM Workflows")]
+    public void WholeRowProjection_PreservesExplicitColumnsCountsAndArithmetic(string sql)
+        => DbAdminReadOnlySqlGuard.ReferencesWholeRowProjection(sql,
+            new HashSet<string>(["Users"], StringComparer.OrdinalIgnoreCase)).Should().BeFalse();
+
+    [Theory]
     [InlineData("SELECT REPLACE(Name, 'a', 'b') FROM Workflows")]
     [InlineData("SELECT replace(Name, 'a', 'b') AS renamed FROM Workflows")]
     [InlineData("SELECT Id FROM Workflows WHERE REPLACE(Name, ' ', '') = 'x'")]

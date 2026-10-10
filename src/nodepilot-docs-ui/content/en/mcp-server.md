@@ -3,8 +3,17 @@
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets an AI agent
 (Claude Desktop/Code or any MCP client) **control and edit NodePilot workflows** and **read data**.
 Like the `np` CLI it is a pure HTTP client against the existing REST API — **no new backend path**;
-every tool calls an existing endpoint or computes in-process against `NodePilot.Core`. 102 tools
-across 10 groups, plus 3 MCP resources.
+every tool calls an existing endpoint or computes in-process against `NodePilot.Core`. 112 tools
+across 11 groups, plus 3 MCP resources.
+
+## Agent tools
+
+The agent group exposes `list_agent_runs`, `get_agent_events`, `list_agent_mcp_servers`,
+`discover_agent_mcp_tools`, `save_agent_mcp_server`, `list_agent_skills`,
+`import_agent_skill`, `set_agent_skill_enabled`, `delete_agent_mcp_server` and
+`delete_agent_skill`. Run/events use workflow read permission. Registry reads require
+Admin/Operator, changes Admin, and deletes the destructive-tool gate. Discovery can start
+a registered stdio process. Agent-client transports are separate from this stdio server.
 
 ## Installation
 
@@ -79,7 +88,7 @@ The transport is **stdio** (streamable HTTP is planned as a later option). Windo
 - **Gated destructive:** `test_step` (runs a real activity; a configuration override additionally requires edit permission and your own lock), delete/force-unlock/cancel-all
 - **Executions:** list/get/steps/paused-steps, `execute_workflow`, cancel/retry/resume, `trigger_external_workflow`
 - **Telemetry:** dashboard, coverage/step-health/step-stats, `get_failure_causes`, `get_operations_graph`, `query_audit_log` (admin), `get_support_diagnostics` (admin)
-- **Database / text2sql (admin, read-only):** `list_db_tables` (the schema catalog; secret columns hidden, `GlobalVariable.Value` masked), `get_db_info` (provider + row/timeout limits), `run_readonly_sql` (one read-only statement, with the server enforcing a keyword allow-list + rollback; there is no write tool). Secret columns are unreachable through raw SQL too — three layers: a direct reference returns `protected_column`; a `SELECT *` returns the values as `***`; and serializing a **whole row** of a table with a secret column (`to_json`/`row_to_json`/`::text`/`FOR JSON`) returns `protected_row_projection` — that route is exactly what carried the values past the first two, purely name-based layers. Naming columns explicitly always works. Translating natural language into SQL is the agent's job.
+- **Database / text2sql (admin, read-only):** `list_db_tables` (the schema catalog; secret columns hidden, `GlobalVariable.Value` masked), `get_db_info` (provider + row/timeout limits), `run_readonly_sql` (one read-only statement, with the server enforcing a keyword allow-list + rollback; there is no write tool). Secret columns are unreachable through raw SQL too — a direct reference returns `protected_column`; wildcard projections (`SELECT *`, `alias.*`, PostgreSQL `TABLE t`) and serializing a **whole row** (`to_json`/`row_to_json`/`::text`/`FOR JSON`) of a table with a secret column return `protected_row_projection`; result columns with protected names are additionally masked as `***`. `COUNT(*)` keeps working, and naming unprotected columns explicitly always works. Translating natural language into SQL is the agent's job.
 - **Supporting:** machines, credentials, globals (secrets never emitted)
 - **Alerting:** `get_alerting_catalog` (the rule vocabulary) + `list/get/create/update/test_fire_alerting_rule` + `list_alerting_deliveries` (the ledger) (+ gated `delete_alerting_rule`; route secrets are never emitted)
 - **System alerts (ADR 0008):** `get_system_alert_catalog` + `list/get/create/update/enable/disable/test_fire_system_alert_policy` (+ gated `delete_system_alert_policy`)

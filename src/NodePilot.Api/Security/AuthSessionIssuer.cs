@@ -115,6 +115,9 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
                 var presentedJti = httpContext.User.FindFirstValue(JwtRegisteredClaimNames.Jti);
                 if (string.IsNullOrEmpty(presentedJti))
                     throw new UnauthorizedAccessException("The authentication token has no identifier.");
+                if (!int.TryParse(httpContext.User.FindFirstValue("np_secstamp"), out var presentedVersion)
+                    || presentedVersion != user.SecurityStamp)
+                    throw new UnauthorizedAccessException("The authentication authorization has changed.");
 
                 var hasServerSession = Guid.TryParse(
                     httpContext.User.FindFirstValue(SessionIdClaim), out var currentSessionId);
@@ -125,7 +128,7 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
                     : expiresAt.UtcDateTime;
                 var attempt = new RefreshRotationAttempt(
                     user.Id,
-                    user.SecurityStamp,
+                    presentedVersion,
                     presentedJti,
                     tokenJti,
                     sessionId,
@@ -178,6 +181,10 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
                     // after a lost COMMIT acknowledgement: EF may already have accepted the
                     // first attempt's tracked entities even though the strategy must verify it.
                     db.ChangeTracker.Clear();
+                    if (!await db.Users.AsNoTracking().AnyAsync(user => user.Id == state.UserId
+                            && user.IsActive && !user.IsTombstoned
+                            && user.SecurityStamp == state.AuthorizationVersion, token))
+                        throw new UnauthorizedAccessException("The authentication authorization has changed.");
                     AuthSession persisted;
                     if (state.HasServerSession)
                     {
@@ -188,7 +195,8 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
                             ?? throw new UnauthorizedAccessException(
                                 "The authentication session is no longer active.");
                         if (persisted.RevokedAt is not null
-                            || persisted.ExpiresAt <= state.AttemptedAt.UtcDateTime)
+                            || persisted.ExpiresAt <= state.AttemptedAt.UtcDateTime
+                            || persisted.AuthorizationVersion != state.AuthorizationVersion)
                         {
                             throw new UnauthorizedAccessException(
                                 "The authentication session is no longer active.");
@@ -203,7 +211,6 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
                         state.CommittedExpiresAt = new DateTimeOffset(
                             DateTime.SpecifyKind(persisted.ExpiresAt, DateTimeKind.Utc));
                         persisted.LastSeenAt = state.AttemptedAt.UtcDateTime;
-                        persisted.AuthorizationVersion = state.AuthorizationVersion;
                         persisted.CurrentJti = state.NewJti;
                         persisted.RefreshGeneration++;
                     }

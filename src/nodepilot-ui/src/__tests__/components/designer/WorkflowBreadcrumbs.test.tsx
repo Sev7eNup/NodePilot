@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import type { Node } from '@xyflow/react';
 import { WorkflowBreadcrumbs } from '../../../components/designer/WorkflowBreadcrumbs';
 import type { Workflow } from '../../../types/api';
+import { api } from '../../../api/client';
 
 function mkWorkflow(id: string, name: string): Workflow {
   return {
@@ -29,7 +30,7 @@ function callNode(id: string, ref: string, activityType = 'startWorkflow'): Node
 function renderBreadcrumbs(nodes: Node[], workflows: Workflow[] = [CHILD]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // Seed the cache so ref-resolution is deterministic without hitting the network.
-  qc.setQueryData(['workflows'], workflows);
+  qc.setQueryData(['workflows', 'names'], workflows);
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
@@ -40,6 +41,18 @@ function renderBreadcrumbs(nodes: Node[], workflows: Workflow[] = [CHILD]) {
 }
 
 describe('WorkflowBreadcrumbs', () => {
+  it('resolves a child outside the capped workflow list through the complete names projection', async () => {
+    const get = vi.spyOn(api, 'get').mockImplementation(async path =>
+      path === '/workflows/names' ? [{ id: CHILD.id, name: CHILD.name }] : []);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    try {
+      render(<QueryClientProvider client={qc}><MemoryRouter>
+        <WorkflowBreadcrumbs nodes={[callNode('n1', CHILD.id)]} />
+      </MemoryRouter></QueryClientProvider>);
+      expect(await screen.findByRole('link', { name: CHILD.name })).toHaveAttribute('href', `/workflows/${CHILD.id}`);
+    } finally { get.mockRestore(); qc.clear(); }
+  });
+
   it('renders nothing when the workflow has no sub-workflow references', () => {
     const { container } = renderBreadcrumbs([
       { id: 'a', type: 'activity', position: { x: 0, y: 0 }, data: { activityType: 'log', config: {} } },

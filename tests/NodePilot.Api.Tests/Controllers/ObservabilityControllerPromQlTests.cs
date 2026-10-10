@@ -28,7 +28,7 @@ public class ObservabilityControllerPromQlTests
             Content = new StringContent("""{"status":"success","data":{"resultType":"vector","result":[]}}"""),
         });
 
-    private static ObservabilityController CreateController(string[]? allowedPrefixes = null)
+    private static ObservabilityController CreateController(string[]? allowedPrefixes = null, HttpMessageHandler? handler = null)
     {
         var options = new NodePilotTelemetryOptions
         {
@@ -39,7 +39,7 @@ public class ObservabilityControllerPromQlTests
             },
             AllowedMetricPrefixes = allowedPrefixes ?? Array.Empty<string>(),
         };
-        var prom = new PrometheusClient(new HttpClient(StubHandler()), options);
+        var prom = new PrometheusClient(new HttpClient(handler ?? StubHandler()), options);
         return new ObservabilityController(options, prom, NullLogger<ObservabilityController>.Instance);
     }
 
@@ -84,6 +84,31 @@ public class ObservabilityControllerPromQlTests
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
+    [Theory]
+    [InlineData("up or {le=~\".+\"}")]
+    [InlineData("up or {\"job\"=~\".+\"}")]
+    [InlineData("up or # an allowed metric elsewhere must not authorize this selector\n{le=~\".+\"}")]
+    public async Task Query_MixedNamedAndNamelessSelectors_NeverReachesPrometheus(string query)
+    {
+        var sent = 0;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            sent++;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"other_tenant_latency_bucket","le":"1"},"value":[0,"42"]}]}}""")
+            };
+        });
+        var controller = CreateController(handler: handler);
+
+        var instant = await controller.Query(query, null, CancellationToken.None);
+        var range = await controller.QueryRange(query, 0, 1000, "15s", CancellationToken.None);
+
+        sent.Should().Be(0, "every vector selector must be scoped before forwarding to the shared TSDB");
+        instant.Should().BeOfType<BadRequestObjectResult>();
+        range.Should().BeOfType<BadRequestObjectResult>();
+    }
+
     [Fact]
     public async Task Query_LabelSelectorOnlyNoMetric_Rejected()
     {
@@ -92,6 +117,30 @@ public class ObservabilityControllerPromQlTests
         var result = await controller.Query("""{job="api"}""", null, CancellationToken.None);
 
         result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Theory]
+    [InlineData("sum(rate(nodepilot_executions_completed{status=\"Succeeded\"}[5m]))")]
+    [InlineData("up{\"job\"=\"nodepilot\"}")]
+    [InlineData("up{job=\"text with {braces} and \\\"quotes\\\"\"}")]
+    [InlineData("up{job=`text {braces} # not a comment`}")]
+    [InlineData("up # arbitrary comment {le=~\".+\"}\n + nodepilot_executions_active")]
+    [InlineData("up # a comment between metric and selector\n {job=\"api\"}")]
+    [InlineData("upstream_requests_total")]
+    public async Task Query_NamedSelectorsStringsAndComments_PreserveForwardedQuery(string query)
+    {
+        var sent = new List<string>();
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            sent.Add(Uri.UnescapeDataString(request.RequestUri!.Query));
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") };
+        });
+        var controller = CreateController(handler: handler);
+
+        var result = await controller.Query(query, null, CancellationToken.None);
+
+        result.Should().BeOfType<ContentResult>();
+        sent.Should().ContainSingle().Which.Should().Contain(query);
     }
 
     [Fact]

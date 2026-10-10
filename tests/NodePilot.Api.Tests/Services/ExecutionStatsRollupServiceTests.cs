@@ -1,6 +1,8 @@
+using System.Data.Common;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -113,6 +115,25 @@ public sealed class ExecutionStatsRollupServiceTests : IDisposable
         row.FailedCount.Should().Be(1);
         row.CancelledCount.Should().Be(1);
         row.IsFinal.Should().BeTrue("every run in the hour reached a terminal state");
+    }
+
+    [Fact]
+    public async Task RollUpHour_DurationHistogram_HoldsOnlyFinishedSuccessesAndFailures()
+    {
+        // The same runs the raw duration trend reads; cancelled, open and invalid runs stay out.
+        var wf = AddWorkflow();
+        AddExecution(wf, ExecutionStatus.Succeeded, Hour.AddMinutes(1), Hour.AddMinutes(1).AddSeconds(10));
+        AddExecution(wf, ExecutionStatus.Failed, Hour.AddMinutes(2), Hour.AddMinutes(2).AddSeconds(30), "boom");
+        AddExecution(wf, ExecutionStatus.Cancelled, Hour.AddMinutes(3), Hour.AddMinutes(3).AddSeconds(50));
+        AddExecution(wf, ExecutionStatus.Succeeded, Hour.AddMinutes(4), Hour.AddMinutes(3));
+        AddExecution(wf, ExecutionStatus.Running, Hour.AddMinutes(5));
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await RollUpAsync(Hour);
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var row = await _db.ExecutionHourlyStats.SingleAsync(TestContext.Current.CancellationToken);
+        row.DurationHistogram.Should().Be(DurationHistogram.Encode([10_000, 30_000]));
     }
 
     [Fact]
@@ -289,6 +310,8 @@ public sealed class ExecutionStatsRollupServiceTests : IDisposable
             .Should().BeNull();
         (await reader.ReadFailureCausesAsync(AccessibleFolderSet.Unrestricted, 24, TestContext.Current.CancellationToken))
             .Should().BeNull();
+        (await reader.ReadDurationBucketsAsync(AccessibleFolderSet.Unrestricted, 24, null, DateTime.UtcNow, TestContext.Current.CancellationToken))
+            .Should().BeNull();
     }
 
     [Fact]
@@ -377,6 +400,130 @@ public sealed class ExecutionStatsRollupServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RunPass_HistoryYoungerThanTheLongestWindow_CoversIt()
+    {
+        // The backfill stops at the oldest execution. Nothing older exists, so windows that reach
+        // further back must still be served from the buckets instead of the raw rows.
+        var wf = AddWorkflow();
+        var currentHour = ExecutionStatsRollupService.Truncate(DateTime.UtcNow);
+        AddExecution(wf, ExecutionStatus.Succeeded, currentHour.AddDays(-3), currentHour.AddDays(-3).AddMinutes(1));
+        AddExecution(wf, ExecutionStatus.Failed, currentHour.AddHours(-2), currentHour.AddHours(-2).AddMinutes(1), "boom");
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await NewService().RunPassAsync(TestContext.Current.CancellationToken);
+
+        var ct = TestContext.Current.CancellationToken;
+        var state = await _db.ExecutionStatsRollupStates.AsNoTracking().SingleAsync(ct);
+        state.BackfillComplete.Should().BeTrue();
+        state.CoverageStartUtc.Should().Be(currentHour.AddDays(-3));
+        var reader = new DashboardRollupReader(_db);
+        foreach (var windowHours in new[] { 168, 720 })
+        {
+            var aggregates = await reader.ReadWindowAggregatesAsync(AccessibleFolderSet.Unrestricted, windowHours, ct);
+            aggregates.Should().NotBeNull($"a finished backfill covers the {windowHours} h window");
+            aggregates!.Slots.Sum(s => s.Total).Should().Be(2);
+            (await reader.ReadFailureCausesAsync(AccessibleFolderSet.Unrestricted, windowHours, ct))!
+                .TotalFailed.Should().Be(1);
+        }
+    }
+
+    [Fact]
+    public async Task RunPass_HistoryOnlyInTheCurrentHour_RecordsWhereCoverageStarts()
+    {
+        // A fresh install whose first runs fall into the hour of the first pass: the backfill has no
+        // chunk to roll up, but must still record its start, or no window is ever served from buckets.
+        var wf = AddWorkflow();
+        var currentHour = ExecutionStatsRollupService.Truncate(DateTime.UtcNow);
+        AddExecution(wf, ExecutionStatus.Succeeded, currentHour, currentHour.AddSeconds(1));
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await NewService().RunPassAsync(TestContext.Current.CancellationToken);
+
+        var ct = TestContext.Current.CancellationToken;
+        var state = await _db.ExecutionStatsRollupStates.AsNoTracking().SingleAsync(ct);
+        state.BackfillComplete.Should().BeTrue();
+        state.CoverageStartUtc.Should().Be(currentHour);
+        (await new DashboardRollupReader(_db).ReadWindowAggregatesAsync(AccessibleFolderSet.Unrestricted, 720, ct))!
+            .Slots.Sum(s => s.Total).Should().Be(1);
+    }
+
+    /// <summary>Fails the backfill's first query, the lookup of the oldest execution.</summary>
+    private sealed class FailingBackfillInterceptor : DbCommandInterceptor
+    {
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            var sql = command.CommandText;
+            if (sql.Contains("ORDER BY", StringComparison.Ordinal)
+                && sql.Contains("FROM \"WorkflowExecutions\"", StringComparison.Ordinal)
+                && !sql.Contains("\"StepExecutions\"", StringComparison.Ordinal))
+                throw new InvalidOperationException("simulated backfill failure");
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task RunPass_BackfillFails_KeepsTheCurrentHoursAndFreshness()
+    {
+        // A failing backfill must not take the already covered windows down with it.
+        var wf = AddWorkflow();
+        var currentHour = ExecutionStatsRollupService.Truncate(DateTime.UtcNow);
+        AddExecution(wf, ExecutionStatus.Succeeded, currentHour, currentHour.AddSeconds(1));
+        _db.ExecutionStatsRollupStates.Add(new ExecutionStatsRollupState
+        {
+            Id = ExecutionStatsRollupService.StateRowId,
+            CoverageStartUtc = currentHour.AddHours(-48),
+            CoverageEndUtc = currentHour.AddHours(-1),
+            BackfillComplete = false,
+            UpdatedAt = DateTime.UtcNow - ExecutionStatsRollupService.StaleAfter + TimeSpan.FromMinutes(1),
+        });
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var services = new ServiceCollection();
+        services.AddDbContext<NodePilotDbContext>(o => o.UseSqlite(_connection).AddInterceptors(new FailingBackfillInterceptor()));
+        services.AddSingleton(_redactor);
+        await using var failing = services.BuildServiceProvider();
+        var availability = new Mock<IDatabaseAvailability>();
+        availability.Setup(a => a.WaitUntilServableAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = new ExecutionStatsRollupService(
+            failing.GetRequiredService<IServiceScopeFactory>(), availability.Object,
+            new ConfigurationBuilder().AddInMemoryCollection([]).Build(),
+            NullLogger<ExecutionStatsRollupService>.Instance);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunPassAsync(TestContext.Current.CancellationToken));
+
+        var ct = TestContext.Current.CancellationToken;
+        var state = await _db.ExecutionStatsRollupStates.AsNoTracking().SingleAsync(ct);
+        state.CoverageEndUtc.Should().Be(currentHour);
+        state.UpdatedAt.Should().BeAfter(DateTime.UtcNow - TimeSpan.FromMinutes(1));
+        var aggregates = await new DashboardRollupReader(_db).ReadWindowAggregatesAsync(AccessibleFolderSet.Unrestricted, 24, ct);
+        aggregates.Should().NotBeNull();
+        aggregates!.Slots.Sum(s => s.Total).Should().Be(1, "the current hour was rolled up before the backfill failed");
+    }
+
+    [Fact]
+    public async Task Reader_BackfillIncomplete_StillRequiresCoverageStart()
+    {
+        var hour = ExecutionStatsRollupService.Truncate(DateTime.UtcNow);
+        _db.ExecutionStatsRollupStates.Add(new ExecutionStatsRollupState
+        {
+            Id = ExecutionStatsRollupService.StateRowId,
+            CoverageStartUtc = hour.AddHours(-48),
+            CoverageEndUtc = hour,
+            BackfillComplete = false,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var reader = new DashboardRollupReader(_db);
+        var ct = TestContext.Current.CancellationToken;
+        (await reader.ReadWindowAggregatesAsync(AccessibleFolderSet.Unrestricted, 24, ct))
+            .Should().NotBeNull("the covered range already reaches the window start");
+        (await reader.ReadWindowAggregatesAsync(AccessibleFolderSet.Unrestricted, 168, ct))
+            .Should().BeNull("older hours may still be missing while the backfill runs");
+    }
+
+    [Fact]
     public async Task Reader_MatchesTheLiveComputation()
     {
         // The property that matters: both paths must agree.
@@ -443,8 +590,90 @@ public sealed class ExecutionStatsRollupServiceTests : IDisposable
             .Should().BeNull("hourly buckets would add up to an hour of runs from before the window");
         (await reader.ReadFailureCausesAsync(AccessibleFolderSet.Unrestricted, windowHours, TestContext.Current.CancellationToken))
             .Should().BeNull();
+        (await reader.ReadDurationBucketsAsync(AccessibleFolderSet.Unrestricted, windowHours, null, now, TestContext.Current.CancellationToken))
+            .Should().BeNull();
         (await reader.ReadWindowAggregatesAsync(AccessibleFolderSet.Unrestricted, DashboardRollupReader.MinimumWindowHours, TestContext.Current.CancellationToken))
             .Should().NotBeNull("the same coverage serves a full day");
+    }
+
+    [Fact]
+    public async Task Reader_DurationBuckets_MatchTheRawTrendWithinTheBinTolerance()
+    {
+        var wf = AddWorkflow();
+        var now = DateTime.UtcNow;
+        var hour = ExecutionStatsRollupService.Truncate(now).AddHours(-2);
+        foreach (var seconds in Enumerable.Range(1, 20))
+            AddExecution(wf, ExecutionStatus.Succeeded, hour.AddMinutes(1), hour.AddMinutes(1).AddSeconds(seconds));
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var trend = new DashboardDurationTrend(_db);
+        var raw = await trend.ReadAsync(AccessibleFolderSet.Unrestricted, 24, null, TestContext.Current.CancellationToken, now);
+
+        await RollUpAsync(hour);
+        _db.ExecutionStatsRollupStates.Add(new ExecutionStatsRollupState
+        {
+            Id = ExecutionStatsRollupService.StateRowId,
+            CoverageStartUtc = hour.AddHours(-24),
+            CoverageEndUtc = ExecutionStatsRollupService.Truncate(now),
+            BackfillComplete = true,
+            UpdatedAt = now,
+        });
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var fromBuckets = await trend.ReadAsync(AccessibleFolderSet.Unrestricted, 24, null, TestContext.Current.CancellationToken, now);
+
+        var expected = raw.Buckets.Single(b => b.Count > 0);
+        var actual = fromBuckets.Buckets.Single(b => b.Count > 0);
+        fromBuckets.Buckets.Should().HaveCount(24);
+        actual.StartedAt.Should().Be(hour, "the grid is aligned to whole hours");
+        actual.Count.Should().Be(expected.Count);
+        actual.MedianMs!.Value.Should().BeApproximately(expected.MedianMs!.Value, expected.MedianMs.Value * 0.045);
+        actual.P95Ms!.Value.Should().BeApproximately(expected.P95Ms!.Value, expected.P95Ms.Value * 0.045);
+    }
+
+    [Fact]
+    public async Task Reader_DurationBuckets_HonourFolderScopeAndWorkflowFilter()
+    {
+        var hiddenFolder = Guid.NewGuid();
+        _db.SharedWorkflowFolders.Add(new SharedWorkflowFolder
+        {
+            Id = hiddenFolder, ParentFolderId = SharedWorkflowFolder.RootFolderId,
+            Name = "hidden", Path = "/hidden", Depth = 1,
+        });
+        var visible = AddWorkflow("visible");
+        var hidden = Guid.NewGuid();
+        _db.Workflows.Add(new Workflow
+        {
+            Id = hidden, Name = "hidden", DefinitionJson = "{}", UpdatedAt = DateTime.UtcNow, FolderId = hiddenFolder,
+        });
+        var now = DateTime.UtcNow;
+        var hour = ExecutionStatsRollupService.Truncate(now).AddHours(-1);
+        AddExecution(visible, ExecutionStatus.Succeeded, hour.AddMinutes(5), hour.AddMinutes(5).AddSeconds(1));
+        AddExecution(hidden, ExecutionStatus.Succeeded, hour.AddMinutes(6), hour.AddMinutes(6).AddSeconds(9));
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await RollUpAsync(hour);
+        _db.ExecutionStatsRollupStates.Add(new ExecutionStatsRollupState
+        {
+            Id = ExecutionStatsRollupService.StateRowId,
+            CoverageStartUtc = hour.AddHours(-24),
+            CoverageEndUtc = ExecutionStatsRollupService.Truncate(now),
+            BackfillComplete = true,
+            UpdatedAt = now,
+        });
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var reader = new DashboardRollupReader(_db);
+        var ct = TestContext.Current.CancellationToken;
+        var scoped = new AccessibleFolderSet { IsUnrestricted = false, FolderIds = [SharedWorkflowFolder.RootFolderId] };
+
+        var visibleOnly = await reader.ReadDurationBucketsAsync(scoped, 24, null, now, ct);
+        visibleOnly!.Sum(b => b.Count).Should().Be(1);
+        visibleOnly.Single(b => b.Count > 0).MedianMs.Should().Be(DurationHistogram.ValueOf(DurationHistogram.BinOf(1000)));
+
+        var selected = await reader.ReadDurationBucketsAsync(AccessibleFolderSet.Unrestricted, 24, hidden, now, ct);
+        selected!.Single(b => b.Count > 0).MedianMs.Should().Be(DurationHistogram.ValueOf(DurationHistogram.BinOf(9000)));
+
+        (await reader.ReadDurationBucketsAsync(AccessibleFolderSet.Unrestricted, 24, null, now, ct))!
+            .Sum(b => b.Count).Should().Be(2);
+        (await reader.ReadDurationBucketsAsync(AccessibleFolderSet.None, 24, null, now, ct))!
+            .Should().OnlyContain(b => b.Count == 0 && b.MedianMs == null && b.P95Ms == null);
     }
 
     [Fact]

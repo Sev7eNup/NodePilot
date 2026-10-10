@@ -60,19 +60,6 @@ internal sealed class DebugCoordinator
             redactedVariables[k] = _redactor.RedactNamedValue(k, v) ?? v;
         var snapshotJson = OutputRedactor.Cap(JsonSerializer.Serialize(redactedVariables), MaxSnapshotChars);
 
-        stepExecution.Status = ExecutionStatus.Paused;
-        stepExecution.PausedAt = DateTime.UtcNow;
-        stepExecution.VariablesSnapshot = snapshotJson;
-        EngineMetrics.DebugSessionsActive.Add(1);
-        // Eager write — the user needs to see the Paused row immediately when polling via
-        // REST, even if _deferRunningStateWrite=true. Debugging is by nature "low-volume,
-        // high-visibility", so the extra write is worth it.
-        await stepDb.SaveChangesAsync(ct);
-
-        await _notifier.StepPausedAsync(execution.Id, execution.WorkflowId, node.Id,
-            node.Data.Label, redactedVariables, stepExecution.PausedAt.Value,
-            causedByStepOver ? "stepOver" : "breakpoint");
-
         // Suspend the timeout — the execution clock should not keep running while
         // paused. It gets re-armed with the remaining budget after the await below.
         var pauseStart = DateTime.UtcNow;
@@ -85,40 +72,53 @@ internal sealed class DebugCoordinator
         using var pauseGuard = CancellationTokenSource.CreateLinkedTokenSource(ct);
         pauseGuard.CancelAfter(TimeSpan.FromMinutes(debug.MaxPauseMinutes));
 
+        // Register before either REST persistence or SignalR can expose the pause.
+        var resumeTask = debug.AwaitResumeAsync(node.Id, pauseGuard.Token);
+        EngineMetrics.DebugSessionsActive.Add(1);
+        var outcome = "failed";
         ResumeRequest resume;
         try
         {
-            resume = await debug.AwaitResumeAsync(node.Id, pauseGuard.Token);
+            stepExecution.Status = ExecutionStatus.Paused;
+            stepExecution.PausedAt = pauseStart;
+            stepExecution.VariablesSnapshot = snapshotJson;
+            await stepDb.SaveChangesAsync(ct);
+            await _notifier.StepPausedAsync(execution.Id, execution.WorkflowId, node.Id,
+                node.Data.Label, redactedVariables, pauseStart,
+                causedByStepOver ? "stepOver" : "breakpoint");
+            resume = await resumeTask;
+            outcome = resume.Command.ToString();
         }
         catch (OperationCanceledException)
         {
-            // Pause guard expired, or the execution was cancelled: terminate as Cancelled.
-            // The Paused row stays in the DB as a trace; the exception handler further up
-            // the call stack rewrites the status to Failed.
-            EngineMetrics.DebugSessionsActive.Add(-1);
-            EngineMetrics.DebugPauseDuration.Record((DateTime.UtcNow - pauseStart).TotalMilliseconds,
-                new KeyValuePair<string, object?>("outcome", "guard_or_cancelled"));
+            outcome = "guard_or_cancelled";
             throw;
         }
+        finally
+        {
+            // Persistence/notification can fail before we await the registered continuation.
+            // Cancel and observe it so no phantom paused step or token registration survives.
+            await pauseGuard.CancelAsync();
+            try { await resumeTask; }
+            catch (OperationCanceledException) { }
+            var pausedDuration = DateTime.UtcNow - pauseStart;
+            debug.TotalPausedDuration += pausedDuration;
+            EngineMetrics.DebugSessionsActive.Add(-1);
+            EngineMetrics.DebugPauseDuration.Record(pausedDuration.TotalMilliseconds,
+                new KeyValuePair<string, object?>("outcome", outcome));
 
-        var pausedDuration = DateTime.UtcNow - pauseStart;
-        debug.TotalPausedDuration += pausedDuration;
-        EngineMetrics.DebugSessionsActive.Add(-1);
-        EngineMetrics.DebugPauseDuration.Record(pausedDuration.TotalMilliseconds,
-            new KeyValuePair<string, object?>("outcome", resume.Command.ToString()));
+            if (debug.OriginalTimeoutSeconds is int origTimeout && origTimeout > 0)
+            {
+                var elapsed = DateTime.UtcNow - execution.StartedAt;
+                var remaining = TimeSpan.FromSeconds(origTimeout) - elapsed + debug.TotalPausedDuration;
+                if (remaining <= TimeSpan.Zero)
+                    await executionCts.CancelAsync();
+                else
+                    executionCts.CancelAfter(remaining);
+            }
+        }
         EngineMetrics.DebugResumeCommands.Add(1,
             new KeyValuePair<string, object?>("mode", resume.Command.ToString()));
-
-        // Re-arm the timeout — remaining budget = originalTimeout - elapsed + totalPaused.
-        if (debug.OriginalTimeoutSeconds is int origTimeout && origTimeout > 0)
-        {
-            var elapsed = DateTime.UtcNow - execution.StartedAt;
-            var remaining = TimeSpan.FromSeconds(origTimeout) - elapsed + debug.TotalPausedDuration;
-            if (remaining <= TimeSpan.Zero)
-                await executionCts.CancelAsync();
-            else
-                executionCts.CancelAfter(remaining);
-        }
 
         // Merge in overrides — the user edited variable values before clicking Resume.
         IReadOnlyDictionary<string, string>? appliedOverrides = null;

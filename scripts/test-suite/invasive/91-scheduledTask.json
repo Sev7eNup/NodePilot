@@ -38,7 +38,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 30,
-                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n\nGet-Service -Name 'NPTestSvc_*' -ErrorAction SilentlyContinue | ForEach-Object {\n  & sc.exe delete $_.Name | Out-Null\n}\nGet-ScheduledTask -TaskPath '\\NodePilot-TestSuite\\' -ErrorAction SilentlyContinue |\n  Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue\n$invasiveSweep = 'ok'\n"
+                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n\nGet-ScheduledTask -TaskPath '\\NodePilot-TestSuite\\' -ErrorAction SilentlyContinue |\n  Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue\n$invasiveSweep = 'ok'\n"
               },
               "outputVariable": "janitor",
               "targetMachineId": "localhost"
@@ -492,7 +492,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 30,
-                "script": "\n$cid = {{cid.param.text}}\n$short = $cid.Substring(0, 8)\n& sc.exe delete \"NPTestSvc_$short\" | Out-Null\nGet-ScheduledTask -TaskName \"NPTestTask_$short\" -TaskPath '\\NodePilot-TestSuite\\' -ErrorAction SilentlyContinue |\n  Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue\n$teardownDone = 'ok'\n"
+                "script": "\n$cid = {{cid.param.text}}\n$short = $cid.Substring(0, 8)\nGet-ScheduledTask -TaskName \"NPTestTask_$short\" -TaskPath '\\NodePilot-TestSuite\\' -ErrorAction SilentlyContinue |\n  Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue\n$teardownDone = 'ok'\n"
               },
               "outputVariable": "teardown",
               "targetMachineId": "localhost"

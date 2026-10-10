@@ -61,7 +61,7 @@ test.describe('Maintenance Windows', () => {
 
   test('renders the list with mode and scope', async ({ page }) => {
     // A workflow so the Workflows-scoped window resolves its target id to a human name.
-    await page.route('**/api/workflows', (route) =>
+    await page.route('**/api/workflows/names', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',

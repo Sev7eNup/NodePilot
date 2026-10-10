@@ -10,6 +10,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="ModelContextProtocol.Core" />
+    <PackageReference Include="YamlDotNet" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <!-- CVE-2025-6965: fixed SQLitePCLRaw 3.x native build (see Directory.Packages.props). -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />

@@ -1,6 +1,6 @@
 # NodePilot Context
 
-NodePilot is an agentless Windows Workflow Orchestrator. This context captures the project language used for workflow authoring, execution, settings, and remote operation architecture.
+NodePilot is an agentless Windows Workflow Orchestrator. This glossary defines shared terms for architecture discussions and development. Use the linked documentation for implementation details; established UI labels and code identifiers retain their names.
 
 ## Language
 
@@ -9,44 +9,61 @@ A persisted automation definition made of nodes and edges that can be edited, pu
 _Avoid_: Runbook, job
 
 **Workflow Definition**:
-The JSON document that stores a Workflow's nodes, edges, graph semantics, Activity configuration, and authoring metadata.
+The JSON document that stores a Workflow's nodes, edges, graph semantics, Activity Node configuration, and authoring metadata.
 _Avoid_: React Flow JSON, canvas payload
 
-**Activity**:
-A workflow node type that either starts a Workflow, performs work, controls flow, or returns data.
-_Avoid_: Step type, task
+**Activity (Activity Type)**:
+A kind of executable workflow node, identified by `activityType`, such as `manualTrigger`, `runScript`, or `junction`. It defines how a node starts a Workflow, performs work, controls flow, or returns data.
+
+**Activity Node**:
+One configured instance of an Activity in a Workflow Definition, with its own node ID, label, configuration, and connections. Several nodes can use the same Activity Type. Sticky notes and visual groups are annotations, not Activity Nodes.
 
 **Activity Catalog**:
-The backend-owned catalog of static Activity facts shared by runtime, telemetry, prompt checks, and designer affordances.
+The backend-owned catalog of static facts about built-in Activity Types, shared by runtime, telemetry, prompt checks, and designer affordances. Custom Activities obtain their metadata from their own definitions.
 _Avoid_: Frontend activity list, activity constants
 
+**Custom Activity**:
+A reusable, user-authored Activity backed by a parameterized PowerShell template, with its own definition and versions. Nodes reference it through a `custom:<key>` Activity Type. See [Custom Activities](docs/custom-activities.md).
+
 **Remote Activity**:
-An Activity that executes work on a Managed Machine over WinRM. Its remote-ness is the `IsRemote` flag in the Activity Catalog.
-_Avoid_: Remote step
+An Activity Type that supports execution on a Managed Machine over WinRM. Built-in types declare this capability through `IsRemote` in the Activity Catalog. The actual execution location depends on the configured target and credentials: supported local paths, including localhost without explicit credentials, execute on the NodePilot server instead of using WinRM.
+
+**Local Execution**:
+Activity work performed on the NodePilot server hosting the execution. Depending on the Activity and selected engine, it may run in-process or in a local child process. Local does not imply in-process.
+
+**AI Agent Activity**:
+An Activity that owns an iterative model/tool session with host-enforced permissions and budgets. Its optional tools can use WinRM; the Activity itself is not a Remote Activity.
+
+**Agent Team**:
+One AI Agent Activity Node containing exactly one supervisor and bounded parallel assignment batches. Members have separate sessions and share budgets, evidence and live peer pointers; they are never independent Workflow nodes. See [ADR 0017](docs/adr/0017-parallel-team-delegation.md).
+
+**Agent Run**:
+One bounded invocation of an AI Agent Activity, with a durable numbered event journal belonging to its Workflow Execution. See [ADR 0016](docs/adr/0016-general-ai-agent-activities.md).
 
 **Managed Machine**:
 A registered WinRM target machine that a Remote Activity can address.
 _Avoid_: Host row, target record
 
 **Trigger**:
-An Activity that can act as a Workflow entry point.
-_Avoid_: Schedule, listener, webhook
+An Activity Type whose nodes can act as Workflow entry points. Manual, schedule, and webhook triggers are specific kinds of Trigger; listeners are mechanisms that detect external events. See [ADR 0006](docs/adr/0006-trigger-only-workflow-roots.md).
 
 **Junction**:
-A control-flow Activity that explicitly joins multiple incoming branches. It is the only Activity
-allowed to have more than one incoming edge; its mode is `waitAll`, `waitAny`, or `waitNofM`.
+A control-flow Activity Type whose nodes explicitly join multiple incoming branches. Only Junction nodes
+may have more than one incoming edge; their mode is `waitAll`, `waitAny`, or `waitNofM`. See [ADR 0013](docs/adr/0013-explicit-junction-fan-in.md).
 _Avoid_: Implicit join, ordinary Activity with multiple inputs
 
 **Workflow Execution**:
-One run of a Workflow, including its status, input parameters, step results, audit-relevant ownership, and parent-child lineage.
-_Avoid_: Run, job instance
+One persisted run of a Workflow, including its status, input parameters, step results, audit-relevant ownership, and parent-child lineage. It already exists while its status is `Pending`; "run" is an acceptable shorthand when the scope is clear.
+
+**Step Execution**:
+The execution record for one Activity Node within a Workflow Execution, including its status, output, errors, timing, and attempt count. It is distinct from the Activity Type and the configured node; a retry can update the same Step Execution record.
 
 **Pending Execution**:
-A persisted Workflow Execution row that has been accepted but not yet taken over by the engine.
+A Workflow Execution in the `Pending` state: accepted and persisted, but not yet taken over by the engine. Engine ownership changes the same execution to `Running`; it does not create a second execution. See [ADR 0014](docs/adr/0014-durable-execution-dispatch.md).
 _Avoid_: Queue item only, fire-and-forget task
 
 **Dispatch Intent**:
-The durable, protected description of how a Pending Execution enters engine ownership, including trigger source, parameters, lineage, priority, and admission policy.
+The description of how an execution enters engine ownership, including trigger source, parameters, lineage, priority, and admission policy. On admission, it is persisted in the dispatch outbox alongside the Pending Execution, with protected parameters. See [ADR 0014](docs/adr/0014-durable-execution-dispatch.md).
 _Avoid_: Execute request, in-memory queue callback
 
 **Maintenance Window**:
@@ -62,7 +79,7 @@ The backend module that owns one Settings Section's DTO, defaults, secret handli
 _Avoid_: Controller switch case
 
 **PowerShell Operation**:
-A structured PowerShell-backed remote operation with a rendered script envelope, result markers, parsed output parameters, and timeout behaviour.
+A structured PowerShell-backed operation with a rendered script envelope, result markers, parsed output parameters, and timeout behaviour. Its execution can be local or over WinRM, depending on target resolution.
 _Avoid_: Script snippet, command builder
 
 **Workflow Contract**:
@@ -70,31 +87,31 @@ The static calling shape of a Workflow: manual inputs, return data outputs, and 
 _Avoid_: Sub-workflow API
 
 **Database Availability (Breaker)**:
-The process-wide runtime state of the application database: `Booting`, `Available`, `Armed` (one command timeout seen, probe adjudicating - still served), `Unavailable` (breaker open - `/api` answers `503 DATABASE_UNAVAILABLE` without touching the database). Only the probe (`SELECT 1` on a dedicated unpooled connection) may publish `Available`; interceptors may only degrade. A slow query is not an outage.
+The process-wide assessment of whether the application database is usable. It gates database-dependent requests during an outage and coordinates recovery; a single slow query does not establish an outage. State transitions, probes, and HTTP behaviour are defined in [ADR 0011](docs/adr/0011-database-availability-breaker.md).
 _Avoid_: circuit breaker tripped/reset terminology in user-facing copy - the UI says "database unreachable / reconnecting".
 
 ## Relationships
 
-- A **Workflow** contains exactly one **Workflow Definition**.
-- A **Workflow Definition** contains zero or more **Activities** and edges.
-- A **Trigger** is an **Activity** that can become a root of the runtime graph.
-- A **Junction** is the only **Activity** that can receive multiple incoming edges.
-- An **Activity Catalog** describes static facts about every executable **Activity**, including whether it is a **Remote Activity** (the `IsRemote` flag).
-- A **Remote Activity** executes against one **Managed Machine** over WinRM.
-- A **Dispatch Intent** creates one **Pending Execution**.
-- A **Dispatch Intent** and its **Pending Execution** are committed atomically and survive restart until engine ownership.
+- A **Workflow** has one current **Workflow Definition**; previous versions can be retained separately.
+- A **Workflow Definition** contains **Activity Nodes**, edges, and optional annotations. Each Activity Node selects one **Activity Type**.
+- A **Trigger** node can become a root of the runtime graph; only a **Junction** node may receive multiple incoming edges.
+- The **Activity Catalog** describes built-in **Activity Types**. **Custom Activities** have separate definitions and versions.
+- A **Remote Activity** supports a **Managed Machine** target over WinRM; supported local targets execute on the NodePilot server.
+- Admission commits a **Pending Execution** and its protected **Dispatch Intent** atomically. Accepted pending work can survive restart until engine ownership.
 - A **Maintenance Window** can block a **Dispatch Intent** from being admitted, but never stops an already-running **Workflow Execution**.
-- A **Pending Execution** becomes one **Workflow Execution** when the engine takes ownership.
+- Engine ownership changes a **Pending Execution** to `Running` on the same **Workflow Execution** record.
+- A **Workflow Execution** has **Step Executions** that record the outcomes of its **Activity Nodes**.
 - A **Settings Section** is owned by exactly one **Settings Section Adapter**.
-- A **PowerShell Operation** is used by selected remote **Activities**.
+- Selected **Activities** use **PowerShell Operations** for local or remote work.
 - A **Workflow Contract** is derived from a **Workflow Definition**.
 
 ## Example Dialogue
 
 > **Dev:** "When a **Trigger** fires, do we enqueue a callback directly?"
-> **Domain expert:** "No. A **Dispatch Intent** creates a **Pending Execution** first, so failover and cancellation can see the accepted work."
+> **Domain expert:** "Admission first persists the **Workflow Execution** as `Pending` together with its **Dispatch Intent**, so failover and cancellation can see the accepted work. The engine later claims that same execution."
 
 ## Flagged Ambiguities
 
-- "step" is used in UI text and database rows, but architecture discussions should say **Activity** for the node type and **Workflow Execution** for the run-level record.
+- "step" is context-dependent: use **Activity Type** for the kind of work, **Activity Node** for the configured graph node, **Step Execution** for its execution record, and **Workflow Execution** for the whole run.
 - "definition" should mean **Workflow Definition**, not a React Flow implementation detail.
+- "remote" capability in the catalog does not establish where a particular **Step Execution** ran; **Local Execution** does not establish which process ran it.

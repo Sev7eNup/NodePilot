@@ -11,6 +11,8 @@ using NodePilot.Data;
 using NodePilot.Data.Security;
 using NodePilot.Engine.Cluster;
 using NodePilot.Scheduler;
+using NodePilot.Scheduler.SystemAlerts;
+using NodePilot.Scheduler.SystemAlerts.Sources;
 using NodePilot.TestCommons;
 using Xunit;
 
@@ -18,6 +20,101 @@ namespace NodePilot.Engine.Tests.Notifications;
 
 public class NotificationDispatcherTests
 {
+    [Theory]
+    [InlineData(10)]
+    [InlineData(1)]
+    public async Task SystemAlertRetry_PreservesPolicyQueryAndSeverity(int ageMinutes)
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var workflow = SeedWorkflow(db);
+            SeedExecution(db, workflow, ExecutionStatus.Failed, DateTime.UtcNow.AddMinutes(-ageMinutes));
+            var rule = new NotificationRule
+            {
+                Id = Guid.NewGuid(), Name = "retry-extended-window", IsEnabled = true,
+                Kind = NotificationRuleKind.System, EventTypes = "SystemAlert",
+                SystemSourceId = "execution-result", SourceParametersJson = "{\"lookbackSeconds\":3600}",
+                ScopeKind = NotificationScopeKind.Global, SeverityOverride = NotificationSeverity.Critical,
+                FilterExpressionJson = SystemAlertConditions.Compare("status", "==", "Failed"),
+                Routes = [Route(NotificationChannel.Email, "a@x")],
+            };
+            db.NotificationRules.Add(rule);
+            await db.SaveChangesAsync();
+            var sink = new RecordingSink(NotificationChannel.Email) { Behavior = () => NotificationSendResult.Fail("temporary transport error") };
+            var dispatcher = new NotificationDispatcher(factory, new SingleNodeClusterStateProvider(), [sink],
+                new SystemAlertCatalog([new ExecutionResultSource()]), new ConfigurationBuilder().Build(),
+                NullLogger<NotificationDispatcher>.Instance, TestDatabaseAvailability.Available);
+
+            await dispatcher.DispatchOnceAsync(TestContext.Current.CancellationToken);
+            sink.Sends.Should().ContainSingle();
+            (await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync()).Status.Should().Be(NotificationDeliveryStatus.Pending);
+            sink.Behavior = () => NotificationSendResult.Ok;
+
+            await dispatcher.DispatchOnceAsync(TestContext.Current.CancellationToken);
+
+            sink.Sends.Should().HaveCount(2, "the configured one-hour lookback still includes the existing execution");
+            sink.Sends.Should().OnlyContain(s => s.ctx.Severity == NotificationSeverity.Critical);
+            (await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync()).Status.Should().Be(NotificationDeliveryStatus.Sent);
+        }
+        finally { await db.DisposeAsync(); await conn.DisposeAsync(); }
+    }
+
+    [Fact]
+    public async Task PendingRetry_AfterRuleDisabled_DoesNotSend()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var workflow = SeedWorkflow(db);
+            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            var ruleId = SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
+            SeedExecution(db, workflow, ExecutionStatus.Failed, DateTime.UtcNow);
+            var sink = new RecordingSink(NotificationChannel.Email)
+            {
+                Behavior = () => NotificationSendResult.Fail("transport unavailable"),
+            };
+            var dispatcher = Build(factory, sink);
+            await dispatcher.DispatchOnceAsync(CancellationToken.None);
+            sink.Sends.Should().ContainSingle();
+            await db.NotificationRules.Where(r => r.Id == ruleId)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsEnabled, false));
+
+            await dispatcher.DispatchOnceAsync(CancellationToken.None);
+
+            sink.Sends.Should().ContainSingle("the rule master switch also prevents external retry sends");
+        }
+        finally { await db.DisposeAsync(); await conn.DisposeAsync(); }
+    }
+
+    [Theory]
+    [InlineData(ExecutionStatus.Pending, "ExecutionQueuedLong")]
+    [InlineData(ExecutionStatus.Running, "ExecutionRunningLong")]
+    public async Task ElapsedAlerts_AdvancePastAlreadyDeliveredOldestBatch(ExecutionStatus status, string eventType)
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var workflow = SeedWorkflow(db);
+            SeedRule(db, eventType, Route(NotificationChannel.Email, "a@x"));
+            var startedAt = DateTime.UtcNow.AddHours(-2);
+            for (var i = 0; i < 205; i++) db.WorkflowExecutions.Add(new WorkflowExecution
+            {
+                Id = Guid.NewGuid(), WorkflowId = workflow, Status = status,
+                StartedAt = startedAt.AddSeconds(i),
+            });
+            await db.SaveChangesAsync();
+            var sink = new RecordingSink(NotificationChannel.Email);
+            var dispatcher = Build(factory, sink);
+
+            for (var pass = 0; pass < 3; pass++) await dispatcher.DispatchOnceAsync(CancellationToken.None);
+
+            sink.Sends.Select(s => s.ctx.ExecutionId).Distinct().Should().HaveCount(205,
+                "persistent old pending/running rows must not starve later elapsed alerts");
+        }
+        finally { await db.DisposeAsync(); await conn.DisposeAsync(); }
+    }
+
     private static byte[] Key()
     {
         var k = new byte[32];

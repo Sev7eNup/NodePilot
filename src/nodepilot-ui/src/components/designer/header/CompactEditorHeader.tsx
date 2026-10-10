@@ -93,6 +93,7 @@ export function CompactEditorHeader({
             )}
             {isExpert && (
               <ToolsMenu
+                canWrite={canWrite}
                 workflowId={workflowId}
                 workflowName={name}
                 nodes={nodes}

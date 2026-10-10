@@ -2,6 +2,15 @@
 
 `np` ist das Kommandozeilenwerkzeug für Administration und Betrieb. Es greift ausschließlich über die REST-API auf NodePilot zu; ein direkter Datenbankzugriff findet nicht statt.
 
+## Agentenbefehle
+
+`np agent runs <EXECUTION-ID>` listet Agentenläufe. `np agent events <RUN-ID> --after 0
+--page-size 200` liest gespeicherte Ereignisse. Verwaltung: `np agent mcp list|tools|save|delete`
+und `np agent skill list|import|enabled|delete`. Argumente stehen im jeweiligen `--help`;
+`mcp save` liest eine JSON-Konfiguration über `--file`, `skill import` erhält ZIP-Pfad und
+`--version`. Änderungen benötigen Admin-Rechte. Geheimnisse erscheinen nicht in Listen.
+Die Agenten-/Teamkonfiguration steht in der [Activity-Referenz](activities-reference).
+
 ## Installation
 
 `np` ist **kein** .NET Global Tool — `PackAsTool` verträgt das geerbte `net10.0-windows`-TFM nicht (NETSDK1146). Stattdessen veröffentlichen und den Ordner in den `PATH` legen:
@@ -262,9 +271,12 @@ np globals update 3b8c... --value new-email@internal
 np globals update 3b8c... --no-secret
 np globals update 3b8c... --folder /Environment/Prod       # verschiebt die Variable
 np globals delete 3b8c...
-np globals export --file ./globals.json                   # secrets als ***
+np globals export --file ./globals.json                   # Secret-Werte ausgelassen (null)
 np globals import -f ./globals.json --upsert
 np globals import -f - --dry-run < globals.json
+
+# Exportierte Secret-Werte sind null; --upsert bewahrt ein vorhandenes Secret.
+# Neue Secrets brauchen einen echten Wert. Auch alte ***-Masken gelten als ausgelassen.
 
 # Ordner-Baum (Admin)
 np globals folder list

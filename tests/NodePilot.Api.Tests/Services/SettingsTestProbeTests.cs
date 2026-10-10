@@ -190,6 +190,77 @@ public sealed class SettingsTestProbeTests
     // ---------------------------------------------------------------- LDAP guards
 
     [Fact]
+    public async Task TestLlmAsync_SuccessDoesNotBufferOrReadTheModelsBody()
+    {
+        var content = new ProbeStreamContent(new EndlessProbeStream());
+        var handler = new StubHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = content });
+        var result = await Probe(handler).TestLlmAsync(Llm("http://127.0.0.1/v1"), TestContext.Current.CancellationToken);
+        result.Ok.Should().BeTrue();
+        content.StreamOpened.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TestLlmAsync_ErrorReadsOnlyBoundedPrefixWithoutWaitingForEof()
+    {
+        var stream = new EndlessProbeStream();
+        var handler = new StubHttpMessageHandler(_ => new(HttpStatusCode.BadGateway) { Content = new ProbeStreamContent(stream) });
+        var result = await Probe(handler).TestLlmAsync(Llm("http://127.0.0.1/v1"), TestContext.Current.CancellationToken);
+        result.ErrorKind.Should().Be("BadGateway");
+        result.Message.Should().Contain(new string('x', 200) + "…");
+        stream.BytesRead.Should().BeInRange(201, 4096);
+        stream.Disposed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TestLlmAsync_ErrorBodyRemainsSubjectToTheProbeDeadline()
+    {
+        var stream = new EndlessProbeStream(block: true);
+        var handler = new StubHttpMessageHandler(_ => new(HttpStatusCode.BadGateway) { Content = new ProbeStreamContent(stream) });
+        var request = new LlmTestProbeRequest("default", new LlmProfileProbeDto { BaseUrl = "http://127.0.0.1/v1", TimeoutSeconds = 1 });
+        var result = await Probe(handler).TestLlmAsync(request, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5));
+        result.Ok.Should().BeFalse();
+        result.ErrorKind.Should().BeOneOf(nameof(OperationCanceledException), nameof(TaskCanceledException));
+        stream.Disposed.Should().BeTrue();
+    }
+
+    private sealed class ProbeStreamContent(Stream stream) : HttpContent
+    {
+        public bool StreamOpened { get; private set; }
+        protected override Task SerializeToStreamAsync(Stream target, TransportContext? context)
+            => throw new InvalidOperationException("Probe must not buffer the entire response.");
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+        protected override Task<Stream> CreateContentReadStreamAsync(CancellationToken cancellationToken)
+        {
+            StreamOpened = true;
+            return Task.FromResult(stream);
+        }
+    }
+
+    private sealed class EndlessProbeStream(bool block = false) : Stream
+    {
+        public int BytesRead { get; private set; }
+        public bool Disposed { get; private set; }
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => BytesRead; set => throw new NotSupportedException(); }
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (block) await Task.Delay(Timeout.Infinite, cancellationToken);
+            buffer.Span.Fill((byte)'x');
+            BytesRead += buffer.Length;
+            return buffer.Length;
+        }
+        protected override void Dispose(bool disposing) { Disposed = true; base.Dispose(disposing); }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() { }
+    }
+
+    [Fact]
     public async Task TestLdapAsync_WithoutLdaps_IsRefused()
     {
         var result = await Probe().TestLdapAsync(

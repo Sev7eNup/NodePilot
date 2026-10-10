@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Moq;
 using NodePilot.Api.Hubs;
 using NodePilot.Core.Enums;
+using NodePilot.Data;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Hubs;
@@ -30,7 +31,8 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
         ExecutionHub.ClearOpsFeedForTest();
     }
 
-    private static (SignalRExecutionNotifier notifier, Capture capture) Build(bool hasSubscribers = true)
+    private static (SignalRExecutionNotifier notifier, Capture capture) Build(
+        bool hasSubscribers = true, TimeSpan? batchTimeout = null)
     {
         var capture = new Capture();
         var proxy = new Mock<IClientProxy>();
@@ -50,7 +52,11 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
         var hub = new Mock<IHubContext<ExecutionHub>>();
         hub.SetupGet(h => h.Clients).Returns(clients.Object);
 
-        return (new SignalRExecutionNotifier(hub.Object, hasSubscribers: (_, _) => hasSubscribers), capture);
+        var notifier = new SignalRExecutionNotifier(hub.Object, hasSubscribers: (_, _) => hasSubscribers)
+        {
+            BatchTimeout = batchTimeout ?? TimeSpan.FromSeconds(5)
+        };
+        return (notifier, capture);
     }
 
     private static LiveEventBatchItem FirstItem(Capture capture)
@@ -60,6 +66,143 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
         var batch = capture.Args![0].Should().BeOfType<LiveEventsBatch>().Subject;
         batch.Events.Should().HaveCount(1);
         return batch.Events[0];
+    }
+
+    [Fact]
+    public async Task OpsFeedFolderLookupAndSend_FinishBeforeFolderMutationCanCommit()
+    {
+        var source = Guid.NewGuid();
+        var destination = Guid.NewGuid();
+        var folder = source;
+        var lookupStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseLookup = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionHub.RegisterOpsFeedForTest("old-reader", false, [source]);
+        var proxy = new Mock<IClientProxy>();
+        proxy.Setup(p => p.SendCoreAsync(It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var clients = new Mock<IHubClients>();
+        clients.Setup(c => c.Clients(It.IsAny<IReadOnlyList<string>>())).Returns(proxy.Object);
+        var hub = new Mock<IHubContext<ExecutionHub>>();
+        hub.SetupGet(h => h.Clients).Returns(clients.Object);
+        using var notifier = new SignalRExecutionNotifier(hub.Object, hasSubscribers: (_, _) => false,
+            folderResolver: async (_, ct) =>
+            {
+                var snapshot = folder;
+                lookupStarted.TrySetResult();
+                await releaseLookup.Task.WaitAsync(ct);
+                return snapshot;
+            });
+        await notifier.ExecutionStatusChangedAsync(Guid.NewGuid(), Guid.NewGuid(), ExecutionStatus.Failed, "private", DateTime.UtcNow);
+        var flush = notifier.FlushForTestAsync();
+        await lookupStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var mutationLock = FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(CancellationToken.None);
+        try
+        {
+            mutationLock.IsCompleted.Should().BeFalse("a stale folder lookup must not outlive a committed move");
+        }
+        finally
+        {
+            releaseLookup.TrySetResult();
+            await flush.WaitAsync(TimeSpan.FromSeconds(5));
+            using var held = await mutationLock;
+            folder = destination;
+            notifier.InvalidateWorkflowFolder(Guid.NewGuid());
+        }
+    }
+
+    [Fact]
+    public async Task FanOutTimeout_CancelsBlockedSendAndReleasesFolderMutationLock()
+    {
+        var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var proxy = new Mock<IClientProxy>();
+        proxy.Setup(p => p.SendCoreAsync(It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
+            .Returns<string, object?[], CancellationToken>(async (_, _, ct) =>
+            {
+                sendStarted.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            });
+        var clients = new Mock<IHubClients>();
+        clients.Setup(c => c.Groups(It.IsAny<IReadOnlyList<string>>())).Returns(proxy.Object);
+        var hub = new Mock<IHubContext<ExecutionHub>>();
+        hub.SetupGet(h => h.Clients).Returns(clients.Object);
+        using var notifier = new SignalRExecutionNotifier(hub.Object, hasSubscribers: (_, _) => true)
+        {
+            BatchTimeout = TimeSpan.FromMilliseconds(100)
+        };
+        await notifier.ExecutionStatusChangedAsync(Guid.NewGuid(), Guid.NewGuid(), ExecutionStatus.Running, null, null);
+        var flush = notifier.FlushForTestAsync();
+        await sendStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var mutationLock = FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(CancellationToken.None);
+        mutationLock.IsCompleted.Should().BeFalse();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => flush);
+        using var held = await mutationLock.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Flush_DoesNotWaitForOtherSharedTreeHolders()
+    {
+        var (notifier, capture) = Build();
+        var execId = Guid.NewGuid();
+        ExecutionHub.RegisterGroupForTest("conn-1", execId.ToString());
+        await notifier.StepStartedAsync(execId, Guid.NewGuid(), "step-1", "Check Disk", "runScript", DateTime.UtcNow);
+
+        using var joinInProgress = await FolderTreeMutationLock.SharedWorkflowFolders
+            .AcquireSharedAsync(TestContext.Current.CancellationToken);
+        await notifier.FlushForTestAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        capture.Method.Should().Be("LiveEventsBatch");
+    }
+
+    [Fact]
+    public async Task Flush_GivesUpWhenAFolderMutationOutlastsTheBatchTimeout()
+    {
+        var (notifier, capture) = Build(batchTimeout: TimeSpan.FromMilliseconds(100));
+        var execId = Guid.NewGuid();
+        ExecutionHub.RegisterGroupForTest("conn-1", execId.ToString());
+        await notifier.StepStartedAsync(execId, Guid.NewGuid(), "step-1", "Check Disk", "runScript", DateTime.UtcNow);
+
+        using var mutation = await FolderTreeMutationLock.SharedWorkflowFolders
+            .BeginMutationAsync(TestContext.Current.CancellationToken);
+        var flush = notifier.FlushForTestAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => flush.WaitAsync(TimeSpan.FromSeconds(5)));
+        capture.Method.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task FolderLookupFailure_DrainsStartedSendBeforeReleasingTreeLock()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var proxy = new Mock<IClientProxy>();
+        proxy.Setup(p => p.SendCoreAsync(It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
+            .Returns<string, object?[], CancellationToken>(async (_, _, ct) =>
+            {
+                started.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            });
+        var clients = new Mock<IHubClients>();
+        clients.Setup(c => c.Groups(It.IsAny<IReadOnlyList<string>>())).Returns(proxy.Object);
+        var hub = new Mock<IHubContext<ExecutionHub>>();
+        hub.SetupGet(h => h.Clients).Returns(clients.Object);
+        ExecutionHub.RegisterOpsFeedForTest("viewer", false, [Guid.NewGuid()]);
+        using var notifier = new SignalRExecutionNotifier(hub.Object, hasSubscribers: (_, _) => true,
+            folderResolver: (_, _) => throw new InvalidOperationException("lookup failed"));
+        await notifier.ExecutionStatusChangedAsync(Guid.NewGuid(), Guid.NewGuid(), ExecutionStatus.Running, null, null);
+        var flush = notifier.FlushForTestAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var mutationLock = FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(CancellationToken.None);
+        try
+        {
+            flush.IsCompleted.Should().BeFalse();
+            mutationLock.IsCompleted.Should().BeFalse();
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Assert.ThrowsAsync<InvalidOperationException>(() => flush);
+            using var held = await mutationLock.WaitAsync(TimeSpan.FromSeconds(5));
+        }
     }
 
     [Fact]

@@ -55,6 +55,13 @@ public class ExecutionHourlyStat
     public int DurationMsCount { get; set; }
 
     /// <summary>
+    /// Durations of the hour's succeeded and failed runs as a log-scale histogram
+    /// (<c>bin:count,…</c>), so the dashboard can derive median and P95 for any window without
+    /// sorting raw rows. Empty when the hour has no such run.
+    /// </summary>
+    public string DurationHistogram { get; set; } = string.Empty;
+
+    /// <summary>
     /// False while any execution started in this hour is still Pending, Running or Paused.
     ///
     /// <para>

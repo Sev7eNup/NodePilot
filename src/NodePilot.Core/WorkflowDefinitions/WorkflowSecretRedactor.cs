@@ -37,6 +37,8 @@ public static class WorkflowSecretRedactor
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["startProgram"] = Keys("arguments"),
+            ["aiAgent"] = Keys("task", "resultSchema"),
+            ["aiAgentTeam"] = Keys("task", "resultSchema"),
             ["scheduledTask"] = Keys("arguments"),
             ["wmiQuery"] = Keys("arguments", "query", "filter"),
             ["sql"] = Keys("query", "parameters"),
@@ -122,6 +124,8 @@ public static class WorkflowSecretRedactor
         string key,
         JsonNode value)
     {
+        if (activityType is "aiAgent" or "aiAgentTeam" && parentName is "agent" or "members"
+            && key.Equals("instructions", StringComparison.OrdinalIgnoreCase)) return true;
         if (!string.Equals(parentName, "config", StringComparison.OrdinalIgnoreCase)
             || activityType is null) return false;
 

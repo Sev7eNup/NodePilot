@@ -35,7 +35,7 @@ public class SystemAlertCatalogTests
         new StuckExecutionSource(),
         new WorkflowHealthSource(),
         new AlertDeliveryFailureSource(),
-        new TriggerUnhealthySource(new NodePilot.Scheduler.TriggerHealthRegistry()),
+        new TriggerUnhealthySource(new NodePilot.Scheduler.TriggerHealthRegistry(), new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider()),
         new AuditEventSource(),
     ];
 

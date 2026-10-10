@@ -51,6 +51,14 @@ public sealed class SecretsReencryptCommand : BaseCommand<SecretsReencryptSettin
             grid.AddRow("Global Secrets Skipped",
                 value.GlobalSecretsSkipped == 0 ? "0" : $"[yellow]{value.GlobalSecretsSkipped}[/]");
             grid.AddRow("Workflow Versions Rewritten", value.WorkflowVersionsRewritten.ToString());
+            grid.AddRow("Agent MCP Secrets Rewritten", value.AgentMcpSecretsRewritten.ToString());
+            grid.AddRow("Agent MCP Secrets Skipped", value.AgentMcpSecretsSkipped.ToString());
+            grid.AddRow("Notification Routes Rewritten", value.NotificationRoutesRewritten.ToString());
+            grid.AddRow("Notification Routes Skipped", value.NotificationRoutesSkipped.ToString());
+            grid.AddRow("Dispatch Parameters Rewritten", value.DispatchParametersRewritten.ToString());
+            grid.AddRow("Dispatch Parameters Skipped", value.DispatchParametersSkipped.ToString());
+            grid.AddRow("Runtime Settings Files Rewritten", value.RuntimeSettingsFilesRewritten.ToString());
+            grid.AddRow("Runtime Settings Files Skipped", value.RuntimeSettingsFilesSkipped.ToString());
             grid.AddRow("Workflow Versions Skipped",
                 value.WorkflowVersionsSkipped == 0 ? "0" : $"[yellow]{value.WorkflowVersionsSkipped}[/]");
             grid.AddRow("Status", value.PartialSuccess
@@ -84,6 +92,30 @@ public sealed class SecretsReencryptCommand : BaseCommand<SecretsReencryptSettin
                 foreach (var s in value.WorkflowVersionSkipDetails)
                     t.AddRow(s.Id.ToString()[..8], Markup.Escape(s.Name), Markup.Escape(s.Reason));
                 console.Write(t);
+            }
+            if (value.AgentMcpSecretSkipDetails.Count > 0)
+            {
+                console.WriteLine();
+                var t = new Table().Title("Agent MCP secret skips").Border(TableBorder.Rounded)
+                    .AddColumn("Id").AddColumn("Name").AddColumn("Reason");
+                foreach (var s in value.AgentMcpSecretSkipDetails)
+                    t.AddRow(s.Id.ToString()[..8], Markup.Escape(s.Name), Markup.Escape(s.Reason));
+                console.Write(t);
+            }
+            foreach (var (title, skips) in new[]
+            {
+                ("Notification route skips", value.NotificationRouteSkipDetails),
+                ("Dispatch parameter skips", value.DispatchParameterSkipDetails),
+                ("Runtime settings file skips", value.RuntimeSettingsFileSkipDetails),
+            })
+            {
+                if (skips.Count == 0) continue;
+                console.WriteLine();
+                var table = new Table().Title(title).Border(TableBorder.Rounded)
+                    .AddColumn("Id").AddColumn("Name").AddColumn("Reason");
+                foreach (var skip in skips)
+                    table.AddRow(skip.Id.ToString()[..8], Markup.Escape(skip.Name), Markup.Escape(skip.Reason));
+                console.Write(table);
             }
         });
 

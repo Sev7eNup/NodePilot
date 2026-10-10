@@ -43,6 +43,13 @@ vi.mock('@microsoft/signalr', () => {
 // not blow up at module-load time.
 vi.mock('html-to-image', () => ({ toBlob: toBlobMock }));
 
+// This page regression follows HTTP payloads; jsdom cannot measure CodeMirror ranges.
+vi.mock('@uiw/react-codemirror', async () => {
+  const { createElement } = await import('react');
+  return { default: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
+    createElement('textarea', { value, onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) }) };
+});
+
 // Real lint, wrapped so tests can count how often the editor runs it. It walks every edge
 // against every node, so it must not run per frame of a drag.
 const lintSpy = vi.hoisted(() => ({ fn: null as ReturnType<typeof vi.fn> | null }));
@@ -154,6 +161,7 @@ const EMPTY_WORKFLOW = {
 const server = setupServer(
   http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_WORKFLOW)),
   http.get(`${BASE}/api/workflows`, () => HttpResponse.json([{ id: 'wf-smoke-1', name: 'Smoke Workflow' }])),
+  http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json([{ id: 'wf-smoke-1', name: 'Smoke Workflow' }])),
   http.get(`${BASE}/api/machines/options`, () => HttpResponse.json([])),
   http.get(`${BASE}/api/credentials`, () => HttpResponse.json([])),
   http.get(`${BASE}/api/executions`, () => HttpResponse.json([])),
@@ -231,6 +239,25 @@ async function openToolsMenu() {
 }
 
 describe('WorkflowEditorPage — smoke + toolbar', () => {
+  it.each(['double-click', 'properties'] as const)('tests the current unsaved script from the %s editor', async (entry) => {
+    let sent: { configOverride?: { script?: string } } | undefined;
+    server.use(http.post(`${BASE}/api/workflows/wf-smoke-1/steps/step-b/test`, async ({ request }) => {
+      sent = await request.json() as typeof sent;
+      return HttpResponse.json({ success: true, output: 'current script', outputParameters: {}, durationMs: 1 });
+    }));
+    renderPage();
+    await waitForCanvasReady();
+    const node = document.querySelector('.react-flow__node[data-id="step-b"]')!;
+    if (entry === 'double-click') fireEvent.doubleClick(node);
+    else {
+      fireEvent.click(node);
+      fireEvent.click(await screen.findByRole('button', { name: /open editor/i }));
+    }
+    fireEvent.change(await screen.findByTestId('monaco-editor-mock'), { target: { value: "Write-Output 'updated safe script'" } });
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^run$/i }));
+    await waitFor(() => expect(sent?.configOverride?.script).toBe("Write-Output 'updated safe script'"));
+  });
+
   it('loads machine options without requesting operational statistics', async () => {
     const options = vi.fn(() => HttpResponse.json([]));
     const statistics = vi.fn(() => HttpResponse.json([]));
@@ -1445,6 +1472,42 @@ describe('WorkflowEditorPage — Tidy Layout', () => {
     fireEvent.click(screen.getByTitle(/Restore layout/));
     // After restore, the Orig button disables again — origLayoutRef cleared.
     await waitFor(() => expect(screen.getByTitle(/Restore layout/)).toBeDisabled());
+  });
+
+  it('restoring layout preserves later node edits, additions and deletions in the saved graph', async () => {
+    type SavedNode = { id: string; position: { x: number; y: number }; data: { disabled?: boolean } };
+    let saved: { nodes: SavedNode[]; edges: { source: string; target: string }[] } | null = null;
+    const definition = JSON.parse(MOCK_WORKFLOW.definitionJson);
+    definition.nodes[1].data = { label: 'Delay', activityType: 'delay', config: { seconds: 1 } };
+    server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json({
+      ...MOCK_WORKFLOW, definitionJson: JSON.stringify(definition),
+    })));
+    server.use(http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+      saved = JSON.parse((await request.json() as { definitionJson: string }).definitionJson);
+      return HttpResponse.json(MOCK_WORKFLOW);
+    }));
+    const { container } = renderPage('Admin');
+    await waitForCanvasReady();
+    await openToolsMenu();
+    fireEvent.click(screen.getByTitle(/Layout: LR/));
+    const node = (id: string) => container.querySelector(`.react-flow__node[data-id="${id}"]`)!;
+    fireEvent.contextMenu(node('step-b'));
+    fireEvent.click(await screen.findByText('Disable step'));
+    fireEvent.contextMenu(node('step-b'));
+    fireEvent.click(await screen.findByText('Duplicate'));
+    fireEvent.contextMenu(node('step-a'));
+    fireEvent.click(await screen.findByText('Delete'));
+    fireEvent.click(screen.getByTitle(/Restore layout/));
+    fireEvent.click(screen.getByTitle(/Save in place|Zwischen-Speichern/i));
+
+    await waitFor(() => expect(saved).not.toBeNull());
+    expect(saved!.nodes.map((n) => n.id)).not.toContain('step-a');
+    expect(saved!.nodes).toHaveLength(2);
+    expect(saved!.nodes.find((n) => n.id === 'step-b')).toMatchObject({
+      position: { x: 400, y: 100 }, data: { disabled: true },
+    });
+    expect(saved!.nodes.some((n) => n.id !== 'step-b' && n.data.disabled)).toBe(true);
+    expect(saved!.edges).toEqual([]);
   });
 
   it('saving after a workflow layout change posts the current definition', async () => {

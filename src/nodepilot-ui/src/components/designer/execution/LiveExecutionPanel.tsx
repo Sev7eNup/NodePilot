@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { EmptyState } from '../../common/EmptyState';
 import { api } from '../../../api/client';
+import { AgentRunPanel } from '../agents/AgentRunPanel';
 import type { WorkflowExecution } from '../../../types/api';
 import type { LiveExecution } from '../../../hooks/useSignalR';
 import type { SimulationSnapshot } from '../ExecutionPanel';
@@ -423,7 +424,10 @@ function LiveExecutionDetail({ execution, workflowId, historyExecutions }: Reado
               </div>
 
               {/* Input config */}
-              <StepInputBlock workflowId={workflowId} stepId={selected.stepId} />
+              {['aiAgent', 'aiAgentTeam'].includes(selected.stepType ?? '') ? <AgentRunPanel
+                executionId={execution.executionId} stepId={selected.stepId} active={execution.status === 'Running'}>
+                <StepInputBlock workflowId={workflowId} stepId={selected.stepId} />
+              </AgentRunPanel> : <StepInputBlock workflowId={workflowId} stepId={selected.stepId} />}
 
               {/* Output parameters */}
               <StepOutputParametersBlock parameters={selectedOutputParameters} />

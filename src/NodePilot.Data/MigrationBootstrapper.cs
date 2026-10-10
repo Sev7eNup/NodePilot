@@ -22,6 +22,14 @@ public static class MigrationBootstrapper
             db.GetService<IHistoryRepository>().CreateIfNotExists();
             db.Database.Migrate();
         }
+        catch (Exception ex) when (CustomActivityKeyConstraint.IsViolation(ex))
+        {
+            throw new InvalidOperationException(
+                "Cannot enforce unique live custom-activity keys because existing definitions have duplicate keys. " +
+                "No definitions were deleted or renamed. Inspect the read-only duplicate-key query in " +
+                "docs/custom-activity-key-migration.md (the same query is on the Production deployment page " +
+                "of the documentation website), resolve the duplicates explicitly, then retry startup.", ex);
+        }
         catch (Exception ex) when (IsDatabaseUnreachable(db))
         {
             // A stopped database is the most common first-run failure, and the raw provider

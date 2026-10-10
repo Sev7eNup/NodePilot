@@ -15,7 +15,7 @@ namespace NodePilot.Api.Tests.Architecture;
 /// on). The frontend requests those sections by string literal — either directly via
 /// <c>getSection('X')</c>/<c>putSection('X')</c> or through the shared <c>useSectionForm('X',
 /// …)</c>
-/// hook. If the two sets drift (backend adds a section with no UI, or the frontend references a
+/// hook or its section editor <c>useSectionEditor('X')</c>. If the two sets drift (backend adds a section with no UI, or the frontend references a
 /// renamed/removed section) an operator silently loses the ability to view or edit that config —
 /// so fail CI instead.</para>
 /// </summary>
@@ -29,14 +29,14 @@ public class AdminSettingsFrontendSyncTests
 
         frontend.Should().BeEquivalentTo(backend,
             "every SettingsSchema section must be surfaced by exactly one admin-settings component, and " +
-            "every section the frontend requests via getSection/putSection/useSectionForm must be a real " +
+            "every section the frontend requests via getSection/putSection/useSectionForm/useSectionEditor must be a real " +
             "backend section — update the frontend admin-settings components (or SettingsSchema.Sections) " +
             "when adding, removing, or renaming a settings section.");
     }
 
     /// <summary>
     /// Scans every component under <c>components/admin-settings/</c> and collects the section-name
-    /// string literals passed to the three fetch/edit entry points. Deliberately narrow (only these
+    /// string literals passed to the fetch/edit entry points. Deliberately narrow (only these
     /// call shapes) so a section name appearing in a comment or test-id can't inflate the set.
     /// </summary>
     private static HashSet<string> ExtractFrontendSectionNames()
@@ -52,7 +52,7 @@ public class AdminSettingsFrontendSyncTests
         var patterns = new[]
         {
             new Regex(@"(?:get|put)Section<[^(]*>\(\s*'([A-Za-z]+)'", RegexOptions.Compiled),
-            new Regex(@"useSectionForm<[^(]*>\(\s*'([A-Za-z]+)'", RegexOptions.Compiled),
+            new Regex(@"useSection(?:Form|Editor)<[^(]*>\(\s*'([A-Za-z]+)'", RegexOptions.Compiled),
         };
 
         var names = new HashSet<string>(StringComparer.Ordinal);

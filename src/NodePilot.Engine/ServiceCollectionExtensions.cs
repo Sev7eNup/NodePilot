@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Activities;
 using NodePilot.Engine.Options;
+using NodePilot.Engine.Security;
 
 namespace NodePilot.Engine;
 
@@ -31,6 +32,16 @@ public static class ServiceCollectionExtensions
         // for HA) can register first and not be overwritten.
         services.TryAddSingleton<ISubWorkflowGate>(_ => new InMemorySubWorkflowGate());
         services.TryAddSingleton<IWorkflowConcurrencyGate>(_ => new InMemoryWorkflowConcurrencyGate());
+        services.AddOptions<NodePilot.Core.Agents.AgentOptions>();
+        services.TryAddSingleton<Agents.AgentExecutionGate>();
+        services.AddScoped<NodePilot.Ai.Agents.AgentRuntime>();
+        services.AddScoped<Agents.AgentActivityRunner>();
+        services.AddScoped<Agents.AgentRunJournal>();
+        services.AddScoped<Agents.AgentRunDatabase>();
+        services.AddScoped<Agents.AgentToolHost>();
+        services.AddScoped<Agents.AgentExternalReadPolicy>();
+        services.AddScoped<Agents.AgentTargetFactory>();
+        services.AddScoped<Agents.AgentMcpClientFactory>();
 
         var executorInterface = typeof(IActivityExecutor);
         var assembly = typeof(WorkflowEngine).Assembly;
@@ -60,7 +71,13 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
+        services.Configure<NodePilot.Core.Agents.AgentOptions>(configuration.GetSection(NodePilot.Core.Agents.AgentOptions.SectionName));
+        services.PostConfigure<NodePilot.Core.Agents.AgentOptions>(options =>
+            options.ReadOnlyMcpTools = (ProviderAtomicList.Read<NodePilot.Core.Agents.AgentMcpReadGrant>(
+                configuration, "Agents:ReadOnlyMcpTools") ?? []).ToArray());
         services.Configure<RestApiProxyOptions>(configuration.GetSection(RestApiProxyOptions.SectionName));
+        services.PostConfigure<RestApiProxyOptions>(options =>
+            options.BypassList = ProviderAtomicList.Read<string>(configuration, "RestApi:Proxy:BypassList") ?? []);
         return services;
     }
 }

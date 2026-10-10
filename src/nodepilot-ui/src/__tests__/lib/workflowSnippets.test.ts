@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Node, Edge } from '@xyflow/react';
 import { WORKFLOW_SNIPPETS, getWorkflowSnippets, insertSnippet } from '../../lib/workflowSnippets';
 import i18n from '../../i18n';
+import { lintWorkflow } from '../../lib/workflowLint';
 
 /**
  * Pins two contracts of the quick-start snippet catalog:
@@ -165,6 +166,15 @@ describe('insertSnippet', () => {
     expect(data.activityType).toBe('runScript');
     expect(data.config).toBeDefined();
     expect((data.config as Record<string, unknown>).engine).toBe('auto');
+  });
+
+  it('keeps the catch log bound to the inserted script error', () => {
+    const result = insertSnippet(snippet(), { x: 0, y: 0 }, [], []);
+    const script = result.nodes.find(n => n.data.activityType === 'runScript')!;
+    const catcher = result.nodes.find(n => String((n.data.config as Record<string, unknown>).message).includes('{{try.error}}'))!;
+    expect(catcher).toBeDefined();
+    expect(script.data.outputVariable ?? script.id).toBe('try');
+    expect(lintWorkflow(result.nodes, result.edges).warnings.filter(issue => issue.code === 'unknown-template-ref')).toEqual([]);
   });
 
   it('nodeDataIncludesOutputVariableWhenDeclared', () => {

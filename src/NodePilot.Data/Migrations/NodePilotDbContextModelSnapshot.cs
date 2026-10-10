@@ -22,6 +22,183 @@ namespace NodePilot.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("NodePilot.Core.Agents.AgentMcpServer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ArgumentsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Command")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Endpoint")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<byte[]>("ProtectedSecrets")
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("SecretProvider")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Transport")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AgentMcpServers");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Agents.AgentRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Delegations")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text");
+
+                    b.Property<long?>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("ModelCalls")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Result")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("StepId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("ToolCalls")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("WorkflowExecutionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkflowExecutionId", "StepId");
+
+                    b.ToTable("AgentRuns");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Agents.AgentRunEvent", b =>
+                {
+                    b.Property<Guid>("AgentRunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Sequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("MemberId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ToolName")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("AgentRunId", "Sequence");
+
+                    b.ToTable("AgentRunEvents");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Agents.AgentSkillPackage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<byte[]>("Package")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name", "Version")
+                        .IsUnique();
+
+                    b.ToTable("AgentSkillPackages");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.AuditLogEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -197,6 +374,7 @@ namespace NodePilot.Data.Migrations
                         .HasColumnType("character varying(32)");
 
                     b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
@@ -282,7 +460,10 @@ namespace NodePilot.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Key");
+                    b.HasIndex("Key")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CustomActivityDefinitions_LiveKey")
+                        .HasFilter("\"IsDeleted\" = FALSE");
 
                     b.HasIndex("IsDeleted", "IsEnabled");
 
@@ -497,6 +678,10 @@ namespace NodePilot.Data.Migrations
 
                     b.Property<DateTime>("ComputedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DurationHistogram")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("DurationMsCount")
                         .HasColumnType("integer");
@@ -1411,8 +1596,8 @@ namespace NodePilot.Data.Migrations
 
                     b.Property<string>("StepType")
                         .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
+                        .HasMaxLength(71)
+                        .HasColumnType("character varying(71)");
 
                     b.Property<string>("TargetMachine")
                         .HasColumnType("text");
@@ -1432,6 +1617,10 @@ namespace NodePilot.Data.Migrations
                         .HasDatabaseName("IX_StepExecutions_Running")
                         .HasFilter("\"Status\" = 'Running'");
 
+                    b.HasIndex("WorkflowExecutionId")
+                        .HasDatabaseName("IX_StepExecutions_Retried")
+                        .HasFilter("\"AttemptCount\" > 1");
+
                     b.HasIndex("WorkflowExecutionId", "StartedAt");
 
                     b.HasIndex("WorkflowExecutionId", "Status");
@@ -1446,8 +1635,8 @@ namespace NodePilot.Data.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("ActivityType")
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)");
+                        .HasMaxLength(71)
+                        .HasColumnType("character varying(71)");
 
                     b.Property<string>("EventType")
                         .IsRequired()
@@ -2009,6 +2198,28 @@ namespace NodePilot.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("WorkflowVersions");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Agents.AgentRun", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.WorkflowExecution", "WorkflowExecution")
+                        .WithMany()
+                        .HasForeignKey("WorkflowExecutionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("WorkflowExecution");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Agents.AgentRunEvent", b =>
+                {
+                    b.HasOne("NodePilot.Core.Agents.AgentRun", "AgentRun")
+                        .WithMany()
+                        .HasForeignKey("AgentRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AgentRun");
                 });
 
             modelBuilder.Entity("NodePilot.Core.Models.AuthSession", b =>

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Link } from 'react-router';
 import { api } from '../../../api/client';
+import { AgentRunPanel } from '../agents/AgentRunPanel';
 import type { WorkflowExecution, StepExecution } from '../../../types/api';
 import { ActivityTypeIcon, DurationBar, ExecutionStatusBadge, ExtrasCell, OutputBlock, StepInputBlock, StepOutputParametersBlock, StepStatusIcon, TriggerCell, firstLine, formatClock, formatMs, timeDiff } from './ExecutionPanelParts';
 import { GanttChart, type GanttRow } from '../timeline/GanttChart';
@@ -405,6 +406,7 @@ const HistoryRow = memo(function HistoryRow({ execution, scope, workflowName, is
               initialView={initialView}
               steps={steps}
               executionStart={execution.startedAt}
+              executionId={execution.id}
               workflowId={execution.workflowId}
               onScrubTime={onScrubTime ? (t) => {
                 // Auto-activate replay for THIS execution when user starts scrubbing,
@@ -432,9 +434,9 @@ const HistoryRow = memo(function HistoryRow({ execution, scope, workflowName, is
  * faster; the absolute time is in the tooltip. Steps are sorted by `startedAt`, since the
  * API's own order isn't chronological for parallel branches.
  */
-function StepTimeline({ steps, executionStart, workflowId, onScrubTime, initialView = 'list' }: Readonly<{
+function StepTimeline({ steps, executionStart, workflowId, executionId, onScrubTime, initialView = 'list' }: Readonly<{
   initialView?: 'list' | 'gantt';
-  steps: StepExecution[]; executionStart: string; workflowId: string;
+  steps: StepExecution[]; executionStart: string; workflowId: string; executionId: string;
   onScrubTime?: (t: number | null) => void;
 }>) {
   const { t } = useTranslation('designer');
@@ -588,7 +590,9 @@ function StepTimeline({ steps, executionStart, workflowId, onScrubTime, initialV
               </button>
               {isOpen && (
                 <div className="px-12 pb-3 pt-1.5 bg-surface-low/40 border-t border-outline-variant/10 space-y-2">
-                  <StepInputBlock workflowId={workflowId} stepId={r.step.stepId} />
+                  {['aiAgent', 'aiAgentTeam'].includes(r.step.stepType) ? <AgentRunPanel executionId={executionId} stepId={r.step.stepId}>
+                    <StepInputBlock workflowId={workflowId} stepId={r.step.stepId} />
+                  </AgentRunPanel> : <StepInputBlock workflowId={workflowId} stepId={r.step.stepId} />}
                   <StepOutputParametersBlock outputParametersJson={r.step.outputParametersJson} />
                   {r.step.output && (
                     <OutputBlock label={t('execution.timeline.output')} variant="default">{r.step.output}</OutputBlock>

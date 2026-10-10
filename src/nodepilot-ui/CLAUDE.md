@@ -52,7 +52,7 @@ Server, keine DB — der Zustand lebt pro Tab und ein Reload stellt den Seed wie
 - **Tab-Isolation ist nicht gratis.** Ein zweiter Tab publiziert ein Identitäts-Ereignis, und jeder
   andere Tab beantwortet es mit Cache-Leeren und Remount — ungespeicherte Designer-Änderungen sind
   weg. Deshalb legt der Entry den Transport beidseitig still.
-- **Seed:** die Workflow-JSONs aus `samples/` und `scripts/` — im Demo-Paket entsteht **kein**
+- **Seed:** die Workflow-JSONs aus `demo/seed/fixtures/` und `scripts/` — im Demo-Paket entsteht **kein**
   Graph. Nodes mit mehreren eingehenden Kanten bekommen beim Laden eine `waitAll`-Junction (wie
   Designer und SCOrch-Import), sonst blockiert der Pre-Publish-Check. Die Reihenfolge in
   `seed/graphs.ts` ist tragend: `seed/executions.ts` indiziert seine Kadenz nach Position, und nur

@@ -72,6 +72,8 @@ public class RunScriptActivity : IActivityExecutor
         // Resolve {{variable}} expressions in the script text with PowerShell-safe quoting
         // This wraps resolved values in single quotes so PowerShell treats them as strings
         script = PowerShellActivitySupport.ResolveScriptVariables(script, context.Variables);
+        if (Agents.AgentReadOnlyWorkflowScope.IsActive)
+            script = Agents.AgentPermissionPolicy.PrepareShell("powershell", script);
 
         // Wrap with Start-Transcript / Stop-Transcript when the user opted in via
         // config.transcript: true. Captures interleaved command + output as PowerShell

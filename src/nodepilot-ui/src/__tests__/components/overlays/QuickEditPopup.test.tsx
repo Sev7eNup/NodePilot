@@ -21,6 +21,48 @@ function makeNode(activityType: string, configValues: Record<string, unknown> = 
 }
 
 describe('QuickEditPopup', () => {
+  it('does not register a delayed outside-click listener after unmount', () => {
+    vi.useFakeTimers();
+    const add = vi.spyOn(globalThis, 'addEventListener');
+    try {
+      const { unmount } = render(<QuickEditPopup node={makeNode('restApi', { url: 'https://example.test' })}
+        screenX={100} screenY={300} onSave={vi.fn()} onClose={vi.fn()} />);
+      unmount();
+      vi.runAllTimers();
+      expect(add.mock.calls.filter(([event]) => event === 'mousedown')).toEqual([]);
+    } finally { add.mockRestore(); vi.useRealTimers(); }
+  });
+
+  it('returnData preserves its object contract when saved unchanged or edited', () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+    const data = { answer: '{{step.param.answer}}', count: 3, ok: true };
+    render(<QuickEditPopup node={makeNode('returnData', { data })} screenX={100} screenY={300}
+      onSave={onSave} onClose={onClose} />);
+
+    const field = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(JSON.parse(field.value)).toEqual(data);
+    fireEvent.click(screen.getByText('Save'));
+    expect(onSave).toHaveBeenLastCalledWith('step-1', { data });
+
+    fireEvent.change(field, { target: { value: '{"answer":"updated","nested":{"value":2}}' } });
+    fireEvent.click(screen.getByText('Save'));
+    expect(onSave).toHaveBeenLastCalledWith('step-1', { data: { answer: 'updated', nested: { value: 2 } } });
+  });
+
+  it.each(['broken JSON', 'null', '[]', '"text"'])('returnData rejects %s without replacing the existing map', (value) => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+    render(<QuickEditPopup node={makeNode('returnData', { data: { answer: 'keep' } })}
+      screenX={100} screenY={300} onSave={onSave} onClose={onClose} />);
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value } });
+    fireEvent.click(screen.getByText('Save'));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/JSON object/i);
+  });
+
   it('runScript_rendersTextareaWithCurrentScript', () => {
     const node = makeNode('runScript', { script: 'Get-Service' });
     render(

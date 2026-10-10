@@ -20,7 +20,7 @@ class GateTests(unittest.TestCase):
     def test_catalog_is_complete_and_drift_checked(self):
         result = self.run_gate('catalog')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(json.loads(result.stdout)), 164)
+        self.assertEqual(len(json.loads(result.stdout)), 167)
 
     def test_catalog_source_hash_change_blocks(self):
         review = json.loads((ROOT / 'coverage-review.json').read_text(encoding='utf-8'))
@@ -32,6 +32,29 @@ class GateTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
         finally:
             (ROOT / 'coverage-review.json').write_text(original, encoding='utf-8')
+
+    def test_ui_source_hash_ignores_test_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ui = root / 'src/nodepilot-ui/src'
+            for relative, content in {
+                'src/nodepilot-ui/src/App.tsx': "path: '/'",
+                'src/nodepilot-ui/src/Page.tsx': 'export const Page = 1',
+                'src/nodepilot-ui/src/stores/themeStore.ts': "{ id: 'dark'",
+                'src/NodePilot.Core/Activities/ActivityCatalog.cs': '',
+                'src/NodePilot.Api/Configuration/SettingsSchema.cs': '',
+            }.items():
+                (root / relative).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative).write_text(content, encoding='utf-8')
+            baseline = gate.inventory(root)['uiSourceHash']
+
+            (ui / 'Page.test.tsx').write_text('test', encoding='utf-8')
+            (ui / '__tests__').mkdir()
+            (ui / '__tests__/Helper.tsx').write_text('helper', encoding='utf-8')
+            self.assertEqual(gate.inventory(root)['uiSourceHash'], baseline)
+
+            (ui / 'Page.tsx').write_text('export const Page = 2', encoding='utf-8')
+            self.assertNotEqual(gate.inventory(root)['uiSourceHash'], baseline)
 
     def test_status_without_run_is_rejected(self):
         result = self.run_gate('status')

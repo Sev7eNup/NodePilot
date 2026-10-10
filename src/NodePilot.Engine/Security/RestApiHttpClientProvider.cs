@@ -110,7 +110,7 @@ public sealed class RestApiHttpClientProvider
     }
 
     /// <summary>
-    /// Enforces the extra policy required when a forward proxy will carry this particular
+    /// Validates the destination, including the extra policy when a forward proxy carries this
     /// request. In proxy mode the handler's ConnectCallback sees only the proxy endpoint;
     /// destination DNS is resolved by the proxy and therefore cannot be pinned or filtered
     /// locally at connect time. Exact administrator allow-listing is the fail-closed boundary.
@@ -119,13 +119,16 @@ public sealed class RestApiHttpClientProvider
     internal void ValidateDestinationPolicy(JsonElement stepConfig, Uri destination)
     {
         ArgumentNullException.ThrowIfNull(destination);
-        if (!UsesProxyForDestination(stepConfig, destination)) return;
-        if (NetworkGuard.IsHostAllowlisted(_configuration, destination.Host)) return;
+        var proxied = UsesProxyForDestination(stepConfig, destination);
+        if (proxied && !NetworkGuard.IsHostAllowlisted(_configuration, destination.Host))
+            throw new InvalidOperationException(
+                $"REST API proxy: destination host '{destination.Host}' is not explicitly allowed. " +
+                "Add the exact host to RestApi:AllowedHosts. Proxied workflow destinations are " +
+                "denied by default because the proxy, not NodePilot's guarded ConnectCallback, resolves destination DNS.");
 
-        throw new InvalidOperationException(
-            $"REST API proxy: destination host '{destination.Host}' is not explicitly allowed. " +
-            "Add the exact host to RestApi:AllowedHosts. Proxied workflow destinations are " +
-            "denied by default because the proxy, not NodePilot's guarded ConnectCallback, resolves destination DNS.");
+        // A host exception permits private services, never link-local metadata. In proxy
+        // mode every resolved address must pass because we cannot pin the proxy's DNS.
+        NetworkGuard.ValidateUrl(_configuration, destination.OriginalString, proxied);
     }
 
     internal bool UsesProxyForDestination(JsonElement stepConfig, Uri destination)
@@ -298,11 +301,7 @@ public sealed class RestApiHttpClientProvider
     private static RestApiProxyOptions ReadDefaultProxyOptions(IConfiguration configuration)
     {
         var enabled = bool.TryParse(configuration["RestApi:Proxy:Enabled"], out var parsed) && parsed;
-        var bypass = configuration.GetSection("RestApi:Proxy:BypassList").GetChildren()
-            .Select(c => c.Value)
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Select(v => v!.Trim())
-            .ToList();
+        var bypass = ProviderAtomicList.Read<string>(configuration, "RestApi:Proxy:BypassList") ?? [];
         return new RestApiProxyOptions
         {
             Enabled = enabled,

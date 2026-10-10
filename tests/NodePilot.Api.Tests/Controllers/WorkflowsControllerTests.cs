@@ -294,6 +294,11 @@ public class WorkflowsControllerTests
         response.LastExecution!.Id.Should().Be(latestId);
         response.LastExecution.Status.Should().Be(nameof(ExecutionStatus.Failed));
         response.LastExecution.DurationMs.Should().Be(2_000);
+        response.LastExecution.StartedAt.Kind.Should().Be(DateTimeKind.Utc);
+        response.LastExecution.CompletedAt!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(response.LastExecution));
+        json.RootElement.GetProperty("StartedAt").GetString().Should().EndWith("Z");
+        json.RootElement.GetProperty("CompletedAt").GetString().Should().EndWith("Z");
         response.SuccessCount.Should().Be(10);
         response.TotalCount.Should().Be(20);
         response.AvgDurationMs.Should().Be(1_000);

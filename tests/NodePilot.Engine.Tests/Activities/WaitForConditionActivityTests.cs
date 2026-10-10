@@ -93,6 +93,25 @@ public sealed class WaitForConditionActivityTests : IDisposable
 
     private static JsonElement ParseConfig(string json) => JsonDocument.Parse(json).RootElement;
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_CancelledBeforeOrDuringPollDelay_PropagatesCancellation(bool beforeStart)
+    {
+        using var cancellation = new CancellationTokenSource();
+        if (beforeStart) cancellation.Cancel();
+        var execution = CreateActivity().ExecuteAsync(CreateContext(),
+            ParseConfig("""{"script":"$false","intervalSeconds":60,"timeoutSeconds":120}"""), cancellation.Token);
+        if (!beforeStart)
+        {
+            _invocationCount.Should().Be(1, "the synchronous mock completed the first poll before the delay");
+            execution.IsCompleted.Should().BeFalse();
+            cancellation.Cancel();
+        }
+        Func<Task> run = () => execution;
+        await run.Should().ThrowAsync<OperationCanceledException>();
+    }
+
     [Fact]
     public async Task ExecuteAsync_FirstPollReturnsTrue_SucceedsAfterOneAttempt()
     {
@@ -143,9 +162,15 @@ public sealed class WaitForConditionActivityTests : IDisposable
     [Fact]
     public async Task ExecuteAsync_AlwaysFalse_TimesOutWithAttemptCount()
     {
+        var clock = new PollClock(DateTimeOffset.UtcNow);
         _session
             .Setup(s => s.ExecuteScriptAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .Callback<string, int?, CancellationToken>((script, _, _) => { _invocationCount++; _capturedScripts.Add(script); })
+            .Callback<string, int?, CancellationToken>((script, _, _) =>
+            {
+                _invocationCount++;
+                _capturedScripts.Add(script);
+                if (_invocationCount == 2) clock.Advance(TimeSpan.FromSeconds(3));
+            })
             .ReturnsAsync(() => new RemoteExecutionResult
             {
                 Success = true,
@@ -153,16 +178,24 @@ public sealed class WaitForConditionActivityTests : IDisposable
             });
 
         var activity = CreateActivity();
-        // Interval 1s, timeout 3s -> expect ~3 attempts (initial poll plus two after sleeping)
-        // within the budget, then bail out with a failure.
+        activity.Clock = clock;
+        // Only the mock advances the deadline clock: thread-pool contention cannot consume the
+        // polling budget before the second attempt. The real delay/cancellation path still runs.
         var config = ParseConfig("{\"script\":\"$false\",\"intervalSeconds\":1,\"timeoutSeconds\":3}");
 
         var result = await activity.ExecuteAsync(CreateContext(), config, CancellationToken.None);
 
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("Timeout after 3s");
-        _invocationCount.Should().BeGreaterThanOrEqualTo(2, "at least the initial poll plus one retry within 3s");
+        _invocationCount.Should().Be(2);
+        result.OutputParameters["attempts"].Should().Be("2");
         result.OutputParameters["lastResult"].Should().Be("false");
+    }
+
+    private sealed class PollClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+        public void Advance(TimeSpan elapsed) => now += elapsed;
     }
 
     [Fact]
@@ -333,10 +366,9 @@ public sealed class WaitForConditionActivityTests : IDisposable
     }
 
     [Fact]
-    public async Task ExecuteAsync_CancelledMidPoll_ReturnsTimeoutShape()
+    public async Task ExecuteAsync_CancelledMidPoll_PropagatesCancellation()
     {
-        // When the passed-in CancellationToken fires during the Task.Delay phase, the loop
-        // exits cleanly — no exception leaks to the caller.
+        // Preserve the scheduler's cancellation classification, including waitAny losers.
         _session
             .Setup(s => s.ExecuteScriptAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new RemoteExecutionResult { Success = true, Output = "###NODEPILOT_COND:False###" });
@@ -346,10 +378,8 @@ public sealed class WaitForConditionActivityTests : IDisposable
         using var cts = new CancellationTokenSource();
         cts.CancelAfter(TimeSpan.FromMilliseconds(300));
 
-        var result = await activity.ExecuteAsync(CreateContext(), config, cts.Token);
-
-        result.Success.Should().BeFalse();
-        result.ErrorOutput.Should().Contain("Timeout after 30s", "we bail out on cancel with the same failure shape");
+        var run = () => activity.ExecuteAsync(CreateContext(), config, cts.Token);
+        await run.Should().ThrowAsync<OperationCanceledException>();
     }
 
     // ---- Typed sub-modes (added 2026-05-17 — closes the "dynamic path doesn't work in the

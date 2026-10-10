@@ -1,15 +1,12 @@
+import { useSectionEditor } from './SectionFormHelpers';
 import { Add, Bot, Chip, Email, Locked, Send, TrashCan } from '@carbon/icons-react';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   adminSettings,
-  SettingsApiError,
-  type SettingsSectionResponse,
 } from '../../api/adminSettings';
 import { SecretField, serializeSecretField, type SecretFieldMode } from './SecretField';
 import { EnvOverrideBadge } from './EnvOverrideBadge';
-import { EtagConflictDialog } from './EtagConflictDialog';
 import { TestProbeModal } from './TestProbeModal';
 import {
   DisclosurePanel,
@@ -19,7 +16,6 @@ import {
   Toggle,
   CompactCard,
 } from './SectionFormHelpers';
-import { refreshAiCapabilities } from '../../hooks/useAiCapabilities';
 
 type SmtpDto = {
   host: string;
@@ -122,16 +118,11 @@ export function IntegrationsSection() {
 
 function SmtpCard() {
   const { t } = useTranslation(['adminSettings', 'common']);
-  const queryClient = useQueryClient();
   const [showTest, setShowTest] = useState(false);
   const [testTo, setTestTo] = useState('');
-  const [conflict, setConflict] = useState<SettingsSectionResponse<SmtpDto> | null>(null);
-  const [error, setError] = useState<string[] | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-settings', 'Smtp'],
-    queryFn: () => adminSettings.getSection<SmtpDto>('Smtp'),
-  });
+  const editor = useSectionEditor<SmtpDto>('Smtp');
+  const { data, isLoading, errors: error } = editor;
 
   const [form, setForm] = useState<SmtpDto>({
     host: '', port: 25, username: null, password: null, from: '', enableSsl: true,
@@ -159,29 +150,6 @@ function SmtpCard() {
     From: form.from,
     Password: serializeSecretField(pwMode, pwValue),
     EnableSsl: form.enableSsl,
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      setError(null);
-      if (!data) throw new Error('No section snapshot loaded yet.');
-      return adminSettings.putSection<SmtpDto>('Smtp', buildPayload(), data.etag);
-    },
-    onSuccess: (fresh) => {
-      queryClient.setQueryData(['admin-settings', 'Smtp'], fresh);
-      queryClient.invalidateQueries({ queryKey: ['admin-settings', 'status'] });
-    },
-    onError: (err: unknown) => {
-      if (err instanceof SettingsApiError && err.status === 412 && err.body?.current) {
-        setConflict(err.body.current as SettingsSectionResponse<SmtpDto>);
-        return;
-      }
-      if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
-        setError(err.body.errors.map((e) => e.message ?? JSON.stringify(e)));
-        return;
-      }
-      setError([err instanceof Error ? err.message : String(err)]);
-    },
   });
 
   if (isLoading || !data) {
@@ -251,32 +219,13 @@ function SmtpCard() {
         </div>
 
         <SaveActions
-          onSave={() => saveMutation.mutate()}
+          onSave={() => editor.save(buildPayload())}
           onTest={() => setShowTest(true)}
-          saving={saveMutation.isPending}
+          saving={editor.isPending}
           errors={error}
         />
       </CompactCard>
-      <EtagConflictDialog
-        open={!!conflict}
-        serverSnapshot={conflict}
-        localDraft={buildPayload()}
-        onKeepMine={() => {
-          if (!conflict) return;
-          queryClient.setQueryData(['admin-settings', 'Smtp'], conflict);
-          setConflict(null);
-          // Retry the save using the fresh ETag.
-          adminSettings.putSection<SmtpDto>('Smtp', buildPayload(), conflict.etag)
-            .then((fresh) => queryClient.setQueryData(['admin-settings', 'Smtp'], fresh))
-            .catch((e: unknown) => setError([e instanceof Error ? e.message : String(e)]));
-        }}
-        onTakeTheirs={() => {
-          if (!conflict) return;
-          queryClient.setQueryData(['admin-settings', 'Smtp'], conflict);
-          setConflict(null);
-        }}
-        onCancel={() => setConflict(null)}
-      />
+      {editor.dialog(buildPayload())}
       <TestProbeModal
         title={t('adminSettings:testProbeTitle')}
         open={showTest}
@@ -304,15 +253,10 @@ function SmtpCard() {
 
 function LlmCard() {
   const { t } = useTranslation(['adminSettings']);
-  const queryClient = useQueryClient();
   const [showTest, setShowTest] = useState(false);
-  const [conflict, setConflict] = useState<SettingsSectionResponse<LlmDto> | null>(null);
-  const [error, setError] = useState<string[] | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-settings', 'Llm'],
-    queryFn: () => adminSettings.getSection<LlmDto>('Llm'),
-  });
+  const editor = useSectionEditor<LlmDto>('Llm');
+  const { data, isLoading, errors: error } = editor;
 
   const [form, setForm] = useState<LlmDto>({
     enabled: false, activeProfileId: '', profiles: [], proxy: EMPTY_PROXY,
@@ -411,32 +355,6 @@ function LlmCard() {
 
   const activeProfileMissing = form.enabled
     && !form.profiles.some((p) => p.id === form.activeProfileId);
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      setError(null);
-      if (!data) throw new Error('No section snapshot loaded yet.');
-      return adminSettings.putSection<LlmDto>('Llm', buildPayload(), data.etag);
-    },
-    onSuccess: (fresh) => {
-      queryClient.setQueryData(['admin-settings', 'Llm'], fresh);
-      queryClient.invalidateQueries({ queryKey: ['admin-settings', 'status'] });
-      // The AI entry points across the SPA gate on this — refresh so enabling/disabling
-      // the LLM shows/hides them without a reload.
-      refreshAiCapabilities(queryClient);
-    },
-    onError: (err: unknown) => {
-      if (err instanceof SettingsApiError && err.status === 412 && err.body?.current) {
-        setConflict(err.body.current as SettingsSectionResponse<LlmDto>);
-        return;
-      }
-      if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
-        setError(err.body.errors.map((e) => e.message ?? JSON.stringify(e)));
-        return;
-      }
-      setError([err instanceof Error ? err.message : String(err)]);
-    },
-  });
 
   if (isLoading || !data) {
     return <CompactCard headingMargin="mb-4" icon={Bot} title="LLM"><p className="text-sm">{t('adminSettings:loading')}</p></CompactCard>;
@@ -543,36 +461,15 @@ function LlmCard() {
         />
 
         <SaveActions
-          onSave={() => saveMutation.mutate()}
-          saving={saveMutation.isPending}
+          onSave={() => editor.save(buildPayload())}
+          saving={editor.isPending}
           errors={activeProfileMissing
             ? [...(error ?? []), t('adminSettings:integrations.activeProfileRequired')]
             : error}
         />
       </CompactCard>
 
-      <EtagConflictDialog
-        open={!!conflict}
-        serverSnapshot={conflict}
-        localDraft={buildPayload()}
-        onKeepMine={() => {
-          if (!conflict) return;
-          queryClient.setQueryData(['admin-settings', 'Llm'], conflict);
-          setConflict(null);
-          adminSettings.putSection<LlmDto>('Llm', buildPayload(), conflict.etag)
-            .then((fresh) => {
-              queryClient.setQueryData(['admin-settings', 'Llm'], fresh);
-              refreshAiCapabilities(queryClient);
-            })
-            .catch((e: unknown) => setError([e instanceof Error ? e.message : String(e)]));
-        }}
-        onTakeTheirs={() => {
-          if (!conflict) return;
-          queryClient.setQueryData(['admin-settings', 'Llm'], conflict);
-          setConflict(null);
-        }}
-        onCancel={() => setConflict(null)}
-      />
+      {editor.dialog(buildPayload())}
 
       <TestProbeModal
         title={t('adminSettings:testProbeTitle')}

@@ -8,7 +8,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   // coverage/ holds generated istanbul HTML with its own eslint-disable banners. It exists
   // only locally, so linting it just makes the local warning count differ from CI.
-  globalIgnores(['dist', 'playwright-report', 'coverage']),
+  globalIgnores(['dist', 'playwright-report', 'test-results', 'coverage']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

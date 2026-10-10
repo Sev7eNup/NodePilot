@@ -33,8 +33,6 @@ It is the product's own frontend on an in-memory backend, so anything that genui
 
 **[Watch product video](https://www.nodepilot.run/media/nodepilot-product-tour.mp4)**
 
-The video shows SCOrch import, the Workflow Designer, execution history, Live Ops, logs as well as AI chat in operation. English captions, no audio.
-
 <details>
 <summary><b>Browse screenshots</b></summary>
 
@@ -74,8 +72,8 @@ The video shows SCOrch import, the Workflow Designer, execution history, Live Op
 
 - [Product tour](#product-tour)
 - [Why NodePilot](#why-nodepilot)
-- [Coming from System Center Orchestrator](#coming-from-system-center-orchestrator)
 - [Install, pick one of three paths](#install-pick-one-of-three-paths)
+- [Coming from System Center Orchestrator](#coming-from-system-center-orchestrator)
 - [Documentation](#documentation)
 - [Project Structure](#project-structure)
 - [Testing](#testing)
@@ -90,7 +88,7 @@ NodePilot is agentless workflow orchestration for Windows, built in the browser 
 
 **Highlights**
 
-- **Visual designer**: drag-and-drop canvas with 27 activity types, 6 triggers and a visual condition builder.
+- **Visual designer**: drag-and-drop canvas with 29 activity types, 6 triggers and a visual condition builder.
 - **Custom Activities**: your own PowerShell-based activities, reusable from the palette like the built-in ones.
 - **Sub-workflows**: a workflow calls another with parameters and gets its return values back.
 - **Parallel engine**: branches really run in parallel and meet again at a junction.
@@ -100,8 +98,9 @@ NodePilot is agentless workflow orchestration for Windows, built in the browser 
 - **Alerting**: notification rules for run events and system conditions, delivered by email or signed webhook.
 - **AI-assisted authoring**: scripts and workflows are generated from natural language, also with local models.
 - **AI chat**: a read-only assistant that answers from documentation, operational data and, if enabled, the database.
+- **AI agent activities**: bounded agent/team workflow steps with evidence, reviews and a reserved final report on investigation model-budget exhaustion. Packaged CMD/Bash reads use checked commands. [Agent guide](docs/ai-agents.md).
 - **CLI (`np`)**: every operation from the command line, for scripts and pipelines.
-- **MCP server for AI agents**: `nodepilot-mcp` lets Claude Code and other MCP clients drive NodePilot — 102 tools over 10 groups, destructive operations gated.
+- **MCP server for AI agents**: `nodepilot-mcp` lets Claude Code and other MCP clients drive NodePilot — 112 tools over 11 groups, destructive operations gated.
 - **Observability**: OpenTelemetry, Prometheus and a Grafana stack with 10 dashboards.
 - **Edit lock**: a workflow is checked out by one user at a time and published atomically, as in SCOrch.
 - **Versioning**: every edit is saved as a version, which can be compared and rolled back.
@@ -112,44 +111,6 @@ NodePilot is agentless workflow orchestration for Windows, built in the browser 
 - **Enterprise (preview)**: AD SSO via LDAP/Kerberos, OIDC and SCIM, Active/Passive HA and SIEM logging. See [docs/enterprise-features.md](docs/enterprise-features.md).
 - **Deployment**: installer for a Windows service under a gMSA, in-place upgrades with automatic rollback.
 - **Desktop app**: a single installer for one Windows 11 machine, offline and with its own database.
----
-
-## Coming from System Center Orchestrator
-
-SCOrch is not going anywhere. [System Center 2025 Orchestrator](https://learn.microsoft.com/en-us/lifecycle/products/system-center-2025-orchestrator) is supported until 2035, so an existing installation is not on a deadline. The exception is System Center 2016 Orchestrator, whose extended support ends on January 11, 2027. The options side by side are on the [SCOrch alternative page](https://www.nodepilot.run/en/scorch-alternative/).
-
-What has not moved is authoring. Runbooks are still built in the desktop Runbook Designer, without version history, diff or rollback. NodePilot keeps the agentless model and moves the editor, the debugger and the version history into the browser.
-
-**Existing runbooks come across.** NodePilot reads SCOrch's `.ois_export` XML (2012, 2016 and 2019) and turns runbooks into workflows:
-
-- around forty activity types are mapped, including the Runbook Control set
-- Published Data references are rewritten to NodePilot's `{{...}}` syntax
-- links, conditions, global variables and the folder tree are preserved, as well as the canvas layout
-- unmappable activities become disabled placeholders, and the import report lists every lossy translation
-
-```powershell
-np workflow import-scorch --file .\runbooks.ois_export
-```
-
-Import also runs from the UI and from `POST /api/workflows/import-scorch`. The result is a draft to be reviewed: imported workflows arrive disabled, and credentials are not reconstructed because SCOrch encrypts them. Details are in the [import documentation](https://www.nodepilot.run/docs/en/import-export/).
-
-### How the two compare
-
-| | System Center Orchestrator | NodePilot |
-|---|---|---|
-| **Support lifecycle** | mainstream to 2030, extended to 2035 | rolling releases, no vendor behind it |
-| **Agents on targets** | none | none, same WinRM model |
-| **Authoring** | desktop Runbook Designer | browser, live canvas |
-| **Debugging** | Runbook Tester | breakpoints in the real engine, variable overrides, replay |
-| **Versioning** | none | snapshots, diff, rollback |
-| **Automation API** | web API for jobs | full REST API, `np` CLI, MCP server |
-| **Observability** | job history | OpenTelemetry, Prometheus, Grafana dashboards |
-| **Database** | SQL Server | PostgreSQL or SQL Server |
-| **Licence** | commercial, per managed host | Apache-2.0 |
-| **Support** | vendor | community, single maintainer |
-
-NodePilot provides the source and no support contract, and it is to be judged on that basis.
-
 ---
 
 ## Install, pick one of three paths
@@ -294,6 +255,44 @@ More in [grafana/README.md](grafana/README.md) and in the installation guide on 
 
 ---
 
+## Coming from System Center Orchestrator
+
+SCOrch is not going anywhere. [System Center 2025 Orchestrator](https://learn.microsoft.com/en-us/lifecycle/products/system-center-2025-orchestrator) is supported until 2035, so an existing installation is not on a deadline. The exception is System Center 2016 Orchestrator, whose extended support ends on January 11, 2027. The options side by side are on the [SCOrch alternative page](https://www.nodepilot.run/en/scorch-alternative/).
+
+What has not moved is authoring. Runbooks are still built in the desktop Runbook Designer, without version history, diff or rollback. NodePilot keeps the agentless model and moves the editor, the debugger and the version history into the browser.
+
+**Existing runbooks come across.** NodePilot reads SCOrch's `.ois_export` XML (2012, 2016 and 2019) and turns runbooks into workflows:
+
+- around forty activity types are mapped, including the Runbook Control set
+- Published Data references are rewritten to NodePilot's `{{...}}` syntax
+- links, conditions, global variables and the folder tree are preserved, as well as the canvas layout
+- unmappable activities become disabled placeholders, and the import report lists every lossy translation
+
+```powershell
+np workflow import-scorch --file .\runbooks.ois_export
+```
+
+Import also runs from the UI and from `POST /api/workflows/import-scorch`. The result is a draft to be reviewed: imported workflows arrive disabled, and credentials are not reconstructed because SCOrch encrypts them. Details are in the [import documentation](https://www.nodepilot.run/docs/en/import-export/).
+
+### How the two compare
+
+| | System Center Orchestrator | NodePilot |
+|---|---|---|
+| **Support lifecycle** | mainstream to 2030, extended to 2035 | rolling releases, no vendor behind it |
+| **Agents on targets** | none | none, same WinRM model |
+| **Authoring** | desktop Runbook Designer | browser, live canvas |
+| **Debugging** | Runbook Tester | breakpoints in the real engine, variable overrides, replay |
+| **Versioning** | none | snapshots, diff, rollback |
+| **Automation API** | web API for jobs | full REST API, `np` CLI, MCP server |
+| **Observability** | job history | OpenTelemetry, Prometheus, Grafana dashboards |
+| **Database** | SQL Server | PostgreSQL or SQL Server |
+| **Licence** | commercial, per managed host | Apache-2.0 |
+| **Support** | vendor | community, single maintainer |
+
+NodePilot provides the source and no support contract, and it is to be judged on that basis.
+
+---
+
 ## Documentation
 
 Everything below the surface lives on the **[documentation site](https://www.nodepilot.run/docs/)**, 45 pages in English and German, with search and deep links. This README deliberately stops at "installed and logged in".
@@ -303,7 +302,7 @@ Everything below the surface lives on the **[documentation site](https://www.nod
 | **Start here** | [Introduction](https://www.nodepilot.run/docs/en/getting-started/introduction/) · [Installation](https://www.nodepilot.run/docs/en/getting-started/installation/) · [Architecture](https://www.nodepilot.run/docs/en/getting-started/architecture/) |
 | **Building workflows** | [Workflows & activities](https://www.nodepilot.run/docs/en/concepts/workflows/) · [Data bus & variables](https://www.nodepilot.run/docs/en/concepts/data-bus/) · [Edge conditions](https://www.nodepilot.run/docs/en/concepts/edge-conditions/) · [Sub-workflows](https://www.nodepilot.run/docs/en/concepts/sub-workflows/) |
 | **The designer** | [Overview](https://www.nodepilot.run/docs/en/designer/overview/) · [Canvas, nodes & edges](https://www.nodepilot.run/docs/en/designer/canvas-nodes-edges/) · [Properties, modes & shortcuts](https://www.nodepilot.run/docs/en/designer/properties-modes/) |
-| **Reference** | [All 27 activities](https://www.nodepilot.run/docs/en/activities-reference/) · [Triggers](https://www.nodepilot.run/docs/en/triggers/) · [API endpoints](https://www.nodepilot.run/docs/en/api/endpoints/) · [`np` CLI](https://www.nodepilot.run/docs/en/cli/) · [MCP server](https://www.nodepilot.run/docs/en/mcp-server/) |
+| **Reference** | [All 29 activities](https://www.nodepilot.run/docs/en/activities-reference/) · [Triggers](https://www.nodepilot.run/docs/en/triggers/) · [API endpoints](https://www.nodepilot.run/docs/en/api/endpoints/) · [`np` CLI](https://www.nodepilot.run/docs/en/cli/) · [MCP server](https://www.nodepilot.run/docs/en/mcp-server/) |
 | **Running it** | [Windows Server](https://www.nodepilot.run/docs/en/deployment/production/) · [Desktop app](https://www.nodepilot.run/docs/en/deployment/desktop/) · [Antivirus exclusions](https://www.nodepilot.run/docs/en/deployment/av-exclusions/) · [Logs & diagnostics](https://www.nodepilot.run/docs/en/deployment/logs/) · [Configuration](https://www.nodepilot.run/docs/en/configuration/appsettings/) |
 | **Security** | [Security model](https://www.nodepilot.run/docs/en/security/overview/) · [Hardening flags](https://www.nodepilot.run/docs/en/security/hardening/) · [Audit log](https://www.nodepilot.run/docs/en/security/audit-log/) |
 | **Enterprise** | [High availability](https://www.nodepilot.run/docs/en/enterprise/high-availability/) · [Secret providers](https://www.nodepilot.run/docs/en/enterprise/secrets-providers/) · [AD SSO Preview](https://www.nodepilot.run/docs/en/enterprise/ldap-windows-sso/) · [Folder RBAC](https://www.nodepilot.run/docs/en/enterprise/folder-rbac/) |
@@ -328,7 +327,7 @@ src/
   NodePilot.Ai/           LLM stack: ILlmClient/OpenAI transport + SSRF guard, prompt catalog, script/workflow gen + chat assistant (Core-only; used by Api and Engine)
   NodePilot.Data/         EF Core DbContext, CredentialStore (DPAPI), provider-agnostic migrations
   NodePilot.Remote/       WinRM session factory + PowerShell SDK session
-  NodePilot.Engine/       WorkflowEngine, 27 activities, RetryPolicy, DebugCoordinator
+  NodePilot.Engine/       WorkflowEngine, 29 activities, RetryPolicy, DebugCoordinator
   NodePilot.Scheduler/    TriggerOrchestrator (Quartz.NET), 4 polling trigger sources + retention/cluster services
   NodePilot.Telemetry/    OpenTelemetry setup, Prometheus client, metric constants
   NodePilot.Api/          ASP.NET Core host, controllers, SignalR hub, security middleware

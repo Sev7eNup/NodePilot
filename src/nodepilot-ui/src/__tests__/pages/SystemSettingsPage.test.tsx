@@ -10,6 +10,7 @@ import { SystemSettingsPage } from '../../pages/SystemSettingsPage';
 vi.mock('../../components/admin-settings/RestartBanner', () => ({ RestartBanner: () => null }));
 vi.mock('../../components/admin-settings/IntegrationsSection', () => ({ IntegrationsSection: () => <div>section:integrations</div> }));
 vi.mock('../../components/admin-settings/AiKnowledgeSection', () => ({ AiKnowledgeSection: () => <div>section:ai-knowledge</div> }));
+vi.mock('../../components/admin-settings/AgentsSection', () => ({ AgentsSection: () => <div>section:agents</div> }));
 vi.mock('../../components/admin-settings/AuthenticationSection', () => ({ AuthenticationSection: () => <div>section:authentication</div> }));
 vi.mock('../../components/admin-settings/SecuritySection', () => ({ SecuritySection: () => <div>section:security</div> }));
 vi.mock('../../components/admin-settings/LoggingTelemetrySection', () => ({ LoggingTelemetrySection: () => <div>section:logging-telemetry</div> }));
@@ -19,7 +20,7 @@ vi.mock('../../components/admin-settings/RetentionSection', () => ({ RetentionSe
 vi.mock('../../components/admin-settings/SystemInfoSection', () => ({ SystemInfoSection: () => <div>section:system-info</div> }));
 
 const SUB_TABS = [
-  'integrations', 'ai-knowledge', 'authentication', 'security',
+  'integrations', 'ai-knowledge', 'agents', 'authentication', 'security',
   'logging-telemetry', 'performance', 'db-admin', 'retention', 'system-info',
 ];
 

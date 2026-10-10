@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
@@ -85,8 +86,8 @@ function steps() {
 
 /** Mock everything the executions surfaces fetch. */
 async function mockTimeline(page: Page) {
-  await page.route('**/api/workflows', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow()]) }),
+  await page.route('**/api/workflows/paged**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [workflow()])) }),
   );
   // The executions list reads names from here.
   await page.route('**/api/workflows/names', (route) =>

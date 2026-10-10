@@ -197,6 +197,48 @@ public class ExecutionsControllerTests
         extremePage.Total.Should().Be(205);
     }
 
+    // The page is chosen on the sort keys alone and its rows are loaded afterwards, so the order
+    // and each row's own data have to survive that second step, including across a page boundary.
+    [Fact]
+    public async Task GetAll_PagesNewestFirstWithTiesByIdAndKeepsEachRowsOwnData()
+    {
+        await using var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Ordered", DefinitionJson = "{}", IsEnabled = true };
+        db.Workflows.Add(workflow);
+        var baseTime = new DateTime(2026, 10, 1, 12, 0, 0, DateTimeKind.Utc);
+        // Twelve runs, three of them sharing one timestamp, so the tie-break by Id is exercised.
+        var runs = Enumerable.Range(0, 12).Select(i => new WorkflowExecution
+        {
+            Id = new Guid(i + 1, 0, 0, new byte[8]),
+            WorkflowId = workflow.Id,
+            Status = ExecutionStatus.Succeeded,
+            StartedAt = baseTime.AddMinutes(i / 3 * 10),
+            TriggeredBy = $"run-{i}",
+            ReturnData = $"{{\"n\":{i}}}",
+        }).ToList();
+        db.WorkflowExecutions.AddRange(runs);
+        await db.SaveChangesAsync();
+        var expectedOrder = runs.OrderByDescending(r => r.StartedAt).ThenByDescending(r => r.Id).Select(r => r.Id).ToList();
+        var controller = NewController(db, Mock.Of<IWorkflowEngine>());
+
+        var ids = new List<Guid>();
+        foreach (var page in new[] { 1, 2, 3 })
+        {
+            var result = await controller.GetAll(workflow.Id, false, false, CancellationToken.None, page: page, pageSize: 5);
+            var items = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+                .Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject.Items;
+            foreach (var item in items)
+            {
+                var run = runs.Single(r => r.Id == item.Id);
+                item.TriggeredBy.Should().Be(run.TriggeredBy);
+                item.ReturnData.Should().Be(run.ReturnData);
+            }
+            ids.AddRange(items.Select(i => i.Id));
+        }
+
+        ids.Should().Equal(expectedOrder);
+    }
+
     [Fact]
     public async Task GetAll_WithWorkflowId_FiltersResults()
     {
@@ -1710,6 +1752,34 @@ public class ExecutionsControllerTests
             .Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject;
         byId.Total.Should().Be(1);
         byId.Items.Should().ContainSingle().Which.Id.Should().Be(matchingExecution.Id);
+    }
+
+    [Theory]
+    [InlineData("AUDIT-OPERATOR")]
+    [InlineData("A12B34C5")]
+    public async Task GetAll_SearchesInitiatorAndDisplayedIdPrefixBeforePaging(string search)
+    {
+        await using var db = CreateContext();
+        var user = new User { Id = Guid.NewGuid(), Username = "audit-operator", PasswordHash = "unused", Role = UserRole.Operator };
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Daily job", DefinitionJson = "{}" };
+        var match = new WorkflowExecution
+        {
+            Id = Guid.Parse("a12b34c5-1111-4222-8333-444444444444"), WorkflowId = workflow.Id,
+            StartedByUserId = user.Id, Status = ExecutionStatus.Succeeded, StartedAt = DateTime.UtcNow.AddMinutes(-1),
+        };
+        db.Users.Add(user);
+        db.Workflows.Add(workflow);
+        db.WorkflowExecutions.AddRange(match, new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Succeeded, StartedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        var result = await NewController(db, new Mock<IWorkflowEngine>().Object).GetAll(
+            null, false, true, CancellationToken.None, page: 1, pageSize: 1, search: search);
+        var page = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject;
+        page.Total.Should().Be(1);
+        page.Items.Should().ContainSingle().Which.Id.Should().Be(match.Id);
     }
 
     [Fact]

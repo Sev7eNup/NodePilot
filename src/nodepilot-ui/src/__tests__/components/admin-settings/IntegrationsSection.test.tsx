@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
@@ -71,6 +71,32 @@ function clickLlmSave() {
 beforeEach(() => wireSectionEndpoints());
 
 describe('IntegrationsSection — SMTP card', () => {
+  it('preserves a typed secret and original ETag across a background refresh, then resets after acknowledged save', async () => {
+    const initial = { ...smtpSnapshot, effectiveSource: {} };
+    let current = initial;
+    let submitted: { body: unknown; etag: string | null } | undefined;
+    server.use(
+      http.get('/api/admin/settings/Smtp', () => HttpResponse.json(current)),
+      http.put('/api/admin/settings/Smtp', async ({ request }) => {
+        submitted = { body: await request.json(), etag: request.headers.get('If-Match') };
+        return HttpResponse.json({ ...initial, etag: '"saved"' });
+      }),
+    );
+    const { qc } = renderSection();
+    await waitFor(() => expect(screen.getByDisplayValue('mail.example.com')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /set new value|neu setzen/i }));
+    fireEvent.change(document.getElementById('smtp-password')!, { target: { value: 'draft-secret' } });
+    current = { ...initial, etag: '"someone-else"', payload: { ...initial.payload, host: 'other-host' } };
+    await act(async () => { await qc.refetchQueries({ queryKey: ['admin-settings', 'Smtp'] }); });
+    expect(document.getElementById('smtp-password')).toHaveValue('draft-secret');
+    expect(screen.getByDisplayValue('mail.example.com')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: /speichern|save/i })[0]);
+    await waitFor(() => expect(submitted).toEqual({
+      body: expect.objectContaining({ Password: 'draft-secret', Host: 'mail.example.com' }), etag: '"smtp-1"',
+    }));
+    await waitFor(() => expect(screen.getByDisplayValue('********')).toBeInTheDocument());
+  });
+
   it('shows the hot-reload hint on both SMTP and LLM cards', async () => {
     renderSection();
     await waitFor(() => expect(screen.getByDisplayValue('mail.example.com')).toBeInTheDocument());

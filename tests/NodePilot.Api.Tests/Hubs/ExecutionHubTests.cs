@@ -2,6 +2,9 @@ using FluentAssertions;
 using Microsoft.AspNetCore.SignalR;
 using Moq;
 using NodePilot.Api.Hubs;
+using NodePilot.Core.Interfaces;
+using NodePilot.Data;
+using System.Security.Claims;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Hubs;
@@ -31,6 +34,96 @@ public sealed class ExecutionHubTests : IDisposable
     }
 
     private static HubCallerContext FakeContext() => Mock.Of<HubCallerContext>();
+
+    [Fact]
+    public async Task RefreshOperationsFeedScopes_FailedLookup_LeavesAllRestrictedFeedsDenied()
+    {
+        var folder = Guid.NewGuid();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([], "test"));
+        var context = new Mock<HubCallerContext>();
+        context.SetupGet(x => x.User).Returns(principal);
+        foreach (var id in new[] { "first", "second" })
+        {
+            ExecutionHub.RegisterAuthForTest(id, "jti", Guid.NewGuid(), context.Object);
+            ExecutionHub.RegisterOpsFeedForTest(id, false, [folder]);
+        }
+        ExecutionHub.RegisterOpsFeedForTest("admin", true, []);
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(x => x.GetAccessibleFolderIdsAsync(principal, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("lookup failed"));
+
+        var refresh = () => ExecutionHub.RefreshOperationsFeedScopesAsync(authz.Object, TestContext.Current.CancellationToken);
+
+        await refresh.Should().ThrowAsync<InvalidOperationException>();
+        ExecutionHub.GetOpsFeedConnections(folder).Should().BeEquivalentTo(["admin"]);
+    }
+
+    [Fact]
+    public async Task JoinOperationsFeed_InFlightJoin_CannotRestoreScopeAfterFolderMoveRefresh()
+    {
+        var oldFolder = Guid.NewGuid();
+        var newFolder = Guid.NewGuid();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([], "test"));
+        var context = new Mock<HubCallerContext>();
+        context.SetupGet(x => x.User).Returns(principal);
+        context.SetupGet(x => x.ConnectionId).Returns("reader");
+        ExecutionHub.RegisterAuthForTest("reader", "jti", Guid.NewGuid(), context.Object);
+        var firstRead = new TaskCompletionSource<AccessibleFolderSet>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.SetupSequence(x => x.GetAccessibleFolderIdsAsync(principal, It.IsAny<CancellationToken>()))
+            .Returns(firstRead.Task)
+            .ReturnsAsync(new AccessibleFolderSet { FolderIds = [newFolder] });
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var hub = new ExecutionHub(db, authz.Object) { Context = context.Object };
+        var join = hub.JoinOperationsFeed();
+
+        async Task MoveAndRefresh()
+        {
+            using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(TestContext.Current.CancellationToken);
+            await ExecutionHub.RefreshOperationsFeedScopesAsync(authz.Object, TestContext.Current.CancellationToken);
+        }
+        var move = MoveAndRefresh();
+        move.IsCompleted.Should().BeFalse("the move must wait for the in-flight subscription snapshot");
+        firstRead.SetResult(new AccessibleFolderSet { FolderIds = [oldFolder] });
+        await Task.WhenAll(join, move);
+
+        ExecutionHub.GetOpsFeedConnections(oldFolder).Should().BeEmpty();
+        ExecutionHub.GetOpsFeedConnections(newFolder).Should().ContainSingle().Which.Should().Be("reader");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task JoinWorkflowOrExecution_WaitsForFolderMoveBeforeReadingPermissions(bool executionFeed)
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = new NodePilot.Core.Models.Workflow { Id = Guid.NewGuid(), Name = "workflow", DefinitionJson = "{}" };
+        var execution = new NodePilot.Core.Models.WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id };
+        db.AddRange(workflow, execution);
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var context = new Mock<HubCallerContext>();
+        context.SetupGet(x => x.User).Returns(new ClaimsPrincipal(new ClaimsIdentity([], "test")));
+        context.SetupGet(x => x.ConnectionId).Returns("reader");
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(x => x.CanAccessWorkflowAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<Guid>(), ResourceOp.Read, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var groups = new Mock<IGroupManager>();
+        groups.Setup(x => x.AddToGroupAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var hub = new ExecutionHub(db, authz.Object) { Context = context.Object, Groups = groups.Object };
+        var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(TestContext.Current.CancellationToken);
+        Task<object> join;
+        try
+        {
+            join = executionFeed ? hub.JoinExecution(execution.Id.ToString()) : hub.JoinWorkflow(workflow.Id.ToString());
+            join.IsCompleted.Should().BeFalse();
+            authz.Verify(x => x.CanAccessWorkflowAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<Guid>(), It.IsAny<ResourceOp>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+        finally { treeLock.Dispose(); }
+
+        await join;
+        groups.Verify(x => x.AddToGroupAsync("reader", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 
     [Fact]
     public void RegisterGroupForTest_TracksWorkflowSubscribers()

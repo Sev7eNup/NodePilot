@@ -40,7 +40,7 @@ public class WorkflowGenerationCustomActivityTests
             InputParametersJson = """[{"name":"drive","label":"Drive","type":"string","required":true}]""",
             OutputParametersJson = """[{"name":"freeGb","type":"number"}]""",
         }, "alice", CancellationToken.None);
-        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
 
         var fake = new FakeLlmClient().EnqueueContent(MinimalEnvelope);
         var svc = new WorkflowGenerationService(new FakeLlmClientFactory(fake), new PromptCatalog(), store);

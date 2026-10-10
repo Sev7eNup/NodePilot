@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodePilot.Core.Models;
+using NodePilot.Core.Agents;
+using NodePilot.Core.Activities;
 
 namespace NodePilot.Data;
 
@@ -14,6 +16,10 @@ public class NodePilotDbContext : DbContext
     public DbSet<TriggerDeliveryReceipt> TriggerDeliveryReceipts => Set<TriggerDeliveryReceipt>();
     public DbSet<TriggerDeliveryCheckpoint> TriggerDeliveryCheckpoints => Set<TriggerDeliveryCheckpoint>();
     public DbSet<StepExecution> StepExecutions => Set<StepExecution>();
+    public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
+    public DbSet<AgentRunEvent> AgentRunEvents => Set<AgentRunEvent>();
+    public DbSet<AgentMcpServer> AgentMcpServers => Set<AgentMcpServer>();
+    public DbSet<AgentSkillPackage> AgentSkillPackages => Set<AgentSkillPackage>();
     public DbSet<ManagedMachine> ManagedMachines => Set<ManagedMachine>();
     public DbSet<Credential> Credentials => Set<Credential>();
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
@@ -53,6 +59,7 @@ public class NodePilotDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        AgentModelConfiguration.Configure(modelBuilder);
         const string sqlServerExactIdentityCollation = "Latin1_General_100_BIN2";
         var exactIdentityCollation = Database.IsSqlServer()
             ? sqlServerExactIdentityCollation
@@ -256,7 +263,7 @@ public class NodePilotDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.StepId).HasMaxLength(100).IsRequired();
-            e.Property(x => x.StepType).HasMaxLength(30);
+            e.Property(x => x.StepType).HasMaxLength(CustomActivityType.MaxTypeLength);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             // OutputParametersJson is provider-agnostic large text — Postgres maps to text,
             // SqlServer to nvarchar(max). We deliberately do not set HasMaxLength so the
@@ -275,6 +282,11 @@ public class NodePilotDbContext : DbContext
             e.HasIndex(x => x.Status)
                 .HasDatabaseName("IX_StepExecutions_Running")
                 .HasFilter("\"Status\" = 'Running'");
+            // Retried steps are rare, so the dashboard's retry share and the stats rollup seek this
+            // small index instead of scanning the largest table in the schema.
+            e.HasIndex(x => x.WorkflowExecutionId)
+                .HasDatabaseName("IX_StepExecutions_Retried")
+                .HasFilter("\"AttemptCount\" > 1");
         });
 
         modelBuilder.Entity<ManagedMachine>(e =>
@@ -307,7 +319,7 @@ public class NodePilotDbContext : DbContext
             e.Property(x => x.ExecutionShort).HasMaxLength(8);
             e.Property(x => x.StepId).HasMaxLength(120);
             e.Property(x => x.StepLabel).HasMaxLength(200);
-            e.Property(x => x.ActivityType).HasMaxLength(60);
+            e.Property(x => x.ActivityType).HasMaxLength(CustomActivityType.MaxTypeLength);
             e.Property(x => x.UserName).HasMaxLength(200);
             e.Property(x => x.TraceId).HasMaxLength(32);
             e.Property(x => x.SpanId).HasMaxLength(16);
@@ -731,7 +743,8 @@ public class NodePilotDbContext : DbContext
         modelBuilder.Entity<CustomActivityDefinition>(e =>
         {
             e.HasKey(x => x.Id);
-            e.Property(x => x.Key).HasMaxLength(64).IsRequired();
+            e.Property(x => x.ConcurrencyToken).IsConcurrencyToken();
+            e.Property(x => x.Key).HasMaxLength(CustomActivityType.MaxKeyLength).IsRequired();
             e.Property(x => x.Name).HasMaxLength(200).IsRequired();
             e.Property(x => x.Description).HasMaxLength(500);
             e.Property(x => x.Icon).HasMaxLength(60).IsRequired();
@@ -744,11 +757,9 @@ public class NodePilotDbContext : DbContext
             e.Property(x => x.CreatedBy).HasMaxLength(100);
             e.Property(x => x.UpdatedBy).HasMaxLength(100);
             e.Property(x => x.ChangeNote).HasMaxLength(500);
-            // Key lookup. Uniqueness among live (non-deleted) rows is enforced in the store's
-            // CreateAsync rather than a filtered unique index, since a HasFilter literal would
-            // bake provider-specific SQL into the shared migration set (Postgres and SQL Server
-            // quote and represent booleans differently).
-            e.HasIndex(x => x.Key);
+            e.HasIndex(x => x.Key).IsUnique()
+                .HasDatabaseName(CustomActivityKeyConstraint.IndexName)
+                .HasFilter(CustomActivityKeyConstraint.Filter(Database.ProviderName));
             // Catalog/palette scan reads enabled, non-deleted rows.
             e.HasIndex(x => new { x.IsDeleted, x.IsEnabled });
         });

@@ -37,6 +37,7 @@ var mcp = builder.Services
     .WithTools<ExecutionTools>()
     .WithTools<TelemetryTools>()
     .WithTools<SupportingDataTools>()
+    .WithTools<AgentTools>()
     .WithTools<AlertingTools>()
     .WithTools<SystemAlertingTools>()
     .WithTools<CanvasAssistantTools>()

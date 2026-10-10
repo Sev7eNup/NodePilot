@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using NodePilot.Api.Configuration;
+using NodePilot.Engine.Security;
 using NodePilot.Api.Security;
 using NodePilot.Api.Security.Ldap;
 using NodePilot.Api.Security.Oidc;
@@ -45,11 +47,13 @@ public static class AuthenticationSetup
         // PR0c: Bind LDAP / Windows-Auth options. Both default to Enabled=false, so an
         // operator who never touches Authentication:* keeps the legacy local-only flow.
         services.Configure<LdapOptions>(configuration.GetSection(LdapOptions.SectionName));
+        services.PostConfigure<LdapOptions>(options => AuthenticationOptionBinding.ReplaceLists(configuration, options));
         services.Configure<WindowsAuthOptions>(configuration.GetSection(WindowsAuthOptions.SectionName));
         services.Configure<AuthenticationPolicyOptions>(
             configuration.GetSection(AuthenticationPolicyOptions.SectionName));
         services.Configure<EnterpriseOidcOptions>(
             configuration.GetSection(EnterpriseOidcOptions.SectionName));
+        services.PostConfigure<EnterpriseOidcOptions>(options => AuthenticationOptionBinding.ReplaceLists(configuration, options));
         services.Configure<ScimOptions>(configuration.GetSection(ScimOptions.SectionName));
 
         // Authentication settings are restart-bound. Freeze the option values now so an
@@ -60,8 +64,7 @@ public static class AuthenticationSetup
             Options.Create(configuration.GetSection(AuthenticationPolicyOptions.SectionName)
                 .Get<AuthenticationPolicyOptions>() ?? new AuthenticationPolicyOptions()));
         services.AddSingleton<IOptions<EnterpriseOidcOptions>>(
-            Options.Create(configuration.GetSection(EnterpriseOidcOptions.SectionName)
-                .Get<EnterpriseOidcOptions>() ?? new EnterpriseOidcOptions()));
+            Options.Create(AuthenticationOptionBinding.ReadOidc(configuration)));
         services.AddSingleton<IOptions<ScimOptions>>(
             Options.Create(configuration.GetSection(ScimOptions.SectionName)
                 .Get<ScimOptions>() ?? new ScimOptions()));
@@ -176,8 +179,7 @@ public static class AuthenticationSetup
             var clientSecret = oidcSection[nameof(EnterpriseOidcOptions.ClientSecret)]!;
             var nameClaimType = oidcSection[nameof(EnterpriseOidcOptions.NameClaimType)]
                 ?? "preferred_username";
-            var configuredScopes = oidcSection
-                .GetSection(nameof(EnterpriseOidcOptions.Scopes)).Get<string[]>()
+            var configuredScopes = ProviderAtomicList.Read<string>(configuration, "Authentication:Oidc:Scopes")
                 ?? ["openid", "profile", "email"];
 
             authBuilder

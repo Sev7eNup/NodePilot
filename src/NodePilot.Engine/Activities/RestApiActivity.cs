@@ -3,13 +3,13 @@ using Microsoft.Extensions.Configuration;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Engine.Security;
+using NodePilot.Engine.Agents;
 
 namespace NodePilot.Engine.Activities;
 
 public class RestApiActivity : IActivityExecutor
 {
     private readonly RestApiHttpClientProvider _clientProvider;
-    private readonly IConfiguration _config;
 
     public string ActivityType => "restApi";
 
@@ -20,7 +20,6 @@ public class RestApiActivity : IActivityExecutor
     public RestApiActivity(RestApiHttpClientProvider clientProvider, IConfiguration config)
     {
         _clientProvider = clientProvider;
-        _config = config;
     }
 
     private const int MaxResponseBytes = 16 * 1024 * 1024;
@@ -28,6 +27,7 @@ public class RestApiActivity : IActivityExecutor
     public Task<ActivityResult> ExecuteAsync(StepExecutionContext context, JsonElement config, CancellationToken ct)
         => ActivityExecution.RunAsync(async () =>
         {
+            if (AgentReadOnlyWorkflowScope.IsActive) AgentReadOnlyWorkflowScope.ValidateStep(ActivityType, config);
             var url = config.TryGetProperty("url", out var urlEl) ? urlEl.GetString() : null;
             if (string.IsNullOrWhiteSpace(url))
                 return new ActivityResult { Success = false, ErrorOutput = "REST API: 'url' is required" };
@@ -35,9 +35,6 @@ public class RestApiActivity : IActivityExecutor
             // Initial URL validation — SSRF guard, scheme allow-list. The per-hop revalidation
             // happens below in the manual redirect loop. A proxied destination is resolved by
             // the proxy, so this pre-check has to filter every address rather than one.
-            var proxied = Uri.TryCreate(url, UriKind.Absolute, out var parsed)
-                          && _clientProvider.UsesProxyForDestination(config, parsed);
-            NetworkGuard.ValidateUrl(_config, url, proxied);
             var initialUrl = new Uri(url, UriKind.Absolute);
             _clientProvider.ValidateDestinationPolicy(config, initialUrl);
 
@@ -109,14 +106,12 @@ public class RestApiActivity : IActivityExecutor
 
             var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
 
-            if (!ShouldFollowRedirect(response, hops))
+            if (AgentReadOnlyWorkflowScope.IsActive || !ShouldFollowRedirect(response, hops))
                 return response;
 
             var nextUrl = ResolveRedirectTarget(currentUrl, response.Headers.Location!);
             try
             {
-                NetworkGuard.ValidateUrl(_config, nextUrl.ToString(),
-                    _clientProvider.UsesProxyForDestination(stepConfig, nextUrl));
                 _clientProvider.ValidateDestinationPolicy(stepConfig, nextUrl);
                 ApplyRedirectPolicy(response.StatusCode, currentUrl, nextUrl, effectiveHeaders, ref currentMethod, ref currentBody);
             }

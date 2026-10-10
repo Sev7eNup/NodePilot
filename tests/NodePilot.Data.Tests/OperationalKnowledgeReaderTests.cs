@@ -1,4 +1,6 @@
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.TestCommons;
@@ -90,6 +92,53 @@ public class OperationalKnowledgeReaderTests
 
         var detail = await NewReader(db).GetWorkflowDefinitionAsync(AccessibleFolderSet.Unrestricted, "dup", CancellationToken.None);
         detail.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("Job")]
+    [InlineData("job")]
+    public async Task GetWorkflowDefinitionAsync_CaseInsensitiveDatabase_PrefersExactCase(string name)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new CaseInsensitiveNamesContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+        var upper = SeedWorkflow(db, "Job", FolderA);
+        var lower = SeedWorkflow(db, "job", FolderA);
+        await db.SaveChangesAsync();
+
+        var detail = await NewReader(db).GetWorkflowDefinitionAsync(
+            AccessibleFolderSet.Unrestricted, name, CancellationToken.None);
+
+        detail.Should().NotBeNull();
+        detail!.Id.Should().Be(name == "Job" ? upper.Id : lower.Id);
+        (await NewReader(db).GetWorkflowDefinitionAsync(
+            AccessibleFolderSet.Unrestricted, "JOB", CancellationToken.None)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetWorkflowDefinitionAsync_ExactNameOutsideScope_DoesNotHideAccessibleCaseVariant()
+    {
+        await using var db = TestDbFactory.Create();
+        var visible = SeedWorkflow(db, "job", FolderA);
+        SeedWorkflow(db, "Job", FolderB);
+        await db.SaveChangesAsync();
+
+        var detail = await NewReader(db).GetWorkflowDefinitionAsync(Scoped(FolderA), "Job", CancellationToken.None);
+
+        detail.Should().NotBeNull();
+        detail!.Id.Should().Be(visible.Id);
+    }
+
+    private sealed class CaseInsensitiveNamesContext(DbContextOptions<NodePilotDbContext> options)
+        : NodePilotDbContext(options)
+    {
+        protected override void OnModelCreating(ModelBuilder builder)
+        {
+            base.OnModelCreating(builder);
+            builder.Entity<Workflow>().Property(workflow => workflow.Name).UseCollation("NOCASE");
+        }
     }
 
     [Fact]

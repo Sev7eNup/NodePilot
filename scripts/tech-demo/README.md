@@ -8,9 +8,10 @@ Ein Muster-Workflow, der jede Activity, jeden Edge-Condition-Operator und jede C
 |---|---|
 | `main.json` | Haupt-Workflow (37 Nodes, ~55 Edges) |
 | `child.json` | Kleiner Sub-Workflow (3 Nodes), den der Haupt-Workflow via `startWorkflow` aufruft |
-| `seed.ps1` | Idempotentes Seed-Script — loggt ein und POSTet beide Workflows nach `/api/workflows` |
+| `seed.ps1` | Seed-Script — meldet sich an, erstellt und veröffentlicht die Demo-Workflows |
 
-Die JSON-Dateien werden **nicht** via `/api/workflows/import` geladen. `seed.ps1` liest sie, embedded ihren Inhalt als `DefinitionJson`-String in `CreateWorkflowRequest` und schickt sie an den regulären `POST /api/workflows`-Endpoint.
+`seed.ps1` liest die Definitionen, erstellt die Workflows über `POST /api/workflows`
+und veröffentlicht sie anschließend über `POST /api/workflows/{id}/publish`.
 
 ## Aufruf
 
@@ -26,7 +27,7 @@ Backend muss laufen (Default `http://localhost:5000`).
 
 Das Script erkennt automatisch, ob NodePilot im Bootstrap-Modus ist (leere User-Tabelle + `admin-setup.token` vorhanden) und nutzt dann den `X-Setup-Token`-Header für den First-Admin-Login. Ansonsten fragt es das Passwort normal ab.
 
-Bei bereits existierenden Workflows gleichen Namens wird gefragt: `k` = behalten, `r` = löschen + neu anlegen, `a` = abbrechen. Mit `-Force` wird immer ersetzt.
+Bei bereits existierenden Workflows gleichen Namens wird gefragt: `k` = behalten, `r` = löschen + neu anlegen, `a` = abbrechen. Mit `-Force` wird immer ersetzt. Auch Ersetzen braucht den eigenen Bearbeitungslock; fremde Sperren werden nicht aufgehoben. Mehrdeutige Namen führen zum Abbruch.
 
 ## Was der Workflow zeigt
 
@@ -82,7 +83,7 @@ Jeder Phase-E-Branch in `main.json` ist eine Kondition, die einen oder mehrere d
 
 | Detail | Wert |
 |---|---|
-| `waitNofM`-Config-Key | `requiredCount` (NICHT `n` — im bestehenden `samples/all-activities-horizontal.workflow.json` ist das falsch als `n` und wird silent auf Default 1 zurückgesetzt) |
+| `waitNofM`-Config-Key | `requiredCount` (NICHT `n` — ein unbekannter Schlüssel fällt auf den Default 1 zurück) |
 | Boolean-Truthiness | Leer, `"false"` (case-insensitive), `"0"` = falsy. Alles andere truthy. PowerShell-`[string]$true` = `"True"` → truthy ✓ |
 | `runScript`-Param-Capture | Alle lokal deklarierten Variablen werden automatisch als `param.*` exponiert (ProcessExecutionEngine hängt einen Capture-Block ans Script). Kein Marker nötig. |
 | `{{var.output}}` in Script-Text | Wird als PowerShell-single-quoted-String eingesetzt (`'value'`). Nicht selbst zusätzlich quoten. |

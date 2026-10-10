@@ -96,7 +96,7 @@ jobs:
   backend:
     name: Backend build + tests
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -169,6 +169,17 @@ jobs:
           .\deploy\Test-SetupAdapter.ps1
           .\deploy\Test-MachinePath.ps1
           .\deploy\Test-SwitcherConfig.ps1
+          .\deploy\Test-DesktopUpdate.ps1
+          .\deploy\Test-DesktopDatabaseProvisioning.ps1
+          .\deploy\Test-PostgresProvisioning.ps1
+          .\deploy\Test-SitePublish.ps1
+          .\deploy\Test-DesktopUpdatePayload.ps1
+          .\deploy\Test-FailoverFixtures.ps1
+          .\deploy\Test-ServerRuntimeStaging.ps1
+          .\scripts\release-lab\server\Test-RemoteSqlCleanup.ps1
+          .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
+          .\scripts\test-suite\Test-WorkflowCatalogue.ps1
+          .\scripts\Test-DevReset.ps1
 
       - name: Deployment security contracts (PowerShell 7)
         shell: pwsh
@@ -177,15 +188,30 @@ jobs:
           .\deploy\Test-SetupAdapter.ps1
           .\deploy\Test-MachinePath.ps1
           .\deploy\Test-SwitcherConfig.ps1
+          .\deploy\Test-DesktopUpdate.ps1
+          .\deploy\Test-DesktopDatabaseProvisioning.ps1
+          .\deploy\Test-PostgresProvisioning.ps1
+          .\deploy\Test-SitePublish.ps1
+          .\deploy\Test-DesktopUpdatePayload.ps1
+          .\deploy\Test-FailoverFixtures.ps1
+          .\deploy\Test-ServerRuntimeStaging.ps1
+          .\scripts\release-lab\server\Test-RemoteSqlCleanup.ps1
+          .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
+          .\scripts\test-suite\Test-WorkflowCatalogue.ps1
+          .\scripts\Test-DevReset.ps1
 
       - name: Build
         run: dotnet build --configuration Release --no-restore
+
+      - name: Administration script HTTP contracts
+        shell: pwsh
+        run: python -m unittest discover -s scripts -p test_nodepilot_admin_scripts.py -v
 
       - name: Restore local tools (reportgenerator)
         run: dotnet tool restore
 
       - name: Test with coverage
-        timeout-minutes: 10
+        timeout-minutes: 20
         # --settings applies coverage.runsettings, which excludes EF migrations and
         # [ExcludeFromCodeCoverage]-attributed code from the denominator. It is the same filter
         # the documented local measurement uses, so both report the same number.
@@ -339,6 +365,9 @@ jobs:
 
       - name: Reject vulnerable npm dependencies
         run: npm audit --audit-level=moderate
+
+      - name: Test reliability reporting
+        run: node --test scripts/test-reliability.test.mjs
 
       - name: Lint
         # Ratchet: errors always fail, and warnings are capped at the current count (react-
@@ -540,14 +569,36 @@ jobs:
       - name: Run E2E tests (shard ${{ matrix.shard }}/4)
         # blob instead of html: a single shard's HTML report is useless on its own, blob files
         # can be merged. `github` stays — those are the inline PR annotations.
-        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --reporter=blob,github
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --reporter=blob,github,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/reliability-ui.json
+
+      - name: Collect UI reliability
+        if: always()
+        run: node scripts/test-reliability.mjs collect test-results/reliability-ui.json reliability-current/ui-${{ matrix.shard }}.json ui ${{ matrix.shard }}
 
       - name: Browser demo smoke test
         # One shard only: the suite is sixteen specs against its own build and server, and it is
         # not sharded. It serves the demo under a sub-path on purpose — base-path failures
         # cannot appear at the origin root.
         if: matrix.shard == 1
-        run: npm run test:e2e:demo -- --reporter=github
+        run: npm run test:e2e:demo -- --reporter=github,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/reliability-demo.json
+
+      - name: Collect demo reliability
+        if: ${{ always() && matrix.shard == 1 }}
+        run: node scripts/test-reliability.mjs collect test-results/reliability-demo.json reliability-current/demo.json demo 1
+
+      - name: Upload reliability records
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-reliability-shard-${{ matrix.shard }}
+          path: src/nodepilot-ui/reliability-current/
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload blob report
         if: always()
@@ -568,6 +619,9 @@ jobs:
     if: ${{ !cancelled() && needs.e2e.result != 'skipped' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     defaults:
       run:
         working-directory: src/nodepilot-ui
@@ -593,6 +647,50 @@ jobs:
 
       - name: Merge into one HTML report
         run: npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: Download current reliability records
+        if: always()
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: src/nodepilot-ui/reliability-current
+          pattern: e2e-reliability-shard-*
+          merge-multiple: true
+
+      - name: Download recent main reliability history
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p reliability-history
+          if ! gh run list --workflow ci.yml --branch main --event push --status completed --limit 10 --json databaseId --jq '.[].databaseId' > reliability-history/run-ids.txt; then
+            echo '::warning::Reliability history unavailable; the summary will show only current results.'
+            exit 0
+          fi
+          while read -r run_id; do
+            if [[ "$run_id" == "$GITHUB_RUN_ID" ]]; then continue; fi
+            if ! gh run download "$run_id" --name e2e-reliability --dir "reliability-history/$run_id"; then
+              echo "::warning::No retained reliability artifact for main run $run_id."
+            fi
+          done < reliability-history/run-ids.txt
+
+      - name: Summarize retries and recurring flakes
+        if: always()
+        run: node scripts/test-reliability.mjs report reliability-current reliability-history reliability-current/summary.md
+        env:
+          EXPECTED_RELIABILITY_SHARDS: ui:1,ui:2,ui:3,ui:4,demo:1
+
+      - name: Upload reliability history record
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-reliability
+          path: src/nodepilot-ui/reliability-current/
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload Playwright report
         if: always()

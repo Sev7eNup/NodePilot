@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
@@ -105,6 +105,21 @@ function mockList() {
 }
 
 describe('ExecutionsPage', () => {
+  it('keeps filters available after a search returns no executions', async () => {
+    mockList();
+    server.use(http.get(`${BASE}/api/executions`, ({ request }) => {
+      const empty = new URL(request.url).searchParams.get('search') === 'no-match';
+      return HttpResponse.json({ items: empty ? [] : MOCK_EXECUTIONS, page: 1, pageSize: 200,
+        total: empty ? 0 : 2, totalPages: empty ? 0 : 1 });
+    }));
+    renderPage();
+    await screen.findByRole('button', { name: 'Disk Check' });
+    fireEvent.change(screen.getByPlaceholderText(/Search workflow/i), { target: { value: 'no-match' } });
+    await screen.findByText(/No executions yet/);
+    fireEvent.change(screen.getByPlaceholderText(/Search workflow/i), { target: { value: '' } });
+    expect(await screen.findByRole('button', { name: 'Disk Check' })).toBeInTheDocument();
+  });
+
   it('shows loading state initially', () => {
     server.use(
       http.get(`${BASE}/api/executions`, () => new Promise(() => {})),
@@ -143,6 +158,9 @@ describe('ExecutionsPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Backup Job' })).toBeInTheDocument()
     );
+    // A pending search debounce must not undo a page change when the search did not change.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)));
+    expect(screen.getByRole('button', { name: 'Backup Job' })).toBeInTheDocument();
     expect(requestedPages).toEqual([1, 2]);
   });
 

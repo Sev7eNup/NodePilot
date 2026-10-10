@@ -1,5 +1,31 @@
 import type { Page, Route } from '@playwright/test';
 
+/** The list fixture follows the server page contract, including filters before slicing. */
+export function workflowPage<T extends { id: string; name: string; description?: string | null; folderId?: string | null; updatedAt?: string }>(
+  route: Route, input: T[],
+) {
+  const query = new URL(route.request().url()).searchParams;
+  const page = Math.max(1, Number(query.get('page') ?? 1));
+  const pageSize = Math.min(200, Math.max(1, Number(query.get('pageSize') ?? 50)));
+  const folderId = query.get('folderId');
+  const search = query.get('search')?.toLowerCase();
+  const ids = query.getAll('ids');
+  const rows = input.filter(row => (!folderId || row.folderId === folderId)
+    && (!search || row.name.toLowerCase().includes(search) || row.description?.toLowerCase().includes(search))
+    && (!ids.length || ids.includes(row.id)));
+  const sortBy = query.get('sortBy');
+  // These are the sortable columns asserted by the hermetic browser specifications.
+  // Other ordering contracts are covered against the real API, not reimplemented here.
+  if (sortBy === 'name' || sortBy === 'updated') {
+    const direction = query.get('sortDir') === 'desc' ? -1 : 1;
+    rows.sort((a, b) => String(sortBy === 'name' ? a.name : a.updatedAt ?? '')
+      .localeCompare(String(sortBy === 'name' ? b.name : b.updatedAt ?? '')) * direction
+      || a.id.localeCompare(b.id));
+  }
+  return { items: rows.slice((page - 1) * pageSize, page * pageSize), page, pageSize,
+    total: rows.length, totalPages: Math.ceil(rows.length / pageSize) };
+}
+
 /**
  * API mocks shared across E2E tests. Built on `page.route()` so every test gets its own
  * deterministic backend without starting the real ASP.NET Core host.
@@ -123,9 +149,9 @@ export async function installDefaultMocks(page: Page) {
   );
 
   // Workflows list, empty by default; tests that need a specific workflow
-  // override this with `page.route('**/api/workflows', ...)` after install.
-  await page.route('**/api/workflows', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  // override this with `page.route('**/api/workflows/paged**', ...)` after install.
+  await page.route('**/api/workflows/paged**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [])) }),
   );
 
   // Id+name only, used by the executions filter. A separate route because the pattern above

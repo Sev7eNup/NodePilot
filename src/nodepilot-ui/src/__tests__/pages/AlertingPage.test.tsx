@@ -120,7 +120,7 @@ describe('AlertingPage', () => {
     server.use(
       http.get(`${BASE}/api/alerting/rules`, () => HttpResponse.json([])),
       http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json([])),
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json([])),
     );
     renderPage('Admin');
     await waitFor(() => expect(screen.getByRole('button', { name: /New rule/i })).toBeInTheDocument());

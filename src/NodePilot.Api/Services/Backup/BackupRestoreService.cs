@@ -1,9 +1,13 @@
 using System.Data;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using NodePilot.Api.Configuration;
 using NodePilot.Api.Security;
+using NodePilot.Api.Hubs;
+using NodePilot.Core.Audit;
+using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
@@ -26,10 +30,12 @@ public sealed class BackupRestoreService(
     ISecretProtector atRest,
     RuntimeOverridesWriter overrides,
     ILogger<BackupRestoreService> logger,
-    NodePilot.Api.Services.WorkflowVersionDefinitionProtector versionDefinitions)
+    NodePilot.Api.Services.WorkflowVersionDefinitionProtector versionDefinitions,
+    IHubContext<ExecutionHub>? hub = null,
+    IWorkflowFolderProjection? folderProjection = null,
+    IResourceAuthorizationService? authorization = null,
+    DashboardAggregateCache? aggregates = null)
 {
-    private const string RestoreCommitMarkerAction = "BACKUP_RESTORE_DB_COMMITTED";
-
     // ---- Preview ------------------------------------------------------------
 
     public async Task<BackupPreviewResult> PreviewAsync(byte[] content, string? passphrase, CancellationToken ct)
@@ -203,8 +209,17 @@ public sealed class BackupRestoreService(
 
         // Hold both trees from the first snapshot through commit/rollback, including retries.
         // All callers needing both gates acquire shared folders before global folders.
-        using var sharedTree = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var sharedTree = await FolderTreeMutationLock.SharedWorkflowFolders.BeginMutationAsync(ct);
         using var globalTree = await FolderTreeMutationLock.GlobalVariableFolders.AcquireAsync(ct);
+        WorkflowLiveSubscriptions? subscriptions = null;
+        if (hub is not null && folderProjection is not null
+            && (reader.Sections[BackupSections.Workflows] is not null
+                || reader.Sections[BackupSections.Folders] is not null
+                || reader.Sections[BackupSections.Users] is not null))
+        {
+            var workflowIds = await db.Workflows.AsNoTracking().Select(w => w.Id).ToListAsync(ct);
+            subscriptions = await WorkflowLiveSubscriptions.CaptureAsync(db, workflowIds, ct);
+        }
 
         // The whole DB restore runs inside the provider's execution strategy. Postgres configures
         // a retrying strategy (NpgsqlRetryingExecutionStrategy), which forbids a user-initiated
@@ -216,6 +231,7 @@ public sealed class BackupRestoreService(
         var restoresSettings = reader.Sections[BackupSections.Settings] is not null;
         var originalSettings = restoresSettings ? overrides.ReadOrEmpty() : null;
         var restoredSettings = restoresSettings ? BuildRestoredSettings(reader, protector) : null;
+        var commitMarkerId = Guid.NewGuid();
         var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
@@ -229,6 +245,7 @@ public sealed class BackupRestoreService(
             if (restoresUsers)
                 await AdminAccountMutationGate.AcquireTransactionLockAsync(db, ct);
             var settingsApplied = false;
+            var commitAttempted = false;
             try
             {
                 if (reader.Sections[BackupSections.Users] is not null) results.Add(await RestoreUsersAsync(ctx, ct));
@@ -260,34 +277,98 @@ public sealed class BackupRestoreService(
                     throw new BackupRestoreException(
                         "Restore aborted because it would be incomplete: " + string.Join(" | ", ctx.Warnings));
 
+                // A stable marker in the same transaction distinguishes a rejected commit
+                // from a durable commit whose acknowledgement was lost. Never infer rollback
+                // from CommitAsync throwing, especially before compensating the settings file.
+                db.AuditLog.Add(new AuditLogEntry
+                {
+                    Id = commitMarkerId,
+                    UserId = restoredByUserId,
+                    Action = AuditActions.BackupRestoreDbCommitted,
+                    ResourceType = "Backup",
+                    ResourceId = commitMarkerId,
+                });
                 await db.SaveChangesAsync(ct);
                 if (restoredSettings is not null)
                 {
                     overrides.ReplaceAll(restoredSettings);
                     settingsApplied = true;
                 }
+                commitAttempted = true;
                 await tx.CommitAsync(ct);
             }
-            catch
+            catch (Exception restoreError)
             {
-                if (settingsApplied && originalSettings is not null)
+                var committed = false;
+                if (commitAttempted)
                 {
-                    try { overrides.ReplaceAll(originalSettings); }
-                    catch (Exception compensationError)
+                    try
                     {
-                        logger.LogCritical(
-                            compensationError,
-                            "Backup restore could not compensate runtime settings after database rollback.");
+                        // Release the failed transaction before reading durable state. The
+                        // caller cancelling after COMMIT must not skip this reconciliation.
+                        await tx.DisposeAsync();
+                        db.ChangeTracker.Clear();
+                        using var verification = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                        committed = await db.AuditLog.AsNoTracking().AnyAsync(entry =>
+                            entry.Id == commitMarkerId && entry.Action == AuditActions.BackupRestoreDbCommitted,
+                            verification.Token);
+                    }
+                    catch (Exception verificationError)
+                    {
+                        // Unknown is neither rollback nor permission to replay Rename. Keep
+                        // the applied settings and conservatively clear existing live access.
+                        try { await RevokeSubscriptionsAsync(new CancellationToken(canceled: true)); }
+                        catch (Exception cleanupError)
+                        {
+                            logger.LogCritical(cleanupError, "Backup restore live-scope cleanup failed after an unknown commit outcome.");
+                        }
+                        logger.LogCritical(verificationError,
+                            "Backup restore commit {CommitMarkerId} could not be verified; settings were not compensated.", commitMarkerId);
                         throw new BackupRestoreException(
-                            "Restore failed and the original runtime settings could not be restored. Manual recovery is required.");
+                            $"Restore commit outcome could not be verified (operation {commitMarkerId}). "
+                            + "Do not repeat the restore until the database outcome and runtime settings have been checked.");
                     }
                 }
-                await tx.RollbackAsync(ct);
-                throw;
+                if (!committed)
+                {
+                    if (settingsApplied && originalSettings is not null)
+                    {
+                        try { overrides.ReplaceAll(originalSettings); }
+                        catch (Exception compensationError)
+                        {
+                            logger.LogCritical(
+                                compensationError,
+                                "Backup restore could not compensate runtime settings after database rollback.");
+                            throw new BackupRestoreException(
+                                "Restore failed and the original runtime settings could not be restored. Manual recovery is required.");
+                        }
+                    }
+                    if (!commitAttempted) await tx.RollbackAsync(ct);
+                    if (CustomActivityKeyConstraint.IsViolation(restoreError))
+                        throw new BackupRestoreException(
+                            "Restore aborted: a concurrent custom-activity write already owns the live key. Refresh the restore preview and retry.");
+                    throw;
+                }
+                logger.LogWarning(restoreError,
+                    "Backup restore commit {CommitMarkerId} was verified after its acknowledgement failed.", commitMarkerId);
             }
             warnings.Clear();
             warnings.AddRange(ctx.Warnings);
         });
+
+        // The archive can move workflows or replace grants and identity snapshots. Existing
+        // subscriptions were authorized against the previous state; revoke them under the
+        // same tree lock used by joins, even if the restore request was cancelled after commit.
+        await RevokeSubscriptionsAsync(CancellationToken.None);
+
+        async Task RevokeSubscriptionsAsync(CancellationToken scopeToken)
+        {
+            if (subscriptions is null || hub is null || folderProjection is null) return;
+            await subscriptions.RevokeAsync(hub, folderProjection, aggregates);
+            var currentAuthorization = authorization ?? new ResourceAuthorizationService(db);
+            currentAuthorization.InvalidateAll();
+            await ExecutionHub.RefreshOperationsFeedScopesAsync(currentAuthorization, scopeToken);
+        }
 
         SettingsRestoreResult? settings = restoresSettings
             ? new SettingsRestoreResult(
@@ -363,17 +444,19 @@ public sealed class BackupRestoreService(
                 {
                     // K16 — bump SecurityStamp (invalidate live sessions) on a security-relevant
                     // change.
-                    if (existing.Role != role || existing.IsActive != isActive
+                    var securityChanged = existing.Role != role || existing.IsActive != isActive
                         || existing.IsBreakGlass != isBreakGlass || existing.IsTombstoned != isTombstoned
-                        || existing.PasswordHash != passwordHash)
-                        existing.SecurityStamp += 1;
+                        || existing.PasswordHash != passwordHash || existing.Provider != provider
+                        || existing.ExternalId != externalId || existing.KnownGroupSidsJson != groupSids
+                        || existing.LastDirectorySyncAt != lastDirectorySyncAt;
                     if (existing.PasswordHash != passwordHash) existing.PasswordChangedAt = DateTime.UtcNow;
                     existing.Role = role; existing.IsActive = isActive; existing.PasswordHash = passwordHash;
                     existing.IsBreakGlass = isBreakGlass; existing.IsTombstoned = isTombstoned;
                     existing.LastDirectorySyncAt = lastDirectorySyncAt; existing.DirectorySyncStatus = directorySyncStatus;
                     existing.Provider = provider; existing.ExternalId = externalId; existing.KnownGroupSidsJson = groupSids;
-                    await RestoreExternalIdentitiesAsync(item, existing.Id, replaceExisting: true, ct);
-                    await RestoreDirectoryMembershipsAsync(item, existing.Id, replaceExisting: true, ct);
+                    securityChanged |= await RestoreExternalIdentitiesAsync(item, existing.Id, replaceExisting: true, ct);
+                    securityChanged |= await RestoreDirectoryMembershipsAsync(item, existing.Id, replaceExisting: true, ct);
+                    if (securityChanged) UserSessionInvalidation.BumpSecurityStamp(existing);
                     s.UserMap[sourceId] = existing.Id; overwritten++; continue;
                 }
                 // An exact source-id or external-identity match is the same principal.
@@ -415,7 +498,7 @@ public sealed class BackupRestoreService(
         return new SectionRestoreResult(BackupSections.Users, created, overwritten, skipped, renamed);
     }
 
-    private async Task RestoreExternalIdentitiesAsync(
+    private async Task<bool> RestoreExternalIdentitiesAsync(
         JsonNode item,
         Guid targetUserId,
         bool replaceExisting,
@@ -424,7 +507,7 @@ public sealed class BackupRestoreService(
         // Older backups do not contain canonical identities. Preserve whatever already
         // exists on overwrite and let the login mapper perform its guarded legacy upgrade.
         if (item["externalIdentities"] is not JsonArray identityNodes)
-            return;
+            return false;
 
         var restored = new List<ExternalIdentity>();
         var keys = new HashSet<string>(StringComparer.Ordinal);
@@ -468,22 +551,26 @@ public sealed class BackupRestoreService(
             });
         }
 
+        var changed = false;
         if (replaceExisting)
         {
             var existing = await db.ExternalIdentities.Where(i => i.UserId == targetUserId).ToListAsync(ct);
+            changed = !existing.Select(i => (i.Authority, i.Subject)).ToHashSet()
+                .SetEquals(restored.Select(i => (i.Authority, i.Subject)));
             db.ExternalIdentities.RemoveRange(existing);
         }
         db.ExternalIdentities.AddRange(restored);
+        return changed;
     }
 
-    private async Task RestoreDirectoryMembershipsAsync(
+    private async Task<bool> RestoreDirectoryMembershipsAsync(
         JsonNode item,
         Guid targetUserId,
         bool replaceExisting,
         CancellationToken ct)
     {
         if (item["directoryMemberships"] is not JsonArray nodes)
-            return;
+            return false;
 
         var restored = new List<DirectoryMembership>();
         var keys = new HashSet<string>(StringComparer.Ordinal);
@@ -510,14 +597,18 @@ public sealed class BackupRestoreService(
             });
         }
 
+        var changed = false;
         if (replaceExisting)
         {
             var existing = await db.DirectoryMemberships
                 .Where(membership => membership.UserId == targetUserId)
                 .ToListAsync(ct);
+            changed = !existing.Select(m => (m.Authority, m.GroupKey, m.LastSeenAt)).ToHashSet()
+                .SetEquals(restored.Select(m => (m.Authority, m.GroupKey, m.LastSeenAt)));
             db.DirectoryMemberships.RemoveRange(existing);
         }
         db.DirectoryMemberships.AddRange(restored);
+        return changed;
     }
 
     private Task<SectionRestoreResult> RestoreFoldersAsync(RestoreState s, CancellationToken ct) =>
@@ -894,6 +985,7 @@ public sealed class BackupRestoreService(
     {
         var policy = s.Policy(BackupSections.Workflows);
         int created = 0, overwritten = 0, skipped = 0, renamed = 0;
+        var restoredWorkflows = new List<Workflow>();
 
         foreach (var node in Items(s.Reader, BackupSections.Workflows))
         {
@@ -907,6 +999,7 @@ public sealed class BackupRestoreService(
             if (existing is not null && policy == RestoreConflictPolicy.Overwrite)
             {
                 item.Overwrite(existing);
+                restoredWorkflows.Add(existing);
                 s.AddRestoredWorkflow(existing);
                 s.WorkflowMap[item.SourceId] = existing.Id;
                 overwritten++; continue;
@@ -917,9 +1010,25 @@ public sealed class BackupRestoreService(
             var id = s.ExistingWorkflowIds.Contains(item.SourceId) ? Guid.NewGuid() : item.SourceId;
             var entity = item.Create(id, name);
             db.Workflows.Add(entity);
+            restoredWorkflows.Add(entity);
             s.AddRestoredWorkflow(entity);
             s.WorkflowMap[item.SourceId] = id;
             if (existing is null) created++; else renamed++;
+        }
+        // Resolve calls only after every source workflow has its final target id, so rename,
+        // skip and overwrite work regardless of archive order (including recursive calls).
+        foreach (var workflow in restoredWorkflows)
+        {
+            var definition = JsonNode.Parse(workflow.DefinitionJson);
+            foreach (var reference in WorkflowResourceReferences.Enumerate(definition)
+                         .Where(reference => reference.Kind == "workflow"))
+            {
+                // Unmapped ids (Guid.Empty from an import, or a deleted workflow) stay as stored:
+                // the source system held the same dangling reference.
+                if (s.WorkflowMap.TryGetValue(reference.Id, out var mapped)) reference.Replace(mapped);
+            }
+            workflow.DefinitionJson = definition!.ToJsonString();
+            WorkflowMetadata.PopulateComputedColumns(workflow);
         }
         await db.SaveChangesAsync(ct);
         return new SectionRestoreResult(BackupSections.Workflows, created, overwritten, skipped, renamed);
@@ -1345,7 +1454,7 @@ public sealed class BackupRestoreService(
         // a by-name conflict to the same row on every run.
         foreach (var w in await db.Workflows.OrderBy(w => w.CreatedAt).ThenBy(w => w.Id).ToListAsync(ct))
             s.AddExistingWorkflow(w);
-        foreach (var r in await db.NotificationRules.ToListAsync(ct)) { s.NotificationRules[r.Name] = r; s.ExistingNotificationRuleIds.Add(r.Id); }
+        foreach (var r in await db.NotificationRules.Include(r => r.Routes).Include(r => r.Targets).ToListAsync(ct)) { s.NotificationRules[r.Name] = r; s.ExistingNotificationRuleIds.Add(r.Id); }
     }
 
     private string RestoreDefinitionJson(JsonNode? definition, RestoreState s)
@@ -1461,16 +1570,16 @@ public sealed class BackupRestoreService(
 
     private static IEnumerable<(string kind, Guid id)> ExtractDefinitionRefs(JsonNode node)
     {
+        foreach (var reference in WorkflowResourceReferences.Enumerate(node))
+        {
+            if (reference.Kind == "machine") yield return ("targetMachineId", reference.Id);
+            else if (reference.Kind == "credential") yield return ("credentialId", reference.Id);
+        }
         if (node is not JsonObject root || root["nodes"] is not JsonArray nodes) yield break;
         foreach (var candidate in nodes)
         {
             if (candidate is not JsonObject nodeObject || nodeObject["data"] is not JsonObject data)
                 continue;
-            if (TryGuid(data["targetMachineId"], out var machineId))
-                yield return ("targetMachineId", machineId);
-            if (TryGuid(data["credentialId"], out var credentialId))
-                yield return ("credentialId", credentialId);
-
             var activityType = NodeActivityType(nodeObject, data);
             if (NodePilot.Core.Activities.CustomActivityType.IsCustomType(activityType)
                 && data["config"] is JsonObject config

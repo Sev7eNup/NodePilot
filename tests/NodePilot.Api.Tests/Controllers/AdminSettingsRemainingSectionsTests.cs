@@ -45,6 +45,26 @@ public sealed class AdminSettingsRemainingSectionsTests : IDisposable
     // ---------------------------------------------------------------- AiKnowledge
 
     [Fact]
+    public async Task AgentsPowerModeDefaultsOffAndRoundTripsWithoutReplacingBudgets()
+    {
+        var (controller, writer, _) = NewController();
+        Section(controller, "Agents").GetProperty("powerMode").GetBoolean().Should().BeFalse();
+        foreach (var enabled in new[] { true, false })
+        {
+            controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Agents");
+            var result = await controller.PutSection("Agents", Body(JsonSerializer.Serialize(new {
+                PowerMode = enabled, SingleToolCalls = 55, TeamToolCalls = 123
+            })), TestContext.Current.CancellationToken);
+            result.Should().BeOfType<OkObjectResult>();
+            using var persisted = JsonDocument.Parse(File.ReadAllText(writer.OverridesPath));
+            var agents = persisted.RootElement.GetProperty("Agents");
+            agents.GetProperty("PowerMode").GetBoolean().Should().Be(enabled);
+            agents.GetProperty("SingleToolCalls").GetInt32().Should().Be(55);
+            agents.GetProperty("TeamToolCalls").GetInt32().Should().Be(123);
+        }
+    }
+
+    [Fact]
     public void GetSection_AiKnowledge_ReturnsTheDocumentedDefaults()
     {
         var (controller, _, _) = NewController();

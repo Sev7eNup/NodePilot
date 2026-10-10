@@ -50,6 +50,24 @@ public class MaintenanceWindowsControllerValidationTests
     private static async Task<IActionResult> CreateResult(MaintenanceWindowsController ctrl, CreateMaintenanceWindowRequest req)
         => (await ctrl.Create(req, CancellationToken.None)).Result!;
 
+    [Theory]
+    [InlineData("mode")]
+    [InlineData("scope")]
+    [InlineData("recurrence")]
+    public async Task Create_UndefinedNumericEnum_IsRejectedWithoutPersistingInertWindow(string field)
+    {
+        await using var db = TestDbFactory.Create();
+        var request = Weekly("Must actually block") with
+        {
+            Mode = field == "mode" ? "999" : "Blackout",
+            ScopeKind = field == "scope" ? "999" : "Global",
+            Recurrence = field == "recurrence" ? "999" : "Weekly",
+            Targets = [new MaintenanceWindowTargetDto("Workflow", Guid.NewGuid())],
+        };
+        (await CreateResult(Build(db), request)).Should().BeOfType<BadRequestObjectResult>();
+        db.MaintenanceWindows.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task Create_EmptyName_Returns400()
     {

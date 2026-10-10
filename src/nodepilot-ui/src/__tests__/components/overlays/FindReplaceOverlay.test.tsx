@@ -24,16 +24,29 @@ function edge(id: string, source: string, target: string, label?: string): Edge 
 }
 
 describe('FindReplaceOverlay', () => {
+  it('keeps search available but refuses replacements in read-only mode', () => {
+    const onApply = vi.fn();
+    render(<FindReplaceOverlay nodes={[node('a', 'Find me')]} edges={[]} canWrite={false}
+      onApply={onApply} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/Find/i), { target: { value: 'Find' } });
+    expect(screen.getAllByText('Find me').length).toBeGreaterThan(0);
+    const replace = screen.getByPlaceholderText(/Replace/i);
+    fireEvent.change(replace, { target: { value: 'changed' } });
+    fireEvent.keyDown(replace, { key: 'Enter' });
+    expect(replace).toBeDisabled();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
   it('emptyQuery_showsHelpHint', () => {
     render(
-      <FindReplaceOverlay nodes={[node('a', 'Foo')]} edges={[]} onApply={vi.fn()} onClose={vi.fn()} />
+      <FindReplaceOverlay canWrite nodes={[node('a', 'Foo')]} edges={[]} onApply={vi.fn()} onClose={vi.fn()} />
     );
     expect(screen.getByText(/Enter a search term/i)).toBeInTheDocument();
   });
 
   it('queryWithMatches_listsMatchCount', () => {
     render(
-      <FindReplaceOverlay
+      <FindReplaceOverlay canWrite
         nodes={[node('a', 'Foo step'), node('b', 'Bar step')]}
         edges={[]}
         onApply={vi.fn()}
@@ -51,7 +64,7 @@ describe('FindReplaceOverlay', () => {
 
   it('queryWithoutMatches_showsNoMatchesMessage', () => {
     render(
-      <FindReplaceOverlay nodes={[node('a', 'Foo')]} edges={[]} onApply={vi.fn()} onClose={vi.fn()} />
+      <FindReplaceOverlay canWrite nodes={[node('a', 'Foo')]} edges={[]} onApply={vi.fn()} onClose={vi.fn()} />
     );
 
     fireEvent.change(screen.getByPlaceholderText(/Find/i), { target: { value: 'zzz' } });
@@ -63,7 +76,7 @@ describe('FindReplaceOverlay', () => {
     const onApply = vi.fn();
     const onClose = vi.fn();
     render(
-      <FindReplaceOverlay
+      <FindReplaceOverlay canWrite
         nodes={[node('a', 'Foo')]}
         edges={[]}
         onApply={onApply}
@@ -85,7 +98,7 @@ describe('FindReplaceOverlay', () => {
     const onApply = vi.fn();
     const onClose = vi.fn();
     render(
-      <FindReplaceOverlay
+      <FindReplaceOverlay canWrite
         nodes={[node('a', 'Foo'), node('b', 'Foo')]}
         edges={[]}
         onApply={onApply}
@@ -103,7 +116,7 @@ describe('FindReplaceOverlay', () => {
 
   it('replaceButtonsDisabledWhenNoMatches', () => {
     render(
-      <FindReplaceOverlay nodes={[node('a', 'Foo')]} edges={[]} onApply={vi.fn()} onClose={vi.fn()} />
+      <FindReplaceOverlay canWrite nodes={[node('a', 'Foo')]} edges={[]} onApply={vi.fn()} onClose={vi.fn()} />
     );
 
     fireEvent.change(screen.getByPlaceholderText(/Find/i), { target: { value: 'zzz' } });
@@ -114,7 +127,7 @@ describe('FindReplaceOverlay', () => {
   it('escapeOnSearchField_callsOnClose', () => {
     const onClose = vi.fn();
     render(
-      <FindReplaceOverlay nodes={[]} edges={[]} onApply={vi.fn()} onClose={onClose} />
+      <FindReplaceOverlay canWrite nodes={[]} edges={[]} onApply={vi.fn()} onClose={onClose} />
     );
 
     fireEvent.keyDown(screen.getByPlaceholderText(/Find/i), { key: 'Escape' });
@@ -124,7 +137,7 @@ describe('FindReplaceOverlay', () => {
   it('closeButton_callsOnClose', () => {
     const onClose = vi.fn();
     render(
-      <FindReplaceOverlay nodes={[]} edges={[]} onApply={vi.fn()} onClose={onClose} />
+      <FindReplaceOverlay canWrite nodes={[]} edges={[]} onApply={vi.fn()} onClose={onClose} />
     );
 
     fireEvent.click(screen.getByLabelText('Close'));
@@ -133,7 +146,7 @@ describe('FindReplaceOverlay', () => {
 
   it('togglingNodeLabelsScope_excludesNodeMatches', () => {
     render(
-      <FindReplaceOverlay
+      <FindReplaceOverlay canWrite
         nodes={[node('a', 'Foo'), node('b', 'Bar', { script: 'Foo' })]}
         edges={[]}
         onApply={vi.fn()}
@@ -153,7 +166,7 @@ describe('FindReplaceOverlay', () => {
 
   it('edgeLabelMatch_rendersWithEdgeBadge', () => {
     render(
-      <FindReplaceOverlay
+      <FindReplaceOverlay canWrite
         nodes={[]}
         edges={[edge('e1', 'a', 'b', 'On Foo')]}
         onApply={vi.fn()}
@@ -170,7 +183,7 @@ describe('FindReplaceOverlay', () => {
   it('clickOnBackdrop_closes', () => {
     const onClose = vi.fn();
     render(
-      <FindReplaceOverlay nodes={[]} edges={[]} onApply={vi.fn()} onClose={onClose} />
+      <FindReplaceOverlay canWrite nodes={[]} edges={[]} onApply={vi.fn()} onClose={onClose} />
     );
 
     // The backdrop is the outermost div and carries onClick={onClose}.

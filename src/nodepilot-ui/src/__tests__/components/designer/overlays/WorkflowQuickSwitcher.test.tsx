@@ -55,6 +55,26 @@ describe('WorkflowQuickSwitcher - location.state fromWorkflow', () => {
     capturedState = null;
   });
 
+  it('finds old search results and preserves recent IDs outside the current page with one batch', async () => {
+    const recentId = '11111111-1111-1111-1111-111111111111';
+    localStorage.setItem('nodepilot.recentWorkflows', JSON.stringify([recentId]));
+    mockedGet.mockImplementation(async (path: string) => {
+      if (!path.startsWith('/workflows/paged?')) return [];
+      const params = new URL(path, 'http://test').searchParams;
+      const items = params.has('ids') ? [{ id: recentId, name: 'Old recent', description: null }]
+        : params.has('search') ? [{ id: 'old', name: 'Old search result', description: null }]
+        : [{ id: 'new', name: 'Newest row', description: null }];
+      return { items, page: 1, pageSize: 50, total: items.length, totalPages: 1 };
+    });
+    renderAtEditorRoute(null);
+    expect(await screen.findByText('Old recent')).toBeInTheDocument();
+    expect(await screen.findByText('Newest row')).toBeInTheDocument();
+    expect(mockedGet.mock.calls.filter(([path]) => String(path).includes('ids='))).toHaveLength(1);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Old search' } });
+    expect(await screen.findByText('Old search result')).toBeInTheDocument();
+    expect(screen.queryByText('Old recent')).not.toBeInTheDocument();
+  });
+
   it('switchFromEditor_carriesFromWorkflowInState', async () => {
     mockedGet.mockResolvedValue([
       { id: 'wf-A', name: 'Alpha', description: null, definitionJson: '{}', version: 1, isEnabled: true, createdAt: '', updatedAt: '', createdBy: null, updatedBy: null },

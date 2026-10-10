@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createExecutionHubConnection } from '../lib/hubConnection';
 import { connectPersistently } from '../lib/signalrConnect';
+import {
+  captureAuthBoundaryGeneration, isAuthBoundaryGenerationCurrent,
+} from '../security/authBoundary';
 
 // A LiveEventsBatch item is { Type|type, Event|evt }. Only ExecutionStatusChanged is handled.
 interface StatusEvt {
@@ -49,17 +52,22 @@ export function useLiveOpsFeed({
 
   useEffect(() => {
     let disposed = false;
+    const generation = captureAuthBoundaryGeneration();
+    const current = () => !disposed && isAuthBoundaryGenerationCurrent(generation);
     const connection = createExecutionHubConnection();
 
     const scheduleInvalidate = () => {
       if (invalidateTimer.current !== null) return;
       invalidateTimer.current = setTimeout(() => {
         invalidateTimer.current = null;
-        queryClient.invalidateQueries({ queryKey });
+        // A running refetch finishes instead of restarting: on a busy instance a slow refetch
+        // would otherwise be cancelled by every burst and never complete.
+        if (current()) void queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false });
       }, debounceMs);
     };
 
     connection.on('LiveEventsBatch', (batch: unknown) => {
+      if (!current()) return;
       let sawStatus = false;
       for (const item of pickItems(batch)) {
         const s = asStatus(item);
@@ -70,7 +78,9 @@ export function useLiveOpsFeed({
       if (sawStatus) scheduleInvalidate();
     });
 
-    const join = () => { connection.invoke('JoinOperationsFeed').catch(() => { /* RBAC reject / transient */ }); };
+    const join = () => {
+      if (current()) connection.invoke('JoinOperationsFeed').catch(() => { /* RBAC reject / transient */ });
+    };
     // connectPersistently retries forever with capped backoff, so neither a long outage nor a
     // failed first start leaves the feed permanently degraded to snapshot polling.
     const persistent = connectPersistently(connection, () => { if (!disposed) join(); });
@@ -79,6 +89,7 @@ export function useLiveOpsFeed({
       disposed = true;
       persistent.dispose();
       if (invalidateTimer.current !== null) clearTimeout(invalidateTimer.current);
+      invalidateTimer.current = null;
       connection.invoke('LeaveOperationsFeed').catch(() => { /* ignore */ });
       void connection.stop();
     };

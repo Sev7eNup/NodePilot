@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NodePilot.Api.Dtos;
+using NodePilot.Api.Configuration;
 using NodePilot.Api.Services;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Interfaces;
@@ -25,19 +26,25 @@ public class SecretsController : ControllerBase
     private readonly NodePilotDbContext _db;
     private readonly WorkflowVersionDefinitionProtector _workflowVersions;
     private readonly IAuditWriter _audit;
+    private readonly ISecretProtector _protector;
+    private readonly RuntimeOverridesWriter _runtimeSettings;
 
     public SecretsController(
         ICredentialStore credentials,
         IGlobalVariableStore globals,
         NodePilotDbContext db,
         WorkflowVersionDefinitionProtector workflowVersions,
-        IAuditWriter audit)
+        IAuditWriter audit,
+        ISecretProtector protector,
+        RuntimeOverridesWriter runtimeSettings)
     {
         _credentials = credentials;
         _globals = globals;
         _db = db;
         _workflowVersions = workflowVersions;
         _audit = audit;
+        _protector = protector;
+        _runtimeSettings = runtimeSettings;
     }
 
     /// <summary>
@@ -58,8 +65,13 @@ public class SecretsController : ControllerBase
         var creds = await _credentials.ReencryptAllCredentialsAsync(ct);
         var globals = await _globals.ReencryptAllSecretsAsync(ct);
         var versions = await _workflowVersions.ReencryptAllAsync(_db, ct);
+        var mcp = await DatabaseSecretRotation.ReencryptAgentMcpAsync(_db, _protector, ct);
+        var routes = await DatabaseSecretRotation.ReencryptNotificationRoutesAsync(_db, _protector, ct);
+        var parameters = await DatabaseSecretRotation.ReencryptDispatchParametersAsync(_db, _protector, ct);
+        var runtime = _runtimeSettings.ReencryptSecrets(_protector, ct);
 
-        var partial = creds.Skipped > 0 || globals.Skipped > 0 || versions.Skipped > 0;
+        var partial = creds.Skipped > 0 || globals.Skipped > 0 || versions.Skipped > 0 || mcp.Skipped > 0
+            || routes.Skipped > 0 || parameters.Skipped > 0 || runtime.Skipped > 0;
         var result = new ReencryptResult(
             CredentialsRewritten: creds.Rewritten,
             CredentialsSkipped: creds.Skipped,
@@ -70,7 +82,13 @@ public class SecretsController : ControllerBase
             WorkflowVersionsRewritten: versions.Rewritten,
             WorkflowVersionsSkipped: versions.Skipped,
             WorkflowVersionSkipDetails: versions.SkippedDetails,
-            PartialSuccess: partial);
+            PartialSuccess: partial)
+        {
+            AgentMcpSecretsRewritten = mcp.Rewritten, AgentMcpSecretsSkipped = mcp.Skipped, AgentMcpSecretSkipDetails = mcp.SkippedDetails,
+            NotificationRoutesRewritten = routes.Rewritten, NotificationRoutesSkipped = routes.Skipped, NotificationRouteSkipDetails = routes.SkippedDetails,
+            DispatchParametersRewritten = parameters.Rewritten, DispatchParametersSkipped = parameters.Skipped, DispatchParameterSkipDetails = parameters.SkippedDetails,
+            RuntimeSettingsFilesRewritten = runtime.Rewritten, RuntimeSettingsFilesSkipped = runtime.Skipped, RuntimeSettingsFileSkipDetails = runtime.SkippedDetails,
+        };
 
         await _audit.LogAsync(AuditActions.SecretsReencrypted, "Secrets", null,
             AuditDetails.Json(
@@ -80,6 +98,14 @@ public class SecretsController : ControllerBase
                 ("globalsSkipped", globals.Skipped),
                 ("workflowVersionsRewritten", versions.Rewritten),
                 ("workflowVersionsSkipped", versions.Skipped),
+                ("agentMcpSecretsRewritten", mcp.Rewritten),
+                ("agentMcpSecretsSkipped", mcp.Skipped),
+                ("notificationRoutesRewritten", routes.Rewritten),
+                ("notificationRoutesSkipped", routes.Skipped),
+                ("dispatchParametersRewritten", parameters.Rewritten),
+                ("dispatchParametersSkipped", parameters.Skipped),
+                ("runtimeSettingsFilesRewritten", runtime.Rewritten),
+                ("runtimeSettingsFilesSkipped", runtime.Skipped),
                 ("partialSuccess", partial)),
             ct);
 

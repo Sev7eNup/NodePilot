@@ -142,8 +142,12 @@ public class ExecutionsController : ControllerBase
             else
             {
                 var normalizedTerm = term.ToLowerInvariant();
+                var matchingInitiators = _db.Users.Where(user => user.Username.ToLower().Contains(normalizedTerm))
+                    .Select(user => user.Id);
                 query = query.Where(e =>
                     e.Workflow.Name.ToLower().Contains(normalizedTerm) ||
+                    e.Id.ToString().ToLower().Contains(normalizedTerm) ||
+                    (e.StartedByUserId.HasValue && matchingInitiators.Contains(e.StartedByUserId.Value)) ||
                     (e.TriggeredBy != null && e.TriggeredBy.ToLower().Contains(normalizedTerm)) ||
                     (e.ErrorMessage != null && e.ErrorMessage.ToLower().Contains(normalizedTerm)));
             }
@@ -151,17 +155,28 @@ public class ExecutionsController : ControllerBase
 
         var total = await query.LongCountAsync(ct);
         var skip = (int)Math.Min((long)(page - 1) * pageSize, int.MaxValue);
-        var rows = await query
+        // Two steps: sort and page on the narrow key columns only, then load the full rows of that
+        // page by primary key. Sorting the wide rows (ReturnData and InputParametersJson are up to
+        // 32 KiB each) made the database read most of the table for every call.
+        var pageIds = await query
             .OrderByDescending(e => e.StartedAt)
             .ThenByDescending(e => e.Id)
             .Skip(skip)
             .Take(pageSize)
-            .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt,
-                e.TriggeredBy, e.ErrorMessage, e.TraceId, e.SpanId,
-                ReturnData = includePayloads ? e.ReturnData : null,
-                InputParametersJson = includePayloads ? e.InputParametersJson : null,
-                e.StartedByUserId, e.ParentExecutionId })
+            .Select(e => e.Id)
             .ToListAsync(ct);
+        var rowsById = pageIds.Count == 0
+            ? []
+            : await _db.WorkflowExecutions.AsNoTracking()
+                .Where(e => pageIds.Contains(e.Id))
+                .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt,
+                    e.TriggeredBy, e.ErrorMessage, e.TraceId, e.SpanId,
+                    ReturnData = includePayloads ? e.ReturnData : null,
+                    InputParametersJson = includePayloads ? e.InputParametersJson : null,
+                    e.StartedByUserId, e.ParentExecutionId })
+                .ToDictionaryAsync(e => e.Id, ct);
+        // A run deleted between the two queries simply drops out of the page.
+        var rows = pageIds.Where(rowsById.ContainsKey).Select(id => rowsById[id]).ToList();
 
         // The extra history-list columns are resolved via four batched queries — each one
         // matches against the IN-list of up to 200 row IDs collected above. Doing a sub-select
@@ -193,7 +208,7 @@ public class ExecutionsController : ControllerBase
             .ToList();
         var parentNames = parentIds.Count == 0
             ? new Dictionary<Guid, string>()
-            : await _db.WorkflowExecutions.AsNoTracking()
+            : await (await ApplyExecutionAccessFilterAsync(_db.WorkflowExecutions.AsNoTracking(), ct))
                 .Where(p => parentIds.Contains(p.Id))
                 .Select(p => new { p.Id, WorkflowName = p.Workflow.Name })
                 .ToDictionaryAsync(x => x.Id, x => x.WorkflowName, ct);
@@ -248,7 +263,7 @@ public class ExecutionsController : ControllerBase
                 e.TriggeredBy, Scrub(e.ErrorMessage), e.TraceId, e.SpanId,
                 Scrub(e.ReturnData), Scrub(e.InputParametersJson),
                 StartedByUsername: username,
-                ParentExecutionId: e.ParentExecutionId,
+                ParentExecutionId: parentName is not null ? e.ParentExecutionId : null,
                 ParentWorkflowName: parentName,
                 StepsTotal: stepsTotal,
                 StepsCompleted: stepsCompleted,
@@ -274,7 +289,7 @@ public class ExecutionsController : ControllerBase
         string? parentName = null;
         if (e.ParentExecutionId.HasValue)
         {
-            parentName = await _db.WorkflowExecutions.AsNoTracking()
+            parentName = await (await ApplyExecutionAccessFilterAsync(_db.WorkflowExecutions.AsNoTracking(), ct))
                 .Where(p => p.Id == e.ParentExecutionId.Value)
                 .Select(p => p.Workflow.Name)
                 .FirstOrDefaultAsync(ct);
@@ -306,7 +321,7 @@ public class ExecutionsController : ControllerBase
             e.Id, e.WorkflowId, e.Status.ToString(), e.StartedAt, e.CompletedAt,
             e.TriggeredBy, Scrub(e.ErrorMessage), e.TraceId, e.SpanId,
             Scrub(e.ReturnData), Scrub(e.InputParametersJson),
-            ParentExecutionId: e.ParentExecutionId,
+            ParentExecutionId: parentName is not null ? e.ParentExecutionId : null,
             ParentWorkflowName: parentName,
             StepsTotal: stepsTotal,
             StepsCompleted: stepsCompleted,

@@ -130,6 +130,52 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
             "missing section must produce a deterministic 'no value' ETag distinct from any real section");
     }
 
+    [Fact]
+    public void SecuritySection_RootHostChangeInvalidatesEtag_AndReturnsCurrentLogicalSection()
+    {
+        var writer = NewWriter();
+        writer.MutateAndWrite(root =>
+        {
+            root["AllowedHosts"] = "first.example";
+            root["Security"] = new JsonObject { ["StrictAllowedHosts"] = true };
+        });
+        var oldEtag = writer.ComputeSectionEtag("Security");
+        writer.MutateAndWrite(root => root["AllowedHosts"] = "second.example");
+
+        var result = writer.TryUpdateSectionAtomic("Security", oldEtag,
+            new JsonObject { ["AllowedHosts"] = "stale.example", ["StrictAllowedHosts"] = true },
+            ["Security"], "admin", DateTimeOffset.UtcNow);
+
+        result.Success.Should().BeFalse();
+        result.CurrentSection!["AllowedHosts"]!.GetValue<string>().Should().Be("second.example");
+        result.CurrentEtag.Should().NotBe(oldEtag);
+        writer.ReadOrEmpty()["AllowedHosts"]!.GetValue<string>().Should().Be("second.example");
+    }
+
+    [Fact]
+    public void SecuritySection_SaveProjectsRootHostsAndResetReplacesThem()
+    {
+        var writer = NewWriter();
+        writer.MutateAndWrite(root => root["Security"] = new JsonObject
+        {
+            ["AllowedHosts"] = "legacy-shadow.example", ["StrictAllowedHosts"] = false
+        });
+        var first = writer.TryUpdateSectionAtomic("Security", writer.ComputeSectionEtag("Security"),
+            new JsonObject { ["AllowedHosts"] = "first.example", ["StrictAllowedHosts"] = true },
+            ["Security"], "admin", DateTimeOffset.UtcNow);
+        first.Success.Should().BeTrue();
+        first.PersistedSection!["AllowedHosts"]!.GetValue<string>().Should().Be("first.example");
+        writer.ReadOrEmpty()["Security"]!.AsObject().ContainsKey("AllowedHosts").Should().BeFalse();
+
+        var reset = writer.TryUpdateSectionAtomic("Security", first.CurrentEtag,
+            new JsonObject { ["AllowedHosts"] = "*", ["StrictAllowedHosts"] = false },
+            ["Security"], "admin", DateTimeOffset.UtcNow);
+
+        reset.Success.Should().BeTrue();
+        writer.ReadSection("Security")!["AllowedHosts"]!.GetValue<string>().Should().Be("*");
+        writer.ReadOrEmpty()["AllowedHosts"]!.GetValue<string>().Should().Be("*");
+    }
+
     /// <summary>Seeds restart-marker / last-save meta through the live save path.</summary>
     private static void SaveSection(
         RuntimeOverridesWriter writer, string section, DateTimeOffset now,

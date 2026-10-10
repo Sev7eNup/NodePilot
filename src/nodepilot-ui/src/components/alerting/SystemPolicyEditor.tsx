@@ -20,6 +20,7 @@ type RouteForm = {
   id: string | null;
   channel: NotificationChannel;
   target: string;
+  conditionExpressionJson: string | null;
   hasStoredSecret: boolean;
   secretInput: string;
 };
@@ -36,6 +37,8 @@ type FormState = {
   scope: Scope;
   folderIds: string[];
   workflowIds: string[];
+  minOccurrences: number;
+  occurrenceWindowMinutes: number;
   cooldownMinutes: number;
   routes: RouteForm[];
 };
@@ -55,8 +58,8 @@ function fromPolicy(source: SystemAlertSource, policy: SystemAlertPolicy | null)
     return {
       name: '', description: '', isEnabled: false, presetId: '',
       condition: null, params, sustainForSeconds: 0, severityOverride: '',
-      scope: 'Global', folderIds: [], workflowIds: [], cooldownMinutes: 0,
-      routes: [{ id: null, channel: 'Email', target: '', hasStoredSecret: false, secretInput: '' }],
+      scope: 'Global', folderIds: [], workflowIds: [], cooldownMinutes: 0, minOccurrences: 1, occurrenceWindowMinutes: 0,
+      routes: [{ id: null, channel: 'Email', target: '', conditionExpressionJson: null, hasStoredSecret: false, secretInput: '' }],
     };
   }
   return {
@@ -72,12 +75,15 @@ function fromPolicy(source: SystemAlertSource, policy: SystemAlertPolicy | null)
     folderIds: policy.targets.filter((t) => t.targetKind === 'Folder').map((t) => t.targetId),
     workflowIds: policy.targets.filter((t) => t.targetKind === 'Workflow').map((t) => t.targetId),
     cooldownMinutes: policy.cooldownMinutes,
+    minOccurrences: policy.minOccurrences,
+    occurrenceWindowMinutes: policy.occurrenceWindowMinutes,
     routes: policy.routes.length
       ? policy.routes.map((r) => ({
           id: r.id, channel: (r.channel as NotificationChannel) ?? 'Email', target: r.target,
+          conditionExpressionJson: r.conditionExpressionJson ?? null,
           hasStoredSecret: r.secret === UNCHANGED_SECRET, secretInput: '',
         }))
-      : [{ id: null, channel: 'Email', target: '', hasStoredSecret: false, secretInput: '' }],
+      : [{ id: null, channel: 'Email', target: '', conditionExpressionJson: null, hasStoredSecret: false, secretInput: '' }],
   };
 }
 
@@ -93,8 +99,8 @@ export function SystemPolicyEditor({
   const scopeable = source.scopeCapability === 'WorkflowScoped';
   const { data: folders } = useQuery({ queryKey: ['shared-folders'], queryFn: () => sharedFoldersApi.list(), enabled: scopeable });
   const { data: workflows } = useQuery({
-    queryKey: ['workflows-min'], enabled: scopeable,
-    queryFn: () => api.get<Array<{ id: string; name: string }>>('/workflows'),
+    queryKey: ['workflows', 'names'], enabled: scopeable,
+    queryFn: () => api.get<Array<{ id: string; name: string }>>('/workflows/names'),
   });
 
   const eventFields = useMemo(() => source.fields.map((f) => ({ name: f.name, label: f.unit ? `${f.name} (${f.unit})` : f.name })), [source.fields]);
@@ -135,12 +141,12 @@ export function SystemPolicyEditor({
       severityOverride: f.severityOverride || null,
       scopeKind: scope,
       cooldownMinutes: Math.max(0, f.cooldownMinutes),
-      minOccurrences: 1,
-      occurrenceWindowMinutes: 0,
+      minOccurrences: f.minOccurrences,
+      occurrenceWindowMinutes: f.occurrenceWindowMinutes,
       routes: f.routes.map((r, i) => ({
         id: r.id, channel: r.channel, target: r.target.trim(),
         secret: r.channel !== 'GenericWebhook' ? null : (r.secretInput ? r.secretInput : (r.hasStoredSecret ? UNCHANGED_SECRET : null)),
-        order: i, conditionExpressionJson: null,
+        order: i, conditionExpressionJson: r.conditionExpressionJson,
       })),
       targets:
         scope === 'Folders' ? f.folderIds.map((id) => ({ targetKind: 'Folder', targetId: id }))
@@ -181,7 +187,7 @@ export function SystemPolicyEditor({
 
   const updateRoute = (idx: number, patch: Partial<RouteForm>) =>
     setForm((f) => ({ ...f, routes: f.routes.map((r, i) => (i === idx ? { ...r, ...patch } : r)) }));
-  const addRoute = () => setForm((f) => ({ ...f, routes: [...f.routes, { id: null, channel: 'Email', target: '', hasStoredSecret: false, secretInput: '' }] }));
+  const addRoute = () => setForm((f) => ({ ...f, routes: [...f.routes, { id: null, channel: 'Email', target: '', conditionExpressionJson: null, hasStoredSecret: false, secretInput: '' }] }));
   const removeRoute = (idx: number) => setForm((f) => ({ ...f, routes: f.routes.filter((_, i) => i !== idx) }));
   const toggleId = (key: 'folderIds' | 'workflowIds', id: string) =>
     setForm((f) => ({ ...f, [key]: f[key].includes(id) ? f[key].filter((x) => x !== id) : [...f[key], id] }));

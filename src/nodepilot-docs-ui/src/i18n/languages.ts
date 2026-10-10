@@ -9,7 +9,7 @@ export const LANGUAGES = ['en', 'de'] as const
 
 export type Lang = (typeof LANGUAGES)[number]
 
-/** Fallback for every lookup and the default for new visitors. */
+/** Fallback when no supported browser language is available, and for missing translations. */
 export const DEFAULT_LANG: Lang = 'en'
 
 export const LANGUAGE_LABELS: Record<Lang, string> = {
@@ -53,6 +53,15 @@ function readStoredLang(): Lang | null {
     return isLang(stored ?? undefined) ? (stored as Lang) : null
   } catch {
     return null
+  }
+}
+
+/** Remembers only an explicit language choice, shared by the website and the docs. */
+export function persistLang(lang: Lang): void {
+  try {
+    window.localStorage.setItem(LANG_STORAGE_KEY, lang)
+  } catch {
+    // With blocked storage, the current URL still carries the selected language.
   }
 }
 

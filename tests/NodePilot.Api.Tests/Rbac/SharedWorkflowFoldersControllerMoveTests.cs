@@ -3,10 +3,14 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.SignalR;
+using Moq;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Hubs;
 using NodePilot.Api.Security;
+using NodePilot.Api.Services;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
@@ -24,6 +28,7 @@ namespace NodePilot.Api.Tests.Rbac;
 /// the CRUD-focused fixture does not reach. Runs through the real
 /// <see cref="ResourceAuthorizationService"/> as Admin (unrestricted).
 /// </summary>
+[Collection(NodePilot.Api.Tests.Hubs.ExecutionHubStaticStateCollection.Name)]
 public sealed class SharedWorkflowFoldersControllerMoveTests
 {
     private static SharedWorkflowFoldersController NewCtrl(
@@ -32,7 +37,8 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
         IAuditWriter? audit = null,
         Guid? userId = null,
         RecordingHubContext? hub = null,
-        RecordingFolderProjection? folderProjection = null)
+        IWorkflowFolderProjection? folderProjection = null,
+        DashboardAggregateCache? aggregates = null)
     {
         var principal = new ClaimsPrincipal(new ClaimsIdentity([
             new Claim(ClaimTypes.NameIdentifier, (userId ?? Guid.NewGuid()).ToString()),
@@ -40,7 +46,7 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
         ], "test"));
         var ctrl = new SharedWorkflowFoldersController(
             db, audit ?? NoopAuditWriter.Instance, authz ?? new ResourceAuthorizationService(db),
-            hub ?? new RecordingHubContext(), folderProjection ?? new RecordingFolderProjection());
+            hub ?? new RecordingHubContext(), folderProjection ?? new RecordingFolderProjection(), aggregates);
         ctrl.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } };
         return ctrl;
     }
@@ -53,6 +59,49 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
             Id = id, ParentFolderId = parentId, Name = name, Path = path, Depth = depth,
         });
         return id;
+    }
+
+    [Fact]
+    public async Task MoveWorkflow_DashboardCacheStopsExposingMovedWorkflow()
+    {
+        await using var db = TestDbFactory.Create();
+        var root = SharedWorkflowFolder.RootFolderId;
+        var publicFolder = AddFolder(db, root, "Public", "/Public", 1);
+        var privateFolder = AddFolder(db, root, "Private", "/Private", 1);
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Sensitive operation", FolderId = publicFolder };
+        db.Workflows.Add(workflow);
+        db.WorkflowExecutions.Add(new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Failed,
+            StartedAt = DateTime.UtcNow.AddMinutes(-1), CompletedAt = DateTime.UtcNow,
+            ErrorMessage = "Sensitive failure details"
+        });
+        await db.SaveChangesAsync();
+        var services = new ServiceCollection();
+        services.AddDbContext<NodePilotDbContext>(o => o.UseSqlite(db.Database.GetDbConnection()));
+        await using var provider = services.BuildServiceProvider();
+        var cache = new DashboardAggregateCache(provider.GetRequiredService<IServiceScopeFactory>());
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(a => a.GetAccessibleFolderIdsAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AccessibleFolderSet { FolderIds = [publicFolder] });
+        var dashboard = new DashboardController(db, authz.Object, aggregates: cache)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+        var before = (await dashboard.GetFailureCauses(CancellationToken.None, 1)).Result.As<OkObjectResult>()
+            .Value.As<FailureCausesResponse>();
+        before.TotalFailed.Should().Be(1);
+        (await dashboard.GetDurationTrend(CancellationToken.None, 1)).Result.As<OkObjectResult>()
+            .Value.As<DurationTrendResponse>().Workflows.Should().ContainSingle();
+
+        var mover = NewCtrl(db, aggregates: cache);
+        (await mover.MoveWorkflow(workflow.Id, new MoveWorkflowToFolderRequest(privateFolder), CancellationToken.None))
+            .Should().BeOfType<NoContentResult>();
+
+        (await dashboard.GetFailureCauses(CancellationToken.None, 1)).Result.As<OkObjectResult>()
+            .Value.As<FailureCausesResponse>().TotalFailed.Should().Be(0);
+        (await dashboard.GetDurationTrend(CancellationToken.None, 1)).Result.As<OkObjectResult>()
+            .Value.As<DurationTrendResponse>().Workflows.Should().BeEmpty();
     }
 
     [Fact]
@@ -124,6 +173,31 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
         var movedB = (await db.SharedWorkflowFolders.FindAsync(b))!;
         movedB.Path.Should().Be("/D/A/B");
         movedB.Depth.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task MoveAndMoveWorkflow_AdvanceTheFolderTreeEpoch()
+    {
+        // Dashboard reads run outside the tree lock and read again when this epoch moved, so every
+        // structural change must advance it.
+        await using var db = TestDbFactory.Create();
+        var root = SharedWorkflowFolder.RootFolderId;
+        var a = AddFolder(db, root, "A", "/A", 1);
+        var b = AddFolder(db, root, "B", "/B", 1);
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "W", FolderId = a };
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var tree = FolderTreeMutationLock.SharedWorkflowFolders;
+
+        var beforeMove = tree.Epoch;
+        (await NewCtrl(db).Move(a, new MoveSharedFolderRequest(b), CancellationToken.None))
+            .Should().BeOfType<NoContentResult>();
+        tree.Epoch.Should().BeGreaterThan(beforeMove);
+
+        var beforeWorkflowMove = tree.Epoch;
+        (await NewCtrl(db).MoveWorkflow(workflow.Id, new MoveWorkflowToFolderRequest(b), CancellationToken.None))
+            .Should().BeOfType<NoContentResult>();
+        tree.Epoch.Should().BeGreaterThan(beforeWorkflowMove);
     }
 
     [Fact]
@@ -410,6 +484,62 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Move_FolderSubtree_RefreshesOperationsFeedForOldAndNewReaders(bool containsWorkflow)
+    {
+        await using var db = TestDbFactory.Create();
+        var root = SharedWorkflowFolder.RootFolderId;
+        var source = AddFolder(db, root, "Source", "/Source", 1);
+        var subtree = AddFolder(db, source, "Subtree", "/Source/Subtree", 2);
+        var destination = AddFolder(db, root, "Destination", "/Destination", 1);
+        var oldReader = new User { Id = Guid.NewGuid(), Username = "old-reader", Role = UserRole.Viewer };
+        var newReader = new User { Id = Guid.NewGuid(), Username = "new-reader", Role = UserRole.Viewer };
+        db.Users.AddRange(oldReader, newReader);
+        foreach (var (user, folderId) in new[] { (oldReader, source), (newReader, destination) })
+            db.SharedFolderPermissions.Add(new SharedFolderPermission
+            {
+                Id = Guid.NewGuid(), FolderId = folderId, PrincipalType = FolderPrincipalType.User,
+                PrincipalKey = user.Id.ToString("D"), Role = SharedFolderRole.FolderViewer,
+            });
+        if (containsWorkflow)
+            db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "moved", DefinitionJson = "{}", FolderId = subtree });
+        await db.SaveChangesAsync();
+        var authz = new ResourceAuthorizationService(db);
+        ExecutionHub.ClearAuthMapForTest();
+        ExecutionHub.ClearOpsFeedForTest();
+        try
+        {
+            foreach (var user in new[] { oldReader, newReader })
+            {
+                var principal = new ClaimsPrincipal(new ClaimsIdentity([
+                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                    new Claim(ClaimTypes.Role, nameof(UserRole.Viewer)),
+                ], "test"));
+                var context = new Mock<HubCallerContext>();
+                context.SetupGet(x => x.User).Returns(principal);
+                ExecutionHub.RegisterAuthForTest(user.Username, "jti", user.Id, context.Object);
+                var accessible = await authz.GetAccessibleFolderIdsAsync(principal);
+                ExecutionHub.RegisterOpsFeedForTest(user.Username, false, accessible.FolderIds);
+            }
+            ExecutionHub.RegisterOpsFeedForTest("admin", true, []);
+            ExecutionHub.GetOpsFeedConnections(subtree).Should().BeEquivalentTo(["old-reader", "admin"]);
+
+            var result = await NewCtrl(db, authz: authz)
+                .Move(subtree, new MoveSharedFolderRequest(destination), CancellationToken.None);
+
+            result.Should().BeOfType<NoContentResult>();
+            ExecutionHub.GetOpsFeedConnections(subtree).Should().BeEquivalentTo(["new-reader", "admin"]);
+            ExecutionHub.GetOpsFeedConnections(source).Should().BeEquivalentTo(["old-reader", "admin"]);
+        }
+        finally
+        {
+            ExecutionHub.ClearAuthMapForTest();
+            ExecutionHub.ClearOpsFeedForTest();
+        }
+    }
+
     [Fact]
     public async Task MoveWorkflow_WhenLockedByAnotherUser_Returns423AndKeepsFolder()
     {
@@ -436,6 +566,65 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
         locked.StatusCode.Should().Be(StatusCodes.Status423Locked);
         db.ChangeTracker.Clear();
         (await db.Workflows.FindAsync(wf.Id))!.FolderId.Should().Be(a);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Move_CommittedSubtree_CancellationAndRefreshFailureCannotRetainLiveSubscriptions(bool refreshFails)
+    {
+        await using var db = TestDbFactory.Create();
+        var root = SharedWorkflowFolder.RootFolderId;
+        var source = AddFolder(db, root, "Source", "/Source", 1);
+        var destination = AddFolder(db, root, "Destination", "/Destination", 1);
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "moved", DefinitionJson = "{}", FolderId = source };
+        var execution = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Running };
+        db.AddRange(workflow, execution);
+        await db.SaveChangesAsync();
+        using var request = new CancellationTokenSource();
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(x => x.CanAccessFolderAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<Guid>(), It.IsAny<ResourceOp>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        authz.Setup(x => x.InvalidateAll()).Callback(request.Cancel);
+        authz.Setup(x => x.GetAccessibleFolderIdsAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<CancellationToken>()))
+            .Returns<ClaimsPrincipal, CancellationToken>((_, ct) =>
+            {
+                ct.IsCancellationRequested.Should().BeFalse();
+                return refreshFails
+                    ? Task.FromException<AccessibleFolderSet>(new InvalidOperationException("refresh failed"))
+                    : Task.FromResult(AccessibleFolderSet.None);
+            });
+        var context = new Mock<HubCallerContext>();
+        context.SetupGet(x => x.User).Returns(new ClaimsPrincipal(new ClaimsIdentity([], "test")));
+        ExecutionHub.ClearGroupsForTest();
+        ExecutionHub.ClearAuthMapForTest();
+        ExecutionHub.ClearOpsFeedForTest();
+        try
+        {
+            ExecutionHub.RegisterAuthForTest("reader", "jti", Guid.NewGuid(), context.Object);
+            ExecutionHub.RegisterGroupForTest("reader", $"workflow-{workflow.Id}");
+            ExecutionHub.RegisterGroupForTest("reader", execution.Id.ToString());
+            ExecutionHub.RegisterOpsFeedForTest("reader", false, [source]);
+            var hub = new RecordingHubContext();
+            var move = () => NewCtrl(db, authz: authz.Object, hub: hub)
+                .Move(source, new MoveSharedFolderRequest(destination), request.Token);
+            if (refreshFails) await move.Should().ThrowAsync<InvalidOperationException>();
+            else (await move()).Should().BeOfType<NoContentResult>();
+
+            request.IsCancellationRequested.Should().BeTrue();
+            (await db.SharedWorkflowFolders.AsNoTracking().SingleAsync(x => x.Id == source)).ParentFolderId.Should().Be(destination);
+            hub.Removed.Should().BeEquivalentTo(new[]
+            {
+                ("reader", $"workflow-{workflow.Id}"), ("reader", execution.Id.ToString()),
+            });
+            ExecutionHub.GetOpsFeedConnections(source).Should().BeEmpty();
+        }
+        finally
+        {
+            ExecutionHub.ClearGroupsForTest();
+            ExecutionHub.ClearAuthMapForTest();
+            ExecutionHub.ClearOpsFeedForTest();
+        }
     }
 
     [Fact]
@@ -470,6 +659,39 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
         db.ChangeTracker.Clear();
         (await db.Workflows.FindAsync(wf.Id))!.FolderId.Should().Be(concurrentTarget);
         audit.Calls.Should().NotContain(c => c.Action == "WORKFLOW_MOVED");
+    }
+
+    [Fact]
+    public async Task MoveWorkflow_RequestCancelledAfterCommit_StillRevokesWatchedExecutionAndWorkflow()
+    {
+        await using var db = TestDbFactory.Create();
+        var destination = AddFolder(db, SharedWorkflowFolder.RootFolderId, "Destination", "/Destination", 1);
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "moved", DefinitionJson = "{}" };
+        var execution = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id };
+        db.AddRange(workflow, execution);
+        await db.SaveChangesAsync();
+        using var request = new CancellationTokenSource();
+        var projection = new Mock<IWorkflowFolderProjection>();
+        projection.Setup(x => x.InvalidateWorkflowFolder(workflow.Id)).Callback(request.Cancel);
+        var hub = new RecordingHubContext();
+        ExecutionHub.ClearGroupsForTest();
+        try
+        {
+            ExecutionHub.RegisterGroupForTest("reader", $"workflow-{workflow.Id}");
+            ExecutionHub.RegisterGroupForTest("reader", execution.Id.ToString());
+
+            var result = await NewCtrl(db, hub: hub, folderProjection: projection.Object)
+                .MoveWorkflow(workflow.Id, new MoveWorkflowToFolderRequest(destination), request.Token);
+
+            result.Should().BeOfType<NoContentResult>();
+            request.IsCancellationRequested.Should().BeTrue();
+            hub.Removed.Should().BeEquivalentTo(new[]
+            {
+                ("reader", $"workflow-{workflow.Id}"), ("reader", execution.Id.ToString()),
+            });
+            (await db.Workflows.AsNoTracking().SingleAsync(x => x.Id == workflow.Id)).FolderId.Should().Be(destination);
+        }
+        finally { ExecutionHub.ClearGroupsForTest(); }
     }
 
     [Fact]

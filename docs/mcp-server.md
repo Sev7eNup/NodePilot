@@ -111,7 +111,7 @@ Large free-text fields (stdout/stderr, return data, audit details, diagnostics) 
 
 ## Tool catalog
 
-92 default tools across 10 groups, plus 10 gated destructive tools (102 total). (Roles refer to the
+100 default tools across 11 groups, plus 12 gated destructive tools (112 total). (Roles refer to the
 authenticated user.)
 
 ### Discovery
@@ -166,19 +166,24 @@ tools are admin-only, and an admin reads the same rows through DbAdmin anyway. B
 only have made inventory questions ("which workflows exist?") unanswerable. For definitions including
 secret redaction, `get_workflow_definition` remains the more convenient route.
 
-For the remaining secret columns, three server-side layers apply in the `DbAdminSecretColumns`
+For the remaining secret columns, the following server-side layers apply in the `DbAdminSecretColumns`
 contract:
 
 1. If the statement names a protected column → rejection (`protected_column`).
-2. A wildcard select → the protected result columns come back as `***`.
-3. If the statement serializes a **whole row** of a table with a secret column
+2. Result columns with protected names are masked as `***` as defense in depth.
+3. Wildcard projections (`SELECT *`, `alias.*`) and PostgreSQL `TABLE relation` over tables with
+   secret columns are rejected, including inside CTEs, derived tables and UNION branches.
+   Positional aliases can erase the original column names, so masking alone cannot protect them.
+   List the required unprotected columns explicitly; `COUNT(*)` and multiplication remain supported.
+4. If the statement serializes a **whole row** of a table with a secret column
    (`to_json`/`row_to_json`/`to_jsonb`/`json_agg`/`::text`/`FOR JSON`/`FOR XML`) → rejection
    (`protected_row_projection`). Layers 1 and 2 both work through **names**; a row serialization never
    names the column and returns it under an innocuous result-column name — so it bypassed both at
    once (security audit 2026-07-26).
 
-That way no secret lands in the agent's context. Layer 3 is deliberately coarse and also triggers on
-harmless casts against these secret tables; explicitly named, unprotected columns work fine.
+These lexical protections are deliberately coarse and also reject harmless casts against secret
+tables; explicitly named, unprotected columns work fine. They are not a complete SQL sandbox or a
+replacement for database permissions against every provider extension.
 
 ### Supporting resources (secrets never surfaced)
 `list_machines` · `get_machine` · `create_machine` · `update_machine` · `test_machine` ·
@@ -210,6 +215,18 @@ harmless casts against these secret tables; explicitly named, unprotected column
 `delete_machine` (Admin) · `delete_credential` (Admin) · `delete_global_variable` (Admin) ·
 `delete_global_variable_folder` (Admin, `recursive=true` nimmt Unterordner + Variablen mit) ·
 `delete_alerting_rule` (Admin) · `delete_system_alert_policy` (Admin)
+
+## Agent activities and registries
+
+`list_agent_runs(executionId)` and `get_agent_events(runId, after, pageSize)` read durable
+agent history with the owning workflow's read permission. Registry tools are
+`list_agent_mcp_servers`, `discover_agent_mcp_tools`, `save_agent_mcp_server`,
+`list_agent_skills`, `import_agent_skill`, `set_agent_skill_enabled`,
+`delete_agent_mcp_server` and `delete_agent_skill`. Lists/discovery require Admin or
+Operator; changes require Admin. Deletes additionally require the destructive-tool gate.
+Discovery can start the fixed registered stdio executable. Credentials are write-only.
+This MCP server remains stdio; the separate agent MCP client supports stdio and
+Streamable HTTP. See [agent activities](ai-agents.md).
 
 ## Resources
 

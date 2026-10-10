@@ -8,6 +8,12 @@ Umfassende Test-Anleitung für den Workflow Designer mit Playwright MCP. Diese D
 
 ## Vorbereitung & Setup
 
+Backend-Regressionen für Agenten (07.10.2026): `AgentRuntimeTests` prüft den
+reservierten Abschluss bei paralleler Modellbudget-Erschöpfung, erhaltene Befunde
+und offene Reviews ohne Werkzeugwiederholung. `AgentSkillTests` prüft die tatsächliche
+CMD/Bash-Dispatch-Befehlsform bei gleichnamigen Paketdateien; die ungeprüfte Paketdatei
+wird im Test nicht ausgeführt. Diese Sicherheits-/Runtime-Prüfungen sind keine UI-Mocks.
+
 ### 1. Umgebung starten
 
 ```bash
@@ -3134,6 +3140,19 @@ Pflicht-Lese: CLAUDE.md "KI-Features", `docs/ai-features.md`.
 
 ---
 
+### Test 32.2a — Team aus Beschreibung entwerfen
+
+**Schritte:** Designer → `aiAgentTeam`-Node → "Team aus Beschreibung entwerfen" → Beschreibung mit realem Maschinen-/Credential-Namen und einem Pfad eingeben.
+
+**Prüfpunkte:**
+- [ ] Vorschau zeigt je Mitglied wirksames Ziel/Credential mit Herkunft (Mitglied/Step/Maschinen-Default), Pfade, Hosts ("alle Hosts" bei leerer Liste), Skills und Instructions.
+- [ ] Unbekannter Maschinen-/Credential-Name sperrt "In Node übernehmen" bis Treffer gewählt oder Wunsch verworfen ist; nichts wird geraten.
+- [ ] Bestehende Mitglieder werden erst nach Bestätigung ersetzt; danach ist die Teamleitung ausgewählt.
+- [ ] Nichts gespeichert, bis der Workflow gespeichert und veröffentlicht wird.
+- [ ] Audit `AI_AGENT_TEAM_GENERATED` ohne Prompt-Text und ohne Namen.
+
+---
+
 ### Test 32.3 — LLM Disabled → 503
 
 **Setup:** `Llm:Enabled: false`.
@@ -4938,6 +4957,9 @@ Prüfpunkte je Provider/Fall:
 ---
 
 ## Checkliste für vollständigen E2E-Test-Run
+
+Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automatisiert laufen
+(ab Teil 84, jeweils als „Automatisiert" gekennzeichnet), stehen bewusst nicht darin.
 
 ```
 [ ] Teil 1: Workflow-Management (1.1 — 1.4)

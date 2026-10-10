@@ -216,8 +216,18 @@ try {
     if (-not $svc) { throw "Service '$ServiceName' not found. Nothing to update." }
     $serviceWasRunning = $svc.Status -ne 'Stopped'
     $svcAccount = Resolve-ServiceAclIdentity -Name $ServiceName
+    # Secure the destination before snapshotting or copying any binaries. A safe-looking DACL
+    # with an untrusted owner is mutable, and hardening only after copying leaves a swap window.
+    Assert-NodePilotInstallRootHardenedOrRepair -Path $InstallPath -ServiceAccount $svcAccount
     Set-RestrictedSettingsAcl -Path $settingsPath -ServiceAccount $svcAccount
     $settingsBytes = [IO.File]::ReadAllBytes($settingsPath)
+
+    # The service refuses to read its JWT key when the data directory grants write access to a
+    # principal it does not trust. Same check and repair as the installer, before anything changes.
+    if (Test-Path -LiteralPath $DataPath -PathType Container) {
+        Assert-ServiceDirectoryAclUsable -Path $DataPath -ServiceAccount $svcAccount `
+            -SkipServiceRule:($svcAccount -eq 'NT AUTHORITY\SYSTEM') -Label "The data directory '$DataPath'"
+    }
 
     # Health-probe port: the installed configuration is authoritative. Probing the 443 parameter
     # default against an installation that listens elsewhere (any host where IIS owns 443, such
@@ -317,13 +327,19 @@ try {
         }
 
         Write-Step 'Installing verified artifact'
-        $installTouched = $true
-        # The wipe below takes tools\switcher with it, so the switcher's server URL has to
-        # be carried across or every upgrade silently reverts it to the shipped template and the
-        # switch to NodePilot fails again with "No server URL configured".
+        # The executable-adjacent configuration is an operator-supported source, not merely
+        # a URL cache. Preserve all bytes (allowlists, SCOrch endpoints, profiles and future
+        # fields) before the wipe, and fail here if the existing file cannot be read/parsed.
         . (Join-Path $PSScriptRoot 'SwitcherConfig.ps1')
         $switcherConfigPath = Join-Path $InstallPath 'tools\switcher\switcher.json'
-        $previousSwitcherServerUrl = Get-NodePilotSwitcherServerUrl -ConfigPath $switcherConfigPath
+        $previousSwitcherConfigBytes = $null
+        if (Test-Path -LiteralPath $switcherConfigPath) {
+            $previousSwitcherConfigBytes = [IO.File]::ReadAllBytes($switcherConfigPath)
+            try {
+                $null = [Text.Encoding]::UTF8.GetString($previousSwitcherConfigBytes).TrimStart([char]0xFEFF) | ConvertFrom-Json
+            } catch { throw "Existing Switcher configuration is invalid; nothing was replaced: $switcherConfigPath. $($_.Exception.Message)" }
+        }
+        $installTouched = $true
         # appsettings.Production.json last: if the wipe aborts midway (locked file, antivirus)
         # the config must still be on disk - the backup excludes it and the in-memory copy dies
         # with this process.
@@ -341,6 +357,11 @@ try {
         # earlier install is a condition an update can fix, and refusing would leave the operator
         # with no route to the new binaries at all.
         Assert-NodePilotInstallRootHardenedOrRepair -Path $InstallPath -ServiceAccount $svcAccount
+        # User configuration is restored after artifact verification, before starting the service.
+        # Failure belongs to the transactional rollback, not to the optional URL-seeding warning.
+        if ($null -ne $previousSwitcherConfigBytes) {
+            [IO.File]::WriteAllBytes($switcherConfigPath, $previousSwitcherConfigBytes)
+        }
         # After the manifest check, never before it - see Remove-NodePilotSourceSnapshot.
         if (-not $keepSourceSnapshot) { [void](Remove-NodePilotSourceSnapshot -InstallPath $InstallPath) }
         Write-RestrictedSettings -Path $settingsPath -Content $settingsBytes -ServiceAccount $svcAccount
@@ -443,12 +464,12 @@ try {
             Write-Warn "Could not update the machine PATH: $($_.Exception.Message)"
         }
 
-        # Restore the switcher's server URL the wipe removed. An installation that predates the
-        # setting has none to carry, so fall back to the first real entry of AllowedHosts - the
-        # same file this script already reads the Kestrel port from.
+        # Restore the operator file only after signed artifact verification. An unset URL still
+        # receives the existing AllowedHosts/port fallback; configured files remain byte-identical.
         try {
             if (Test-Path -LiteralPath $switcherConfigPath) {
-                $serverUrl = $previousSwitcherServerUrl
+                $serverUrl = Get-NodePilotSwitcherServerUrl -ConfigPath $switcherConfigPath
+                $hadSwitcherServerUrl = -not [string]::IsNullOrWhiteSpace($serverUrl)
                 if (-not $serverUrl) {
                     $allowed = ([Text.Encoding]::UTF8.GetString($settingsBytes) | ConvertFrom-Json).AllowedHosts
                     $hostname = ($allowed -split ';' | ForEach-Object { $_.Trim() } |
@@ -457,7 +478,9 @@ try {
                         $serverUrl = Get-NodePilotSwitcherServerUrlFor -Hostname $hostname -HttpsPort $HttpsPort
                     }
                 }
-                if ($serverUrl -and (Set-NodePilotSwitcherServerUrl `
+                if ($hadSwitcherServerUrl) {
+                    Write-Info 'Preserved the operator Switcher configuration.'
+                } elseif ($serverUrl -and (Set-NodePilotSwitcherServerUrl `
                             -ConfigPath $switcherConfigPath -ServerUrl $serverUrl)) {
                     Write-Info "Switcher server URL set to $serverUrl."
                 } elseif (-not $serverUrl) {

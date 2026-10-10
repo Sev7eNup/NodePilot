@@ -163,9 +163,8 @@ public static class WorkflowDefinitionSecretRewriter
     }
 
     /// <summary>
-    /// Runtime resolves infrastructure references only from each node's <c>data</c> object. Do
-    /// not recursively rewrite same-named keys inside config payloads: they are ordinary child
-    /// parameters/return data and changing them would silently corrupt application data.
+    /// Visit the runtime's known node and agent binding slots. Same-named keys in arbitrary
+    /// tool arguments or return data are application data and must remain unchanged.
     /// </summary>
     private static void RemapNodeInfrastructureReferences(
         JsonNode definition,
@@ -173,32 +172,19 @@ public static class WorkflowDefinitionSecretRewriter
         Func<Guid, Guid?> resolveCredential,
         List<string> unresolved)
     {
-        if (definition is not JsonObject root || root["nodes"] is not JsonArray nodes) return;
-        foreach (var node in nodes)
+        foreach (var reference in NodePilot.Core.WorkflowDefinitions.WorkflowResourceReferences.Enumerate(definition))
         {
-            if (node is not JsonObject nodeObject || nodeObject["data"] is not JsonObject data) continue;
-            RemapNodeReference(data, "targetMachineId", resolveMachine, unresolved);
-            RemapNodeReference(data, "credentialId", resolveCredential, unresolved);
+            var resolver = reference.Kind switch
+            {
+                "machine" => resolveMachine,
+                "credential" => resolveCredential,
+                _ => null,
+            };
+            if (resolver is null) continue;
+            var target = resolver(reference.Id);
+            if (target is null) unresolved.Add($"{reference.Path}={reference.Id}");
+            else reference.Replace(target.Value);
         }
-    }
-
-    private static void RemapNodeReference(
-        JsonObject data,
-        string key,
-        Func<Guid, Guid?> resolver,
-        List<string> unresolved)
-    {
-        if (data[key] is not JsonValue value
-            || !value.TryGetValue(out string? raw)
-            || !Guid.TryParse(raw, out var sourceId)) return;
-
-        var target = resolver(sourceId);
-        if (target is null)
-        {
-            unresolved.Add($"{key}={raw}");
-            return;
-        }
-        data[key] = target.Value.ToString();
     }
 
 }

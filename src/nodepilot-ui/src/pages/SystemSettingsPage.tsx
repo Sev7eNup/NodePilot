@@ -21,9 +21,10 @@ import { SecuritySection } from '../components/admin-settings/SecuritySection';
 import { PerformanceSection } from '../components/admin-settings/PerformanceSection';
 import { DbAdminSection } from '../components/admin-settings/DbAdminSection';
 import { AiKnowledgeSection } from '../components/admin-settings/AiKnowledgeSection';
+import { AgentsSection } from '../components/admin-settings/AgentsSection';
+import { systemSettingsLabels } from '../lib/navigation';
 
-type SubTab = 'integrations' | 'ai-knowledge' | 'retention' | 'system-info'
-  | 'authentication' | 'logging-telemetry' | 'security' | 'performance' | 'db-admin';
+type SubTab = keyof typeof systemSettingsLabels;
 
 // Tabs grouped by topic: integrations, security, operations, data. `integrations` comes first
 // because it is also the fallback section for a bare `?tab=system`, and `system-info` comes
@@ -34,6 +35,7 @@ const TABS: SubTab[] = [
   // External connections. AI knowledge sources build on the LLM profile configured alongside.
   'integrations',
   'ai-knowledge',
+  'agents',
   // Security: the access and hardening tabs stay adjacent.
   'authentication',
   'security',
@@ -50,6 +52,7 @@ const TABS: SubTab[] = [
 const ICONS: Record<SubTab, React.ComponentType<{ size?: number }>> = {
   'integrations': Plug,
   'ai-knowledge': Chat,
+  'agents': Chat,
   'retention': TrashCan,
   'system-info': Information,
   'authentication': Locked,
@@ -61,22 +64,10 @@ const ICONS: Record<SubTab, React.ComponentType<{ size?: number }>> = {
 
 // i18n key per sub-tab. Also the allow-list for the `?section=` deep link: only a key from
 // this map is accepted, so a new sub-tab needs a label before it can be addressed by link.
-const LABEL_KEYS: Record<SubTab, string> = {
-  'integrations': 'subTabIntegrations',
-  'ai-knowledge': 'subTabAiKnowledge',
-  'retention': 'subTabRetention',
-  'system-info': 'subTabSystemInfo',
-  'authentication': 'subTabAuthentication',
-  'logging-telemetry': 'subTabLoggingTelemetry',
-  'security': 'subTabSecurity',
-  'performance': 'subTabPerformance',
-  'db-admin': 'subTabDbAdmin',
-};
-
 const DEFAULT_SUB_TAB: SubTab = 'integrations';
 
 function isSubTab(value: string | null): value is SubTab {
-  return value !== null && Object.prototype.hasOwnProperty.call(LABEL_KEYS, value);
+  return value !== null && Object.hasOwn(systemSettingsLabels, value);
 }
 
 export function SystemSettingsPage() {
@@ -93,7 +84,7 @@ export function SystemSettingsPage() {
     setSearchParams(params);
   };
 
-  const labelFor = (tab: SubTab): string => t(`adminSettings:${LABEL_KEYS[tab]}`);
+  const labelFor = (tab: SubTab): string => t(`adminSettings:${systemSettingsLabels[tab]}`);
 
   return (
     <div className="space-y-4">
@@ -119,6 +110,7 @@ export function SystemSettingsPage() {
       <div>
         {active === 'integrations' && <IntegrationsSection />}
         {active === 'ai-knowledge' && <AiKnowledgeSection />}
+        {active === 'agents' && <AgentsSection />}
         {active === 'retention' && <RetentionSection />}
         {active === 'system-info' && <SystemInfoSection />}
         {active === 'authentication' && <AuthenticationSection />}

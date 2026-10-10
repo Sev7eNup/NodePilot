@@ -378,7 +378,7 @@ function LabeledEdgeImpl({
             or the button; clicking it opens the activity picker at the label's midpoint.
             pointer-events set inline plus onMouseDown stopPropagation, since React Flow's
             pane handler would otherwise consume the mousedown before onClick fires. */}
-        <div
+        {canWrite && <div
           className={`nodrag nopan absolute transition-opacity duration-150 ${
             showInsertButton ? 'opacity-100' : 'opacity-0'
           }`}
@@ -402,7 +402,7 @@ function LabeledEdgeImpl({
           >
             <Add size={14} />
           </button>
-        </div>
+        </div>}
       </EdgeLabelRenderer>
     </>
   );

@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { type Node, type Edge } from '@xyflow/react';
 import { findMatches, applyReplaceAll, type MatchLocation, type FindReplaceScopes } from '../../../lib/findReplace';
 
-export function FindReplaceOverlay({ nodes, edges, onApply, onClose }: Readonly<{
+export function FindReplaceOverlay({ nodes, edges, onApply, onClose, canWrite }: Readonly<{
+  canWrite: boolean;
   nodes: Node[];
   edges: Edge[];
   onApply: (nodes: Node[], edges: Edge[]) => void;
@@ -33,14 +34,14 @@ export function FindReplaceOverlay({ nodes, edges, onApply, onClose }: Readonly<
   useEffect(() => setSelectedIdx(0), [matches.length]);
 
   function handleReplaceOne() {
-    if (!matches.length) return;
+    if (!canWrite || !matches.length) return;
     const match = matches[selectedIdx] ?? matches[0];
     const { nodes: newNodes, edges: newEdges } = applyReplaceAll([match], searchValue, replaceValue, nodes, edges);
     onApply(newNodes, newEdges);
   }
 
   function handleReplaceAll() {
-    if (!matches.length) return;
+    if (!canWrite || !matches.length) return;
     const { nodes: newNodes, edges: newEdges } = applyReplaceAll(matches, searchValue, replaceValue, nodes, edges);
     onApply(newNodes, newEdges);
     onClose();
@@ -102,6 +103,7 @@ export function FindReplaceOverlay({ nodes, edges, onApply, onClose }: Readonly<
           <input
             type="text"
             value={replaceValue}
+            disabled={!canWrite}
             onChange={(e) => setReplaceValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') { onClose(); return; }
@@ -112,13 +114,13 @@ export function FindReplaceOverlay({ nodes, edges, onApply, onClose }: Readonly<
           />
           <button
             onClick={handleReplaceOne}
-            disabled={!matches.length}
+            disabled={!canWrite || !matches.length}
             className="px-2.5 py-1 text-[10px] font-label font-semibold rounded bg-surface-high hover:bg-surface-highest text-on-surface-variant disabled:opacity-40 transition-colors shrink-0"
             title={t('findReplaceOverlay.replaceOneTitle')}
           >{t('findReplaceOverlay.replace')}</button>
           <button
             onClick={handleReplaceAll}
-            disabled={!matches.length}
+            disabled={!canWrite || !matches.length}
             className="px-2.5 py-1 text-[10px] font-label font-semibold rounded bg-primary/15 hover:bg-primary/25 text-primary disabled:opacity-40 transition-colors shrink-0"
             title={t('findReplaceOverlay.replaceAllTitle', { count: matches.length })}
           >{t('findReplaceOverlay.replaceAll', { count: matches.length })}</button>

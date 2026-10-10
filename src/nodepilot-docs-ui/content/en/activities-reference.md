@@ -2,6 +2,82 @@
 
 This reference describes the configuration and outputs of every activity type, from PowerShell scripts, services and files to REST, SQL and flow control.
 
+## AI Agent / AI Agent Team
+
+`aiAgent` performs a task through repeated model and tool calls. `aiAgentTeam` contains
+one supervisor and specialists with separate sessions and bounded parallel assignments. Only the outer team
+is a workflow step; click a visible member to configure its role, instructions and tools.
+`needs_input` from a specialist goes to the supervisor, not to a user dialogue.
+
+- **Config:** `task`, `agent` (individual) or `members` (team), `resultFormat` (`text`/`json`),
+  `resultSchema`, `maxModelCalls`, `maxToolCalls`, `maxDelegations`, `maxParallelMembers`, `timeoutSeconds`.
+  `maxParallelMembers` bounds each delegation batch alongside the administrator ceiling
+  `Agents:TeamMaxParallelMembers` (default 3) and member count; 1 keeps work sequential.
+  Independent specialists may work together. Reviewers follow specialist work and never
+  share a batch with specialists. Live team pointers identify new peer evidence and
+  register updates; they never replace originals or satisfy review evidence requirements.
+  Each agent/member has a stable `id`, free `role`, `instructions`, optional `model`,
+  `tools`, `skillIds` and `useServiceIdentity`. Team members also have `targetMachineId`
+  and `credentialId`; individual agents use the usual node target/credential fields.
+  Exactly one member has `isSupervisor: true`.
+  Other members may optionally set `isReviewer: true` (designer: “Team function”).
+  This review function is independent of the free role label. Every selected reviewer
+  must review the current work. Open `needs_input`/`failed` responses block successful
+  completion; only the same member can close them with `completed`. New specialist
+  responses or supervisor tool calls invalidate previous reviews. After at most two
+  additional corrective supervisor turns within existing budgets, incomplete review fails.
+- **Draft from a description:** with AI enabled, the team editor offers **Draft team from description**
+  (Admin/Operator). Describe the team and name machines, credentials, paths and workflows exactly as they
+  appear in NodePilot. The draft is resolved against what you may use and shown for review with each member's
+  effective target, credential or service identity, tools, paths, hosts (an empty host list reads “all hosts”)
+  and skills. Names the draft cannot match uniquely, or that your text does not mention, are never guessed:
+  an unresolved machine, credential or service identity blocks **Apply** until you pick a match or drop the
+  request. Nothing is saved or published until you save and publish the workflow.
+- **Tools:** allowlisted files, HTTP GET/HEAD with optional host restrictions, published workflows, PowerShell, CMD, installed
+  Git Bash and selected tools from administrator-registered MCP servers. MCP supports
+  stdio and Streamable HTTP. Settings → AI agents manages servers, immutable ZIP skill
+  versions and runtime ceilings. Skills use root `SKILL.md` with YAML name/description,
+  resources and optional scripts. A script needs the corresponding selected shell tool.
+  CMD/Bash scripts execute the checked canonical commands, not package-local command
+  replacements. PowerShell retains original script bytes and target signature checks.
+- **Read-only checks:** shells and skill scripts accept a checked subset of read commands.
+  HTTP needs no URL whitelist, rejects bodies/redirects and retains network protection.
+  MCP read approvals are administrator-managed and pinned to server/tool revisions; remote
+  services and credentials must enforce read access. Child workflows and their resolved steps
+  are checked at runtime, including synchronous descendants. Unsupported operations fail closed.
+- **Identity:** choose a credential/machine default, or explicitly select service identity
+  and enable the administrator option. Shell can use the full OS rights of that identity;
+  tool lists and working directories are not shell isolation. Windows local/WinRM only.
+- **Defaults:** individual 20 model calls / 40 tool calls / 20 minutes; team 100 / 500 /
+  20 delegations / 30 minutes, shared. Two concurrent runs per server process. A zero
+  timeout uses the default. Timeout includes queue time, tools and child workflows.
+  Exhausting the investigation model budget still uses the reserved tool-free report
+  call after started members finish; unresolved members/reviews remain limitations.
+  This does not increase budgets or turn technical failures into successful reports.
+  Workflow activity retries are rejected. A transient model timeout, HTTP
+  408/429/500/502/503/504 or identified connection interruption may retry once after one second within the same budgets,
+  without replaying tools. Authentication, malformed responses and tool failures are
+  not retried. Persistent failure retains available preliminary findings and journal
+  evidence without claiming completion. Stop/restart does not undo completed side effects.
+- **Logs:** `files_search` filters on the target; `logs_collect` transfers blocks into
+  temporary shared storage, at most 250 MB per run/team. `logs_search` returns bounded
+  source excerpts. Raw files are removed; evidence used in tool results remains in history.
+- **Context:** a maximum of 250,000 **output tokens** per model call; lower profile and
+  model limits still apply. The separate input guard is configured in characters.
+  At 75%, the host compacts older complete exchanges into untrusted working notes,
+  preserving the original task and current exchanges. Every member can recall stored
+  observations through `evidence_list`/`evidence_read` without repeating remote actions.
+  `evidence_analyze` examines bounded overlapping sections and records their ranges,
+  findings and open questions. Summaries consume the shared model/time budget; they
+  are neither original evidence nor fresh observations for review approval. Compaction is journaled.
+- **Outputs:** `output`, `error`, `param.agentRunId`, `param.outcome`, `param.outcomeReason`, `param.modelCalls`, `param.toolCalls`,
+  `param.delegations`, `param.promptTokens`, `param.completionTokens`. JSON is validated
+  locally with at most one tool-free repair round within budget. External schema references
+  are rejected. Agent history shows durable numbered events and catches up after reconnect.
+
+Publishing authorizes autonomous use of selected tools. The existing chat approval rules
+and `llmQuery` behavior stay unchanged. Enable AI and an active LLM profile first.
+
 | Scope | Execution location |
 |---|---|
 | **Remote** | A Windows target system through `targetMachineId` and WinRM |

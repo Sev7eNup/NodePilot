@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using NodePilot.Api.Controllers;
+using NodePilot.Api.Security.Scim;
 
 namespace NodePilot.Api.Filters;
 
@@ -13,6 +14,10 @@ internal sealed class ApiProblemDetailsResultFilter : IAlwaysRunResultFilter
     public void OnResultExecuting(ResultExecutingContext context)
     {
         if (context.Result is not ObjectResult objectResult)
+            return;
+
+        // SCIM has its own protocol error schema, including string status and schemas URI.
+        if (objectResult.Value is ScimError)
             return;
 
         var status = objectResult.StatusCode ?? StatusFromResultType(objectResult);

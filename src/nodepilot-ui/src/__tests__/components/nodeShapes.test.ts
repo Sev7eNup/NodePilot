@@ -48,6 +48,7 @@ const ACTION_MAP: Record<string, NodeShape> = {
   powerManagement: 'power', waitForCondition: 'circle', restApi: 'browser', sql: 'cylinder',
   xmlQuery: 'kite', jsonQuery: 'braces', emailNotification: 'banner', textFileEdit: 'house',
   generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'stopwatch',
+  aiAgent: 'chip', aiAgentTeam: 'steppedFrame',
 };
 
 /** The per-activity control-flow mapping (must mirror CONTROL_SHAPE in shapes.ts). */
@@ -89,8 +90,8 @@ describe('node shape mapping — per-activity action shapes', () => {
 
   it('assigns a distinct shape to every action/logic activity (no duplicates)', () => {
     const values = Object.values(ACTION_MAP);
-    expect(values).toHaveLength(22);
-    expect(new Set(values).size).toBe(22);
+    expect(values).toHaveLength(24);
+    expect(new Set(values).size).toBe(24);
   });
 });
 
@@ -134,8 +135,8 @@ describe('node shape mapping — per-activity control-flow shapes', () => {
 
   it('every activity shape (action + control) is globally distinct — no shape used twice', () => {
     const all = [...Object.values(ACTION_MAP), ...Object.values(CONTROL_MAP)];
-    expect(all).toHaveLength(26);
-    expect(new Set(all).size).toBe(26);
+    expect(all).toHaveLength(28);
+    expect(new Set(all).size).toBe(28);
     // the shape-name union itself has no duplicate entries
     expect(new Set(NODE_SHAPES).size).toBe(NODE_SHAPES.length);
   });

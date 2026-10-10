@@ -15,12 +15,8 @@ namespace NodePilot.Engine.Tests.Activities;
 /// <summary>
 /// Tests for <see cref="TextFileEditActivity"/>. Covers C#-side config validation,
 /// PowerShell script generation (markers + quoting + per-op skeleton), and PostProcess
-/// JSON parsing. The PowerShell helper functions themselves (BOM-sniff, atomic write,
-/// line-ending preservation) are exercised manually against real files — they run inside
-/// the WinRM script body and aren't unit-testable from .NET without spinning up a
-/// PowerShell engine. The Engine-Tests in this file therefore focus on the boundary the
-/// C# code owns: what gets emitted, how config errors surface, and how the structured
-/// result JSON maps into <c>ActivityResult.OutputParameters</c>.
+/// JSON parsing. File-preservation regressions also execute the generated PowerShell
+/// body against temporary files, covering the same implementation used over WinRM.
 /// </summary>
 public sealed class TextFileEditActivityTests : IDisposable
 {
@@ -74,6 +70,72 @@ public sealed class TextFileEditActivityTests : IDisposable
         => new() { WorkflowExecutionId = Guid.NewGuid(), StepId = "step-1", TargetMachineId = _machineId, CredentialId = _credentialId };
 
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement;
+
+    [Theory]
+    [InlineData("value\n", "missing", "other", "value\n")]
+    [InlineData("value\r\n", "value", "other", "other\r\n")]
+    [InlineData("value\n", "\\n$", "", "value")]
+    [InlineData("value", "value", "value\n", "value\n")]
+    public async Task Replace_PreservesOrIntentionallyChangesTrailingNewline(
+        string original, string matchPattern, string replace, string expected)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "np-text-newline-" + Guid.NewGuid().ToString("N") + ".txt");
+        await File.WriteAllTextAsync(path, original);
+        try
+        {
+            await CreateActivity().ExecuteAsync(Ctx(), JsonSerializer.SerializeToElement(new
+            {
+                operation = "replace", path, matchPattern, replace, useRegex = true,
+                lineEnding = original == "value" ? "lf" : "preserve",
+            }), CancellationToken.None);
+            using var shell = System.Management.Automation.PowerShell.Create();
+            shell.AddScript(_capturedScript!);
+            var output = string.Join("\n", shell.Invoke().Select(item => item.ToString()));
+            shell.HadErrors.Should().BeFalse();
+            PowerShellOperation.TryParseJsonBlock(output, PowerShellOperation.Markers("TEXTEDIT"),
+                out var document, out var error).Should().BeTrue(error);
+            using (document!) document!.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue();
+            (await File.ReadAllTextAsync(path)).Should().Be(expected);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Theory]
+    [InlineData("delete")]
+    [InlineData("replace")]
+    public async Task RegexBacktracking_ReturnsStructuredFailureAndPreservesFile(string operation)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"np-regex-{Guid.NewGuid():N}.txt");
+        var original = new string('a', 128) + "!";
+        await File.WriteAllTextAsync(path, original);
+        try
+        {
+            await CreateActivity().ExecuteAsync(Ctx(), JsonSerializer.SerializeToElement(new
+            {
+                operation, path, matchPattern = "(a+)+$", useRegex = true, replace = "changed",
+            }), CancellationToken.None);
+            // Run the generated body in an OS-contained process. The pre-fix regex can never
+            // leave a stuck test-host runspace behind; the outer timeout reaps the whole job.
+            var process = ProcessExecutionEngine.CreateWindowsPowerShell(NullLogger.Instance);
+            process.IsAvailable.Should().BeTrue();
+            var result = await process.ExecuteAsync(new PowerShellExecutionRequest
+            {
+                ScriptText = _capturedScript!, Isolated = true, Timeout = TimeSpan.FromSeconds(5),
+            }, CancellationToken.None);
+
+            result.TimedOut.Should().BeFalse("the regex budget must fail inside the activity before the process deadline");
+            result.Success.Should().BeTrue("the activity should emit its structured failure envelope");
+            PowerShellOperation.TryParseJsonBlock(result.Output, PowerShellOperation.Markers("TEXTEDIT"),
+                out var document, out var error).Should().BeTrue(error);
+            using (document!)
+            {
+                document!.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
+                document.RootElement.GetProperty("error").GetString().Should().NotBeNullOrWhiteSpace();
+            }
+            (await File.ReadAllTextAsync(path)).Should().Be(original);
+        }
+        finally { File.Delete(path); }
+    }
 
     [Fact]
     public async Task AllowedRoots_InjectsTargetGuardForFileAndBackupPath()
@@ -446,8 +508,7 @@ public sealed class TextFileEditActivityTests : IDisposable
     // implicit trailing empty element), so a replacement that *introduced* a final
     // newline got silently swallowed by the second Split-strip — and a replacement that
     // *removed* the final newline still got re-added by the materialize step. We pin the
-    // emitted PowerShell here because the actual file-IO runs against the WinRM session
-    // and isn't exercisable from C# tests directly.
+    // emitted PowerShell here; real file-I/O coverage is in Replace_PreservesOrIntentionallyChangesTrailingNewline.
 
     [Fact]
     public async Task Replace_ReAnchorsTrailingNewlineAfterReplacement()

@@ -52,7 +52,8 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
   const { t } = useTranslation(['operations', 'executions']);
 
   const { data: detail, isError } = useQuery({
-    queryKey: ['ops-execution', executionId],
+    // The live transition carries the status, not the final diagnostics/step counts.
+    queryKey: ['ops-execution', executionId, status],
     queryFn: () => getExecution(executionId),
     refetchOnWindowFocus: false,
     staleTime: 10_000,

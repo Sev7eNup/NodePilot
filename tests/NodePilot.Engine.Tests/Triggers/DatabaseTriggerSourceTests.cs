@@ -218,7 +218,7 @@ public class DatabaseTriggerSourceTests
         }
 
         var fires = new List<Dictionary<string, string>>();
-        var fireGate = new SemaphoreSlim(0, 1);
+        var fireGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         // pollingIntervalSeconds is clamped to a 5s minimum by the shared settings. We use the
         // OnPollCompletedForTest hook to wait deterministically until the first poll
@@ -240,29 +240,29 @@ public class DatabaseTriggerSourceTests
             OnFire = parameters =>
             {
                 lock (fires) fires.Add(parameters);
-                fireGate.Release();
+                fireGate.TrySetResult();
                 return Task.CompletedTask;
             },
         };
 
-        await src.StartAsync(ctx, CancellationToken.None);
-
-        // Wait deterministically for the first poll to complete (no fire — just
-        // seeded lastSentinel), then mutate.
-        var firstPollCompleted = await Task.WhenAny(firstPollDone.Task, Task.Delay(TimeSpan.FromSeconds(10)));
-        firstPollCompleted.Should().Be(firstPollDone.Task, "the first poll must run before we mutate the table");
-
-        await using (var insert = holder.CreateCommand())
+        try
         {
-            insert.CommandText = "INSERT INTO Q (V) VALUES ('b');";
-            await insert.ExecuteNonQueryAsync();
+            await src.StartAsync(ctx, TestContext.Current.CancellationToken);
+
+            // Mutate only after the first poll has seeded the sentinel.
+            await firstPollDone.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+            await using (var insert = holder.CreateCommand())
+            {
+                insert.CommandText = "INSERT INTO Q (V) VALUES ('b');";
+                await insert.ExecuteNonQueryAsync();
+            }
+
+            await fireGate.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
         }
+        finally { await src.DisposeAsync(); }
 
-        var fired = await fireGate.WaitAsync(TimeSpan.FromSeconds(10));
-        await src.DisposeAsync();
-
-        fired.Should().BeTrue("the second poll after the insert should have detected the sentinel change");
-        fires.Should().HaveCountGreaterThanOrEqualTo(1);
+        fires.Should().HaveCount(1);
         fires[0].Should().ContainKey("dbSentinel");
         fires[0].Should().ContainKey("dbPrevious");
         fires[0]["dbSentinel"].Should().NotBe(fires[0]["dbPrevious"]);

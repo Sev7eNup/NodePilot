@@ -11,7 +11,14 @@ namespace NodePilot.Core.Audit;
 /// </summary>
 public static class AuditActions
 {
+    public const string AgentMcpServerSaved = "AGENT_MCP_SERVER_SAVED";
+    public const string AgentMcpServerDeleted = "AGENT_MCP_SERVER_DELETED";
+    public const string AgentSkillImported = "AGENT_SKILL_IMPORTED";
+    public const string AgentSkillUpdated = "AGENT_SKILL_UPDATED";
+    public const string AgentSkillDeleted = "AGENT_SKILL_DELETED";
+    public const string SettingsAgentsUpdated = "SETTINGS_AGENTS_UPDATED";
     public const string AiKnowledgeAsked = "AI_KNOWLEDGE_ASKED";
+    public const string AiAgentTeamGenerated = "AI_AGENT_TEAM_GENERATED";
     public const string AiProposalApplied = "AI_PROPOSAL_APPLIED";
     public const string AiScriptGenerated = "AI_SCRIPT_GENERATED";
     public const string AiWorkflowExplained = "AI_WORKFLOW_EXPLAINED";
@@ -33,6 +40,7 @@ public static class AuditActions
 
     public const string BackupExported = "BACKUP_EXPORTED";
     public const string BackupRestored = "BACKUP_RESTORED";
+    public const string BackupRestoreDbCommitted = "BACKUP_RESTORE_DB_COMMITTED";
 
     public const string CredentialCreated = "CREDENTIAL_CREATED";
     public const string CredentialDecrypted = "CREDENTIAL_DECRYPTED";

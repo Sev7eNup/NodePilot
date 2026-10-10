@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Authentication;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -16,6 +17,19 @@ namespace NodePilot.Ai.Tests;
 /// </summary>
 public sealed class LlmUnreachableDiagnosticsTests
 {
+    [Theory]
+    [InlineData("DNS", SocketError.HostNotFound)]
+    [InlineData("TCP", SocketError.ConnectionRefused)]
+    public void DescribeUnreachable_ClassifiedConnectFailureWithSocketCause_PreservesStage(
+        string stage, SocketError socketError)
+    {
+        var message = $"LLM endpoint {stage}: llm.example.intern failed ({socketError}); check this connection stage.";
+        var exception = new HttpRequestException("Error sending request",
+            new IOException(message, new SocketException((int)socketError)));
+
+        Transport().DescribeUnreachable(exception).Should().Be(message);
+    }
+
     private static LlmHttpTransport Transport() => new(
         new StubHttpClientFactory(),
         new LlmClientConfig(

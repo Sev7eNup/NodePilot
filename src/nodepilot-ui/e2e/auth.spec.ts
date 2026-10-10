@@ -1,3 +1,4 @@
+import { workflowPage } from './fixtures/mockApi';
 import { test, expect } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
@@ -151,8 +152,8 @@ test.describe('Auth lifecycle', () => {
         body: JSON.stringify({ username: 'viewer1', role: 'Viewer', userId: '00000000-0000-0000-0000-000000000099' }),
       }),
     );
-    await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, [])) }),
     );
     await page.route('**/hubs/**', (route) =>
       route.fulfill({ status: 404, body: 'mocked' }),

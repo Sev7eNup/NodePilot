@@ -50,10 +50,8 @@ public class ExecutionHub : Hub
     // broadcast time, which would leak the existence + status of out-of-scope workflows to
     // every authenticated viewer. Instead we record the accessible-folder set per connection
     // and the notifier resolves the matching connection ids for each event's workflow folder,
-    // sending only to those. Scope is a snapshot taken at join (consistent with how
-    // JoinExecution/JoinWorkflow resolve RBAC once); folder/permission changes mid-connection
-    // are not re-evaluated, and the only thing carried on this feed is a status transition
-    // (no step output), so the residual exposure is bounded.
+    // sending only to those. Folder moves refresh these snapshots; grant reductions invalidate
+    // the affected user's security stamp and disconnect their sessions through the sweeper.
     private static readonly ConcurrentDictionary<string, OpsFeedScope> _opsFeed = new();
 
     internal sealed record OpsFeedScope(bool IsUnrestricted, HashSet<Guid> FolderIds);
@@ -182,8 +180,102 @@ public class ExecutionHub : Hub
         return result;
     }
 
+    internal static async Task RefreshOperationsFeedScopesAsync(
+        IResourceAuthorizationService authz, CancellationToken ct)
+    {
+        // Clear every restricted snapshot before I/O so a failed refresh cannot retain access.
+        var pending = new List<(string ConnectionId, OpsFeedScope Empty)>();
+        foreach (var (connectionId, scope) in _opsFeed)
+        {
+            if (scope.IsUnrestricted) continue;
+            var empty = new OpsFeedScope(false, []);
+            if (_opsFeed.TryUpdate(connectionId, empty, scope)) pending.Add((connectionId, empty));
+        }
+
+        foreach (var (connectionId, empty) in pending)
+        {
+            if (!_connectionAuth.TryGetValue(connectionId, out var connection)
+                || connection.Context.User is not { } principal) continue;
+            var accessible = await authz.GetAccessibleFolderIdsAsync(principal, ct);
+            _opsFeed.TryUpdate(connectionId,
+                new OpsFeedScope(accessible.IsUnrestricted, accessible.FolderIds), empty);
+        }
+    }
+
     internal static void RegisterOpsFeedForTest(string connectionId, bool unrestricted, HashSet<Guid> folderIds)
         => _opsFeed[connectionId] = new OpsFeedScope(unrestricted, folderIds);
+
+    internal static async Task RevalidateFolderSubscriptionsAsync(
+        NodePilotDbContext db, IResourceAuthorizationService authorization,
+        IHubContext<ExecutionHub> hub, IReadOnlySet<Guid> userIds, CancellationToken ct)
+    {
+        if (userIds.Count == 0) return;
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        var connections = _connectionAuth.Where(pair => userIds.Contains(pair.Value.UserId)).ToArray();
+        var groupsByConnection = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        foreach (var (connectionId, _) in connections)
+        {
+            if (!_joinedGroups.TryGetValue(connectionId, out var groups)) continue;
+            lock (groups) groupsByConnection[connectionId] = groups.ToArray();
+        }
+
+        // Resolve the bounded subscription set in batches, never one DB lookup per group.
+        var allGroups = groupsByConnection.Values.SelectMany(groups => groups).Distinct().ToArray();
+        var workflowIds = allGroups.Where(group => group.StartsWith("workflow-", StringComparison.Ordinal))
+            .Select(group => Guid.TryParse(group[9..], out var id) ? id : Guid.Empty)
+            .Where(id => id != Guid.Empty).ToArray();
+        var executionIds = allGroups.Select(group => Guid.TryParse(group, out var id) ? id : Guid.Empty)
+            .Where(id => id != Guid.Empty).ToArray();
+        var folderByGroup = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        foreach (var batch in workflowIds.Chunk(500))
+            foreach (var row in await db.Workflows.AsNoTracking().Where(workflow => batch.Contains(workflow.Id))
+                         .Select(workflow => new { workflow.Id, workflow.FolderId }).ToListAsync(ct))
+                folderByGroup[$"workflow-{row.Id}"] = row.FolderId;
+        foreach (var batch in executionIds.Chunk(500))
+            foreach (var row in await db.WorkflowExecutions.AsNoTracking().Where(execution => batch.Contains(execution.Id))
+                         .Select(execution => new { execution.Id, execution.Workflow.FolderId }).ToListAsync(ct))
+                folderByGroup[row.Id.ToString()] = row.FolderId;
+
+        var accessibleByUser = new Dictionary<Guid, AccessibleFolderSet>();
+        foreach (var (connectionId, connection) in connections)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (connection.Context.User is not { } principal) continue;
+            if (!accessibleByUser.TryGetValue(connection.UserId, out var accessible))
+            {
+                accessible = await authorization.GetAccessibleFolderIdsAsync(principal, ct);
+                accessibleByUser[connection.UserId] = accessible;
+            }
+            if (_opsFeed.TryGetValue(connectionId, out var oldScope))
+                _opsFeed.TryUpdate(connectionId,
+                    new OpsFeedScope(accessible.IsUnrestricted, accessible.FolderIds), oldScope);
+
+            foreach (var group in groupsByConnection.GetValueOrDefault(connectionId) ?? [])
+            {
+                if (folderByGroup.TryGetValue(group, out var folderId)
+                    && (accessible.IsUnrestricted || accessible.FolderIds.Contains(folderId))) continue;
+                UnregisterGroup(connectionId, group);
+                try
+                {
+                    await hub.Groups.RemoveFromGroupAsync(connectionId, group, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch
+                {
+                    // An uncertain group removal cannot leave a live unauthorized transport.
+                    try { connection.Context.Abort(); }
+                    finally
+                    {
+                        ForgetConnection(connectionId);
+                        _opsFeed.TryRemove(connectionId, out _);
+                        foreach (var joined in groupsByConnection.GetValueOrDefault(connectionId) ?? [])
+                            UnregisterGroup(connectionId, joined);
+                    }
+                    break;
+                }
+            }
+        }
+    }
 
     internal static void ClearOpsFeedForTest() => _opsFeed.Clear();
 
@@ -312,6 +404,8 @@ public class ExecutionHub : Hub
         // is not a GUID so callers cannot join a group by spelling it however they like.
         if (!Guid.TryParse(executionId, out var parsed))
             throw new HubException("executionId must be a GUID");
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireSharedAsync(Context.ConnectionAborted);
+        _authz.InvalidateAll();
 
         // RBAC: prevent connection-time leak of execution events. Resolve the execution's
         // workflow folder, then check Read against the caller. Reject with HubException
@@ -357,6 +451,8 @@ public class ExecutionHub : Hub
     {
         if (!Guid.TryParse(workflowId, out var parsed))
             throw new HubException("workflowId must be a GUID");
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireSharedAsync(Context.ConnectionAborted);
+        _authz.InvalidateAll();
 
         // RBAC: same gate as JoinExecution — Read on the workflow's folder. Mask
         // existence with the same error message so id-probing via the hub is blocked.
@@ -404,6 +500,10 @@ public class ExecutionHub : Hub
     public async Task<object> JoinOperationsFeed()
     {
         if (Context.User is null) throw new HubException("not authenticated");
+        // Serialize the snapshot with subtree moves so an in-flight join cannot restore
+        // permissions from the old ancestry after the move refreshed existing subscribers.
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireSharedAsync(Context.ConnectionAborted);
+        _authz.InvalidateAll();
         var accessible = await _authz.GetAccessibleFolderIdsAsync(Context.User);
         if (!accessible.IsUnrestricted && accessible.FolderIds.Count == 0)
             throw new HubException("no accessible workflows");

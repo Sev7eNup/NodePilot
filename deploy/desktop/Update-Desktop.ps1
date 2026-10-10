@@ -19,7 +19,7 @@ param(
     [string] $DataPath = (Join-Path $env:ProgramData 'NodePilot'),
     [string] $ApiServiceName = 'NodePilot',
     [string] $DbServiceName  = 'NodePilotDb',
-    # Directory containing the new app\ desktop\ pgsql\ deploy\ payload (full-update mode only).
+    # Directory containing the new app\ desktop\ pgsql\ deploy\ tools\ payload (full-update mode only).
     [string] $NewArtifactPath,
     [int]    $KeepBackupCount = 3,
     [switch] $BackupOnly
@@ -112,11 +112,17 @@ if ($BackupOnly) {
 # --- Full staged update ----------------------------------------------------------------------
 if (-not $NewArtifactPath) { throw 'Full update requires -NewArtifactPath (or use -BackupOnly).' }
 if (-not (Test-Path -LiteralPath $NewArtifactPath)) { throw "New artifact path not found: $NewArtifactPath." }
+$components = @('app', 'desktop', 'pgsql', 'deploy', 'tools')
+foreach ($component in $components) {
+    if (-not (Test-Path -LiteralPath (Join-Path $NewArtifactPath $component) -PathType Container)) {
+        throw "Incomplete desktop update payload: missing directory '$component'."
+    }
+}
 
 $backupFile = New-DatabaseBackup
 $rollbackRoot = Join-Path $DataPath ("rollback\{0}" -f (Get-Date).ToString('yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Force -Path $rollbackRoot | Out-Null
-$components = @('app', 'desktop', 'pgsql')
+$swappedComponents = New-Object 'System.Collections.Generic.List[string]'
 
 function Stop-Everything {
     Write-Step 'Stopping shell and services'
@@ -128,6 +134,32 @@ function Start-Services {
     foreach ($svc in @($DbServiceName, $ApiServiceName)) {
         if (Get-Service -Name $svc -ErrorAction SilentlyContinue) { & sc.exe start $svc | Out-Null }
         Start-Sleep -Seconds 2
+    }
+}
+
+function Start-DatabaseForRestore {
+    param([Parameter(Mandatory)] $Connection)
+    Start-Service -Name $DbServiceName -ErrorAction Stop
+    $pgIsReady = Join-Path $pgBin 'pg_isready.exe'
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        & $pgIsReady '-h' $Connection.DbHost '-p' $Connection.Port '-U' $Connection.Username '-d' $Connection.Database | Out-Null
+        if ($LASTEXITCODE -eq 0) { return }
+        Start-Sleep -Seconds 2
+    }
+    throw 'PostgreSQL did not become ready for the rollback restore.'
+}
+
+function Restore-DatabaseBackup {
+    $connection = Get-PostgresConnection
+    Start-DatabaseForRestore -Connection $connection
+    $oldPassword = [Environment]::GetEnvironmentVariable('PGPASSWORD')
+    [Environment]::SetEnvironmentVariable('PGPASSWORD', $connection.Password)
+    try {
+        & $pgRestore '-h' $connection.DbHost '-p' $connection.Port '-U' $connection.Username '-d' $connection.Database `
+            '--clean' '--if-exists' '--exit-on-error' '--single-transaction' $backupFile
+        if ($LASTEXITCODE -ne 0) { throw "pg_restore exited with code $LASTEXITCODE." }
+    } finally {
+        [Environment]::SetEnvironmentVariable('PGPASSWORD', $oldPassword)
     }
 }
 
@@ -154,8 +186,10 @@ try {
     foreach ($c in $components) {
         $cur = Join-Path $InstallPath $c
         $new = Join-Path $NewArtifactPath $c
-        if (-not (Test-Path -LiteralPath $new)) { continue }
         if (Test-Path -LiteralPath $cur) { Move-Item -LiteralPath $cur -Destination (Join-Path $rollbackRoot $c) -Force }
+        # Record before copy so a partially copied new component is removed on failure, even
+        # when the previous installation did not yet contain that component.
+        $swappedComponents.Add($c)
         Copy-Item -LiteralPath $new -Destination $cur -Recurse -Force
     }
 
@@ -170,28 +204,24 @@ try {
 }
 catch {
     Write-Warning "Update failed: $($_.Exception.Message). Rolling back."
-    try { Stop-Everything } catch { Write-Warning "Stopping before the rollback failed: $($_.Exception.Message)" }
-    foreach ($c in $components) {
-        $cur = Join-Path $InstallPath $c
-        $saved = Join-Path $rollbackRoot $c
-        if (Test-Path -LiteralPath $saved) {
-            if (Test-Path -LiteralPath $cur) { Remove-Item -LiteralPath $cur -Recurse -Force -ErrorAction SilentlyContinue }
-            Move-Item -LiteralPath $saved -Destination $cur -Force
-        }
-    }
-    # Restore the DB snapshot taken before the swap.
     try {
-        $c = Get-PostgresConnection
+        Stop-Everything
+        foreach ($c in $swappedComponents) {
+            $cur = Join-Path $InstallPath $c
+            $saved = Join-Path $rollbackRoot $c
+            if (Test-Path -LiteralPath $cur) { Remove-Item -LiteralPath $cur -Recurse -Force }
+            if (Test-Path -LiteralPath $saved) {
+                Move-Item -LiteralPath $saved -Destination $cur -Force
+            }
+        }
+        # The API migrates and writes the database at startup. Keep it stopped until the
+        # complete snapshot has been restored, and leave it stopped if restoration fails.
+        Restore-DatabaseBackup
         Start-Services
-        Start-Sleep -Seconds 3
-        [Environment]::SetEnvironmentVariable('PGPASSWORD', $c.Password)
-        & $pgRestore '-h' $c.DbHost '-p' $c.Port '-U' $c.Username '-d' $c.Database '--clean' '--if-exists' $backupFile
     } catch {
-        Write-Warning "DB restore during rollback failed: $($_.Exception.Message). Manual restore from $backupFile may be required."
-    } finally {
-        [Environment]::SetEnvironmentVariable('PGPASSWORD', $null)
+        Write-Error "Update rollback failed: $($_.Exception.Message). The API was not restarted by rollback. Manual recovery from $backupFile may be required."
+        exit 1
     }
-    Start-Services
     Write-Error 'Update rolled back to the previous version.'
     exit 1
 }

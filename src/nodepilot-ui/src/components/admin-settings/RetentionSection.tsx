@@ -1,13 +1,7 @@
+import { useSectionEditor } from './SectionFormHelpers';
 import { Chip, DataBase, Document, History } from '@carbon/icons-react';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  adminSettings,
-  SettingsApiError,
-  type SettingsSectionResponse,
-} from '../../api/adminSettings';
-import { EtagConflictDialog } from './EtagConflictDialog';
 import { EnvOverrideBadge } from './EnvOverrideBadge';
 import { HotReloadHint, CompactCard } from './SectionFormHelpers';
 
@@ -28,14 +22,9 @@ type RetentionDto = {
  */
 export function RetentionSection() {
   const { t } = useTranslation(['adminSettings']);
-  const queryClient = useQueryClient();
-  const [conflict, setConflict] = useState<SettingsSectionResponse<RetentionDto> | null>(null);
-  const [errors, setErrors] = useState<string[] | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-settings', 'Retention'],
-    queryFn: () => adminSettings.getSection<RetentionDto>('Retention'),
-  });
+  const editor = useSectionEditor<RetentionDto>('Retention');
+  const { data, isLoading, errors } = editor;
 
   const [form, setForm] = useState<RetentionDto>({
     executions: { enabled: true, maxAgeDays: 30, intervalMinutes: 60, batchSize: 500, archivePath: null },
@@ -51,32 +40,6 @@ export function RetentionSection() {
     Executions: { ...mapKeysToPascal(form.executions) },
     AuditLog:   { ...mapKeysToPascal(form.auditLog) },
     WorkflowVersions: { ...mapKeysToPascal(form.workflowVersions) },
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      setErrors(null);
-      if (!data) throw new Error('No section snapshot loaded yet.');
-      return adminSettings.putSection<RetentionDto>('Retention', buildPayload(), data.etag);
-    },
-    onSuccess: (fresh) => {
-      queryClient.setQueryData(['admin-settings', 'Retention'], fresh);
-      queryClient.invalidateQueries({ queryKey: ['admin-settings', 'status'] });
-    },
-    onError: (err: unknown) => {
-      if (err instanceof SettingsApiError && err.status === 412 && err.body?.current) {
-        setConflict(err.body.current as SettingsSectionResponse<RetentionDto>);
-        return;
-      }
-      if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
-        setErrors(err.body.errors.map((e) => {
-          const fieldHint = e.fields?.length ? `${e.fields.join(', ')}: ` : '';
-          return `${fieldHint}${e.message ?? JSON.stringify(e)}`;
-        }));
-        return;
-      }
-      setErrors([err instanceof Error ? err.message : String(err)]);
-    },
   });
 
   if (isLoading || !data) {
@@ -136,32 +99,14 @@ export function RetentionSection() {
       <div className="flex justify-end">
         <button
           type="button"
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
+          onClick={() => editor.save(buildPayload())}
+          disabled={editor.isPending}
           className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 rounded-md"
         >
           <Chip size={14} /> {t('adminSettings:saveButton')}
         </button>
       </div>
-      <EtagConflictDialog
-        open={!!conflict}
-        serverSnapshot={conflict}
-        localDraft={buildPayload()}
-        onKeepMine={() => {
-          if (!conflict) return;
-          queryClient.setQueryData(['admin-settings', 'Retention'], conflict);
-          setConflict(null);
-          adminSettings.putSection<RetentionDto>('Retention', buildPayload(), conflict.etag)
-            .then((fresh) => queryClient.setQueryData(['admin-settings', 'Retention'], fresh))
-            .catch((e: unknown) => setErrors([e instanceof Error ? e.message : String(e)]));
-        }}
-        onTakeTheirs={() => {
-          if (!conflict) return;
-          queryClient.setQueryData(['admin-settings', 'Retention'], conflict);
-          setConflict(null);
-        }}
-        onCancel={() => setConflict(null)}
-      />
+      {editor.dialog(buildPayload())}
     </div>
   );
 }

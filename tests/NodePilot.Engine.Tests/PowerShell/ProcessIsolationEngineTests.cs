@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
+using Moq;
 using NodePilot.Engine.PowerShell;
 using NodePilot.Engine.Tests.Helpers;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.PowerShell;
@@ -148,7 +151,10 @@ public class ProcessIsolationEngineTests
         // leaked into a sibling spawn. Asserts the whole fan-out completes (no wedged step) and
         // every
         // run succeeds. Also proves the gate does not deadlock under contention.
-        var factory = new PowerShellEngineFactory(NullLoggerFactory.Instance);
+        var logger = new CapturingLogger();
+        var loggerFactory = new Mock<ILoggerFactory>();
+        loggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>())).Returns(logger);
+        var factory = new PowerShellEngineFactory(loggerFactory.Object);
         var isolated = factory.GetEngine("powershell", isolated: true);
         var process = factory.GetEngine("powershell"); // non-isolated -> ProcessExecutionEngine.Process.Start
 
@@ -166,7 +172,13 @@ public class ProcessIsolationEngineTests
         var all = Task.WhenAll(tasks);
         var finished = await Task.WhenAny(all, Task.Delay(TimeSpan.FromSeconds(120)));
         finished.Should().BeSameAs(all, "no isolated read may hang on a leaked pipe handle — the spawn gate prevents cross-inheritance");
-        (await all).Should().OnlyContain(r => r.Success, "every concurrent isolated/process run should succeed");
+        var results = (await all).Select((result, index) => new
+        {
+            Index = index, Lane = index % 2 == 0 ? "isolated" : "process", Result = result,
+        }).ToArray();
+        results.Should().OnlyContain(r => r.Result.Success,
+            "every concurrent isolated/process run should succeed; logs: {0}",
+            string.Join(Environment.NewLine, logger.Messages));
     }
 
     [Fact]

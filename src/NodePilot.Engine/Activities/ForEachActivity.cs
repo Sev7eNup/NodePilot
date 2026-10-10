@@ -95,13 +95,14 @@ public class ForEachActivity : IActivityExecutor
                 ? MaxParallelismHardCap
                 : Math.Min(parsed.MaxParallelism, MaxParallelismHardCap),
             StepId: context.StepId,
-            WorkflowExecutionId: context.WorkflowExecutionId);
+            WorkflowExecutionId: context.WorkflowExecutionId,
+            ParentExecution: await SubWorkflowInvocation.LoadParentExecutionAsync(_db, context.WorkflowExecutionId, ct));
 
         // Releases the global step-gate slot for the iterations, like StartWorkflowActivity does
         // for a synchronous child: both wait on children drawing from the same gate, so holding
         // the slot while waiting could deadlock a parent against the children it depends on.
         var results = await WorkflowScheduler.RunWithCurrentStepGateReleasedAsync(
-            () => RunIterationsAsync(runCtx, ct), ct);
+            () => SubWorkflowGateLease.RunWithCurrentSlotReleasedAsync(() => RunIterationsAsync(runCtx, ct), ct), ct);
         return BuildAggregateResult(runCtx, results, sw);
     }
 
@@ -270,42 +271,30 @@ public class ForEachActivity : IActivityExecutor
 
             var item = rctx.Items[index];
 
-            // Bounded by ISubWorkflowGate too, so cross-forEach and startWorkflow contention
-            // cannot exceed the engine-wide cap. The fixed worker count is the local budget,
-            // so only these workers wait on the global gate instead of every item racing it.
-            var globalAcquired = false;
+            WorkflowExecution? childExec;
+            string? errorMsg;
             try
             {
-                try
-                {
-                    await _gate.WaitAsync(itemsCts.Token);
-                    globalAcquired = true;
-                }
-                catch (OperationCanceledException)
-                {
-                    results[index] = new ItemResult(index, item, "Skipped", null, "cancelled before start");
-                    return;
-                }
-
-                var (childExec, errorMsg) = await ExecuteOneAsync(rctx, index, item, itemsCts.Token);
-
-                var status = childExec?.Status.ToString() ?? "Failed";
-                var succeeded = childExec?.Status == ExecutionStatus.Succeeded;
-                if (!succeeded && errorMsg is null)
-                {
-                    errorMsg = childExec?.ErrorMessage ?? "child workflow did not succeed";
-                }
-
-                results[index] = new ItemResult(index, item, status, childExec?.Id, succeeded ? null : errorMsg);
-
-                // Fail-fast: if an item fails and we don't continueOnError, cancel remaining.
-                if (!succeeded && !rctx.ContinueOnError)
-                    await requestCancelIfFailed(true);
+                (childExec, errorMsg) = await ExecuteOneAsync(rctx, index, item, itemsCts.Token);
             }
-            finally
+            catch (OperationCanceledException) when (itemsCts.IsCancellationRequested)
             {
-                if (globalAcquired) _gate.Release();
+                results[index] = new ItemResult(index, item, "Skipped", null, "cancelled before start");
+                return;
             }
+
+            var status = childExec?.Status.ToString() ?? "Failed";
+            var succeeded = childExec?.Status == ExecutionStatus.Succeeded;
+            if (!succeeded && errorMsg is null)
+            {
+                errorMsg = childExec?.ErrorMessage ?? "child workflow did not succeed";
+            }
+
+            results[index] = new ItemResult(index, item, status, childExec?.Id, succeeded ? null : errorMsg);
+
+            // Fail-fast: if an item fails and we don't continueOnError, cancel remaining.
+            if (!succeeded && !rctx.ContinueOnError)
+                await requestCancelIfFailed(true);
         }
     }
 
@@ -329,6 +318,7 @@ public class ForEachActivity : IActivityExecutor
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(parentCt, timeoutCts.Token);
 
         var concurrencySlotHeld = false;
+        var childStarted = false;
         try
         {
             // The child was resolved once for the whole loop, so its limit may have changed
@@ -345,26 +335,41 @@ public class ForEachActivity : IActivityExecutor
                     .Select(w => w.MaxConcurrentExecutions)
                     .FirstOrDefaultAsync(linkedCts.Token);
 
-            // Taken after ISubWorkflowGate, which the caller still holds — the same order both
-            // sub-workflow activities use. The per-item timeout covers this wait.
+            // Per-workflow waiters must not occupy global sub-workflow slots.
             await _workflowConcurrency.AcquireAsync(rctx.ChildWorkflow.Id, limit, linkedCts.Token);
             concurrencySlotHeld = true;
+            return await SubWorkflowGateLease.RunAsync(_gate, ExecuteChildAsync, linkedCts.Token);
 
-            // Lineage is persisted from these two arguments, not from __callDepth in the params:
-            // without them the child row shows as a top-level run in the UI, the ops timeline and
-            // the alerting classifier, and the support log writes start/end lines per item.
-            var childExec = await engine.ExecuteAsync(
-                rctx.ChildWorkflow,
-                $"forEach:{rctx.StepId}[{index}]",
-                linkedCts.Token,
-                childParams,
-                parentExecutionId: rctx.WorkflowExecutionId,
-                callDepth: rctx.CurrentDepth + 1);
-            return (childExec, null);
+            async Task<(WorkflowExecution? ChildExec, string? Error)> ExecuteChildAsync()
+            {
+                var childWorkflow = scopedDb is null ? rctx.ChildWorkflow
+                    : await SubWorkflowInvocation.ReloadAuthorizedChildAsync(
+                        scopedDb, rctx.ChildWorkflow.Id, rctx.ParentExecution,
+                        scope.ServiceProvider.GetService<ISubWorkflowAuthorizationResolver>() ?? _subWorkflowAuthz,
+                        linkedCts.Token);
+
+                // Lineage is persisted from these two arguments, not from __callDepth in the params:
+                // without them the child row shows as a top-level run in the UI, the ops timeline and
+                // the alerting classifier, and the support log writes start/end lines per item.
+                childStarted = true;
+                var childExec = await engine.ExecuteAsync(
+                    childWorkflow,
+                    $"forEach:{rctx.StepId}[{index}]",
+                    linkedCts.Token,
+                    childParams,
+                    startedByUserId: rctx.ParentExecution?.StartedByUserId,
+                    parentExecutionId: rctx.WorkflowExecutionId,
+                    callDepth: rctx.CurrentDepth + 1);
+                return (childExec, null);
+            }
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
             return (null, $"timed out after {rctx.TimeoutPerItem}s");
+        }
+        catch (OperationCanceledException) when (parentCt.IsCancellationRequested && !childStarted)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -444,7 +449,8 @@ public class ForEachActivity : IActivityExecutor
         int CurrentDepth,
         int EffectiveParallelism,
         string StepId,
-        Guid WorkflowExecutionId);
+        Guid WorkflowExecutionId,
+        WorkflowExecution? ParentExecution);
 
     private static List<string> ParseItems(string raw, string format)
     {

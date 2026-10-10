@@ -22,8 +22,12 @@ public sealed class PromptCatalog
     private const string AssistantSystemResource = "NodePilot.Ai.Prompts.assistant-system.md";
     private const string KnowledgeSystemResource = "NodePilot.Ai.Prompts.knowledge-system.md";
     private const string WorkflowExampleResource = "NodePilot.Ai.Prompts.workflow-example.json";
+    private const string AgentTeamSystemResource = "NodePilot.Ai.Prompts.agent-team-system.md";
 
     public string ScriptSystemPrompt { get; }
+
+    /// <summary>Agent-team drafting prompt: role semantics, reference rules and output envelope.</summary>
+    public string AgentTeamSystemPrompt { get; }
 
     /// <summary>Shared activity/definition reference (schema, catalog, variables, layout). Does not
     /// include output rules.</summary>
@@ -50,6 +54,7 @@ public sealed class PromptCatalog
         AssistantSystemPrompt = LoadResource(asm, AssistantSystemResource);
         KnowledgeSystemPrompt = LoadResource(asm, KnowledgeSystemResource);
         WorkflowExampleJson = LoadResource(asm, WorkflowExampleResource);
+        AgentTeamSystemPrompt = LoadResource(asm, AgentTeamSystemResource);
 
         // Generation needs the output rules and the activity reference as one prompt. The drift
         // test scans both prompt files separately, so they are joined here at runtime.

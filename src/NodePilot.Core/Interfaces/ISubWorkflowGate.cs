@@ -2,15 +2,14 @@ namespace NodePilot.Core.Interfaces;
 
 /// <summary>
 /// Process-wide back-pressure for sub-workflow invocations (<c>startWorkflow</c> and
-/// <c>forEach</c>). Caps how many children run at once so a fan-out cannot starve the engine
-/// of DB connections, runspaces, or thread-pool slots. The default implementation is a single
-/// in-process semaphore; the interface allows a distributed gate (DB lease, Redis) for
-/// multi-instance deployments without changing the activity code.
+/// <c>forEach</c>). Caps child workflows with active work; fully suspended ancestors lend their
+/// slot until resumption (ADR 0018). The engine's separate execution cap also bounds suspended
+/// ancestors. The default implementation is a single in-process semaphore.
 /// </summary>
 public interface ISubWorkflowGate
 {
     /// <summary>
-    /// Configured capacity (max concurrent children).
+    /// Configured capacity (max child workflows with active work).
     /// </summary>
     int Capacity { get; }
 

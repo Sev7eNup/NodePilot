@@ -95,7 +95,7 @@ Operators MUST:
   [§ Rotating the AES-GCM master key](#rotating-the-aes-gcm-master-key) below — set
   `Secrets:LegacyMasterKey` or `Secrets:LegacyMasterKeyFile` alongside the new key, run
   `POST /api/secrets/reencrypt`, and drop the legacy entries only after the response confirms
-  a clean credential, global-secret **and workflow-history** sweep.
+  zero skips across every database and runtime-settings family.
 
 The startup hardening warning emits a SECURITY log line on boot whenever a plaintext
 master key is detected, so operators get a daily reminder if they forget to harden.
@@ -118,7 +118,13 @@ the deployment runs pure-AES-GCM and the legacy DPAPI config can be removed.
 }
 ```
 
-Boot log emits `[Secrets] Migrating secret protector enabled: active=AesGcm, legacy=Dpapi.`
+Boot log identifies `AesGcm+Dpapi-fallback`. The same legacy fallback is available while
+loading encrypted runtime settings, before DI starts.
+
+Use a maintenance window: start every node with the new active provider and the legacy
+fallback before sweeping. Pause configuration/secret changes and restore/import operations
+until cutover. In HA, the database sweep is shared, but run the endpoint on **each node**
+with its own runtime settings file. A clean result covers the responding node's files.
 
 ### Step 2 — bulk re-encrypt
 
@@ -143,6 +149,18 @@ Clean-success response (status `200 OK`):
   "workflowVersionsRewritten": 86,
   "workflowVersionsSkipped": 0,
   "workflowVersionSkipDetails": [],
+  "agentMcpSecretsRewritten": 2,
+  "agentMcpSecretsSkipped": 0,
+  "agentMcpSecretSkipDetails": [],
+  "notificationRoutesRewritten": 3,
+  "notificationRoutesSkipped": 0,
+  "notificationRouteSkipDetails": [],
+  "dispatchParametersRewritten": 1,
+  "dispatchParametersSkipped": 0,
+  "dispatchParameterSkipDetails": [],
+  "runtimeSettingsFilesRewritten": 4,
+  "runtimeSettingsFilesSkipped": 0,
+  "runtimeSettingsFileSkipDetails": [],
   "partialSuccess": false
 }
 ```
@@ -171,21 +189,30 @@ decrypted under any configured protector:
 }
 ```
 
-The endpoint walks every credential password, every secret-flagged global and every encrypted
-`WorkflowVersion.DefinitionJson`, decrypts through the migrating wrapper (active first, falls
+The endpoint walks credentials, secret globals, encrypted workflow versions, agent MCP secrets,
+notification-route secrets, pending dispatch parameters, and encrypted values in the responding
+node's active runtime settings file **and its `.bak.*` rollback files**. It decrypts through the migrating wrapper (active first, falls
 back to legacy when the bytes don't parse under active), and re-encrypts under the active
 provider. Successfully migrated rows are committed regardless of skip outcomes — a partial
 sweep still moves the deployment forward. **`partialSuccess=true` (status 207) means the legacy
 provider must remain configured.** Re-enter listed credentials/globals; for a workflow-history
 skip, restore or otherwise repair the named version before re-running the sweep.
 
+Concurrent row changes are reported as `ConcurrentUpdate`; rerun instead of losing newer data.
+Runtime files use the settings writer's mutex and atomic replacement per file, without creating
+an old-key backup. A malformed or unreadable file stays unchanged and is listed by filename with
+a bounded error class. Runtime counts are **files**, including rollback files, rather than values;
+their skip IDs are the empty GUID. Cancellation/failure can leave earlier conversions committed;
+retain the fallback and rerun. Exported backups outside the runtime writer's directory are not
+rewritten: retain their recovery key separately or replace them before retiring it permanently.
+
 CI / Ansible can branch on the status line directly: `200` = clean cutover, `207` =
 manual follow-up needed for the named rows.
 
 ### Step 3 — drop the legacy config
 
-Pre-conditions: response from Step 2 was `200 OK` with `partialSuccess=false`; all three
-skip counters — including `workflowVersionsSkipped` — are zero; and the
+Pre-conditions: Step 2 returned `200 OK` with `partialSuccess=false` on every node; all seven
+skip counters are zero; and the
 `nodepilot.credential.crypto.legacy_reads` counter remains zero during post-sweep checks
 (every read now hits the active provider directly). A `207` or any workflow-version skip blocks
 removal of `LegacyProvider`. Resolve every `*SkipDetails` entry and re-run Step 2 until clean.
@@ -216,9 +243,9 @@ DPAPI in Step 1. Step 2 + 3 unchanged.
       DB rows are permanently unrecoverable.
 - [ ] Boot log (logger category `Secrets`) shows the expected provider line. Two shapes:
       - Single provider, no migration: `Secret protector enabled. Provider: AesGcm.`
-      - Migration window with legacy fallback: `Migrating secret protector enabled: active=AesGcm, legacy=Dpapi. Run POST /api/secrets/reencrypt then remove Secrets:LegacyProvider once the legacy_reads counter is zero.`
-- [ ] The re-encrypt response is `200`, `partialSuccess=false`, and credential/global/history
-      skip counters are all zero before removing any legacy-provider setting.
+      - Migration window with legacy fallback: `Secret protector enabled. Provider: AesGcm+Dpapi-fallback.` Run `POST /api/secrets/reencrypt`, resolve every reported skip and follow the rotation procedure above before removing the legacy provider.
+- [ ] The re-encrypt response is `200`, `partialSuccess=false`, and all seven skip counters
+      are zero (on every node) before removing any legacy-provider setting.
 - [ ] After cluster-mode switch, smoke-test one credential decrypt on each node.
 
 ## Bewusst nicht in V1

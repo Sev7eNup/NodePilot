@@ -10,6 +10,90 @@ not a reprint.
 Entries were reconstructed from the published release notes, so they are condensed rather than
 exhaustive.
 
+## [Unreleased]
+
+Planned version: **1.4.5**.
+
+### Release highlight: AI Agent & AI Agent Team
+
+> **Give your workflow a task in plain language.**
+> “Investigate this server's update errors, check the relevant logs and services,
+> and report the likely cause with supporting evidence.”
+
+**AI Agent** uses selected tools, inspects results and follows up before returning a
+text or JSON report. **AI Agent Team** adds a supervisor, parallel specialists and
+reviewers to investigate together inside one workflow step. Actions are currently
+**read-only**: agents investigate and recommend repairs.
+
+Requires an AI profile with tool calling and explicitly selected tools and target
+identities. [Learn how to configure agents and teams →](docs/ai-agents.md)
+
+### Added
+
+- Follow agent assignments, observations and reviews in the designer and execution history,
+  and export the journal. Results distinguish technical success from `completed`, `partial`
+  or `blocked` work; interrupted runs retain preliminary findings. Reviews make the basis
+  of an answer inspectable but do not guarantee a correct diagnosis.
+- Versioned agent skills, approved external MCP tools, and administration through REST,
+  CLI and MCP. Example skills cover Windows and SCCM troubleshooting. Agent registries
+  require native database and secret-key backups; portable configuration exports omit them.
+- Configurable agent budgets and optional **Power mode**, which removes call, delegation
+  and overall agent-time budgets. Permissions, cancellation and workflow timeouts still
+  apply. Power mode is off by default and can increase runtime and provider costs.
+- Workflow imports can map referenced resources to matching destination resources and
+  workflows imported together. Missing or ambiguous references are reported for correction.
+
+### Changed
+
+- Four English IT examples replace the old starter workflows: Server Overview (5 activities),
+  Event Log Review (10), Diagnostic Package (18), and System Health Observatory (45).
+  All run on `localhost`, include the trigger in their counts, and need neither email nor AI.
+  See the [sample guide](samples/README.md).
+- Agent settings use searchable lists. Browser-demo links support `?lang=de` and `?lang=en`.
+- Expanded agent documentation and clarified workflow terminology; added an Orchestrator
+  2016 end-of-support article. Removed unused palette files and local skill-lock tracking.
+- The dashboard replaces its Scheduler and HA tiles, which the status bar already shows, with
+  **Active triggers** (count and next scheduled start) and **Services** (healthy background
+  services out of all heartbeats, with the stale ones named).
+- The dashboard duration trend (median and P95) for 24 hours and longer comes from
+  precomputed hourly histograms and is accurate to within a few percent. The upgrade
+  rebuilds the dashboard history once; until it finishes, the dashboard reads raw executions.
+- The desktop app runs on Electron 44.5.1 (Chromium 152, Node 24).
+
+### Fixed
+
+- Event Log triggers no longer read the same log concurrently, avoiding recurring
+  out-of-range errors. They read entries newer than the saved cursor.
+- Execution history pages full records only after selecting their keys, reducing SQL Server
+  timeouts. Unchanged search text no longer resets the selected page.
+- The 7- and 30-day dashboard views use the precomputed hourly history even when the
+  execution history is younger than the window; before, every cache miss scanned raw
+  executions. Dashboard aggregates stay warm after idle periods and folder changes, and a
+  failing history backfill no longer makes the shorter windows fall back to raw scans.
+- The 1-hour dashboard view and the dashboard history rebuild no longer scan every step
+  execution to count retried runs; a small filtered index serves the lookup. The index is
+  built once on the first start after the upgrade.
+- Workflow activity counts include triggers, and Last Run timestamps preserve UTC.
+- Grouped canvas nodes no longer cause false overlap warnings. AI agent nodes have their
+  intended shapes and colors.
+- Agent investigations preserve evidence across context compaction, detect stalled progress
+  and avoid repeating completed tools when retrying transient model failures. Exhausting
+  the investigation model-call budget uses the reserved final report and retains unresolved work.
+- Stabilized asynchronous regression tests and CI test isolation and reporting.
+
+### Security
+
+- **Agent actions are currently read-only.** Agents can investigate and recommend repairs;
+  tools, targets, paths and invoked workflows are checked before execution. Skills and
+  Power mode grant no extra permissions. External MCP tools require administrator approval;
+  changed connections or tool contracts require renewed approval. Selected calls execute
+  without individual approval dialogs. Regular workflow behavior is unchanged.
+- Agent skill scripts use checked commands; PowerShell retains target signature and
+  execution-policy checks. The CMD bootstrap prevents package-local command shadowing.
+- Server upgrades repair data-directory permissions that could otherwise prevent the service
+  from reading its JWT key and force an update rollback.
+- Updated DOMPurify to 3.4.16 and patched locked build dependencies, including `source-map-js`.
+
 ## [1.4.4] - 2026-10-03
 
 ### Added
@@ -1774,6 +1858,7 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.4...main
 [1.4.4]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.3...main
 [1.4.3]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.3
 [1.4.2]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.2

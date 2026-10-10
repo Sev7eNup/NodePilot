@@ -248,6 +248,42 @@ public class SystemAlertSourceTests
         (await source.ObserveAsync(db, SystemAlertQuery.Empty, CancellationToken.None)).Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("0/5 * * * * ?", 1440, true)]
+    [InlineData("0 * * * * ?", 1440, true)]
+    [InlineData("0/5 * * * * ?", 2, false)]
+    [InlineData("0 * * * * ?", 2, false)]
+    public async Task ScheduleMissedSource_FrequentSchedule_OnlyRecentRunSatisfiesOverdueFire(
+        string cron, int minutesSinceRun, bool expectedMissed)
+    {
+        await using var db = TestDbFactory.Create();
+        var wf = Wf(Guid.NewGuid(), "frequent");
+        wf.DefinitionJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            nodes = new[] { new { id = "schedule", type = "activity", data = new { activityType = "scheduleTrigger", config = new { cronExpression = cron } } } },
+            edges = Array.Empty<object>(),
+        });
+        db.Workflows.Add(wf);
+        var execution = Exec(wf.Id, ExecutionStatus.Succeeded, DateTime.UtcNow.AddMinutes(-minutesSinceRun));
+        execution.TriggeredBy = "scheduleTrigger";
+        db.WorkflowExecutions.Add(execution);
+        await db.SaveChangesAsync();
+
+        var observations = await new ScheduleMissedSource().ObserveAsync(db, SystemAlertQuery.Empty, CancellationToken.None);
+        observations.Should().ContainSingle().Which.Fields["missed"].Should().Be(expectedMissed);
+    }
+
+    [Theory]
+    [InlineData("0/5 * * * * ?", "2026-10-09T12:00:04Z", "2026-10-09T12:00:00Z")]
+    [InlineData("0 0 12 * * ?", "2026-10-09T11:00:00Z", "2026-10-08T12:00:00Z")]
+    [InlineData("0 0 12 1 * ?", "2026-10-09T11:00:00Z", null)]
+    public void ScheduleMissedSource_PreviousFire_IsLatestInsideLookback(string cron, string endText, string? expectedText)
+    {
+        var end = DateTimeOffset.Parse(endText);
+        var previous = ScheduleMissedSource.PreviousFireBefore(new Quartz.CronExpression(cron, TimeZoneInfo.Utc), end.AddHours(-48), end);
+        previous.Should().Be(expectedText is null ? null : DateTimeOffset.Parse(expectedText));
+    }
+
     [Fact]
     public async Task ExecutionResultSource_LookbackParameter_BoundsTheWindow()
     {

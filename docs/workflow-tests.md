@@ -1,6 +1,6 @@
 # NodePilot Test-Suite
 
-50 generierte Workflows unter [`scripts/test-suite/`](../scripts/test-suite/), die jede
+51 generierte Workflows unter [`scripts/test-suite/`](../scripts/test-suite/), die jede
 Activity-Variante, jeden Trigger, jeden Edge-Operator und jedes Retry-Backoff **im Takt gegen
 die laufende Engine** ausführen und ihr Ergebnis prüfen. Live-Installation im Ordner
 `/Test_Workflows`.

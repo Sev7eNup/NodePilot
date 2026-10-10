@@ -2,10 +2,14 @@
 
 Hermetic Playwright specs for the React SPA. They mock every API call with `page.route`
 (no backend, no Postgres, no WinRM) and run against a `vite preview` build. The full
-[`docs/testing/E2ETests.md`](../../../docs/testing/E2ETests.md) catalogue (85 Teile) is the source of truth; this suite is the **automated
+[`docs/testing/E2ETests.md`](../../../docs/testing/E2ETests.md) catalogue (86 Teile) is the source of truth; this suite is the **automated
 UI subset**. Backend-only and environment-bound scenarios are covered elsewhere (noted below).
 
 ## Running
+
+Agent budget finalization and packaged CMD/Bash command binding are backend
+regressions in `AgentRuntimeTests` and `AgentSkillTests`; mocked browser tests do
+not establish those guarantees. See the backend cases in the E2E catalogue.
 
 ```bash
 npm run test:e2e          # real config: builds the SPA, serves via vite preview :4173
@@ -24,6 +28,10 @@ npm run test:e2e:demo     # builds dist-demo, serves it under /demo/ on :4180
 
 The nightly Task Scheduler job (`scripts/nightly-tests.ps1`) runs `npm run test:e2e`
 alongside `dotnet test` and `npm run test:run`.
+
+CI publishes first-attempt failures, retries and recurring flakes in its job summary and
+the `e2e-reliability` artifact. Definitions, history limits and the distinction from real
+release acceptance are in [test reliability](../../../docs/testing/test-reliability.md).
 
 ## Conventions (read before adding specs)
 
@@ -76,6 +84,16 @@ alongside `dotnet test` and `npm run test:run`.
   live channel.
 
 ## Coverage map (E2ETests.md Teil → spec)
+
+`ai-agents.spec.ts` additionally covers the admin parallel-member limit, visible team-member selection, separate tools,
+save/reopen without creating extra workflow steps, and drafting a team from a description (blocking issue,
+candidate pick, replace confirmation). Live channel delivery remains
+covered through journal/reconnect unit and API tests, since this harness mocks SignalR.
+`agent-settings.spec.ts` covers bounded searchable registries, expandable details, explicit skill import,
+MCP enable/disable with revision conflicts, power-mode persistence, environment locks and responsive DE/EN layouts.
+`agent-run-trace.spec.ts` covers history drill-down, the large communication view,
+member snapshots, interleaved parallel assignments and batch badges, assignments/rationales, return questions, tool evidence, escaped
+untrusted content, REST pagination and full support export despite a member filter.
 
 Not in the map (no Teil): `_all-screens.spec.ts` — the screenshot-capture spec that renders
 every main screen into `__screens__/*.png`; it documents visuals, it asserts nothing.

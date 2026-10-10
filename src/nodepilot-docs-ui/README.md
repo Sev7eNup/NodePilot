@@ -116,7 +116,11 @@ Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/
   Verlinkung und Veröffentlichungsstand. Sie werden als vollständiges HTML ausgeliefert und
   gehören nicht ins gemeinsame JavaScript. Deutsche URLs bleiben bestehen, englische Fassungen
   liegen unter `/en/`, jeweils mit eigenem Canonical und gegenseitigem `hreflang`.
-  Die URL bestimmt die Sprache. `LANG_STORAGE_KEY` bewahrt die Auswahl für weitere Einstiege.
+  Einstiege ohne Sprachsegment verwenden die bewusst gespeicherte Auswahl (`LANG_STORAGE_KEY`),
+  sonst die erste unterstützte Browsersprache (DE/EN), sonst Englisch. Das gilt für Website und
+  Docs gemeinsam; nur die Sprachschalter speichern eine Präferenz. Ausdrückliche Sprachsegmente
+  (`/en/` auf der Website, `/de/` und `/en/` in den Docs) bleiben maßgeblich und überschreiben
+  die gespeicherte Wahl nicht. Impressum und Datenschutz bleiben ausschließlich deutsch.
   `NP_BLOG_PREVIEW=1` bindet Entwürfe nur zur lokalen Prüfung ein (`noindex`, ohne Sitemap-Eintrag).
   Vor der Veröffentlichung die Variable entfernen oder auf `0` setzen. Für freigegebene Artikel
   `status: published` und das tatsächliche `publishedAt` setzen; `modifiedAt` nur bei einer
@@ -159,6 +163,8 @@ Doku und serviert Website (Port 5176) und Doku (Port 5187) getrennt per `vite pr
   Beschreibung und Übersetzung je Seite, Adresse und Titel beim Navigieren, alte Hash-Adressen.
 - `experience.spec.ts`: geführter Einstieg mit beiden Aufgaben in der aktuellen Sprache und bei
   schmalen Breiten, Links bleiben nach Seitenwechseln korrekt.
+- `language-preference.spec.ts`: Browsersprache als Vorgabe für Website und Doku, nur die
+  Sprachschalter speichern eine Wahl, deutschsprachige Rechtsseiten bleiben erreichbar.
 - `pages-redirects.spec.ts`: alte GitHub-Pages-Links landen auf der passenden kanonischen Adresse,
   Doku-Seiten auch ohne JavaScript per Meta-Refresh.
 - `seo.spec.ts`: statischer Seiteninhalt, Canonical und Sprachverweise ohne JavaScript,

@@ -16,6 +16,13 @@ const MB = 1024 * 1024;
 
 /** Section name → payload, mirroring each card's own fallback. */
 const SECTIONS: Record<string, unknown> = {
+  Agents: {
+    enabled: true, powerMode: false, allowServiceIdentity: false, maxConcurrentRuns: 2,
+    singleModelCalls: 20, singleToolCalls: 40, singleTimeoutSeconds: 1200,
+    teamModelCalls: 100, teamToolCalls: 500, teamDelegations: 20, teamMaxParallelMembers: 3, teamTimeoutSeconds: 1800,
+    modelCallTimeoutSeconds: 180, modelMaxOutputTokens: 250000,
+    maxContextCharacters: 250000, maxToolOutputCharacters: 16000, maxResultCharacters: 64000, readOnlyMcpTools: [],
+  },
   Authentication: {
     ldap: {
       enabled: false, server: null, endpoints: [], port: 636, useSsl: true, baseDn: null,

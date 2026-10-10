@@ -148,6 +148,8 @@ public static class FileWatcherPathGuard
             {
                 FileAttributes attributes;
                 try { attributes = File.GetAttributes(entry); }
+                // The entry was removed between enumeration and inspection.
+                catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException) { continue; }
                 catch (Exception ex)
                 {
                     throw new InvalidOperationException(
@@ -155,8 +157,13 @@ public static class FileWatcherPathGuard
                 }
 
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    // A flat scan never descends, so a link cannot extend the tree; it is left out
+                    // because its target may lie outside the root.
+                    if (!includeSubdirectories) continue;
                     throw new InvalidOperationException(
                         $"FileWatcherTrigger: watched tree contains reparse point '{entry}'.");
+                }
 
                 if ((attributes & FileAttributes.Directory) != 0)
                 {

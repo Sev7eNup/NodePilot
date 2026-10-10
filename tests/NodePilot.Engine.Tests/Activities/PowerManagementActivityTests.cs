@@ -63,6 +63,34 @@ public sealed class PowerManagementActivityTests : IDisposable
 
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement;
 
+    [Theory]
+    [InlineData("shutdown", 0)]
+    [InlineData("restart", 0)]
+    [InlineData("logoff", 0)]
+    [InlineData("hibernate", 0)]
+    [InlineData("shutdown", 5)]
+    [InlineData("restart", 5)]
+    [InlineData("logoff", 5)]
+    [InlineData("hibernate", 5)]
+    public async Task NativeExitCode_ControlsOutcomeWithoutInvokingShutdown(string action, int exitCode)
+    {
+        await CreateActivity().ExecuteAsync(Ctx(),
+            JsonSerializer.SerializeToElement(new { action }), CancellationToken.None);
+        // The captured production script resolves this function before the real executable.
+        // No shutdown, restart, logoff, or hibernation is performed by this test.
+        using var shell = System.Management.Automation.PowerShell.Create();
+        shell.AddScript("function shutdown.exe { $global:LASTEXITCODE = " + exitCode
+            + "; 'native diagnostic' }; try { & { " + _capturedScript
+            + " }; 'SUCCESS' } catch { 'FAILED: ' + $_.Exception.Message }");
+        var output = string.Join("\n", shell.Invoke().Select(value => value.ToString()));
+        shell.HadErrors.Should().Be(exitCode != 0);
+        if (exitCode == 0)
+            output.Should().Contain("SUCCESS").And.Contain("native diagnostic");
+        else
+            output.Should().Contain("FAILED:").And.Contain("5").And.Contain("native diagnostic")
+                .And.NotContain("SUCCESS");
+    }
+
     // ---- Error cases ----
 
     // Defence-in-depth: PowerManagement is all-destructive (shutdown/restart/logoff/

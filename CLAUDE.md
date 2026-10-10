@@ -23,8 +23,9 @@ Moderner, schlanker Ersatz fuer Microsoft System Center Orchestrator. Agentless 
 - `docs/deployment-guide.md` — (EN) Artefakt verifizieren, selbst bauen, Troubleshooting — **nicht** der Installationsweg, der steht **einmal** auf der Doku-Website (`content/{de,en}/deployment/production.md`)
 - `docs/av-exclusions.md` — Antiviren-Ausschlüsse (Server + Desktop) als Übergabedokument für eine AV-Abteilung
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
-- `docs/workflow-tests.md` — Test-Suite unter `scripts/test-suite/`: 50 generierte Workflows gegen die laufende Engine, `suite-manifest.json` als Abdeckungsquelle, Guard-Test `TestSuiteCoverageTests`
+- `docs/workflow-tests.md` — Test-Suite unter `scripts/test-suite/`: 51 generierte Workflows gegen die laufende Engine, `suite-manifest.json` als Abdeckungsquelle, Guard-Test `TestSuiteCoverageTests`
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
+- `docs/threat-model.md` — Vertrauensgrenzen, globale Credentials, Agent-Policy und Sicherheitsnachweise
 - `docs/ai-feature-ideas.md` — Beschreibungstiefe zu den KI-Ideen, **keine Spezifikation**. Priorisierung und Status stehen in `docs/roadmap.md`.
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen
 - `src/nodepilot-ui/demo/` — **Browser-Demo** der SPA auf www.nodepilot.run (`/demo/`), dieselbe App gegen ein In-Memory-Backend; Regeln in `src/nodepilot-ui/CLAUDE.md`
@@ -37,7 +38,7 @@ Moderner, schlanker Ersatz fuer Microsoft System Center Orchestrator. Agentless 
 - **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` braucht `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`, sonst Boot-Abbruch). Lokale Nutzerskripte (`engine: auto`) laufen als Windows-PowerShell-5.1-Prozess wie remote; der In-Proc-Pool (WinPS-Kompatibilität bewusst aus) bedient die eingebauten Activities und `engine: runspace`: `docs/claude-reference.md`
 - **Real-time:** SignalR (`/hubs/execution`)
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
-- **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 102 Tools, HTTP-only gegen die REST-API
+- **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 112 Tools, HTTP-only gegen die REST-API
 - **Enterprise (opt-in):** Active/Passive HA (`Cluster:Enabled`), pluggable Secret-Provider (`Secrets:Provider` = `Dpapi`|`AesGcm`), LDAP/Windows-SSO, ECS-JSON-SIEM, Folder-RBAC
 
 ## Solution-Struktur
@@ -72,10 +73,35 @@ cd src\nodepilot-docs-ui; npm run dev     # Doku-Website, Port 5174 — nur wenn
 - **PR-Budget: maximal 5 PRs gleichzeitig** für eigene Arbeits-Batches (größere Vorhaben in ≤5 PRs schneiden). Für **Dependabot gilt diese Zahl nicht**: `.github/dependabot.yml` bündelt Minor/Patch pro Ökosystem (`open-pull-requests-limit: 1` je Block → max. 5 Sammel-PRs), aber **jeder offene Major fällt aus der Gruppe und bekommt einen eigenen PR**. Majors bleiben bewusst ungruppiert, weil ein Bündel den Review verschlechtert.
 - **Jede Änderung an `.github/dependabot.yml` löst sofort alle Blöcke neu aus** (unabhängig vom Montags-Zeitplan) und erzeugt binnen Minuten neue PRs. Config-Edits deshalb **bündeln**, nicht nacheinander mergen.
 - **Scope:** Minimaler Root-Cause-Fix. Würde ein Fix deutlich mehr Dateien anfassen als das benannte Problem → stoppen und den geplanten Scope in 3 Bullets nennen, bevor editiert wird.
-- **Keine Abwärtskompatibilität:** Keine Shims, Feature-Flags, optionale Defaults für sanfte Migration. Sauber durchziehen: `NOT NULL`, Required-Properties, alte Code-Pfade ersatzlos löschen. Alte DB → Migrations fahren, fertig.
+- **Keine Abwärtskompatibilität:** Keine Shims, Feature-Flags, optionale Defaults für sanfte Migration. Sauber durchziehen: `NOT NULL`, Required-Properties, alte Code-Pfade ersatzlos löschen. Alte DB → Migrations fahren, fertig. Ein Bruch an einem Format, das Installationen aufbewahren (Export-/Backup-Envelope, Workflow-JSON), wird vorher angesprochen und dann ebenso ohne Shim durchgezogen.
+- **Neue Abhängigkeit** (NuGet über `Directory.Packages.props`, npm) nur nach Rückfrage. Lockfiles nur anfassen, wenn sich die Auflösung wirklich ändert.
 - **PowerShell 5.1 / Windows:** Kein Inline-SQL durch PowerShell-Quoting — Query in eine `.sql`-Datei schreiben und per `psql -f` ausführen. Dateien als UTF-8 **ohne** BOM schreiben. Keine `sed`/Regex-Zeilen-Edits auf Source-Dateien (CRLF bricht sie) — Edit-Tool verwenden. Kein `$args`-Splatting; explizite benannte Parameter.
 - **Code-Kommentare:** Sachlich und kurz, in einfachem Englisch. Sie sagen, **was** der Code tut und **warum** — nicht mehr. Keine Herleitung, keine Erzählung, keine Rückblende auf frühere Fehlversuche, keine Messwerte oder Beispielzahlen als Beleg, kein „X used to …, which meant …". Wer den Hintergrund braucht, findet ihn in Commit-Message, PR oder `docs/`. Ein bis drei Zeilen reichen fast immer; ein Kommentar, der länger ist als der Code darunter, ist meist eine Erzählung. Die vorhandenen langen Kommentare im Repo sind **kein** Vorbild.
 - **Reporting:** Knapp berichten — was geändert, was verifiziert, was offen. Keine Per-File-Walkthroughs, kein Plan-Nacherzählen. Interaktive Rückfragen nur, wenn die Antwort wirklich blockiert.
+
+## Sprachregeln (C#, React/TS, PowerShell)
+
+**C#** (`src/**/*.cs`, `tests/**/*.cs`)
+- Async durchgehend. Kein `.Result`, kein `.Wait()`, kein `GetAwaiter().GetResult()` auf I/O.
+- `CancellationToken` durchreichen, wo die Operation sinnvoll abbrechbar ist. Zustands- und Lifecycle-Writes, die auch bei Abbruch landen müssen, speichern mit `CancellationToken.None` (ein nach dem Commit gecanceltes `SaveChangesAsync` lässt Entities `Added` → doppelter INSERT; Guard: `StepStatePersistenceInvariantTests`).
+- Nullability-Warnungen beheben, nicht mit `!` oder `#pragma` stummschalten.
+- Ein Interface nur bei echter zweiter Implementierung oder echter Test-Naht (Remote-Layer, Uhr, LLM-Client), nicht pro Klasse.
+- Parallelität nur begrenzt (Semaphore/Channel mit Kapazität), mit definiertem Fehler- und Cancel-Verhalten.
+
+**React / TypeScript** (`src/nodepilot-ui/`, `src/nodepilot-docs-ui/`)
+- Keine unsicheren Casts (`as unknown as T`), um einen Typfehler loszuwerden.
+- Keinen State speichern, der sich aus Props oder anderem State ableiten lässt.
+- Render- oder Event-Logik vor `useEffect`. Die Lint-Regel `react-hooks/set-state-in-effect` ist aus, also ist das hier Konvention, nicht Check.
+- Kein `useMemo`/`useCallback` ohne konkreten Grund (Referenzstabilität für eine Abhängigkeit, gemessene Kosten).
+- Netzwerkzugriffe über `src/api/` und React Query, nicht direkt in Komponenten.
+- Semantische, zugängliche Controls (`<button>`, `<label>`) statt klickbarer `<div>`s.
+
+**PowerShell** (`**/*.ps1`, `**/*.psm1`)
+- Ziel Windows PowerShell 5.1. Keine 7.x-Syntax (`??`, `?.`, Ternary, `&&`/`||`).
+- Skriptkopf wie in `deploy/`: `[CmdletBinding()]`, `$ErrorActionPreference = 'Stop'`, `Set-StrictMode -Version 3.0`.
+- Approved Verbs, volle Cmdlet- und Parameternamen, keine Aliase.
+- Credentials als `PSCredential` oder über den Secret-Provider, nie im Klartext.
+- Installer-Skripte unter `deploy/desktop/` und `deploy/server/` bleiben ASCII-only (PS 5.1 liest UTF-8 ohne BOM als ANSI).
 
 ## Datenbank
 
@@ -141,7 +167,7 @@ UX-Flow und Button-State-Matrix: `docs/claude-reference.md`. Kurz: `canWrite = r
 "Remote" = `targetMachineId`/WinRM. "Engine-local" = im API-Prozess. `(controlFlow)` = Kategorie `ControlFlow` im backend `ActivityCatalog` (Palette-Achse, unabhängig vom Scope).
 
 - **Remote:** `fileOperation`, `folderOperation`, `textFileEdit`, `serviceManagement`, `registryOperation`, `wmiQuery`, `startProgram`, `powerManagement`, `scheduledTask`, `fileHash`, `zipOperation`
-- **Engine-local:** `restApi`, `sql`, `emailNotification`, `delay`, `xmlQuery`, `jsonQuery`, `log`, `generateText`, `llmQuery` + controlFlow: `junction`, `forEach`, `decision`, `startWorkflow`, `returnData`
+- **Engine-local:** `restApi`, `sql`, `emailNotification`, `delay`, `xmlQuery`, `jsonQuery`, `log`, `generateText`, `llmQuery`, `aiAgent`, `aiAgentTeam` + controlFlow: `junction`, `forEach`, `decision`, `startWorkflow`, `returnData`
 - **Hybrid:** `runScript`, `waitForCondition`
 
 Config-Keys & Output-Semantik pro Activity sowie Prozess-Isolation (`config.isolated: true`, nur lokal, No-Op auf dem WinRM-Pfad): `docs/claude-reference.md`.
@@ -262,11 +288,11 @@ Layout-Styleguide für Workflow-JSONs: **zuerst** `docs/workflow-styleguide.md` 
 
 Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.json`-Scripts). Backend nutzt Central Package Management (`Directory.Packages.props`).
 
-**Konventionen:** Tests sind Pflicht — jeder relevante Code-Change bringt passenden Test-Code in derselben Änderung. Naming `MethodName_Scenario_ExpectedResult`; Remote-Layer (WinRM) IMMER gemockt; DB-Tests SQLite in-memory. Coverage-Gate Backend Line >= 85 % / Branch >= 70 %, **erzwungen in `.github/workflows/ci.yml`, das ist die einzige autoritative Zahl** (Ratsche — nur anheben, nie senken); Frontend siehe `vitest.config.ts`. Messverfahren, Assembly-Filter und die `[ExcludeFromCodeCoverage]`-Regel: `docs/claude-reference.md` § Coverage-Messung.
+**Konventionen:** Tests sind Pflicht — jeder relevante Code-Change bringt passenden Test-Code in derselben Änderung. Naming `MethodName_Scenario_ExpectedResult`; Remote-Layer (WinRM) IMMER gemockt; DB-Tests SQLite in-memory. Assertions nie abschwächen, Tests nie skippen oder löschen, damit sie grün werden; keine Sleeps gegen Races. Coverage-Gate Backend Line >= 85 % / Branch >= 70 %, **erzwungen in `.github/workflows/ci.yml`, das ist die einzige autoritative Zahl** (Ratsche — nur anheben, nie senken); Frontend siehe `vitest.config.ts`. Messverfahren, Assembly-Filter und die `[ExcludeFromCodeCoverage]`-Regel: `docs/claude-reference.md` § Coverage-Messung.
 
 ### Testumfang pro Änderung
 
-**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 242 Vitest-Dateien, 77 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 255 Vitest-Dateien, 80 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
 
 **Der Nightly ist kein verlässlicher zweiter Boden.** Er läuft als Windows-Task um 22:00 gegen den ausgecheckten Baum und wird verpasst, sobald die Maschine dann aus ist. Wer sich auf ihn beruft, prüft vorher `C:\temp\nodepilot-nightly\latest.md` auf sein Datum.
 
@@ -328,7 +354,7 @@ Parity-/Drift-Tests erzwingen Konsistenz zwischen weit auseinanderliegenden Date
 
 ## Clients (`np` CLI + `nodepilot-mcp`)
 
-Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad; der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (102 Tools, 3 Resources, stdio). Packaging, Anmeldewege, geteilte Client-Infrastruktur und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`.
+Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad; der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (112 Tools, 3 Resources, stdio). Packaging, Anmeldewege, geteilte Client-Infrastruktur und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`.
 
 **Jeder neue API-Endpoint braucht beide Clients** (Guard: `EndpointClientCoverageTests`).
 
@@ -367,7 +393,7 @@ Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pf
 
 ## Admin-Settings Hot-Reload
 
-Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker. 13 Sektionen sind hot-reloadable, 9 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed. Matrix: `docs/claude-reference.md` § Hot-Reload-Matrix.
+Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker. 13 Sektionen sind hot-reloadable, 10 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed. Matrix: `docs/claude-reference.md` § Hot-Reload-Matrix.
 
 **Consumer-Regel:** hot-reloadable Werte via `IOptionsMonitor<T>.CurrentValue` bzw. rohes `IConfiguration` pro Use/Pass lesen — **nie** `IOptions<T>.Value`-Snapshot.
 
@@ -382,6 +408,7 @@ Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloa
 Opt-in (`Llm:Enabled=false` default), OpenAI-kompatibler Endpunkt, Rate-Limit 20/min/IP. Volle Doku: `docs/ai-features.md` + `docs/claude-reference.md` § KI-Features.
 
 - `POST /api/ai/generate-script` (Admin/Op, SSE-Streaming) + `POST /api/ai/generate-workflow` (Admin/Op, JSON).
+- `POST /api/ai/generate-agent-team` (Admin/Op, JSON) — Team-Entwurf aus Beschreibung: Namen werden serverseitig gegen das Inventar aufgelöst, ungelöste Maschine/Credential blockiert das Übernehmen, Vorschau ist Pflicht, bewusst kein CLI/MCP (`docs/ai-agents.md`).
 - `POST /api/ai/chat` (alle Rollen, SSE) — Workflow-Assistent; Proposals nur Admin/Op, Merge per Node-ID aufs unredigierte Original. **Secrets werden vor jedem LLM-Call redigiert** (`WorkflowSecretRedactor`).
 - `POST /api/ai/knowledge/ask` (SSE) — globaler Wissens-Assistent in `/ai-chat`, vier admin-toggelbare Quellen (Sektion `AiKnowledge`). **DB / text2sql ausschließlich globaler Admin** (zentraler Guard über `ISqlKnowledgeReader`); Folder-Grants erhöhen nie auf Raw-SQL.
 - `llmQuery`-Activity: Engine-lokal, per-Node-Overrides, gated durch `Llm:Enabled`; einziger BaseUrl-Validierungspunkt ist `LlmEndpointGuard`.

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { DashboardPage } from '../../pages/DashboardPage';
@@ -47,6 +47,11 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}{location.search}</output>;
+}
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   patchFetch();
@@ -54,6 +59,7 @@ function renderPage() {
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <DashboardPage />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -106,6 +112,17 @@ const BASE_STATS = {
 };
 
 describe('DashboardPage', () => {
+  it('opens the workflow live view when selecting a running execution', async () => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS,
+      running: [{ id: 'live-1', workflowId: 'wf-live', workflowName: 'Live workflow',
+        status: 'Running', startedAt: new Date().toISOString(), triggeredBy: 'manual' }],
+    })));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Live workflow/ }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/workflows/wf-live');
+  });
+
   it.each([false, true])('keeps chart data while reduced decoration is %s', async (reducedDecoration) => {
     vi.spyOn(chartTheme, 'useChartTokens').mockReturnValue({
       probeRef: { current: null }, tokens: { ...chartTheme.DEFAULT_CHART_TOKENS, reducedDecoration },
@@ -259,6 +276,126 @@ describe('DashboardPage', () => {
     })));
   });
 
+  const WINDOW_CARD_TITLES_30D = ['Success Rate (30 days)', 'Retries needed (30 days)', 'Executions — 30 days', 'Run Status (30 days)'];
+  const cardOf = (title: string) => screen.getByText(title).closest('.np-card') as HTMLElement;
+
+  it('keeps live tiles but shows no previous-window figures while the selected window loads', async () => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.get(`${BASE}/api/stats/dashboard`, async ({ request }) => {
+      if (new URL(request.url).searchParams.get('windowHours') !== '720') {
+        return HttpResponse.json({ ...BASE_STATS, last24hBuckets: [{ hourStart: '2026-09-14T10:00:00Z', succeeded: 28, failed: 2, cancelled: 0 }] });
+      }
+      await released;
+      return HttpResponse.json({
+        ...BASE_STATS,
+        last24h: { total: 90, succeeded: 81, failed: 9, running: 0, cancelled: 0 },
+        last24hBuckets: [{ hourStart: '2026-09-01T00:00:00Z', succeeded: 81, failed: 9, cancelled: 0 }],
+        retryStats: { finishedCount: 90, retriedCount: 9 },
+      });
+    }));
+    renderPage();
+    expect(within(await screen.findByRole('group', { name: 'Run Status (24h)' })).getByText('30')).toBeInTheDocument();
+    expect(within(cardOf('Success Rate (24h)')).getByText('93%')).toBeInTheDocument();
+    expect(within(cardOf('Retries needed (24h)')).getByText('6.7%')).toBeInTheDocument();
+    await waitFor(() => expect(within(cardOf('Executions — 24h')).getByRole('img')).toHaveAttribute('data-chart-option'));
+
+    await userEvent.click(screen.getByRole('button', { name: '30 days' }));
+
+    expect(screen.getByRole('button', { name: '30 days' })).toHaveClass('is-active');
+    // Window-independent parts of the previous response stay on screen.
+    expect(within(screen.getByRole('table')).getByText('Disk Check')).toBeInTheDocument();
+    expect(within(cardOf('Workflows')).getByText('12')).toBeInTheDocument();
+    // The cards of the selected window load instead of showing the previous window's figures.
+    const [hero, retries, executions, runStatus] = WINDOW_CARD_TITLES_30D.map(cardOf);
+    for (const card of [hero, retries, executions, runStatus]) {
+      expect(card).toHaveAttribute('aria-busy', 'true');
+      expect(within(card).getByRole('status')).toHaveTextContent('Loading...');
+    }
+    expect(within(hero).queryByText('93%')).not.toBeInTheDocument();
+    expect(within(retries).queryByText('6.7%')).not.toBeInTheDocument();
+    expect(within(executions).queryByRole('img')).not.toBeInTheDocument();
+    expect(within(runStatus).queryByText('30')).not.toBeInTheDocument();
+
+    release();
+    expect(within(await screen.findByRole('group', { name: 'Run Status (30 days)' })).getByText('90')).toBeInTheDocument();
+    for (const card of [hero, retries, executions, runStatus]) expect(card).toHaveAttribute('aria-busy', 'false');
+    expect(within(hero).getByText('90%')).toBeInTheDocument();
+    expect(within(retries).getByText('10%')).toBeInTheDocument();
+    const chart = within(executions).getByRole('img', { name: 'Executions — 30 days' });
+    expect(JSON.parse(chart.dataset.chartOption!).series.map((entry: { data: number[] }) => entry.data)).toEqual([[81], [9], [0]]);
+  });
+
+  it('lets the duration and failure cards load the selected window instead of showing the previous one', async () => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    const isMonth = (request: Request) => new URL(request.url).searchParams.get('windowHours') === '720';
+    const message = 'Disk full on server-A';
+    server.use(
+      http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)),
+      http.get(`${BASE}/api/stats/failure-causes`, async ({ request }) => {
+        if (!isMonth(request)) {
+          return HttpResponse.json({ totalFailed: 2, remainingCount: 0,
+            groups: [{ message, count: 2, latestExecutionId: 'exec-1', latestStartedAt: '2026-09-14T10:00:00Z' }] });
+        }
+        await released;
+        return HttpResponse.json({ totalFailed: 0, groups: [], remainingCount: 0 });
+      }),
+      http.get(`${BASE}/api/stats/duration-trend`, async ({ request }) => {
+        if (!isMonth(request)) {
+          return HttpResponse.json({ buckets: [{ startedAt: '2026-09-14T10:00:00Z', count: 4, medianMs: 1000, p95Ms: 3000 }], workflows: [] });
+        }
+        await released;
+        return HttpResponse.json({ buckets: [], workflows: [] });
+      }),
+    );
+    renderPage();
+    await screen.findByText(message);
+    await screen.findByRole('img', { name: 'Execution Duration (24h)' });
+
+    await userEvent.click(screen.getByRole('button', { name: '30 days' }));
+
+    const failures = cardOf('Most Common Errors (30 days)');
+    const durations = cardOf('Execution Duration (30 days)');
+    expect(within(failures).queryByText(message)).not.toBeInTheDocument();
+    expect(within(failures).getByRole('status')).toHaveTextContent('Loading...');
+    expect(within(durations).queryByRole('img')).not.toBeInTheDocument();
+    expect(within(durations).getByRole('status')).toHaveTextContent('Loading...');
+
+    release();
+    expect(await within(failures).findByText('No failed executions in the selected period.')).toBeInTheDocument();
+    expect(await within(durations).findByText('No completed runs in the selected period.')).toBeInTheDocument();
+  });
+
+  it('shows the window cards as failed instead of the previous window when a switch fails, and retries', async () => {
+    let monthAvailable = false;
+    server.use(http.get(`${BASE}/api/stats/dashboard`, ({ request }) => {
+      if (new URL(request.url).searchParams.get('windowHours') !== '720') return HttpResponse.json(BASE_STATS);
+      return monthAvailable
+        ? HttpResponse.json({ ...BASE_STATS, last24h: { total: 90, succeeded: 81, failed: 9, running: 0, cancelled: 0 } })
+        : new HttpResponse(null, { status: 500 });
+    }));
+    renderPage();
+    await screen.findByRole('group', { name: 'Run Status (24h)' });
+
+    await userEvent.click(screen.getByRole('button', { name: '30 days' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Failed to load.');
+    expect(within(screen.getByRole('table')).getByText('Disk Check')).toBeInTheDocument();
+    for (const card of WINDOW_CARD_TITLES_30D.map(cardOf)) {
+      expect(card).toHaveAttribute('aria-busy', 'false');
+      expect(within(card).getByText('Failed to load.')).toBeInTheDocument();
+    }
+    expect(screen.queryByText('93%')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /Run Status/ })).not.toBeInTheDocument();
+
+    monthAvailable = true;
+    await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(within(await screen.findByRole('group', { name: 'Run Status (30 days)' })).getByText('90')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('charts the one-hour window as thirty two-minute line buckets', async () => {
     const pad = (n: number) => String(n).padStart(2, '0');
     const starts = Array.from({ length: 30 }, (_, i) => new Date(2026, 8, 15, 21, 14 + 2 * i));
@@ -390,7 +527,7 @@ describe('DashboardPage', () => {
     })));
     renderPage();
     await waitFor(() => expect(screen.getByText('Nightly')).toBeInTheDocument());
-    expect(screen.getByText(/in [45]m/i)).toBeInTheDocument();
+    expect(within(screen.getByText('Nightly').closest('li')!).getByText(/in [45]m/i)).toBeInTheDocument();
   });
 
   it('renders event-driven label for fileWatcher triggers', async () => {
@@ -488,28 +625,85 @@ describe('DashboardPage', () => {
   });
 
   it.each([
-    ['en', null, 'Disabled', 'Single node', 'HA: disabled'],
-    ['de', null, 'Deaktiviert', 'Einzelknoten', 'HA: deaktiviert'],
-    ['en', 'leader', 'Leader', 'HA enabled', 'HA: leader'],
-    ['en', 'standby', 'Standby', 'HA enabled', 'HA: standby'],
-    ['de', 'leader', 'Leader', 'HA aktiviert', 'HA: Leader'],
-    ['de', 'standby', 'Standby', 'HA aktiviert', 'HA: Standby'],
-  ] as const)('shows HA mode and role in %s with role %s', async (language, clusterRole, value, hint, banner) => {
+    ['en', null, 'HA: disabled'],
+    ['de', null, 'HA: deaktiviert'],
+    ['en', 'leader', 'HA: leader'],
+    ['en', 'standby', 'HA: standby'],
+    ['de', 'leader', 'HA: Leader'],
+    ['de', 'standby', 'HA: Standby'],
+  ] as const)('shows HA mode and role in the status bar in %s with role %s', async (language, clusterRole, banner) => {
     await i18n.changeLanguage(language);
     try {
       server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({ ...BASE_STATS, clusterRole })));
       renderPage();
-      const card = (await screen.findByText('HA', { exact: true })).closest('.np-card')! as HTMLElement;
-      expect(within(card).getByText(value)).toBeInTheDocument();
-      expect(within(card).getByText(hint)).toBeInTheDocument();
-      expect(screen.getByText(banner)).toBeInTheDocument();
-      if (clusterRole === null) {
-        expect(within(card).queryByText('Leader')).not.toBeInTheDocument();
-        expect(screen.queryByText(/HA: (active|aktiv)$/)).not.toBeInTheDocument();
-      }
+      expect(await screen.findByText(banner)).toBeInTheDocument();
+      // The status bar is the only place for it; there is no separate HA tile.
+      expect(screen.queryByText('HA', { exact: true })).not.toBeInTheDocument();
     } finally {
       await i18n.changeLanguage('en');
     }
+  });
+
+  it('counts armed triggers and shows the earliest scheduled start', async () => {
+    const soon = new Date(Date.now() + 5 * 60_000 + 30_000).toISOString();
+    const later = new Date(Date.now() + 3 * 3_600_000).toISOString();
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS,
+      armedTriggers: [
+        { workflowId: 'a', workflowName: 'Later', triggerTypes: ['scheduleTrigger'], nextFireUtc: later, nextFireKind: 'cron', pollIntervalSeconds: null },
+        { workflowId: 'b', workflowName: 'Soon', triggerTypes: ['scheduleTrigger'], nextFireUtc: soon, nextFireKind: 'cron', pollIntervalSeconds: null },
+        { workflowId: 'c', workflowName: 'Watcher', triggerTypes: ['fileWatcherTrigger'], nextFireUtc: null, nextFireKind: 'event-driven', pollIntervalSeconds: null },
+      ],
+    })));
+    renderPage();
+    const card = (await screen.findByText('Active triggers', { exact: true })).closest('.np-card')! as HTMLElement;
+    expect(within(card).getByText('3')).toBeInTheDocument();
+    expect(within(card).getByText(/Start in [45]m/)).toBeInTheDocument();
+  });
+
+  it.each([
+    [[], 'No triggers'],
+    [[{ workflowId: 'c', workflowName: 'Watcher', triggerTypes: ['fileWatcherTrigger'], nextFireUtc: null, nextFireKind: 'event-driven', pollIntervalSeconds: null }], 'Event-driven only'],
+  ] as const)('explains the active triggers tile without a scheduled start', async (armedTriggers, hint) => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({ ...BASE_STATS, armedTriggers })));
+    renderPage();
+    const card = (await screen.findByText('Active triggers', { exact: true })).closest('.np-card')! as HTMLElement;
+    expect(within(card).getByText(hint)).toBeInTheDocument();
+  });
+
+  it('counts healthy background services across all heartbeats', async () => {
+    const beat = (serviceName: string, isStale: boolean) => ({
+      serviceName, lastHeartbeatAt: new Date().toISOString(), expectedIntervalSeconds: 30, status: 'ok', isStale,
+    });
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS, healthHeartbeats: [beat('Scheduler', false), beat('Rollup', false), beat('Dispatch', false)],
+    })));
+    renderPage();
+    const card = (await screen.findByText('Services', { exact: true })).closest('.np-card')! as HTMLElement;
+    expect(within(card).getByText('3 / 3')).toBeInTheDocument();
+    expect(within(card).getByText('All running')).toBeInTheDocument();
+  });
+
+  it('turns the services tile red and names the stale services', async () => {
+    const beat = (serviceName: string, isStale: boolean) => ({
+      serviceName, lastHeartbeatAt: new Date().toISOString(), expectedIntervalSeconds: 30, status: 'ok', isStale,
+    });
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS, healthHeartbeats: [beat('Scheduler', false), beat('Rollup', true), beat('Alerting', true)],
+    })));
+    renderPage();
+    const card = (await screen.findByText('Services', { exact: true })).closest('.np-card')! as HTMLElement;
+    const value = within(card).getByText('1 / 3');
+    expect(value).toHaveClass('text-red-600');
+    expect(within(card).getByText('Stale: Rollup, Alerting')).toBeInTheDocument();
+  });
+
+  it('shows a neutral services tile when no heartbeats exist yet', async () => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({ ...BASE_STATS, healthHeartbeats: [] })));
+    renderPage();
+    const card = (await screen.findByText('Services', { exact: true })).closest('.np-card')! as HTMLElement;
+    expect(within(card).getByText('No heartbeats')).toBeInTheDocument();
+    expect(within(card).queryByText(/\d \/ \d/)).not.toBeInTheDocument();
   });
 
   it('keeps the Currently Running list in an out-of-flow scroll container (no row blow-out)', async () => {
