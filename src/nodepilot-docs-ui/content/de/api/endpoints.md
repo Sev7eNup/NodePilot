@@ -103,6 +103,8 @@ curl -s -b cookie.jar "$NP/api/workflows/by-name/deploy-prod/contract" | jq
 #   "outputs":[{"name":"__executionId","source":"system"},{"name":"deployResult","source":"single"}] }
 ```
 
+Aufrufer ohne Edit-Recht auf den Ordner des Workflows sehen bei jedem Input mit Default statt des Werts `"***"`. Die Maske betrifft nur die Anzeige: Ein nicht gesetzter Parameter bekommt beim Lauf weiterhin den echten Default.
+
 ## Step-Test & Coverage
 
 | Endpoint | Zweck |

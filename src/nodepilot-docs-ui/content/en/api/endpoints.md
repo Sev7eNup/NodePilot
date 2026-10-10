@@ -102,6 +102,8 @@ curl -s -b cookie.jar "$NP/api/workflows/by-name/deploy-prod/contract" | jq
 #   "outputs":[{"name":"__executionId","source":"system"},{"name":"deployResult","source":"single"}] }
 ```
 
+Callers without Edit permission on the workflow's folder see `"***"` instead of every non-null input `default`. The mask only affects the display: a parameter left unset still receives the real default when the workflow runs.
+
 ## Step test & coverage
 
 | Endpoint | Purpose |

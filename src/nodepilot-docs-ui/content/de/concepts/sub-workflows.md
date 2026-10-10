@@ -16,6 +16,8 @@ Die Activity `startWorkflow` startet einen anderen Workflow. Der aufrufende Work
 - **Inputs** aus `manualTrigger.parameters`.
 - **Outputs** aus `returnData.data`-Keys + System-Outputs (`__executionId`, `__status`, `__workflowId`, `__workflowName`).
 
+Aufrufer ohne Edit-Recht auf den Ordner des Workflows sehen bei jedem Input mit Default `***` statt des Werts. Die Maske betrifft nur die Anzeige; ein nicht gesetzter Parameter bekommt zur Laufzeit weiterhin den echten Default.
+
 By-name-Lookup: **exakte Schreibweise gewinnt, sonst case-insensitive** — mehrdeutige Namen (Name ist nicht unique) liefern 409 statt eines stillen Zufallstreffers. Die Engine (`startWorkflow`/`forEach`) löst identisch auf, damit der Designer nie einen Contract zeigt, den die Runtime nicht findet.
 
 ## Feinheiten
