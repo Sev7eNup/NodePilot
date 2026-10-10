@@ -26,7 +26,7 @@
   },
   "dependencies": {},
   "//types-node": [
-    "Electron 44.4.5 bundles Node 24.x. @types/node may be newer for tooling, so",
+    "Electron 44.5.1 bundles Node 24.x. @types/node may be newer for tooling, so",
     "runtime-only APIs must still be checked against the embedded Node release."
   ],
   "//archive-security": [
@@ -46,8 +46,8 @@
   "devDependencies": {
     "@electron-internal/extract-zip": "1.0.5",
     "@electron/packager": "20.3.0",
-    "@types/node": "^26.6.2",
-    "electron": "44.4.5",
+    "@types/node": "^26.6.4",
+    "electron": "44.5.1",
     "typescript": "~6.0.2",
     "vitest": "^4.1.11"
   }
