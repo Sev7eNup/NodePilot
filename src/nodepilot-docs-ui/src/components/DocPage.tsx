@@ -52,7 +52,7 @@ export default function DocPage({ lang, path }: { lang: Lang; path: string }) {
   return (
     <div className="flex w-full">
       {/* Main content column */}
-      <div className="mx-auto flex min-w-0 max-w-3xl flex-1 px-6 py-8 lg:px-10">
+      <div className="mx-auto flex min-w-0 max-w-5xl flex-1 px-6 py-8 lg:px-10">
         <article ref={articleRef} className="np-prose min-w-0 flex-1">
           {fellBack && (
             <div
