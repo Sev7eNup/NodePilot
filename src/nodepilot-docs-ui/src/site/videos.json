@@ -7,16 +7,16 @@
       "text": {
         "de": {
           "title": "Was ist NodePilot?",
-          "video": "media/training/00-intro-de.e335184678.mp4",
+          "video": "media/training/00-intro-de.eb1649be8e.mp4",
           "poster": "training/00-intro-de.253e998e5f.webp",
-          "bytes": 15785155,
+          "bytes": 15817132,
           "duration": 116
         },
         "en": {
           "title": "What is NodePilot?",
-          "video": "media/training/00-intro-en.480a46f601.mp4",
+          "video": "media/training/00-intro-en.e93750904f.mp4",
           "poster": "training/00-intro-en.be40aa9327.webp",
-          "bytes": 15612422,
+          "bytes": 15642942,
           "duration": 116
         }
       }
