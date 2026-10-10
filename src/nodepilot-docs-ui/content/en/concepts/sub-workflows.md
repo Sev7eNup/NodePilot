@@ -16,6 +16,8 @@ The `startWorkflow` activity starts another workflow. The calling workflow is th
 - **Inputs** from `manualTrigger.parameters`.
 - **Outputs** from the `returnData.data` keys + system outputs (`__executionId`, `__status`, `__workflowId`, `__workflowName`).
 
+Callers without Edit permission on the workflow's folder see `***` instead of any non-null input default. The mask is display only; a parameter left unset still gets the real default at run time.
+
 By-name lookup: **an exact-case match wins, otherwise case-insensitive** — ambiguous names (names are not unique) return 409 rather than a silent random hit. The engine (`startWorkflow`/`forEach`) resolves identically, so the designer never shows a contract the runtime cannot find.
 
 ## Subtleties

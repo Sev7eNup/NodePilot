@@ -578,6 +578,30 @@ zurückgerollt werden.
 
 Das Binärbackup enthält keine secret-haltige `appsettings.Production.json`. Sie wird beim Austausch deshalb als Letztes ersetzt, damit ein Abbruch sie nicht zerstört.
 
+### Update bricht bei doppelten Custom-Activity-Keys ab
+
+Custom-Activity-Keys sind unter allen nicht gelöschten Definitionen eindeutig, Entwürfe eingeschlossen. Die Migration, die das erzwingt, stoppt den ersten Start der neuen Version, wenn zwei solche Definitionen bereits denselben Key tragen, mit einer Meldung über doppelte Custom-Activity-Keys. Die Migration löscht und benennt nichts um, weil Workflows eine Definition über ihre ID und ihren Key referenzieren. Der fehlgeschlagene Start löst den automatischen Rollback der Binaries durch den Updater aus.
+
+Zuerst ein Datenbank-Backup anlegen, dann die doppelten Keys mit der Abfrage für die eigene Datenbank auflisten:
+
+```sql
+-- PostgreSQL (SQLite: 0 statt FALSE)
+SELECT "Key", COUNT(*) AS "Count"
+FROM "CustomActivityDefinitions"
+WHERE "IsDeleted" = FALSE
+GROUP BY "Key"
+HAVING COUNT(*) > 1;
+
+-- SQL Server
+SELECT [Key], COUNT(*) AS [Count]
+FROM [CustomActivityDefinitions]
+WHERE [IsDeleted] = 0
+GROUP BY [Key]
+HAVING COUNT(*) > 1;
+```
+
+Pro Key entscheiden, welche Definition bleibt, prüfen, welche Workflows die übrigen referenzieren, und die Duplikate vor dem nächsten Update in der alten Version ausdrücklich auflösen (zum Beispiel durch Löschen eines ungenutzten Entwurfs). Der Key-Vergleich folgt der Collation der Key-Spalte.
+
 ## HTTPS-Zertifikat austauschen
 
 Das Zertifikat lässt sich jederzeit an einer laufenden Installation wechseln — für die Ablösung

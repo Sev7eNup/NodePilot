@@ -578,6 +578,30 @@ format.
 
 The binary backup contains no secret-bearing `appsettings.Production.json`. It is therefore replaced last during the swap, so that an abort does not destroy it.
 
+### Update stops on duplicate custom activity keys
+
+Custom activity keys are unique among all non-deleted definitions, drafts included. The migration that enforces this stops the first start of the new version when two such definitions already share a key, with a message about duplicate custom-activity keys. The migration deletes and renames nothing, because workflows reference a definition by its ID as well as its key. The failed start makes the updater roll the binaries back.
+
+Take a database backup, then list the conflicting keys with the query for your database:
+
+```sql
+-- PostgreSQL (SQLite: use 0 instead of FALSE)
+SELECT "Key", COUNT(*) AS "Count"
+FROM "CustomActivityDefinitions"
+WHERE "IsDeleted" = FALSE
+GROUP BY "Key"
+HAVING COUNT(*) > 1;
+
+-- SQL Server
+SELECT [Key], COUNT(*) AS [Count]
+FROM [CustomActivityDefinitions]
+WHERE [IsDeleted] = 0
+GROUP BY [Key]
+HAVING COUNT(*) > 1;
+```
+
+Decide per key which definition survives, check which workflows reference the others, and resolve the duplicates explicitly (for example by deleting an unused draft) on the old version before updating again. Key comparison follows the collation of the key column.
+
 ## Replacing the HTTPS certificate
 
 The certificate can be changed at any time on a running installation — to replace a self-signed

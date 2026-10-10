@@ -4945,6 +4945,9 @@ Prüfpunkte je Provider/Fall:
 
 ## Checkliste für vollständigen E2E-Test-Run
 
+Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automatisiert laufen
+(ab Teil 84, jeweils als „Automatisiert" gekennzeichnet), stehen bewusst nicht darin.
+
 ```
 [ ] Teil 1: Workflow-Management (1.1 — 1.4)
 [ ] Teil 2: Activity-Typen (2.1 — 2.13, 2.2b, 2.2c)

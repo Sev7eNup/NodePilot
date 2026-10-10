@@ -244,7 +244,11 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier, I
 
     private async Task SendBatchAsync(List<QueuedLiveEvent> batch, CancellationToken ct)
     {
-        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        // Waiting for a running folder mutation gets its own bound, so a stuck mutation drops the
+        // batch instead of stalling the notifier.
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        wait.CancelAfter(BatchTimeout);
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireSharedAsync(wait.Token);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(BatchTimeout);
         await SendBatchUnderTreeLockAsync(batch, deadline.Token);

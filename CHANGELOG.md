@@ -58,6 +58,7 @@ identities. [Learn how to configure agents and teams →](docs/ai-agents.md)
 - The dashboard duration trend (median and P95) for 24 hours and longer comes from
   precomputed hourly histograms and is accurate to within a few percent. The upgrade
   rebuilds the dashboard history once; until it finishes, the dashboard reads raw executions.
+- The desktop app runs on Electron 44.5.1 (Chromium 152, Node 24).
 
 ### Fixed
 

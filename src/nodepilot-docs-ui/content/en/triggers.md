@@ -45,7 +45,12 @@ The schedule trigger starts a workflow based on a cron expression. Templates are
 | Daily at 06:00 | `0 0 6 * * ?` |
 | Monday to Friday at 08:00 | `0 0 8 ? * MON-FRI` |
 
-The preview in the properties panel shows the next execution times and points out an invalid expression.
+The preview in the properties panel shows the next execution times and points out an invalid expression. A zero step width such as `0/0` and years after 2199 are rejected when the workflow is published. Both day fields may be `*`, so `0 0 2 * * *` is valid.
+
+Daylight saving time:
+
+- When clocks spring forward, a fire time inside the skipped hour runs at the end of that gap. A `02:30` schedule fires at `03:00`, not at `03:30`.
+- When clocks fall back, a schedule that runs hourly or more often fires again through the repeated hour instead of skipping it. If a workflow must not run twice in that hour, guard it inside the workflow.
 
 Output data:
 

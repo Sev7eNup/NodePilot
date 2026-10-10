@@ -1023,9 +1023,9 @@ public sealed class BackupRestoreService(
             foreach (var reference in WorkflowResourceReferences.Enumerate(definition)
                          .Where(reference => reference.Kind == "workflow"))
             {
+                // Unmapped ids (Guid.Empty from an import, or a deleted workflow) stay as stored:
+                // the source system held the same dangling reference.
                 if (s.WorkflowMap.TryGetValue(reference.Id, out var mapped)) reference.Replace(mapped);
-                else if (!s.ExistingWorkflowIds.Contains(reference.Id))
-                    throw new BackupRestoreException($"Workflow '{workflow.Name}' references an unresolved child workflow {reference.Id} at {reference.Path}.");
             }
             workflow.DefinitionJson = definition!.ToJsonString();
             WorkflowMetadata.PopulateComputedColumns(workflow);

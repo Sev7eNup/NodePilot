@@ -31,7 +31,8 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
         ExecutionHub.ClearOpsFeedForTest();
     }
 
-    private static (SignalRExecutionNotifier notifier, Capture capture) Build(bool hasSubscribers = true)
+    private static (SignalRExecutionNotifier notifier, Capture capture) Build(
+        bool hasSubscribers = true, TimeSpan? batchTimeout = null)
     {
         var capture = new Capture();
         var proxy = new Mock<IClientProxy>();
@@ -51,7 +52,11 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
         var hub = new Mock<IHubContext<ExecutionHub>>();
         hub.SetupGet(h => h.Clients).Returns(clients.Object);
 
-        return (new SignalRExecutionNotifier(hub.Object, hasSubscribers: (_, _) => hasSubscribers), capture);
+        var notifier = new SignalRExecutionNotifier(hub.Object, hasSubscribers: (_, _) => hasSubscribers)
+        {
+            BatchTimeout = batchTimeout ?? TimeSpan.FromSeconds(5)
+        };
+        return (notifier, capture);
     }
 
     private static LiveEventBatchItem FirstItem(Capture capture)
@@ -131,6 +136,37 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
         mutationLock.IsCompleted.Should().BeFalse();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => flush);
         using var held = await mutationLock.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Flush_DoesNotWaitForOtherSharedTreeHolders()
+    {
+        var (notifier, capture) = Build();
+        var execId = Guid.NewGuid();
+        ExecutionHub.RegisterGroupForTest("conn-1", execId.ToString());
+        await notifier.StepStartedAsync(execId, Guid.NewGuid(), "step-1", "Check Disk", "runScript", DateTime.UtcNow);
+
+        using var joinInProgress = await FolderTreeMutationLock.SharedWorkflowFolders
+            .AcquireSharedAsync(TestContext.Current.CancellationToken);
+        await notifier.FlushForTestAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        capture.Method.Should().Be("LiveEventsBatch");
+    }
+
+    [Fact]
+    public async Task Flush_GivesUpWhenAFolderMutationOutlastsTheBatchTimeout()
+    {
+        var (notifier, capture) = Build(batchTimeout: TimeSpan.FromMilliseconds(100));
+        var execId = Guid.NewGuid();
+        ExecutionHub.RegisterGroupForTest("conn-1", execId.ToString());
+        await notifier.StepStartedAsync(execId, Guid.NewGuid(), "step-1", "Check Disk", "runScript", DateTime.UtcNow);
+
+        using var mutation = await FolderTreeMutationLock.SharedWorkflowFolders
+            .BeginMutationAsync(TestContext.Current.CancellationToken);
+        var flush = notifier.FlushForTestAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => flush.WaitAsync(TimeSpan.FromSeconds(5)));
+        capture.Method.Should().BeNull();
     }
 
     [Fact]
