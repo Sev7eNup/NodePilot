@@ -38,6 +38,10 @@ script engine and no new backend execution path.
   `409 Conflict`.
 - **Delete is a soft tombstone** (`IsDeleted`), retaining the script + versions for audit /
   reproducibility while removing it from the catalog/palette. The `Key` becomes free again.
+- **Keys are unique among non-deleted definitions**, drafts included (unique index since migration
+  `20261009112618_EnforceLiveCustomActivityKeys`). An upgrade from a database that already holds
+  duplicates stops at startup; the read-only conflict query and the procedure are in
+  [custom-activity-key-migration.md](custom-activity-key-migration.md).
 
 ## Inputs, outputs & the capture allow-list
 
