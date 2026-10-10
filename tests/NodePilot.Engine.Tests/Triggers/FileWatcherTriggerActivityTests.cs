@@ -178,6 +178,48 @@ public class FileWatcherTriggerActivityTests
         }
     }
 
+    [WindowsFact]
+    public async Task Execute_ManualFlatScan_SkipsLinksInsteadOfFailing()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-fw-flat-link-" + Guid.NewGuid().ToString("N"));
+        var watched = Path.Combine(stage, "watched");
+        var outside = Path.Combine(stage, "outside");
+        var dirLink = Path.Combine(watched, "dir-link");
+        var fileLink = Path.Combine(watched, "file-link.log");
+        Directory.CreateDirectory(watched);
+        Directory.CreateDirectory(outside);
+        await File.WriteAllTextAsync(Path.Combine(watched, "real.log"), "x");
+        await File.WriteAllTextAsync(Path.Combine(outside, "outside-secret.log"), "secret");
+        try
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(dirLink, outside);
+                File.CreateSymbolicLink(fileLink, Path.Combine(outside, "outside-secret.log"));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            var result = await new FileWatcherTrigger().ExecuteAsync(
+                new StepExecutionContext(),
+                Cfg(JsonSerializer.Serialize(new { directory = watched, filter = "*.log" })),
+                CancellationToken.None);
+
+            result.Success.Should().BeTrue();
+            result.Output.Should().Contain("Files found: 1");
+            result.Output.Should().Contain("real.log");
+            result.Output.Should().NotContain("file-link.log");
+        }
+        finally
+        {
+            DeleteDirectoryLink(dirLink);
+            try { File.Delete(fileLink); } catch { }
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
+    }
+
     private static void DeleteDirectoryLink(string link)
     {
         try
