@@ -86,7 +86,8 @@ release acceptance are in [test reliability](../../../docs/testing/test-reliabil
 ## Coverage map (E2ETests.md Teil → spec)
 
 `ai-agents.spec.ts` additionally covers the admin parallel-member limit, visible team-member selection, separate tools,
-and save/reopen without creating extra workflow steps. Live channel delivery remains
+save/reopen without creating extra workflow steps, and drafting a team from a description (blocking issue,
+candidate pick, replace confirmation). Live channel delivery remains
 covered through journal/reconnect unit and API tests, since this harness mocks SignalR.
 `agent-settings.spec.ts` covers bounded searchable registries, expandable details, explicit skill import,
 MCP enable/disable with revision conflicts, power-mode persistence, environment locks and responsive DE/EN layouts.

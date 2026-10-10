@@ -63,6 +63,7 @@ const serverOnlyRoutes: Route[] = [
   route('POST', '/ai/knowledge/ask', () => notInDemo('The AI assistant')),
   route('POST', '/ai/generate-script', () => notInDemo('AI script generation')),
   route('POST', '/ai/generate-workflow', () => notInDemo('AI workflow generation')),
+  route('POST', '/ai/generate-agent-team', () => notInDemo('AI agent team drafting')),
   route('GET', '/ai/chat/activity/:workflowId', () => json([])),
 
 ];

@@ -28,6 +28,14 @@ Supervisor; während des Steps gibt es keine interaktive Benutzerunterhaltung.
   mit `completed` schließen. Neue Fachantworten oder Werkzeugaufrufe des Supervisors
   machen frühere Reviews ungültig. Nach höchstens zwei zusätzlichen Nachfassrunden
   innerhalb der bestehenden Budgets schlägt eine weiterhin unvollständige Prüfung fehl.
+- **Entwurf aus Beschreibung:** Ist KI aktiv, bietet der Team-Editor **Team aus Beschreibung entwerfen**
+  (Admin/Operator). Beschreibe das Team und nenne Maschinen, Credentials, Pfade und Workflows genau so, wie sie in
+  NodePilot heißen. Der Entwurf wird gegen das aufgelöst, was du nutzen darfst, und zur Prüfung mit dem
+  wirksamen Ziel, Credential bzw. der Service-Identität, den Werkzeugen, Pfaden, Hosts (eine leere Hostliste
+  steht als „alle Hosts“) und Skills jedes Mitglieds angezeigt. Namen, die sich nicht eindeutig zuordnen lassen
+  oder in deinem Text fehlen, werden nie geraten: Eine nicht auflösbare Maschine, ein Credential oder die
+  Service-Identität sperren **Übernehmen**, bis du einen Treffer wählst oder den Wunsch verwirfst. Gespeichert
+  oder veröffentlicht wird erst, wenn du den Workflow speicherst und veröffentlichst.
 - **Werkzeuge:** freigegebene Dateipfade, HTTP GET/HEAD mit optionaler Hostbeschränkung, veröffentlichte Workflows, PowerShell,
   CMD, installiertes Git Bash und ausgewählte MCP-Tools. MCP unterstützt stdio und
   Streamable HTTP. Einstellungen → KI-Agenten verwaltet Server, versionierte Skill-ZIPs

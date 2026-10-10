@@ -33,7 +33,8 @@ public sealed class EndpointClientCoverageTests
     private const string BrowserAuthFlow = "DELIBERATE: browser redirect flow — impossible for a headless client; np auth login covers local, LDAP and Windows";
     private const string SpaBootstrap = "DELIBERATE: SPA-internal bootstrap/UI surface, not an automation target";
     private const string InteractiveAiSse = "DELIBERATE: interactive SSE surface for the designer/knowledge chat UI; clients have no streaming UX";
-    private const string WebhookIngress = "DELIBERATE: external webhook ingress — callers are third-party systems, not our clients";
+    private const string ReviewedInDesigner = "DELIBERATE: the draft is only safe behind the designer's preview, where the user reviews the resolved machines, credentials and permissions; a headless client would skip that review";
+    private const string WebhookIngress ="DELIBERATE: external webhook ingress — callers are third-party systems, not our clients";
     private const string CustomActivityGap = "audit finding F1: the custom-activities surface has NO client — close by adding np custom-activity + MCP tools";
     private const string RuleBuilderPreview = "DELIBERATE: stateless dry-run for the rule builder's live preview; a client authors the rule JSON and validates it by saving";
     private const string MachineOptionsProjection = "DELIBERATE: statistics-free projection of api/machines for the SPA's machine selectors and designer annotations; np machine list and the MCP machine tools return the same records";
@@ -47,6 +48,7 @@ public sealed class EndpointClientCoverageTests
         ["api/ai/chat"] = InteractiveAiSse,
         ["api/ai/chat/activity/*"] = InteractiveAiSse,
         ["api/ai/chat/applied"] = InteractiveAiSse,
+        ["api/ai/generate-agent-team"] = ReviewedInDesigner,
         ["api/ai/generate-script"] = InteractiveAiSse,
         ["api/ai/generate-workflow"] = InteractiveAiSse,
         ["api/ai/knowledge/ask"] = InteractiveAiSse,
@@ -110,6 +112,7 @@ public sealed class EndpointClientCoverageTests
         ["api/ai/chat"] = InteractiveAiSse,
         ["api/ai/chat/activity/*"] = InteractiveAiSse,
         ["api/ai/chat/applied"] = InteractiveAiSse,
+        ["api/ai/generate-agent-team"] = ReviewedInDesigner,
         ["api/ai/generate-script"] = InteractiveAiSse,
         ["api/ai/generate-workflow"] = InteractiveAiSse,
         ["api/ai/knowledge/ask"] = InteractiveAiSse,

@@ -26,6 +26,13 @@ is a workflow step; click a visible member to configure its role, instructions a
   completion; only the same member can close them with `completed`. New specialist
   responses or supervisor tool calls invalidate previous reviews. After at most two
   additional corrective supervisor turns within existing budgets, incomplete review fails.
+- **Draft from a description:** with AI enabled, the team editor offers **Draft team from description**
+  (Admin/Operator). Describe the team and name machines, credentials, paths and workflows exactly as they
+  appear in NodePilot. The draft is resolved against what you may use and shown for review with each member's
+  effective target, credential or service identity, tools, paths, hosts (an empty host list reads “all hosts”)
+  and skills. Names the draft cannot match uniquely, or that your text does not mention, are never guessed:
+  an unresolved machine, credential or service identity blocks **Apply** until you pick a match or drop the
+  request. Nothing is saved or published until you save and publish the workflow.
 - **Tools:** allowlisted files, HTTP GET/HEAD with optional host restrictions, published workflows, PowerShell, CMD, installed
   Git Bash and selected tools from administrator-registered MCP servers. MCP supports
   stdio and Streamable HTTP. Settings → AI agents manages servers, immutable ZIP skill

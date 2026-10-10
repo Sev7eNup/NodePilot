@@ -3140,6 +3140,19 @@ Pflicht-Lese: CLAUDE.md "KI-Features", `docs/ai-features.md`.
 
 ---
 
+### Test 32.2a — Team aus Beschreibung entwerfen
+
+**Schritte:** Designer → `aiAgentTeam`-Node → "Team aus Beschreibung entwerfen" → Beschreibung mit realem Maschinen-/Credential-Namen und einem Pfad eingeben.
+
+**Prüfpunkte:**
+- [ ] Vorschau zeigt je Mitglied wirksames Ziel/Credential mit Herkunft (Mitglied/Step/Maschinen-Default), Pfade, Hosts ("alle Hosts" bei leerer Liste), Skills und Instructions.
+- [ ] Unbekannter Maschinen-/Credential-Name sperrt "In Node übernehmen" bis Treffer gewählt oder Wunsch verworfen ist; nichts wird geraten.
+- [ ] Bestehende Mitglieder werden erst nach Bestätigung ersetzt; danach ist die Teamleitung ausgewählt.
+- [ ] Nichts gespeichert, bis der Workflow gespeichert und veröffentlicht wird.
+- [ ] Audit `AI_AGENT_TEAM_GENERATED` ohne Prompt-Text und ohne Namen.
+
+---
+
 ### Test 32.3 — LLM Disabled → 503
 
 **Setup:** `Llm:Enabled: false`.

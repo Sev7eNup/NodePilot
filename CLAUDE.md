@@ -292,7 +292,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 ### Testumfang pro Änderung
 
-**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 252 Vitest-Dateien, 80 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 254 Vitest-Dateien, 80 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
 
 **Der Nightly ist kein verlässlicher zweiter Boden.** Er läuft als Windows-Task um 22:00 gegen den ausgecheckten Baum und wird verpasst, sobald die Maschine dann aus ist. Wer sich auf ihn beruft, prüft vorher `C:\temp\nodepilot-nightly\latest.md` auf sein Datum.
 
@@ -408,6 +408,7 @@ Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloa
 Opt-in (`Llm:Enabled=false` default), OpenAI-kompatibler Endpunkt, Rate-Limit 20/min/IP. Volle Doku: `docs/ai-features.md` + `docs/claude-reference.md` § KI-Features.
 
 - `POST /api/ai/generate-script` (Admin/Op, SSE-Streaming) + `POST /api/ai/generate-workflow` (Admin/Op, JSON).
+- `POST /api/ai/generate-agent-team` (Admin/Op, JSON) — Team-Entwurf aus Beschreibung: Namen werden serverseitig gegen das Inventar aufgelöst, ungelöste Maschine/Credential blockiert das Übernehmen, Vorschau ist Pflicht, bewusst kein CLI/MCP (`docs/ai-agents.md`).
 - `POST /api/ai/chat` (alle Rollen, SSE) — Workflow-Assistent; Proposals nur Admin/Op, Merge per Node-ID aufs unredigierte Original. **Secrets werden vor jedem LLM-Call redigiert** (`WorkflowSecretRedactor`).
 - `POST /api/ai/knowledge/ask` (SSE) — globaler Wissens-Assistent in `/ai-chat`, vier admin-toggelbare Quellen (Sektion `AiKnowledge`). **DB / text2sql ausschließlich globaler Admin** (zentraler Guard über `ISqlKnowledgeReader`); Folder-Grants erhöhen nie auf Raw-SQL.
 - `llmQuery`-Activity: Engine-lokal, per-Node-Overrides, gated durch `Llm:Enabled`; einziger BaseUrl-Validierungspunkt ist `LlmEndpointGuard`.

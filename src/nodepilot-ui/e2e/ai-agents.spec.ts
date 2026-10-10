@@ -68,6 +68,50 @@ test.describe('AI agent teams', () => {
     await page.screenshot({ path: 'test-results/ai-agent-settings.png', fullPage: true });
   });
 
+  test('drafts a team from a description and applies it only after the open machine request is settled', async ({ page }) => {
+    await installDefaultMocks(page);
+    const machineId = 'cccccccc-1111-2222-3333-444444444444';
+    const definition = JSON.stringify({ nodes: [{ id: 'team', type: 'activity', position: { x: 50, y: 50 }, data: {
+      label: 'Investigation', activityType: 'aiAgentTeam', config: { task: '', members: [
+        { id: 'lead', role: 'Coordinator', instructions: '', isSupervisor: true, tools: [], skillIds: [] },
+        { id: 'researcher', role: 'Researcher', instructions: '', tools: [], skillIds: [] },
+      ] },
+    } }], edges: [] });
+    await page.route(`**/api/workflows/${workflowId}`, route => route.fulfill({ json: { id: workflowId, name: 'Agent team',
+      description: '', isEnabled: false, checkedOutByUserId: MOCK_USER.id, checkedOutByUserName: MOCK_USER.username,
+      version: 1, definitionJson: definition } }));
+    let request: { prompt?: string; currentConfig?: { members?: unknown[] } } = {};
+    await page.route('**/api/ai/generate-agent-team', route => {
+      request = route.request().postDataJSON();
+      return route.fulfill({ json: {
+        patch: { task: 'Find out why the service fails', maxParallelMembers: 1, members: [
+          { id: 'lead', role: 'Drafted Lead', instructions: 'Coordinate.', isSupervisor: true, tools: [], skillIds: [] },
+          { id: 'analyst', role: 'Log Analyst', instructions: 'Read logs.', tools: [{ name: 'files_read', allowedPaths: ['C:\\Logs'] }], skillIds: [] },
+        ] },
+        names: {},
+        issues: [{ severity: 'blocking', memberId: 'analyst', field: 'machine', code: 'unresolved', reference: 'SRV-09',
+          message: "Machine 'SRV-09' was not found.", candidates: [{ id: machineId, name: 'SRV-01', detail: 'srv01' }] }],
+        retried: false, durationMs: 12, model: 'test-model',
+      } });
+    });
+    await page.goto(`/workflows/${workflowId}`);
+    await page.getByTestId('agent-team-node').locator('[data-agent-member-id="lead"]').click();
+    await page.getByRole('button', { name: /draft team from description|team aus beschreibung entwerfen/i }).click();
+    await page.getByRole('textbox', { name: /team description|teambeschreibung/i }).fill('Analyst reads C:\\Logs on SRV-09');
+    await page.getByRole('button', { name: /^draft team$|^team entwerfen$/i }).click();
+    expect(request.prompt).toBe('Analyst reads C:\\Logs on SRV-09');
+    expect(request.currentConfig?.members).toHaveLength(2);
+    const apply = page.getByRole('button', { name: /apply to node|in node übernehmen/i });
+    await expect(page.getByText('C:\\Logs')).toBeVisible();
+    await expect(apply).toBeDisabled();
+    await page.getByLabel("Machine 'SRV-09' was not found.").selectOption(`pick:${machineId}`);
+    await page.getByLabel(/replace the 2 existing|die 2 vorhandenen mitglieder ersetzen/i).check();
+    await expect(apply).toBeEnabled();
+    await apply.click();
+    await expect(page.getByRole('tab', { name: /Log Analyst/ })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Coordinator/ })).toHaveCount(0);
+  });
+
   test('assigns the team lead separately, edits member tools and saves only the outer workflow step', async ({ page }) => {
     await installDefaultMocks(page);
     let definition = JSON.stringify({ nodes: [{ id: 'team', type: 'activity', position: { x: 50, y: 50 }, data: {

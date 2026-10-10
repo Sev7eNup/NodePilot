@@ -103,7 +103,30 @@
   },
   "title": "AI agents",
   "authorization": "Agents use read operations: checked shell commands, HTTP GET/HEAD, approved MCP read tools and workflows checked at runtime. Writes are blocked; no per-call approval is shown.",
-  "readOnlyMcpTools": "MCP read approvals",
+  "authorizationTitle": "Agents act read-only",
+  "taskHint": "What should the agent achieve? State the scope and the result you expect.",
+  "taskHintTeam": "What should the team achieve? The team lead receives this task first and distributes it.",
+  "teamBlock": "Team",
+  "teamBlockHint": "Who works together? Select a member to edit it below.",
+  "memberCount_one": "{{count}} member",
+  "memberCount_other": "{{count}} members",
+  "memberToolsNone": "No tools",
+  "memberTools_one": "{{count}} tool",
+  "memberTools_other": "{{count}} tools",
+  "memberServiceIdentity": "Service identity",
+  "agentBlock": "Agent",
+  "roleBlock": "Role and instructions",
+  "targetBlock": "Target and identity",
+  "targetBlockHint": "Which machine do this member's tools run on, and with which account?",
+  "resultBlock": "Result and limits",
+  "resultBlockHint": "In which form does the result come back, and how much may the run use?",
+  "toolGroups": {
+    "files": "Files and logs",
+    "shell": "Shell",
+    "network": "Network and workflows",
+    "mcp": "Tools from external MCP servers"
+  },
+  "readOnlyMcpTools":"MCP read approvals",
   "mcpReadApprovalHint": "Approve only reviewed, trusted read tools with appropriately restricted server access. The server annotation alone is not proof. Server configuration or tool schema changes require new approval. Apply with Save.",
   "mcpNotReadOnly": "No unambiguous read-only annotation",
   "task": "Task",
@@ -272,5 +295,46 @@
     "hint": "Agent assessment; separate from technical execution status.",
     "draft": "Preliminary findings",
     "draftHint": "Not a final report. Later findings may supersede this earlier draft; see the history."
+  },
+  "teamDraft": {
+    "button": "Draft team from description",
+    "buttonHint": "Describe the team in plain language. You review the result before anything changes.",
+    "title": "Draft agent team",
+    "reviewTitle": "Review team draft",
+    "intro": "Describe who should work together and what each member does. Name machines, credentials, folders and workflows exactly as they appear in NodePilot; anything you do not name is left open instead of guessed.",
+    "promptLabel": "Team description",
+    "placeholder": "e.g. A lead coordinates two members. The Log Analyst reads C:\\Logs on SRV-01 with credential svc-diag. The Reviewer checks the findings. Neither may write anything.",
+    "dataNote": "The text and the names of your machines, credentials, skills and workflows are sent to the configured AI endpoint. Passwords and secrets are never sent.",
+    "generate": "Draft team",
+    "generating": "Drafting…",
+    "back": "Back",
+    "apply": "Apply to node",
+    "reviewHint": "Nothing is saved yet. Check each member's target, identity and permissions. They take effect when you save and publish the workflow.",
+    "replaceExisting": "Replace the {{count}} existing member(s)",
+    "openIssues": "{{count}} open point(s)",
+    "taskKept": "Existing task kept",
+    "taskSet": "Task set from the description",
+    "model": "Model",
+    "duration": "{{ms}} ms",
+    "localhost": "NodePilot server (localhost)",
+    "noCredential": "No credential: the run fails unless a service identity is enabled",
+    "serviceIdentityOn": "NodePilot service identity",
+    "allHosts": "all hosts (GET/HEAD, network policy applies)",
+    "resolve": "Choose how to resolve this…",
+    "origin": {
+      "member": "set for this member",
+      "step": "inherited from the step",
+      "localhost": "no target set"
+    },
+    "credOrigin": {
+      "member": "set for this member",
+      "step": "inherited from the step",
+      "machine": "default credential of the machine"
+    },
+    "discard": {
+      "machine": "Drop this request (member inherits the step target)",
+      "credential": "Drop this request (member inherits the credential)",
+      "serviceIdentity": "Do not use the service identity"
+    }
   }
 }

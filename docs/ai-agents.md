@@ -117,6 +117,41 @@ Schema validation checks shape and categories; it cannot establish factual truth
    save and publish. Publishing authorizes autonomous selected actions within the current
    read-only policy. There is no per-call approval dialog.
 
+### Draft a team from a description
+
+With AI enabled, the team editor shows **Draft team from description** (Admin/Operator,
+`POST /api/ai/generate-agent-team`). The model proposes members and refers to machines, credentials,
+skills, workflows and MCP tools by **name**; the host maps names to ids and returns a patch plus issues.
+It does not save, publish or run anything: **Apply to node** only edits the open node.
+
+- **Inventory.** The model sees names only: machines (name, hostname), credential names (never user names or
+  secrets), enabled skills, enabled MCP servers with tools whose read approval matches the server's current
+  revision, and workflows that are published, enabled, unlocked and runnable by the caller. The service
+  identity is offered only to administrators and only when `Agents:AllowServiceIdentity` is on. Each list is
+  capped at 500 entries. These names reach the configured LLM endpoint.
+- **Resolution.** A reference binds only if it is an exact inventory match **and** appears in the request
+  text. Machines match on exact name or hostname, credentials on exact name, each per member. Zero or several
+  matches are not guessed. A path is accepted only if the request wrote it or a directory above it (a parent or an
+  unwritten drive root is dropped). HTTP hosts must be written in the request; if every proposed host is
+  rejected the tool is removed, because an empty host list means every host. `files_write` is always removed.
+  Negation ("not svc-admin") cannot be checked by the host: the review step is the control.
+- **Issues.** `blocking` issues (unresolved or ambiguous machine or credential, a service identity that is
+  requested but unavailable, an invalid merged configuration) keep **Apply** disabled until the user picks a
+  candidate or drops the request; a dropped request leaves the member inheriting the step's target and
+  credential. `warning` issues list what was left out (rejected paths or hosts, tools without a usable
+  workflow or approval, `http_unrestricted`).
+- **Merge.** The server validates the state that will result from applying: the node's current config with
+  members, task and `maxParallelMembers` replaced. An existing task is kept, otherwise the draft task, otherwise
+  the request text. `maxParallelMembers` comes from the draft, else the existing value, and is capped at the
+  number of non-supervisor members. Budgets and result format stay as configured.
+- **Review.** The preview shows what each member would really run with, including inherited values (member,
+  then step, then the machine's default credential; no machine means the NodePilot server), the service
+  identity, tools with paths and hosts (an empty host list reads "all hosts"), workflow and MCP names, skills
+  and the generated instructions. MCP contract hash, read annotation and argument schema are checked again when
+  the agent runs, so listing a tool does not guarantee that a call succeeds.
+- **Clients.** No `np` command or MCP tool: the preview is the safety control and a headless client would skip
+  it (documented gap in `EndpointClientCoverageTests`). Audit: `AI_AGENT_TEAM_GENERATED` with counts only.
+
 The supervisor uses `delegate({assignments: [{memberId, task, reason}]})`, including a short user-facing
 explanation of the assignment and the open question it addresses. Specialists return JSON containing
 `status` (`completed`, `needs_input`, `failed`) and string `content`. A follow-up reuses

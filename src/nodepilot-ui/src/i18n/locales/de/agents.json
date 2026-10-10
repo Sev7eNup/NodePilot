@@ -103,6 +103,29 @@
   },
   "title": "KI-Agenten",
   "authorization": "Agenten führen Leseaktionen aus: geprüfte Shellbefehle, HTTP per GET/HEAD, freigegebene MCP-Lesewerkzeuge und zur Laufzeit geprüfte Workflows. Schreibaktionen sind gesperrt; es gibt keinen Freigabedialog pro Aufruf.",
+  "authorizationTitle": "Agenten arbeiten nur lesend",
+  "taskHint": "Was soll der Agent erreichen? Nenne Umfang und das erwartete Ergebnis.",
+  "taskHintTeam": "Was soll das Team erreichen? Die Teamleitung erhält diese Aufgabe zuerst und verteilt sie.",
+  "teamBlock": "Team",
+  "teamBlockHint": "Wer arbeitet mit? Wähle ein Mitglied aus, um es darunter zu bearbeiten.",
+  "memberCount_one": "{{count}} Mitglied",
+  "memberCount_other": "{{count}} Mitglieder",
+  "memberToolsNone": "Keine Werkzeuge",
+  "memberTools_one": "{{count}} Werkzeug",
+  "memberTools_other": "{{count}} Werkzeuge",
+  "memberServiceIdentity": "Dienstidentität",
+  "agentBlock": "Agent",
+  "roleBlock": "Rolle und Anweisungen",
+  "targetBlock": "Ziel und Identität",
+  "targetBlockHint": "Auf welcher Maschine laufen die Werkzeuge dieses Mitglieds, und mit welchem Konto?",
+  "resultBlock": "Ergebnis und Grenzen",
+  "resultBlockHint": "In welcher Form kommt das Ergebnis zurück, und wie viel darf der Lauf verbrauchen?",
+  "toolGroups": {
+    "files": "Dateien und Logs",
+    "shell": "Shell",
+    "network": "Netzwerk und Workflows",
+    "mcp": "Werkzeuge externer MCP-Server"
+  },
   "readOnlyMcpTools": "MCP-Lesefreigaben",
   "mcpReadApprovalHint": "Freigabe nur für geprüfte, vertrauenswürdige Lesewerkzeuge mit entsprechend eingeschränktem Serverzugang. Die Serverkennzeichnung allein ist kein Beweis. Änderungen an Serverkonfiguration oder Werkzeugschema erfordern eine neue Freigabe. Mit Speichern anwenden.",
   "mcpNotReadOnly": "Keine eindeutige Lesekennzeichnung",
@@ -272,5 +295,46 @@
     "hint": "Bewertung des Agenten; unabhängig vom technischen Laufstatus.",
     "draft": "Vorläufiger Zwischenstand",
     "draftHint": "Kein Abschlussbericht. Dieser frühere Entwurf kann durch spätere Befunde überholt sein; siehe Verlauf."
+  },
+  "teamDraft": {
+    "button": "Team aus Beschreibung entwerfen",
+    "buttonHint": "Beschreibe das Team in eigenen Worten. Du prüfst das Ergebnis, bevor sich etwas ändert.",
+    "title": "Agententeam entwerfen",
+    "reviewTitle": "Teamentwurf prüfen",
+    "intro": "Beschreibe, wer zusammenarbeiten soll und was jedes Mitglied tut. Nenne Maschinen, Credentials, Ordner und Workflows genau so, wie sie in NodePilot heißen; was du nicht nennst, bleibt offen und wird nicht geraten.",
+    "promptLabel": "Teambeschreibung",
+    "placeholder": "z. B. Eine Leitung koordiniert zwei Mitglieder. Der Log-Analyst liest C:\\Logs auf SRV-01 mit dem Credential svc-diag. Der Prüfer kontrolliert die Befunde. Niemand darf etwas schreiben.",
+    "dataNote": "Der Text sowie die Namen deiner Maschinen, Credentials, Skills und Workflows gehen an den konfigurierten KI-Endpunkt. Passwörter und Geheimnisse werden nie gesendet.",
+    "generate": "Team entwerfen",
+    "generating": "Entwerfe…",
+    "back": "Zurück",
+    "apply": "In Node übernehmen",
+    "reviewHint": "Noch ist nichts gespeichert. Prüfe Ziel, Identität und Berechtigungen jedes Mitglieds. Sie gelten erst, wenn du den Workflow speicherst und veröffentlichst.",
+    "replaceExisting": "Die {{count}} vorhandenen Mitglieder ersetzen",
+    "openIssues": "{{count}} offene(r) Punkt(e)",
+    "taskKept": "Bestehende Aufgabe bleibt erhalten",
+    "taskSet": "Aufgabe aus der Beschreibung gesetzt",
+    "model": "Modell",
+    "duration": "{{ms}} ms",
+    "localhost": "NodePilot-Server (localhost)",
+    "noCredential": "Kein Credential: der Lauf scheitert, solange keine Service-Identität aktiviert ist",
+    "serviceIdentityOn": "NodePilot-Service-Identität",
+    "allHosts": "alle Hosts (GET/HEAD, Netzwerkrichtlinie gilt)",
+    "resolve": "Auflösung wählen…",
+    "origin": {
+      "member": "für dieses Mitglied gesetzt",
+      "step": "vom Step geerbt",
+      "localhost": "kein Ziel gesetzt"
+    },
+    "credOrigin": {
+      "member": "für dieses Mitglied gesetzt",
+      "step": "vom Step geerbt",
+      "machine": "Standard-Credential der Maschine"
+    },
+    "discard": {
+      "machine": "Wunsch verwerfen (Mitglied erbt das Step-Ziel)",
+      "credential": "Wunsch verwerfen (Mitglied erbt das Credential)",
+      "serviceIdentity": "Service-Identität nicht verwenden"
+    }
   }
 }

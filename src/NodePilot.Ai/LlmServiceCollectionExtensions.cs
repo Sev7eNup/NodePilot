@@ -234,6 +234,7 @@ public static class LlmServiceCollectionExtensions
         services.AddSingleton<ILlmClientFactory, LlmClientFactory>();
         services.AddScoped<ScriptGenerationService>();
         services.AddScoped<WorkflowGenerationService>();
+        services.AddScoped<AgentTeamDraftingService>();
         services.AddScoped<WorkflowAssistantService>();
 
         // Global "AI Chat" knowledge assistant: the docs and source readers are singletons (pure

@@ -18,6 +18,7 @@ public static class AuditActions
     public const string AgentSkillDeleted = "AGENT_SKILL_DELETED";
     public const string SettingsAgentsUpdated = "SETTINGS_AGENTS_UPDATED";
     public const string AiKnowledgeAsked = "AI_KNOWLEDGE_ASKED";
+    public const string AiAgentTeamGenerated = "AI_AGENT_TEAM_GENERATED";
     public const string AiProposalApplied = "AI_PROPOSAL_APPLIED";
     public const string AiScriptGenerated = "AI_SCRIPT_GENERATED";
     public const string AiWorkflowExplained = "AI_WORKFLOW_EXPLAINED";

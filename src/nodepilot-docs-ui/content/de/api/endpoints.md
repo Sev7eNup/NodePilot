@@ -341,7 +341,7 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/admin/set
 | Activity-Catalog | `GET /api/activity-catalog` |
 | Scheduler | `GET /api/triggers/schedule/next-fires` |
 | System | `GET /api/system/host-info` (alle Rollen) |
-| AI | `POST /api/ai/generate-script\|generate-workflow` (Admin/Op), `POST /api/ai/chat` (all roles; applying changes Admin/Op), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Op, folder-RBAC) — opt-in, SSE streaming |
+| AI | `POST /api/ai/generate-script\|generate-workflow\|generate-agent-team` (Admin/Op), `POST /api/ai/chat` (all roles; applying changes Admin/Op), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Op, folder-RBAC) — opt-in, SSE streaming |
 | Secrets | `POST /api/secrets/reencrypt` (Admin, kein Body) |
 
 Shared-Folder-Permission-Grant-Body: `{"principalType":"User","principalKey":"<guid>","role":"FolderEditor"}` — Rollen `FolderViewer|FolderOperator|FolderEditor|FolderAdmin`, `principalType` `User|Group` (`Group` = AD-SID `S-1-5-21-...`).

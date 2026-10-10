@@ -20,10 +20,14 @@ public sealed class AgentExternalReadPolicy(IOptionsMonitor<AgentOptions> option
     }
 
     public AgentMcpReadGrant AuthorizeMcpServer(AgentMcpServer server, string toolName)
+        => FindGrant(server, toolName)
+            ?? throw Denied("MCP tool has no read approval for this server revision. Re-approve after server or credential changes.");
+
+    /// <summary>The approval for this tool on the server's current revision, or null.</summary>
+    public AgentMcpReadGrant? FindGrant(AgentMcpServer server, string toolName)
         => (options.CurrentValue.ReadOnlyMcpTools ?? []).FirstOrDefault(g => g is not null && server.Enabled
             && g.ServerId == server.Id && g.ToolName == toolName && DateTimeOffset.TryParse(g.ServerUpdatedAt, out var revision)
-            && revision.UtcDateTime == DateTime.SpecifyKind(server.UpdatedAt, DateTimeKind.Utc))
-            ?? throw Denied("MCP tool has no read approval for this server revision. Re-approve after server or credential changes.");
+            && revision.UtcDateTime == DateTime.SpecifyKind(server.UpdatedAt, DateTimeKind.Utc));
 
     public void AuthorizeMcpTool(AgentMcpServer server, McpClientTool tool, JsonElement? arguments = null)
     {

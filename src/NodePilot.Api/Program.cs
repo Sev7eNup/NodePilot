@@ -209,6 +209,8 @@ builder.Services.AddScoped<NodePilot.Core.Interfaces.ISettingsKnowledgeReader, N
 // Read-only, cell-redacted App-DB schema + query reader for the text2sql knowledge tools
 // (global-Admin-only).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.ISqlKnowledgeReader, NodePilot.Api.Ai.SqlKnowledgeReader>();
+// Inventory (machines, credentials, skills, MCP tools, runnable workflows) for agent-team drafting.
+builder.Services.AddScoped<NodePilot.Api.Ai.AgentTeamInventoryBuilder>();
 builder.Services.AddScoped<IMaintenanceWindowStore, MaintenanceWindowStore>();
 builder.Services.AddScoped<INotificationRuleStore, NotificationRuleStore>();
 // Singleton evaluator: an immutable in-memory snapshot read on the dispatch hot path, refreshed
