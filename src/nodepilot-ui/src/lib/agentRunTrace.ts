@@ -99,3 +99,32 @@ export function traceDuration(start: string, end?: string | null): number | unde
   const value = Date.parse(end) - Date.parse(start);
   return Number.isFinite(value) && value >= 0 ? value / 1000 : undefined;
 }
+
+export type TraceItem =
+  | { kind: 'entry'; entry: TraceEntry }
+  | { kind: 'group'; memberId: string | null; entries: TraceEvent[] };
+
+/** Smallest run of consecutive same-member events that is folded into one group. */
+export const MIN_GROUP_SIZE = 3;
+
+/**
+ * Folds consecutive top-level events of one member (typically the supervisor's model and tool
+ * calls between assignments) into a group, so assignments stay visible instead of drowning in
+ * single-line events. Delegations and shorter runs stay individual entries.
+ */
+export function groupTrace(entries: TraceEntry[]): TraceItem[] {
+  const items: TraceItem[] = [];
+  let run: TraceEvent[] = [];
+  const flush = () => {
+    if (run.length >= MIN_GROUP_SIZE) items.push({ kind: 'group', memberId: run[0].start.memberId, entries: run });
+    else for (const entry of run) items.push({ kind: 'entry', entry });
+    run = [];
+  };
+  for (const entry of entries) {
+    if (entry.type !== 'event') { flush(); items.push({ kind: 'entry', entry }); continue; }
+    if (run.length > 0 && run[0].start.memberId !== entry.start.memberId) flush();
+    run.push(entry);
+  }
+  flush();
+  return items;
+}

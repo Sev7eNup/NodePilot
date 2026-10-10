@@ -194,7 +194,9 @@ Open the agent step in the live execution details or execution history. **Open l
 view** provides more space for the same journal. The collaboration view groups each
 supervisor-to-member assignment with its rationale, the member's tool arguments and
 results, model-call durations, and the answer or question returned to the supervisor.
-Follow-up assignments remain separate entries. Reviewer approvals, requests for
+Follow-up assignments remain separate entries. The activity header shows status, call counters and the
+team of the run; the list is a timeline in which assignments are cards and three or more consecutive
+events of one member (for example the supervisor's model calls) are folded into one expandable group. Reviewer approvals, requests for
 evidence or revision, host completion rejections and interrupted calls are distinguished.
 The displayed rationale is the supervisor's stated decision summary; tool results and
 host statuses separately show what actually happened.

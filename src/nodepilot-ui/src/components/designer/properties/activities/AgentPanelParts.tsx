@@ -41,8 +41,9 @@ export function Pill({ tone = 'neutral', children }: Readonly<{ tone?: 'neutral'
 }
 
 /** Round initial used as a member avatar. */
-export function Initial({ text, active }: Readonly<{ text: string; active: boolean }>) {
-  return <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-headline text-sm font-bold ${
+export function Initial({ text, active, small = false }: Readonly<{ text: string; active: boolean; small?: boolean }>) {
+  return <span aria-hidden="true" className={`flex shrink-0 items-center justify-center rounded-full font-headline font-bold ${
+    small ? 'h-5 w-5 text-[10px]' : 'h-8 w-8 text-sm'} ${
     active ? 'bg-primary text-on-primary' : 'bg-surface-highest text-on-surface-variant'}`}>
     {text.trim().charAt(0).toUpperCase() || '?'}</span>;
 }

@@ -39,7 +39,11 @@
   },
   "missingSkill": "Unresolved skill ({{id}}). Remove it and select the appropriate skill.",
   "trace": {
-    "parallel": "Parallel: {{count}} assignments",
+    "team": "Team in this run",
+    "stepsGroup_one": "{{count}} step",
+    "stepsGroup_other": "{{count}} steps",
+    "stepsBreakdown": "{{models}}× model, {{tools}}× tool",
+    "parallel":"Parallel: {{count}} assignments",
     "expand": "Open large view",
     "close": "Close",
     "reviewApproved": "Review approved",

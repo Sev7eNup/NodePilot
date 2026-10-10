@@ -40,6 +40,10 @@
   "missingSkill": "Skill nicht zugeordnet ({{id}}). Entfernen und den passenden Skill auswählen.",
   "trace": {
     "parallel": "Parallel: {{count}} Aufträge",
+    "team": "Team in diesem Lauf",
+    "stepsGroup_one": "{{count}} Schritt",
+    "stepsGroup_other": "{{count}} Schritte",
+    "stepsBreakdown": "{{models}}× Modell, {{tools}}× Werkzeug",
     "expand": "Große Ansicht öffnen",
     "close": "Schließen",
     "reviewApproved": "Prüfung freigegeben",
