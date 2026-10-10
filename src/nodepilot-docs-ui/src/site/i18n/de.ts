@@ -37,7 +37,7 @@ export const de = {
       home: 'NodePilot verbindet PowerShell und Windows-Aktivitäten zu visuellen Workflows. Agentenlos, selbst gehostet, quelloffen und kostenlos.',
       product: 'Designer, Schritt-Debugger, Live Ops, Auslöser, Alarmierung und KI-Unterstützung in einem Werkzeug. 29 Aktivitätstypen von PowerShell bis SQL.',
       experience: 'NodePilot im Browser ausprobieren: zehn geführte Aufgaben von Workflow-Design und Live Ops bis Wartungsfenster. Ohne Anmeldung oder Installation.',
-      videos: 'NodePilot Media: 25 kurze Video-Tutorials zu PowerShell- und Windows-Automatisierung, Workflow-Designer, Debugger, Live Ops, CLI und KI.',
+      videos: 'NodePilot Media: 27 kurze Video-Tutorials zu PowerShell- und Windows-Automatisierung, Workflow-Designer, Debugger, Live Ops, CLI und KI.',
       blog: 'Praxis und Hintergründe zu PowerShell-Workflows, Windows-Automatisierung und dem Import von System Center Orchestrator in NodePilot.',
       impressum: 'Anbieterkennzeichnung und Kontakt zum Open-Source-Projekt NodePilot.',
       datenschutz: 'Wie diese Website mit Daten umgeht: Hosting, Browser-Speicher und Rechte der Besucher.',
@@ -323,7 +323,7 @@ export const de = {
   videos: {
     kicker: 'MEDIA',
     title: 'NodePilot Media: Videos und Tutorials.',
-    intro: 'Die Reihe „NodePilot in 2 Minuten“: 25 kurze Folgen zu Oberfläche, Workflows, Rechten, Kommandozeile und KI.',
+    intro: 'Die Reihe „NodePilot in 2 Minuten“: 27 kurze Folgen zu Oberfläche, Workflows, Rechten, Kommandozeile und KI.',
     episode: 'Folge {number}',
     play: 'Video abspielen: {title}',
     close: 'Video schließen',

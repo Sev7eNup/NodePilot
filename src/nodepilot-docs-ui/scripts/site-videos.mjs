@@ -39,6 +39,7 @@ const POSTER_CAPTURES = {
   '20-ldap-sso': ['ldap', 0.2, 0.25, 0.6], '21-audit': ['audit', 0.2, 0.15, 0.65],
   '22-backup': ['preview', 0.15, 0.08, 0.5], '23-cli': ['expanded', 0.1, 0.2, 0.65],
   '24-mcp': ['run', 0, 0.2, 0.55],
+  '25-ai-agents': ['traceCards', 0.17, 0.12, 0.68], '26-ai-chat': ['opsDone', 0.2, 0.15, 0.6],
 }
 const MEDIA = at('../pages-media/training/')
 const POSTERS = at('../src/site/public/training/')

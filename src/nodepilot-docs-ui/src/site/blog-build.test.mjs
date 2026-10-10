@@ -106,7 +106,7 @@ describe('article publication and preview boundary', () => {
 
 describe('training video catalog', () => {
   it('lists every episode once, in order, with both language versions complete', () => {
-    expect(videoEpisodes.map(episode => episode.number)).toEqual([...Array(25).keys()])
+    expect(videoEpisodes.map(episode => episode.number)).toEqual([...Array(27).keys()])
     expect(new Set(videoEpisodes.map(episode => episode.slug)).size).toBe(videoEpisodes.length)
     for (const episode of videoEpisodes) {
       expect(episode.slug).toMatch(new RegExp(`^${String(episode.number).padStart(2, '0')}-[a-z0-9-]+$`))
