@@ -40,6 +40,7 @@ public sealed class MutatingActionAuditCoverageTests
     {
         ["AuditController.ExportStream"] = "AuditActions.AuditLogExported",
         ["DiagnosticsController.Download"] = "AuditActions.SupportLogDownloaded",
+        ["AppLogController.Download"] = "AuditActions.AppLogDownloaded",
         ["DiagnosticsController.ExportEvents"] = "AuditActions.SupportEventsExported",
         ["CustomActivitiesController.Export"] = "AuditActions.CustomActivityExported",
         ["DbAdminController.GetRows"] = "WriteRowsViewedAuditAsync",

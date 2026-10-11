@@ -39,6 +39,14 @@ Zwei Sub-Sinks aus demselben Serilog-Filter (für Operator/Ticket-Diagnose):
 
 Endpoints: `GET /api/diagnostics/support-log|support-log/download|support-events|support-events/export` (Admin). UI: eigene Hauptmenü-Seite `/support-log` (Admin-only, im Sidebar unter „Alerting").
 
+## Server-Protokoll (Anwendungslog) in der Oberfläche
+
+Dieselbe Seite zeigt über den Umschalter **Server-Protokoll** (`/support-log?source=server`) das Anwendungslog `nodepilot-YYYYMMDD.log`: Fehler, Warnungen und Startmeldungen von NodePilot selbst. Die Ansicht **Probleme** fasst gleiche Ursachen zu einer Karte mit Zähler zusammen, **Verlauf** listet jeden Eintrag mit Filter nach Schweregrad, Bereich und Text. Das gilt, solange die API antwortet; Startfehler früherer Starts stehen dort, sobald der Dienst wieder läuft. Antwortet die API nicht, bleibt der Dateizugriff (siehe [Logs & Diagnose](../deployment/logs)).
+
+Der Server liest die Dateien neueste zuerst mit einem Budget von 8 MiB und meldet in jeder Antwort, wie viel des Zeitraums er gesehen hat. **„Keine Probleme" erscheint nur bei vollständig gelesenem Zeitraum**; sonst steht dort „im gelesenen Ausschnitt (seit …)", weil die Dateiaufbewahrung (7 Dateien) oder das Budget ältere Einträge ausschließen können. Gelesen werden alle vier Formate (`cmtrace`, `text`, `json`, `ecs-json`). `cmtrace` faltet beim Schreiben Error mit Fatal und Info mit Debug zusammen, flacht Zeilenumbrüche ab und kürzt Meldungen auf 3800 Zeichen — „Kritisch" und vollständige Stacktraces lassen sich daraus nicht rekonstruieren. Die Zeit des Textformats hat keinen Offset und wird in der Zeitzone des Servers gelesen.
+
+Endpoints (Admin): `GET /api/diagnostics/app-log` (`hours` 1–168, `minLevel`, `q`, `take` ≤ 1000; `minLevel` und `q` filtern vor `take`, `summary` zählt immer über das ganze gelesene Fenster) und `GET /api/diagnostics/app-log/download?date=yyyy-MM-dd`. Der Download ist ein zusammengeführter, **redigierter** Tagesexport `nodepilot-app-<Datum>.redacted.log` (alle Segmente des Tages), kein unveränderter Dateiabzug, und wird als `APP_LOG_DOWNLOADED` im Audit-Log vermerkt. Die Ausgaberedaktion arbeitet zeilenweise; mehrzeilige PEM-Blöcke werden zustandsbehaftet entfernt, unbekannte Secret-Muster bleiben möglich.
+
 ## Security-Headers (Non-Dev)
 
 HSTS, CSP, `X-Frame-Options=DENY`, `nosniff`, `Referrer-Policy`.

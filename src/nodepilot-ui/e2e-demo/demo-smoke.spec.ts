@@ -24,6 +24,7 @@ const ROUTES = [
   '/alerts?tab=system',
   '/ai-chat',
   '/support-log',
+  '/support-log?source=server',
   '/database',
   '/backup',
   // All ten sections, not just the first: each one loads its own endpoints, and a route walk

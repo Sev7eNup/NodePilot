@@ -325,7 +325,7 @@ Three files carry the evidence, and the rows below refer to them by name:
 
 | Referred to as | File |
 |---|---|
-| the log, the Application log, the boot log | `C:\ProgramData\NodePilot\logs\nodepilot-<date>.log` — full diagnostics. Keeps **7 files**, rolling daily and again at 100 MB, so it reaches back fewer than seven days on a talkative system |
+| the log, the Application log, the boot log | `C:\ProgramData\NodePilot\logs\nodepilot-<date>.log` — full diagnostics. Keeps **7 files**, rolling daily and again at 100 MB, so it reaches back fewer than seven days on a talkative system. While the API answers, a redacted view is at `/support-log?source=server` |
 | the support log | `C:\ProgramData\NodePilot\logs\nodepilot-support-<date>.log` — a curated extract, 90 files. Also readable in the browser at `/support-log` without a file share |
 | the installer log | `%TEMP%\nodepilot-server-setup.log` — a transcript of the install/update run, appended across runs |
 

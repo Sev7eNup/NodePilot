@@ -6,7 +6,7 @@ NodePilot schreibt zwei Anwendungslogs; die Installationsprogramme führen je ei
 
 | Artefakt | Muster | Ablage | Inhalt | Aufbewahrung |
 |---|---|---|---|---|
-| Anwendungslog | `nodepilot-JJJJMMTT.log`, bei Größenrollover zusätzlich `_001`, `_002` … | `C:\ProgramData\NodePilot\logs\` (Server und Desktop); in einer Entwicklungsinstanz `src\NodePilot.Api\logs\` | Vollständige Diagnose: Boot, Konfiguration, HTTP, Engine, Datenbank, Stacktraces | **7 Dateien**, zusätzlicher Rollover bei 100 MB |
+| Anwendungslog | `nodepilot-JJJJMMTT.log`, bei Größenrollover zusätzlich `_001`, `_002` … | `C:\ProgramData\NodePilot\logs\` (Server und Desktop); in einer Entwicklungsinstanz `src\NodePilot.Api\logs\` | Vollständige Diagnose: Boot, Konfiguration, HTTP, Engine, Datenbank, Stacktraces | **7 Dateien**, zusätzlicher Rollover bei 100 MB. Bei antwortender API als redigierte Ansicht unter `/support-log?source=server` lesbar |
 | Support-Log | `nodepilot-support-JJJJMMTT.log` (+ `_001` …) | derselbe Ordner | Kuratierter Auszug ohne Stacktraces: Boot-Banner, allowlistete Audit-Ereignisse, angewandte Migrationen, fehlgeschlagene Steps, Ausgaben der `log`-Activity | 90 Dateien, zusätzlicher Rollover bei 10 MiB |
 | `SupportEvents` | Datenbanktabelle | Datenbank, gelesen über die Seite `/support-log` | Dieselben Ereignisse strukturiert, mit Filter, Cursor und Export | 90 Tage über `Retention:SupportEvents` |
 | Server-Setup-Transkript | `nodepilot-server-setup.log` | `%TEMP%` | Vollständiger Mitschnitt eines Installations- oder Update-Laufs | Wird angehängt, nicht begrenzt |
@@ -36,6 +36,7 @@ Diese Stellen sind bewusst leer und müssen im Störfall nicht durchsucht werden
 | `/healthz/ready` bleibt 503 | Zuerst `/healthz/database` — antwortet immer HTTP 200 mit `status` und `reason` —, dann das Anwendungslog | `RejectedByServer` bedeutet falsche Zugangsdaten, Datenbankauswahl oder TLS-Konfiguration und klärt sich nicht durch Warten |
 | Ein einzelner Workflow-Step ist rot | Execution-Detail in der Oberfläche | Step-Ausgaben stammen aus der Datenbank, nicht aus den Logdateien; das Support-Log führt nur die redigierte Kurzfassung |
 | „Was ist auf dem System passiert?“ | Seite `/support-log` (Admin), Umschalter Tabelle/Klartext | Die Tabellenansicht filtert und exportiert nach CSV oder NDJSON, die Klartextansicht zeigt die Datei |
+| NodePilot läuft, aber auf der Plattform schlägt etwas fehl (Datenbank, LDAP, SMTP, WinRM) | Seite `/support-log`, Umschalter **Server-Protokoll** (`?source=server`) | Zeigt Warnungen und Fehler des Anwendungslogs nach Ursache gruppiert. „Keine Probleme“ gilt nur bei vollständig gelesenem Zeitraum, sonst steht dort „im gelesenen Ausschnitt“ |
 | „Wer hat was geändert?“ | Seite `/audit`, siehe [Audit-Log](../security/audit-log) | Konfigurations- und Datenänderungen stehen dort, nicht im Anwendungslog |
 | Auswertung über mehrere Hosts hinweg | `Logging:Format=ecs-json`, siehe [SIEM-Logging](../enterprise/siem-logging) | Ein Sammler liest dieselben Dateien; NodePilot versendet selbst nichts |
 
@@ -55,12 +56,14 @@ Invoke-WebRequest 'https://nodepilot.contoso.local/api/diagnostics/support-log/d
 
 Erwartetes Ergebnis ist die vollständige Klartextdatei des angefragten Tages; existiert sie nicht, antwortet der Endpunkt mit HTTP 404. Ohne Datumsangabe liefert `GET /api/diagnostics/support-log` die letzten Zeilen der heutigen Datei (Standard 200, Obergrenze 1000). Beide Endpunkte sind Administratoren vorbehalten, und der Download wird im Audit-Log vermerkt.
 
+Das Anwendungslog ist auf demselben Weg erreichbar, solange die API antwortet: Umschalter **Server-Protokoll** auf `/support-log` (`?source=server`) oder `GET /api/diagnostics/app-log` und `GET /api/diagnostics/app-log/download?date=jjjj-MM-tt`. Der Download ist ein **zusammengeführter, redigierter Tagesexport** (`nodepilot-app-<Datum>.redacted.log`), nicht die unveränderte Datei, und wird im Audit-Log als `APP_LOG_DOWNLOADED` vermerkt. Die Redaktion arbeitet zeilenweise, unbekannte Secret-Muster bleiben möglich. Die Ansicht liest die neuesten 8 MiB und nennt, wie viel des angefragten Zeitraums sie abdeckt. Startet der Dienst nicht oder bindet der Webserver nicht, ist auch diese Seite nicht erreichbar — dann bleibt der oben beschriebene Dateizugriff. Details und Formatgrenzen: [Logging](../configuration/logging).
+
 ## Was einem Ticket beiliegen sollte
 
 Für eine Serverinstallation:
 
 1. Produktversion und Betriebsart (Server oder Desktop).
-2. Der Abschnitt des Anwendungslogs um den Zeitpunkt des Vorfalls.
+2. Der Abschnitt des Anwendungslogs um den Zeitpunkt des Vorfalls (oder der redigierte Tagesexport aus der Oberfläche).
 3. Die Support-Log-Tagesdatei des Vorfallstages.
 4. Die Ausgabe von `Get-Service NodePilot` und die Antwort von `/healthz/database`.
 5. Bei einer gescheiterten Installation zusätzlich `%TEMP%\nodepilot-server-setup.log`.

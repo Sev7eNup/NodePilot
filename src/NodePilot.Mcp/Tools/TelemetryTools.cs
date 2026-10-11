@@ -157,9 +157,9 @@ public sealed class TelemetryTools
     }
 
     [McpServerTool(Name = "get_support_diagnostics", ReadOnly = true)]
-    [Description("Get support diagnostics (Admin only). kind='log' tails the support log file; kind='events' returns recent structured support events. limit caps lines/events.")]
+    [Description("Get support diagnostics (Admin only). kind='log' tails the support log file; kind='events' returns recent structured support events; kind='server' returns the warnings and errors of the application log (the server's own log) for the last 24 hours, with a summary and scan.complete telling whether the whole window was read. limit caps lines/events/entries.")]
     public async Task<object> GetSupportDiagnostics(
-        [Description("Either 'log' (tail the support log) or 'events' (structured support events).")] string kind,
+        [Description("'log' (tail the support log), 'events' (structured support events) or 'server' (application-log warnings and errors).")] string kind,
         [Description("Max lines/events to return (default 100).")] int limit = 100,
         CancellationToken cancellationToken = default)
     {
@@ -168,7 +168,8 @@ public sealed class TelemetryTools
         {
             "log" => await ApiErrorMapper.Guard(() => _api.GetSupportLogAsync(clamped, cancellationToken)),
             "events" => await ApiErrorMapper.Guard(() => _api.GetSupportEventsAsync(clamped, cancellationToken)),
-            _ => throw new McpException("kind must be 'log' or 'events'."),
+            "server" => await ApiErrorMapper.Guard(() => _api.GetAppLogAsync(clamped, cancellationToken)),
+            _ => throw new McpException("kind must be 'log', 'events' or 'server'."),
         };
         // Truncate every string leaf (log lines / event messages / propertiesJson can be huge).
         return PayloadShaping.TruncateStrings(raw) ?? (object)new { };

@@ -39,6 +39,14 @@ Two sub-sinks from the same Serilog filter (for operator/ticket diagnosis):
 
 Endpoints: `GET /api/diagnostics/support-log|support-log/download|support-events|support-events/export` (admin). UI: its own main-menu page `/support-log` (admin only, in the sidebar under "Alerting").
 
+## Server log (application log) in the UI
+
+The same page shows the application log `nodepilot-YYYYMMDD.log` through the **Server log** switch (`/support-log?source=server`): errors, warnings and start-up messages from NodePilot itself. **Problems** folds repeated causes into one card with a count; **History** lists every entry with filters for severity, area and text. This works while the API answers; start-up failures of earlier starts show up once the service is back. When the API does not answer, file access remains necessary (see [Logs & diagnostics](../deployment/logs)).
+
+The server reads the files newest-first within an 8 MiB budget and reports in every response how much of the window it saw. **"No problems" appears only when the whole window was read**; otherwise the page says "in the part that was read (since …)", because file retention (7 files) or the budget can exclude older entries. All four formats are read (`cmtrace`, `text`, `json`, `ecs-json`). When writing, `cmtrace` folds Error with Fatal and Info with Debug, flattens line breaks and caps messages at 3800 characters — "Critical" and full stack traces cannot be recovered from it. The text format carries no offset, so its time is read in the server's time zone.
+
+Endpoints (admin): `GET /api/diagnostics/app-log` (`hours` 1–168, `minLevel`, `q`, `take` ≤ 1000; `minLevel` and `q` filter before `take`, `summary` always counts the whole window that was read) and `GET /api/diagnostics/app-log/download?date=yyyy-MM-dd`. The download is a merged, **redacted** daily export `nodepilot-app-<date>.redacted.log` (every segment of the day), not an unmodified copy of the file, and is recorded as `APP_LOG_DOWNLOADED` in the audit log. Output redaction works line by line; multi-line PEM blocks are removed statefully, unknown secret patterns remain possible.
+
 ## Security headers (non-development)
 
 HSTS, CSP, `X-Frame-Options=DENY`, `nosniff`, `Referrer-Policy`.

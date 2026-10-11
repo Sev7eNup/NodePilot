@@ -5,6 +5,39 @@ public sealed record SupportLogTailResponse(
     int LineCount,
     IReadOnlyList<string> Lines);
 
+/// <summary>How much of the requested window the server actually read.</summary>
+public sealed record AppLogScanInfo(
+    DateTimeOffset RequestedSince,
+    DateTimeOffset? CoverageStart,
+    bool Complete,
+    bool BudgetExhausted,
+    long BytesScanned,
+    int FilesSkipped,
+    int FragmentsDropped,
+    int UnparsedLines);
+
+/// <summary>Counts over every scanned entry in the window, independent of filters and take.</summary>
+public sealed record AppLogSummary(int Errors, int Warnings, int Total);
+
+/// <summary>Counts of the filtered result set: <c>Matched</c> before, <c>Returned</c> after take.</summary>
+public sealed record AppLogResults(int Matched, int Returned, bool Truncated);
+
+public sealed record AppLogEntryResponse(
+    DateTimeOffset Timestamp,
+    string Level,
+    string Source,
+    string Message,
+    string? Template,
+    string? Details,
+    bool Truncated,
+    string Format);
+
+public sealed record AppLogResponse(
+    AppLogScanInfo Scan,
+    AppLogSummary Summary,
+    AppLogResults Results,
+    IReadOnlyList<AppLogEntryResponse> Entries);
+
 public sealed record SupportEventResponse(
     Guid Id,
     DateTime Timestamp,

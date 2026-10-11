@@ -442,6 +442,14 @@ public sealed partial class NodePilotApiClient
         return await ParseAsync<JsonElement>(res, ct);
     }
 
+    public async Task<JsonElement> GetAppLogAsync(int? take, CancellationToken ct)
+    {
+        EnsureReady();
+        var url = "api/diagnostics/app-log?minLevel=warning" + (take.HasValue ? $"&take={take.Value}" : "");
+        using var res = await _http.GetAsync(url, ct);
+        return await ParseAsync<JsonElement>(res, ct);
+    }
+
     public async Task<JsonElement> GetSupportEventsAsync(int? take, CancellationToken ct)
     {
         EnsureReady();

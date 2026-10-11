@@ -1,5 +1,4 @@
 {
-  "subtitle": "Live-Tail des Support-Logs sowie strukturierte Support-Events aus der DB-Projektion — direkter Zugriff im Support-Fall.",
   "title": "Support-Log",
   "tableView": "Tabelle (DB)",
   "plainView": "Plain-Text (Datei)",
@@ -35,5 +34,82 @@
     "step": "Step / Aktivität",
     "exec": "Exec",
     "user": "Benutzer"
+  },
+  "source": {
+    "workflow": {
+      "label": "Workflow-Ereignisse",
+      "subtitle": "Was haben meine Workflows und Benutzer getan? Live-Tail des Support-Logs sowie strukturierte Support-Events aus der DB-Projektion — direkter Zugriff im Support-Fall."
+    },
+    "server": {
+      "label": "Server-Protokoll",
+      "subtitle": "Warum läuft NodePilot selbst nicht richtig? Das Anwendungslog des Dienstes mit Fehlern, Warnungen und Startmeldungen. Es ist erreichbar, solange die API antwortet — Startfehler früherer Starts stehen hier, sobald der Dienst wieder läuft."
+    }
+  },
+  "appLog": {
+    "title": "Server-Protokoll",
+    "viewProblems": "Probleme",
+    "viewHistory": "Verlauf",
+    "window": "Zeitraum",
+    "windowOption": {
+      "1": "Letzte Stunde",
+      "24": "Letzte 24 Stunden",
+      "168": "Letzte 7 Tage"
+    },
+    "pause": "Pausieren",
+    "resume": "Fortsetzen",
+    "exportLabel": "Tages-Export (redigiert):",
+    "export": "Herunterladen",
+    "exportHint": "Der ganze Tag in einer Datei, Secrets maskiert — nicht die unveränderte Logdatei.",
+    "statusClean": "Keine Probleme seit {{since}}.",
+    "statusCleanPartial": "Keine Warnungen oder Fehler im gelesenen Ausschnitt (seit {{since}}).",
+    "statusProblems": "Seit {{since}}: {{counts}}",
+    "statusProblemsPartial": "Im gelesenen Ausschnitt (seit {{since}}): {{counts}}",
+    "errorsCount_one": "{{count}} Fehler",
+    "errorsCount_other": "{{count}} Fehler",
+    "warningsCount_one": "{{count}} Warnung",
+    "warningsCount_other": "{{count}} Warnungen",
+    "partialNote": "Ältere Einträge fehlen möglicherweise — durch die Aufbewahrung der Logdateien oder das Lesebudget. Der Tages-Export unten deckt einen ganzen Tag ab.",
+    "budgetNote": "Gelesen wurden die letzten {{mb}} MB.",
+    "skippedNote_one": "{{count}} Logdatei war nicht lesbar und wurde übersprungen.",
+    "skippedNote_other": "{{count}} Logdateien waren nicht lesbar und wurden übersprungen.",
+    "unparsedNote_one": "{{count}} Zeile konnte nicht gelesen werden.",
+    "unparsedNote_other": "{{count}} Zeilen konnten nicht gelesen werden.",
+    "resultsNote": "Angezeigt werden die neuesten {{returned}} von {{matched}} Treffern.",
+    "groupedNote": "Gruppiert werden nur die neuesten {{returned}} Treffer.",
+    "noProblems": "Keine Warnungen oder Fehler im gelesenen Ausschnitt.",
+    "noEntries": "Keine Einträge im gelesenen Ausschnitt.",
+    "lastSeen": "zuletzt {{time}}",
+    "firstSeen": "erstmals {{time}}",
+    "countHint": "Anzahl unter den geladenen Treffern, nicht im gesamten Log",
+    "levels": {
+      "Verbose": "Trace",
+      "Debug": "Debug",
+      "Information": "Info",
+      "Warning": "Warnung",
+      "Error": "Fehler",
+      "Fatal": "Kritisch"
+    },
+    "areas": {
+      "engine": "Workflow-Engine",
+      "database": "Datenbank",
+      "scheduler": "Trigger & Zeitpläne",
+      "remote": "Remote (WinRM)",
+      "ai": "KI",
+      "auth": "Anmeldung",
+      "web": "Webserver",
+      "other": "Sonstiges"
+    },
+    "severity": "Schweregrad",
+    "severityAll": "Alle ab Info",
+    "severityWarning": "Warnungen und Fehler",
+    "severityError": "Nur Fehler",
+    "area": "Bereich",
+    "areaAll": "Alle Bereiche",
+    "search": "Im Log suchen",
+    "searchButton": "Suchen",
+    "truncatedChip": "gekürzt",
+    "truncatedHint": "Diese Meldung wurde beim Schreiben gekürzt. Der vollständige Text steht nur in der Datei auf dem Server.",
+    "source": "Quelle:",
+    "noDetails": "Keine weiteren Details."
   }
 }

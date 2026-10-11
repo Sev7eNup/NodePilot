@@ -353,6 +353,7 @@ builder.Services.AddSingleton<NodePilot.Engine.Security.OutputRedactor>();
 builder.Services.AddSingleton<NodePilot.Core.Audit.IAuditDetailsRedactor>(
     sp => sp.GetRequiredService<NodePilot.Engine.Security.OutputRedactor>());
 builder.Services.AddSingleton<NodePilot.Api.Diagnostics.ISupportLogFileResolver, NodePilot.Api.Diagnostics.SupportLogFileResolver>();
+builder.Services.AddSingleton<NodePilot.Api.Diagnostics.IAppLogFileResolver, NodePilot.Api.Diagnostics.AppLogFileResolver>();
 // Support-event DB projection: the channel is a singleton (shared between the Serilog sink and
 // the background flush service); the flush service is a HostedService that runs on every node,
 // not leader-only — see the XML doc comment on SupportEventFlushService for the reasoning.

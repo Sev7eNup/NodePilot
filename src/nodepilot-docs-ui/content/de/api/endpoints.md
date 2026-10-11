@@ -291,7 +291,7 @@ Alle Webhook-Reject-Pfade (missing/wrong secret, disabled, path/method-Mismatch,
 | Endpoint | Zweck |
 |---|---|
 | `GET /api/observability/config\|query\|query_range\|summary` | Prometheus/OTel-Queries |
-| `GET /api/diagnostics/support-log\|support-log/download\|support-events\|support-events/export` | Diagnostics (Admin) |
+| `GET /api/diagnostics/support-log\|support-log/download\|support-events\|support-events/export\|app-log\|app-log/download` | Diagnostics (Admin) |
 
 ```bash
 # config anonym; query/query_range/summary Admin/Op

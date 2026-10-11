@@ -5,7 +5,7 @@
  * world, so the log cannot claim something the executions list contradicts. The file tail is
  * rendered from the same rows, which is also how the product projects them.
  *
- * The two download endpoints stay refused: a file is a claim about a real installation, and
+ * The download endpoints stay refused: a file is a claim about a real installation, and
  * handing over a plausible-looking one would be the demo lying in a format people keep.
  */
 import { route, type Route } from '../net/router';
@@ -13,7 +13,7 @@ import { json } from '../net/respond';
 import { getWorld } from '../state/world';
 import { demoId } from '../state/ids';
 import { DEMO_HOST } from '../seed/entities';
-import type { SupportEventResponse } from '../../src/api/diagnostics';
+import type { AppLogEntry, AppLogLevel, AppLogResponse, SupportEventResponse } from '../../src/api/diagnostics';
 
 /** Serilog levels, as `LEVEL_LABELS` in SupportEventsTable maps them. */
 const INFO = 2;
@@ -198,7 +198,76 @@ function supportLogFileName(): string {
 /** Tail cap, as DiagnosticsController applies it. */
 const MAX_TAIL_LINES = 1000;
 
+const APP_LOG_RANK: Record<AppLogLevel, number> = {
+  Verbose: 0, Debug: 1, Information: 2, Warning: 3, Error: 4, Fatal: 5,
+};
+
+/**
+ * The server log, restated from the same history: a step that failed is the Warning StepRunner
+ * logs for it, and the boot line is the start-up message. Nothing here is authored, so the
+ * server log cannot contradict the executions list.
+ */
+function buildAppLog(): AppLogEntry[] {
+  const entries: AppLogEntry[] = [];
+  for (const { row } of buildEvents()) {
+    if (row.eventType === 'STEP_FAILED') {
+      entries.push({
+        timestamp: row.timestamp,
+        level: 'Warning',
+        source: 'NodePilot.Engine.Execution.StepRunner',
+        message: `Step '${row.stepLabel ?? row.stepId}' of execution ${row.executionShort} failed: ${row.message}`,
+        template: null, details: null, truncated: false, format: 'cmtrace',
+      });
+    } else if (row.eventType === 'SYSTEM_BOOT') {
+      entries.push({
+        timestamp: row.timestamp,
+        level: 'Information',
+        source: 'NodePilot.Api.Hosting.Startup',
+        message: `NodePilot.Api ${row.message}`,
+        template: null, details: null, truncated: false, format: 'cmtrace',
+      });
+    }
+  }
+  return entries.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+}
+
+/** Window, level, text and take, in the order the controller applies them. */
+function appLogResponse(query: URLSearchParams): AppLogResponse {
+  const hours = Math.min(Math.max(Number(query.get('hours') ?? 24) || 24, 1), 168);
+  const take = Math.min(Math.max(Number(query.get('take') ?? 500) || 500, 1), 1000);
+  const minRank = APP_LOG_RANK[(query.get('minLevel') as AppLogLevel | null) ?? 'Verbose'] ?? 0;
+  const text = query.get('q')?.toLowerCase();
+  const since = Date.now() - hours * 3_600_000;
+
+  const inWindow = buildAppLog().filter((e) => Date.parse(e.timestamp) >= since);
+  const matches = inWindow.filter((e) =>
+    APP_LOG_RANK[e.level] >= minRank
+    && (!text || e.message.toLowerCase().includes(text) || e.source.toLowerCase().includes(text)));
+  const returned = matches.slice(0, take);
+  return {
+    scan: {
+      requestedSince: new Date(since).toISOString(),
+      coverageStart: new Date(since).toISOString(),
+      complete: true,
+      budgetExhausted: false,
+      bytesScanned: 0,
+      filesSkipped: 0,
+      fragmentsDropped: 0,
+      unparsedLines: 0,
+    },
+    summary: {
+      errors: inWindow.filter((e) => APP_LOG_RANK[e.level] >= APP_LOG_RANK.Error).length,
+      warnings: inWindow.filter((e) => e.level === 'Warning').length,
+      total: inWindow.length,
+    },
+    results: { matched: matches.length, returned: returned.length, truncated: matches.length > returned.length },
+    entries: returned,
+  };
+}
+
 export const diagnosticsRoutes: Route[] = [
+  route('GET', '/diagnostics/app-log', (ctx) => json(appLogResponse(ctx.query))),
+
   route('GET', '/diagnostics/support-log', (ctx) => {
     const requested = Number(ctx.query.get('lines') ?? 200) || 200;
     const count = Math.min(Math.max(requested, 1), MAX_TAIL_LINES);

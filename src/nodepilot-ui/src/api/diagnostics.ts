@@ -6,6 +6,47 @@ export type SupportLogTailResponse = {
   lines: string[];
 };
 
+export type AppLogLevel = 'Verbose' | 'Debug' | 'Information' | 'Warning' | 'Error' | 'Fatal';
+
+export type AppLogEntry = {
+  timestamp: string;
+  level: AppLogLevel;
+  source: string;
+  message: string;
+  template: string | null;
+  details: string | null;
+  truncated: boolean;
+  format: 'cmtrace' | 'text' | 'json' | 'ecs-json';
+};
+
+/** How much of the requested window the server read. `complete` is the only "nothing missed" signal. */
+export type AppLogScan = {
+  requestedSince: string;
+  coverageStart: string | null;
+  complete: boolean;
+  budgetExhausted: boolean;
+  bytesScanned: number;
+  filesSkipped: number;
+  fragmentsDropped: number;
+  unparsedLines: number;
+};
+
+export type AppLogResponse = {
+  scan: AppLogScan;
+  /** Counts over every scanned entry of the window, independent of filters and take. */
+  summary: { errors: number; warnings: number; total: number };
+  /** `matched` counts before `take`, `returned` after it. */
+  results: { matched: number; returned: number; truncated: boolean };
+  entries: AppLogEntry[];
+};
+
+export type AppLogQuery = {
+  hours: number;
+  minLevel?: 'Information' | 'Warning' | 'Error';
+  q?: string;
+  take?: number;
+};
+
 export type SupportEventResponse = {
   id: string;
   timestamp: string;
@@ -53,7 +94,7 @@ export type SupportEventQuery = {
   take?: number;
 };
 
-function buildQuery(filter: SupportEventQuery): string {
+function buildQuery(filter: object): string {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(filter)) {
     if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
@@ -68,6 +109,12 @@ export const diagnostics = {
   downloadSupportLog: (date: string) =>
     downloadFromApi(`/diagnostics/support-log/download?date=${encodeURIComponent(date)}`,
       `nodepilot-support-${date}.log`),
+
+  tailAppLog: (query: AppLogQuery) =>
+    api.get<AppLogResponse>(`/diagnostics/app-log${buildQuery(query)}`),
+  downloadAppLog: (date: string) =>
+    downloadFromApi(`/diagnostics/app-log/download?date=${encodeURIComponent(date)}`,
+      `nodepilot-app-${date}.redacted.log`),
 
   queryEvents: (filter: SupportEventQuery) =>
     api.get<SupportEventPageResponse>(`/diagnostics/support-events${buildQuery(filter)}`),

@@ -1,5 +1,4 @@
 using NodePilot.Api.Hosting;
-using System.Globalization;
 
 namespace NodePilot.Api.Diagnostics;
 
@@ -47,19 +46,5 @@ internal sealed class SupportLogFileResolver : ISupportLogFileResolver
     public IReadOnlyList<string> GetCurrentDayFiles() => GetFilesForDate(DateOnly.FromDateTime(DateTime.Today));
 
     public IReadOnlyList<string> GetFilesForDate(DateOnly date)
-    {
-        var dir = Directory;
-        if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir)) return [];
-        var prefix = _baseNameWithoutDate + date.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
-        return System.IO.Directory.EnumerateFiles(dir, prefix + "*" + _extension)
-            .Select(path => (Path: path, Suffix: Path.GetFileNameWithoutExtension(path)[prefix.Length..]))
-            .Select(file => (file.Path, Sequence: file.Suffix.Length == 0 ? 0 :
-                file.Suffix.StartsWith('_') && int.TryParse(file.Suffix.AsSpan(1), NumberStyles.None,
-                    CultureInfo.InvariantCulture, out var sequence) && sequence > 0 ? sequence : -1))
-            .Where(file => file.Sequence >= 0)
-            .OrderBy(file => file.Sequence)
-            .ThenBy(file => file.Path, StringComparer.Ordinal)
-            .Select(file => file.Path)
-            .ToArray();
-    }
+        => RollingLogFiles.GetFilesForDate(Directory, _baseNameWithoutDate, _extension, date);
 }

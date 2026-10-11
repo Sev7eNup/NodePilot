@@ -868,7 +868,7 @@ Renderer wird auch ohne ihn gerufen (`Program.cs`).
 - `ALERT_RULE_CREATED|UPDATED|DELETED|ENABLED|DISABLED|TEST_FIRED` (Alerting / Notification-Rules — siehe `docs/alerting.md`)
 - `SYSTEM_ALERT_POLICY_CREATED|UPDATED|DELETED|ENABLED|DISABLED|TEST_FIRED` (System-Alert-Policies, ADR 0008)
 - `BACKUP_EXPORTED|BACKUP_RESTORED|BACKUP_RESTORE_DB_COMMITTED` (System-Configuration Backup, ADR 0001)
-- `AUDIT_LOG_EXPORTED` | `SUPPORT_EVENTS_EXPORTED` | `SUPPORT_LOG_DOWNLOADED` (sensible Diagnose-/Compliance-Exporte)
+- `AUDIT_LOG_EXPORTED` | `SUPPORT_EVENTS_EXPORTED` | `SUPPORT_LOG_DOWNLOADED` | `APP_LOG_DOWNLOADED` (sensible Diagnose-/Compliance-Exporte)
 - `CLUSTER_LEADERSHIP_ACQUIRED` (HA-Lease mit Node-ID und Fencing-Epoch)
 - `DATABASE_RECOVERED` (genau einmal pro echter `Unavailable -> Available`-Episode; kein Trip-Audit, da die Datenbank dabei nicht schreibbar ist)
 - `SETTINGS_{SMTP|LLM|RETENTION|AUTHENTICATION|LOGGING|OPENTELEMETRY|STATS|DBADMIN}_UPDATED` (Admin-Settings, ein Code pro Section)
@@ -1214,6 +1214,8 @@ Zwei Sub-Sinks aus demselben Serilog-Filter (für Operator-/Ticket-Diagnose):
 2. **DB-Tabelle `SupportEvents`** für den Web-Viewer (Filter/Cursor/Export) — Toggle `Logging:SupportLog:DbProjectionEnabled` (default `true`). Geschrieben über den gepufferten `SupportEventFlushService`, getrimmt durch `SupportEventRetentionService` (90 d, `Retention:SupportEvents`).
 
 Endpoints: `GET /api/diagnostics/support-log|support-log/download|support-events|support-events/export` (Admin). UI: eigene Hauptmenü-Seite `/support-log` (Admin-only, im Sidebar direkt unter „Alerting" — bewusst außerhalb der Admin-Settings verortet, damit der Operator sie im Support-Fall direkt erreicht) → Toggle „Tabelle (DB) | Plain-Text (Datei)".
+
+**Server-Protokoll (Anwendungslog `nodepilot-.log`):** dieselbe Seite, Umschalter `?source=server` (Probleme gruppiert | Verlauf). `AppLogController` (`GET /api/diagnostics/app-log`, `…/download`, Admin) liest die Dateien neueste zuerst mit 8-MiB-Budget (`AppLogTailReader`), schneidet Zeilen auf Byte-Ebene, verwirft Budget-Randfragmente und die unvollständige letzte Zeile und parst pro Zeile `cmtrace`/`text`/CLEF/ECS (`AppLogParser`). Jede Antwort trennt **Scan** (`scan.complete`, `coverageStart` — nur bei erreichter Zeitraumgrenze vollständig) von **Ergebnis** (`results.matched/returned`; `minLevel`/`q` filtern vor `take`); `summary` zählt immer über das ganze gescannte Fenster. `message`/`details` laufen durch `OutputRedactor`; der Download ist ein zusammengeführter, redigierter Tagesexport (zeilenweise, PEM-Blöcke zustandsbehaftet) mit Audit `APP_LOG_DOWNLOADED`. `cmtrace` faltet Error/Fatal und Info/Debug beim Schreiben — „Kritisch" gibt es nur in `text`/`json`/`ecs-json`. MCP: `get_support_diagnostics kind='server'`; kein CLI-Befehl.
 
 ## Admin-Settings — Hot-Reload-Matrix
 

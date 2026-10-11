@@ -1,5 +1,4 @@
 {
-  "subtitle": "Live tail of the support log plus structured support events from the DB projection — direct access when handling a support case.",
   "title": "Support log",
   "tableView": "Table (DB)",
   "plainView": "Plain-text (file)",
@@ -35,5 +34,82 @@
     "step": "Step / Activity",
     "exec": "Exec",
     "user": "User"
+  },
+  "source": {
+    "workflow": {
+      "label": "Workflow events",
+      "subtitle": "What did my workflows and users do? Live tail of the support log plus structured support events from the DB projection — direct access when handling a support case."
+    },
+    "server": {
+      "label": "Server log",
+      "subtitle": "Why isn't NodePilot itself running right? The service's application log with errors, warnings and start-up messages. It is available as long as the API answers — start-up failures of earlier starts appear here once the service is back."
+    }
+  },
+  "appLog": {
+    "title": "Server log",
+    "viewProblems": "Problems",
+    "viewHistory": "History",
+    "window": "Time range",
+    "windowOption": {
+      "1": "Last hour",
+      "24": "Last 24 hours",
+      "168": "Last 7 days"
+    },
+    "pause": "Pause",
+    "resume": "Resume",
+    "exportLabel": "Daily export (redacted):",
+    "export": "Download",
+    "exportHint": "The whole day in one file with secrets masked — not the unmodified log file.",
+    "statusClean": "No problems since {{since}}.",
+    "statusCleanPartial": "No warnings or errors in the part that was read (since {{since}}).",
+    "statusProblems": "Since {{since}}: {{counts}}",
+    "statusProblemsPartial": "In the part that was read (since {{since}}): {{counts}}",
+    "errorsCount_one": "{{count}} error",
+    "errorsCount_other": "{{count}} errors",
+    "warningsCount_one": "{{count}} warning",
+    "warningsCount_other": "{{count}} warnings",
+    "partialNote": "Older entries may be missing — because of log file retention or the read budget. The daily export below covers a whole day.",
+    "budgetNote": "The last {{mb}} MB were read.",
+    "skippedNote_one": "{{count}} log file could not be read and was skipped.",
+    "skippedNote_other": "{{count}} log files could not be read and were skipped.",
+    "unparsedNote_one": "{{count}} line could not be read.",
+    "unparsedNote_other": "{{count}} lines could not be read.",
+    "resultsNote": "Showing the newest {{returned}} of {{matched}} matches.",
+    "groupedNote": "Only the newest {{returned}} matches are grouped.",
+    "noProblems": "No warnings or errors in the part that was read.",
+    "noEntries": "No entries in the part that was read.",
+    "lastSeen": "last {{time}}",
+    "firstSeen": "first {{time}}",
+    "countHint": "Count among the loaded matches, not in the whole log",
+    "levels": {
+      "Verbose": "Trace",
+      "Debug": "Debug",
+      "Information": "Info",
+      "Warning": "Warning",
+      "Error": "Error",
+      "Fatal": "Critical"
+    },
+    "areas": {
+      "engine": "Workflow engine",
+      "database": "Database",
+      "scheduler": "Triggers & schedules",
+      "remote": "Remote (WinRM)",
+      "ai": "AI",
+      "auth": "Sign-in",
+      "web": "Web server",
+      "other": "Other"
+    },
+    "severity": "Severity",
+    "severityAll": "All from info",
+    "severityWarning": "Warnings and errors",
+    "severityError": "Errors only",
+    "area": "Area",
+    "areaAll": "All areas",
+    "search": "Search the log",
+    "searchButton": "Search",
+    "truncatedChip": "shortened",
+    "truncatedHint": "This message was shortened when it was written. The full text exists only in the file on the server.",
+    "source": "Source:",
+    "noDetails": "No further details."
   }
 }

@@ -6,7 +6,7 @@ NodePilot writes two application logs; the installers keep a transcript each. Th
 
 | Artifact | Pattern | Location | Contents | Retention |
 |---|---|---|---|---|
-| Application log | `nodepilot-YYYYMMDD.log`, plus `_001`, `_002` … on a size rollover | `C:\ProgramData\NodePilot\logs\` (server and desktop); in a development instance `src\NodePilot.Api\logs\` | Full diagnostics: boot, configuration, HTTP, engine, database, stack traces | **7 files**, with an additional rollover at 100 MB |
+| Application log | `nodepilot-YYYYMMDD.log`, plus `_001`, `_002` … on a size rollover | `C:\ProgramData\NodePilot\logs\` (server and desktop); in a development instance `src\NodePilot.Api\logs\` | Full diagnostics: boot, configuration, HTTP, engine, database, stack traces | **7 files**, with an additional rollover at 100 MB. Readable as a redacted view at `/support-log?source=server` while the API answers |
 | Support log | `nodepilot-support-YYYYMMDD.log` (+ `_001` …) | The same folder | A curated extract without stack traces: the boot banner, allow-listed audit events, applied migrations, failed steps, output of the `log` activity | 90 files, with an additional rollover at 10 MiB |
 | `SupportEvents` | A database table | The database, read through the `/support-log` page | The same events, structured, with filtering, cursor and export | 90 days via `Retention:SupportEvents` |
 | Server setup transcript | `nodepilot-server-setup.log` | `%TEMP%` | A complete transcript of an installation or update run | Appended, not capped |
@@ -36,6 +36,7 @@ These places are deliberately empty and do not need to be searched during an inc
 | `/healthz/ready` stays 503 | First `/healthz/database` — it always answers HTTP 200 with `status` and `reason` — then the application log | `RejectedByServer` means wrong credentials, database selection or TLS configuration, and waiting alone does not clear it |
 | A single workflow step is red | The execution detail in the interface | Step output comes from the database, not from the log files; the support log carries only the redacted short form |
 | "What happened on this system?" | The `/support-log` page (admin), toggle between table and plain text | The table view filters and exports to CSV or NDJSON; the plain-text view shows the file |
+| NodePilot runs, but something on the platform fails (database, LDAP, SMTP, WinRM) | The `/support-log` page, **Server log** switch (`?source=server`) | Shows warnings and errors of the application log grouped by cause. "No problems" counts only when the whole window was read; otherwise the page says "in the part that was read" |
 | "Who changed what?" | The `/audit` page, see [Audit log](../security/audit-log) | Configuration and data changes are recorded there, not in the application log |
 | Analysis across several hosts | `Logging:Format=ecs-json`, see [SIEM logging](../enterprise/siem-logging) | A collector reads the same files; NodePilot ships nothing out by itself |
 
@@ -55,12 +56,14 @@ Invoke-WebRequest 'https://nodepilot.contoso.local/api/diagnostics/support-log/d
 
 The expected result is the complete plain-text file for the requested day; if it does not exist, the endpoint answers HTTP 404. Without a date, `GET /api/diagnostics/support-log` returns the last lines of today's file (200 by default, 1000 at most). Both endpoints are restricted to administrators, and the download is recorded in the audit log.
 
+The application log is available the same way, as long as the API answers: the **Server log** switch on `/support-log` (`?source=server`), or `GET /api/diagnostics/app-log` and `GET /api/diagnostics/app-log/download?date=yyyy-MM-dd`. The download is a **merged, redacted daily export** (`nodepilot-app-<date>.redacted.log`), not the unmodified file; it is recorded in the audit log as `APP_LOG_DOWNLOADED`. Redaction works line by line, so unknown secret patterns remain possible. The view reads the newest 8 MiB and states how much of the requested window it covers. If the service does not start or the web server does not bind, this page is unavailable as well — the file access above remains the way in. Details and format limits: [Logging](../configuration/logging).
+
 ## What belongs in a ticket
 
 For a server installation:
 
 1. The product version and the operating mode (server or desktop).
-2. The section of the application log around the time of the incident.
+2. The section of the application log around the time of the incident (or the redacted daily export from the interface).
 3. The support-log file for the day of the incident.
 4. The output of `Get-Service NodePilot` and the response from `/healthz/database`.
 5. For a failed installation, additionally `%TEMP%\nodepilot-server-setup.log`.

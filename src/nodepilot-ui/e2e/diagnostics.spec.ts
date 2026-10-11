@@ -128,6 +128,46 @@ test.describe('Diagnostics / Support-Log (Teil 37)', () => {
     await expect(page.getByText('the started one')).toHaveCount(0);
   });
 
+  test('37.5 — server log source groups repeated causes and states how much was read', async ({ page }) => {
+    const seen: string[] = [];
+    await page.route('**/api/diagnostics/app-log**', (route) => {
+      seen.push(new URL(route.request().url()).search);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          scan: {
+            requestedSince: '2026-06-17T10:00:00Z', coverageStart: '2026-06-18T08:00:00Z', complete: false,
+            budgetExhausted: true, bytesScanned: 8388608, filesSkipped: 0, fragmentsDropped: 1, unparsedLines: 0,
+          },
+          summary: { errors: 0, warnings: 2, total: 90 },
+          results: { matched: 2, returned: 2, truncated: false },
+          entries: [
+            { timestamp: '2026-06-18T10:05:00Z', level: 'Warning', source: 'Npgsql.Connection',
+              message: 'Database did not answer after 100 ms', template: null, details: 'timeout at host db1',
+              truncated: false, format: 'cmtrace' },
+            { timestamp: '2026-06-18T10:01:00Z', level: 'Warning', source: 'Npgsql.Connection',
+              message: 'Database did not answer after 250 ms', template: null, details: null,
+              truncated: false, format: 'cmtrace' },
+          ],
+        }),
+      });
+    });
+
+    await page.goto('/support-log?source=server');
+
+    // Two warnings with one cause collapse into a single card with a count.
+    await expect(page.getByText('2×')).toBeVisible({ timeout: 15_000 });
+    // The status line never claims "no problems" for a partly read window.
+    await expect(page.getByRole('status')).toContainText(/in the part that was read|im gelesenen ausschnitt/i);
+    await expect(page.getByRole('status')).toContainText(/2 warnings|2 warnungen/i);
+    expect(seen.some((q) => q.includes('minLevel=Warning'))).toBe(true);
+
+    // The source switch is a link-able URL, and going back to workflow events drops the parameter.
+    await page.getByRole('button', { name: /workflow events|workflow-ereignisse/i }).click();
+    await expect(page).not.toHaveURL(/source=server/);
+  });
+
   test('76.4 — Plain-Text toggle swaps to the raw file-tail view', async ({ page }) => {
     await page.route('**/api/diagnostics/support-events**', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: page200([eventRow()]) }),

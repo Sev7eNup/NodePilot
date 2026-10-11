@@ -3435,6 +3435,18 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ---
 
+### Test 37.5 — Server-Protokoll (Anwendungslog)
+
+**Schritte:** `/support-log?source=server` öffnen (Umschalter „Server-Protokoll").
+
+**Prüfpunkte:**
+- [ ] Gleiche Ursache wird zu einer Karte mit Zähler („2×") zusammengefasst, Aufklappen zeigt den letzten Treffer samt Details.
+- [ ] Die Statuszeile nennt, wie viel gelesen wurde: bei `scan.complete:false` steht „im gelesenen Ausschnitt (seit …)", **nie** „Keine Probleme".
+- [ ] Zurück auf „Workflow-Ereignisse" entfernt `?source=server` aus der URL.
+- [ ] Als Viewer/Operator `GET /api/diagnostics/app-log` → 403.
+
+---
+
 ## Teil 38: Admin Settings
 
 ### Test 38.1 — Settings-Status
@@ -5034,7 +5046,7 @@ Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automati
 [ ] Teil 34: Migration-Drift + Backend-Smoke (34.1 — 34.3)
 [ ] Teil 35: Secrets Re-Encryption (35.1 — 35.3)
 [ ] Teil 36: Activity Catalog (36.1 — 36.2)
-[ ] Teil 37: Diagnostics / Support-Log (37.1 — 37.4)
+[ ] Teil 37: Diagnostics / Support-Log (37.1 — 37.5)
 [ ] Teil 38: Admin Settings API (38.1 — 38.5)
 [ ] Teil 39: Debug — Variable Overrides (39.1 — 39.2)
 [ ] Teil 40: Edit-Lock — Force-Unlock Audit (40.1)

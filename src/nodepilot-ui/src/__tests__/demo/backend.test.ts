@@ -5,7 +5,7 @@
  * loudly — it renders a page that is subtly wrong, or throws deep inside a component. These
  * check the shapes the app actually reads.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../api/client';
 import { adminSettings } from '../../api/adminSettings';
 import { getAllPages, getPage } from '../../api/paging';
@@ -658,9 +658,33 @@ describe('contracts read through the real clients', () => {
     for (const row of filtered.items) expect(row.eventType).toBe('EXECUTION_FAILED');
   });
 
+  it('derives the server log from the step history and keeps summary and results apart', async () => {
+    // The seed is anchored at NOW; the handler measures its window against the wall clock.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW + 3_600_000);
+    try {
+      const all = await api.get<{
+        scan: { complete: boolean };
+        summary: { errors: number; warnings: number; total: number };
+        results: { matched: number; returned: number; truncated: boolean };
+        entries: { level: string; message: string }[];
+      }>('/diagnostics/app-log?hours=168&minLevel=Warning&take=1');
+
+      expect(all.scan.complete).toBe(true);
+      expect(all.summary.warnings).toBeGreaterThan(1);
+      expect(all.results.matched).toBe(all.summary.warnings);
+      expect(all.results).toMatchObject({ returned: 1, truncated: true });
+      expect(all.entries[0].level).toBe('Warning');
+      expect(all.entries[0].message).toContain('failed');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('refuses the support downloads instead of handing over a file that lies', async () => {
     for (const path of ['/api/diagnostics/support-log/download?date=2026-09-18',
-                        '/api/diagnostics/support-events/export?format=csv']) {
+                        '/api/diagnostics/support-events/export?format=csv',
+                        '/api/diagnostics/app-log/download?date=2026-09-18']) {
       const response = await fetch(path);
       expect(response.status, path).toBe(501);
       expect((await response.json()).code, path).toBe('DEMO_NOT_AVAILABLE');

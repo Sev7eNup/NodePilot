@@ -290,7 +290,7 @@ Every webhook rejection path (missing/wrong secret, disabled, path/method mismat
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/observability/config\|query\|query_range\|summary` | Prometheus/OTel queries |
-| `GET /api/diagnostics/support-log\|support-log/download\|support-events\|support-events/export` | Diagnostics (Admin) |
+| `GET /api/diagnostics/support-log\|support-log/download\|support-events\|support-events/export\|app-log\|app-log/download` | Diagnostics (Admin) |
 
 ```bash
 # config is anonymous; query/query_range/summary are Admin/Operator

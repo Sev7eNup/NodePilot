@@ -328,6 +328,28 @@ public sealed class SupportingAndTelemetryToolsTests
     }
 
     [Fact]
+    public async Task GetSupportDiagnostics_Server_ReadsTheApplicationLogProblems()
+    {
+        using var api = new TestApi();
+        api.Server.Given(Request.Create().WithPath("/api/diagnostics/app-log").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                scan = new { complete = false },
+                summary = new { errors = 1, warnings = 0, total = 5 },
+                results = new { matched = 1, returned = 1, truncated = false },
+                entries = new[] { new { level = "Error", source = "NodePilot.Data.Probe", message = "db down" } },
+            }));
+
+        var tools = new TelemetryTools(api.Client());
+        var json = JsonSerializer.Serialize(await tools.GetSupportDiagnostics("server", 25));
+
+        json.Should().Contain("db down").And.Contain("\"complete\":false");
+        var query = api.Server.LogEntries.Last().RequestMessage!.Query;
+        query!["minLevel"].Should().ContainSingle().Which.Should().Be("warning");
+        query["take"].Should().ContainSingle().Which.Should().Be("25");
+    }
+
+    [Fact]
     public async Task GetSupportDiagnostics_TruncatesLargeStrings()
     {
         var big = new string('L', 9000);

@@ -175,6 +175,7 @@ public static class AuditActions
     public const string DbAdminSqlWrite = "DBADMIN_SQL_WRITE";
     public const string DbAdminSqlWriteAttempted = "DBADMIN_SQL_WRITE_ATTEMPTED";
 
+    public const string AppLogDownloaded = "APP_LOG_DOWNLOADED";
     public const string AuditLogExported = "AUDIT_LOG_EXPORTED";
     public const string ClusterLeadershipAcquired = "CLUSTER_LEADERSHIP_ACQUIRED";
     public const string SupportEventsExported = "SUPPORT_EVENTS_EXPORTED";

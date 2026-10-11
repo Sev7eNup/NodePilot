@@ -58,6 +58,7 @@ const serverOnlyRoutes: Route[] = [
   // file whose whole content is `{}` is not.
   route('GET', '/diagnostics/support-log/download', () => notInDemo('Downloading the support log')),
   route('GET', '/diagnostics/support-events/export', () => notInDemo('Exporting support events')),
+  route('GET', '/diagnostics/app-log/download', () => notInDemo('Exporting the server log')),
 
   route('POST', '/ai/chat', () => notInDemo('The AI assistant')),
   route('POST', '/ai/knowledge/ask', () => notInDemo('The AI assistant')),
