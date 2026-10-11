@@ -123,6 +123,24 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/workflows/wf-live');
   });
 
+  it('shows trigger badge, count and pending marker in the running list', async () => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS,
+      running: [
+        { id: 'r1', workflowId: 'wf-1', workflowName: 'Scheduled run', status: 'Running',
+          startedAt: new Date(Date.now() - 60_000).toISOString(), triggeredBy: 'scheduleTrigger' },
+        { id: 'r2', workflowId: 'wf-2', workflowName: 'Queued run', status: 'Pending',
+          startedAt: new Date().toISOString(), triggeredBy: 'manual' },
+      ],
+    })));
+    renderPage();
+    const scheduled = await screen.findByRole('button', { name: /Scheduled run/ });
+    expect(within(scheduled).getByTitle('scheduleTrigger')).toBeInTheDocument();
+    const queued = screen.getByRole('button', { name: /Queued run/ });
+    expect(within(queued).getByText('Pending')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Currently Running/ })).toHaveTextContent('2');
+  });
+
   it.each([false, true])('keeps chart data while reduced decoration is %s', async (reducedDecoration) => {
     vi.spyOn(chartTheme, 'useChartTokens').mockReturnValue({
       probeRef: { current: null }, tokens: { ...chartTheme.DEFAULT_CHART_TOKENS, reducedDecoration },

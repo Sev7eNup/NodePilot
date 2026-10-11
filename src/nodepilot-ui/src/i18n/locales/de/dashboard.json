@@ -79,6 +79,7 @@
   },
   "manual": "manuell",
   "startedBy": "{{trigger}} · gestartet {{time}}",
+  "startedAgo": "gestartet {{time}}",
   "runs": "{{count}} Runs",
   "telemetry": "Telemetrie (Prometheus)",
   "telemetryRefresh": "Aktualisierung 15 s",

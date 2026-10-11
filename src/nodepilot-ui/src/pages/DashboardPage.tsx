@@ -249,10 +249,15 @@ export function DashboardPage() {
           <KpiGrid stats={stats} windowLabel={windowLabel} windowStatus={windowStatus} />
         </div>
         <div className="np-fade-up flex flex-col" style={{ animationDelay: '90ms' }}>
-          <div className="np-card p-5 flex flex-col overflow-hidden flex-1">
-            <h3 className="font-semibold text-on-surface mb-3 flex items-center gap-2 shrink-0">
+          <div className="np-card p-4 flex flex-col overflow-hidden flex-1">
+            <h3 className="font-semibold text-on-surface mb-2 flex items-center gap-2 shrink-0">
               <CircleDash size={16} className="text-blue-500 animate-spin" />
               {t('dashboard:currentlyRunning')}
+              {stats.running.length > 0 && (
+                <span className="ml-auto text-xs font-medium tabular-nums px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                  {stats.running.length}
+                </span>
+              )}
             </h3>
             {/* Keep the long list out of grid intrinsic sizing; it scrolls inside the row height. */}
             <div className="relative flex-1 min-h-[220px] xl:min-h-0">
@@ -641,25 +646,52 @@ function RunningList({ items, onOpen, longRunningSeconds }: Readonly<{ items: Ru
       {items.map((r) => (
         <li
           key={r.id}
-          className="np-row py-2 flex items-center justify-between cursor-pointer -mx-2 px-2"
+          className="np-row py-1.5 cursor-pointer -mx-2 px-2 rounded-md"
           onClick={() => onOpen(r.workflowId)}
           onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen(r.workflowId)}
           role="button"
           tabIndex={0}
         >
-          <div className="flex items-center gap-2 min-w-0">
-            <CircleDash size={14} className="text-blue-500 animate-spin shrink-0" />
-            <div className="min-w-0">
-              <p className="font-medium text-on-surface truncate">{r.workflowName}</p>
-              <p className="text-xs text-outline">
-                {t('dashboard:startedBy', { trigger: r.triggeredBy ?? t('dashboard:manual'), time: formatRelative(r.startedAt) })}
-              </p>
-            </div>
-          </div>
-          <LiveDuration startedAt={r.startedAt} longRunningSeconds={longRunningSeconds} nowMs={nowMs} />
+          <RunningRow run={r} longRunningSeconds={longRunningSeconds} nowMs={nowMs} />
         </li>
       ))}
     </ul>
+  );
+}
+
+function RunningRow({ run: r, longRunningSeconds, nowMs }: Readonly<{ run: RunningExecutionInfo; longRunningSeconds: number; nowMs: number }>) {
+  const { t } = useTranslation(['dashboard']);
+  const pending = r.status === 'Pending';
+  const trigger = r.triggeredBy ? TRIGGER_META[r.triggeredBy] : undefined;
+  const TriggerIcon = trigger?.icon;
+  const pct = Math.min(100, Math.max(0, ((nowMs - new Date(r.startedAt).getTime()) / (longRunningSeconds * 1000)) * 100));
+  const isLong = pct >= 100;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2 min-w-0">
+        <CircleDash size={14} className={`shrink-0 ${pending ? 'text-outline' : 'text-blue-500 animate-spin'}`} />
+        <span className="text-sm font-medium text-on-surface truncate flex-1 min-w-0">{r.workflowName}</span>
+        {pending
+          ? <span className="text-[10px] font-medium px-1.5 py-px rounded bg-surface-container text-on-surface-variant shrink-0">{t('dashboard:pending')}</span>
+          : <LiveDuration startedAt={r.startedAt} longRunningSeconds={longRunningSeconds} nowMs={nowMs} />}
+      </div>
+      <div className="flex items-center gap-2 pl-[22px] min-w-0 text-xs text-outline">
+        {trigger && TriggerIcon ? (
+          <span className={`inline-flex items-center gap-0.5 px-1 py-px rounded text-[10px] font-medium shrink-0 ${trigger.className}`} title={r.triggeredBy ?? undefined}>
+            <TriggerIcon size={10} />
+            {trigger.label}
+          </span>
+        ) : (
+          <span className="truncate min-w-0" title={r.triggeredBy ?? undefined}>{r.triggeredBy ?? t('dashboard:manual')}</span>
+        )}
+        <span className="shrink-0">{t('dashboard:startedAgo', { time: formatRelative(r.startedAt) })}</span>
+      </div>
+      {!pending && (
+        <div className="ml-[22px] h-0.5 rounded-full bg-outline-variant/30 overflow-hidden" aria-hidden="true">
+          <div className={`h-full rounded-full ${isLong ? 'bg-red-500' : 'bg-blue-500/70'}`} style={{ width: `${pct}%` }} />
+        </div>
+      )}
+    </div>
   );
 }
 
