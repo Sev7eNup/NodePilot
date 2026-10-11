@@ -40,6 +40,19 @@ public sealed class ApiClientFactoryTests : IDisposable
     }
 
     [Fact]
+    public void Create_WithSwitcherKeyAndNoSession_ReturnsClientWithoutBearer()
+    {
+        var ctx = new SessionContext
+        {
+            Profile = "switcher", Server = "https://localhost:5000", Session = null, SwitcherKey = "k",
+        };
+
+        var client = _factory.Create(ctx);
+
+        client.BearerToken.Should().BeNull();
+    }
+
+    [Fact]
     public void Create_RequireAuthFalse_NoSession_StillReturnsClient()
     {
         var ctx = new SessionContext { Profile = "default", Server = "https://np.local", Session = null };

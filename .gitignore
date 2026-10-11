@@ -1,6 +1,8 @@
 # Secrets — never commit
 **/jwt-secret.key
 **/admin-setup.token
+**/switcher.key
+**/switcher.key.sha256
 *.pfx
 *.pem
 *.p12

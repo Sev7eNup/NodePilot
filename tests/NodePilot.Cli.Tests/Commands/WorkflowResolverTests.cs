@@ -40,6 +40,32 @@ public sealed class WorkflowResolverTests : IDisposable
     }
 
     [Fact]
+    public async Task ResolveId_GuidWithSwitcherKey_SkipsTheDefinitionLookup()
+    {
+        var id = Guid.NewGuid();
+        var session = new NodePilot.Cli.Auth.SessionContext { Profile = "p", SwitcherKey = "k" };
+
+        var (resolved, name) = await WorkflowResolver.ResolveIdAsync(_client, session, id.ToString(), CancellationToken.None);
+
+        resolved.Should().Be(id);
+        name.Should().Be(id.ToString());
+        _server.LogEntries.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ResolveId_GuidWithoutSwitcherKey_StillLooksTheWorkflowUp()
+    {
+        var id = Guid.NewGuid();
+        _server.Given(Request.Create().WithPath($"/api/workflows/{id}").UsingGet())
+               .RespondWith(Response.Create().WithStatusCode(200).WithBody(Single(id, "Build")));
+        var session = new NodePilot.Cli.Auth.SessionContext { Profile = "p" };
+
+        var (_, name) = await WorkflowResolver.ResolveIdAsync(_client, session, id.ToString(), CancellationToken.None);
+
+        name.Should().Be("Build");
+    }
+
+    [Fact]
     public async Task ByName_UniqueMatch_ResolvesViaByNameEndpoint()
     {
         var id = Guid.NewGuid();

@@ -188,6 +188,97 @@ public sealed class NodePilotWorkflowReconcilerTests
     private static NodePilotWorkloadConfiguration Configuration() =>
         new(@"\\server\share\nodepilot.txt", "np.exe", "switcher");
 
+    [Fact]
+    public async Task Reconcile_WithMachineKeyFile_PassesItToTheCliAndNeverSignsIn()
+    {
+        var keyFile = Path.Combine(Path.GetTempPath(), $"switcher-{Guid.NewGuid():N}.key");
+        await File.WriteAllTextAsync(keyFile, "x", TestContext.Current.CancellationToken);
+        try
+        {
+            var runner = new KeyModeRunner(exitCode: 0);
+            var configuration = Configuration() with { SwitcherKeyPath = keyFile };
+
+            await new NodePilotWorkflowReconciler(runner, new RecordingLogger())
+                .ReconcileAsync(configuration, ["Allowed"], null, CancellationToken.None);
+
+            runner.Environments.Should().OnlyContain(environment =>
+                environment != null && environment[NodePilotWorkflowReconciler.SwitcherKeyFileVariable] == keyFile);
+        }
+        finally { File.Delete(keyFile); }
+    }
+
+    [Fact]
+    public async Task Reconcile_WithMachineKeyFileAndRejectedKey_FailsWithoutFallbackSignIn()
+    {
+        var keyFile = Path.Combine(Path.GetTempPath(), $"switcher-{Guid.NewGuid():N}.key");
+        await File.WriteAllTextAsync(keyFile, "x", TestContext.Current.CancellationToken);
+        try
+        {
+            var runner = new KeyModeRunner(exitCode: 3);
+            var configuration = Configuration() with { SwitcherKeyPath = keyFile };
+
+            var action = () => new NodePilotWorkflowReconciler(runner, new RecordingLogger())
+                .ReconcileAsync(configuration, ["Allowed"], null, CancellationToken.None);
+
+            await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("*Switcher key*");
+            runner.Arguments.Should().NotContain(arguments => arguments.Contains("login"));
+        }
+        finally { File.Delete(keyFile); }
+    }
+
+    [Theory]
+    [InlineData("https://192.0.2.7")]
+    [InlineData("http://localhost:5000")]    public void ResolveSwitcherKeyFile_RemoteServer_IgnoresTheKey(string serverUrl)
+    {
+        var keyFile = Path.Combine(Path.GetTempPath(), $"switcher-{Guid.NewGuid():N}.key");
+        File.WriteAllText(keyFile, "x");
+        try
+        {
+            var configuration = Configuration() with { ServerUrl = serverUrl, SwitcherKeyPath = keyFile };
+
+            NodePilotWorkflowReconciler.ResolveSwitcherKeyFile(configuration).Should().BeNull();
+        }
+        finally { File.Delete(keyFile); }
+    }
+
+    [Fact]
+    public void ResolveSwitcherKeyFile_MissingFile_ReturnsNull()
+    {
+        var configuration = Configuration() with
+        {
+            SwitcherKeyPath = Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}.key"),
+        };
+
+        NodePilotWorkflowReconciler.ResolveSwitcherKeyFile(configuration).Should().BeNull();
+    }
+
+    private sealed class KeyModeRunner(int exitCode) : ICommandRunner
+    {
+        public List<IReadOnlyDictionary<string, string>?> Environments { get; } = [];
+        public List<IReadOnlyList<string>> Arguments { get; } = [];
+
+        public Task<CommandResult> RunAsync(
+            string executable,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken cancellationToken,
+            string? standardInput = null,
+            IReadOnlyDictionary<string, string>? environment = null)
+        {
+            Environments.Add(environment);
+            Arguments.Add(arguments);
+            if (exitCode != 0)
+                return Task.FromResult(new CommandResult(exitCode, string.Empty, "rejected"));
+
+            if (arguments[0] == "operations")
+                return Task.FromResult(new CommandResult(
+                    0, JsonSerializer.Serialize(new { nodes = new[] { new { workflowId = _workflow.Id, runningCount = 0 } } }), string.Empty));
+            return Task.FromResult(new CommandResult(0, JsonSerializer.Serialize(new[] { _workflow }), string.Empty));
+        }
+
+        private readonly NodePilotWorkflow _workflow = new(Guid.NewGuid(), "Allowed", true);
+    }
+
     private sealed class StatefulNodePilotRunner : ICommandRunner
     {
         public StatefulNodePilotRunner(
@@ -206,7 +297,8 @@ public sealed class NodePilotWorkflowReconcilerTests
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
             CancellationToken cancellationToken,
-            string? standardInput = null)
+            string? standardInput = null,
+            IReadOnlyDictionary<string, string>? environment = null)
         {
             if (arguments[0] == "workflow" && arguments[1] == "list")
                 return Task.FromResult(new CommandResult(0, JsonSerializer.Serialize(Workflows), string.Empty));
@@ -290,7 +382,8 @@ public sealed class NodePilotWorkflowReconcilerTests
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
             CancellationToken cancellationToken,
-            string? standardInput = null)
+            string? standardInput = null,
+            IReadOnlyDictionary<string, string>? environment = null)
         {
             if (arguments[0] == "auth" && arguments[1] == "login" && arguments.Contains("--windows"))
             {

@@ -90,6 +90,8 @@ public sealed class DatabaseBootService(
         await NodePilot.Api.Security.EnterpriseRecoveryInvariant.EnsureAsync(db, configuration);
         NodePilot.Api.Security.AdminBootstrap.EnsureBootstrapTokenIfNeeded(
             environment, usersExist, bootstrapDbLogger, configuration);
+        NodePilot.Api.Security.SwitcherKeyStore.EnsureProvisioned(
+            environment, configuration, bootstrapDbLogger);
 
         // Only now may the availability breaker react to failures. Before this point the failed
         // readiness probes would open it and the migration would run with retries disabled.

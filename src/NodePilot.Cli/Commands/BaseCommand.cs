@@ -43,6 +43,11 @@ public abstract class BaseCommand<TSettings> : AsyncCommand<TSettings>
             writer.Error(ex.Message);
             return ExitCodes.AuthRequired;
         }
+        catch (ApiException ex) when (resolved?.HasSwitcherKey == true && (ex.IsUnauthorized || ex.IsForbidden))
+        {
+            writer.Error($"The server refused the request made with the Switcher key: {ex.Detail ?? ex.Title ?? ex.Message}");
+            return ExitCodes.PermissionDenied;
+        }
         catch (ApiException ex) when (ex.IsUnauthorized)
         {
             writer.Error("Session expired. Run `np auth login` again.");

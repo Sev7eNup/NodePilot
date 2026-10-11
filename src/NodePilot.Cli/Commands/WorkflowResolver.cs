@@ -2,6 +2,7 @@ using System.Net;
 using System.Runtime.Versioning;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Api.Dtos;
+using NodePilot.Cli.Auth;
 using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Commands;
@@ -15,6 +16,19 @@ namespace NodePilot.Cli.Commands;
 [SupportedOSPlatform("windows")]
 public static class WorkflowResolver
 {
+    /// <summary>
+    /// Id and display name for commands that only need the id. The Switcher key may not read
+    /// workflow definitions, so a GUID is used as given instead of being looked up.
+    /// </summary>
+    public static async Task<(Guid Id, string Name)> ResolveIdAsync(
+        NodePilotApiClient api, SessionContext session, string idOrName, CancellationToken ct)
+    {
+        if (session.HasSwitcherKey && Guid.TryParse(idOrName, out var id))
+            return (id, id.ToString());
+        var workflow = await ResolveAsync(api, idOrName, ct);
+        return (workflow.Id, workflow.Name);
+    }
+
     public static async Task<WorkflowResponse> ResolveAsync(NodePilotApiClient api, string idOrName, CancellationToken ct)
     {
         if (Guid.TryParse(idOrName, out var id))

@@ -19,6 +19,14 @@ public sealed class SessionContext
     /// <summary>Set when a stored pin was skipped because it belongs to another server origin.</summary>
     public string? TlsPinNotice { get; init; }
 
+    /// <summary>
+    /// Machine-local Engine Switcher key, set when <c>NODEPILOT_SWITCHER_KEY_FILE</c> points at one.
+    /// It replaces the stored session for the whole call.
+    /// </summary>
+    public string? SwitcherKey { get; init; }
+
+    public bool HasSwitcherKey => !string.IsNullOrEmpty(SwitcherKey);
+
     public bool HasServer => !string.IsNullOrWhiteSpace(Server);
     public bool HasSession => Session is not null && !string.IsNullOrWhiteSpace(Session.Token);
 }

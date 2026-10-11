@@ -19,7 +19,8 @@ internal sealed record NodePilotWorkloadConfiguration(
     string CliPath = "",
     string Profile = "default",
     string? ServerUrl = null,
-    int CommandTimeoutSeconds = 30);
+    int CommandTimeoutSeconds = 30,
+    string? SwitcherKeyPath = null);
 
 internal sealed record ScorchWorkloadConfiguration(
     string RunbookAllowListPath,
@@ -41,6 +42,7 @@ internal sealed class SwitcherConfigurationLoader
         "workflowAllowListPath",
         "runbookAllowListPath",
         "cliPath",
+        "switcherKeyPath",
     };
 
     private static readonly JsonSerializerOptions JsonOptions = new()

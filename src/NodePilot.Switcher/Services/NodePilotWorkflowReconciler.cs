@@ -27,7 +27,8 @@ internal interface ICommandRunner
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
         CancellationToken cancellationToken,
-        string? standardInput = null);
+        string? standardInput = null,
+        IReadOnlyDictionary<string, string>? environment = null);
 }
 
 internal sealed class ProcessCommandRunner : ICommandRunner
@@ -37,7 +38,8 @@ internal sealed class ProcessCommandRunner : ICommandRunner
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
         CancellationToken cancellationToken,
-        string? standardInput = null)
+        string? standardInput = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var startInfo = new ProcessStartInfo(executable)
         {
@@ -48,6 +50,8 @@ internal sealed class ProcessCommandRunner : ICommandRunner
             RedirectStandardInput = standardInput is not null,
         };
         foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+        if (environment is not null)
+            foreach (var (name, value) in environment) startInfo.Environment[name] = value;
 
         using var process = new Process { StartInfo = startInfo };
         if (!process.Start()) throw new InvalidOperationException($"Could not start '{executable}'.");
@@ -275,6 +279,10 @@ internal sealed class NodePilotWorkflowReconciler
     {
         var arguments = WithConnectionArguments(configuration, commandArguments);
         var result = await RunCommandAsync(configuration, arguments, cancellationToken).ConfigureAwait(false);
+        // With the machine key there is no sign-in to retry: a rejected key must stop the switch
+        // instead of silently continuing under another identity.
+        if (result.ExitCode != 0 && ResolveSwitcherKeyFile(configuration) is not null)
+            throw CommandFailure(result, "NodePilot CLI failed with the Switcher key (it is used because switcher.key exists; if the service no longer issues it, delete the file)");
         if (result.ExitCode == 3)
         {
             _logger.Info("NodePilot CLI session expired; signing in again.");
@@ -355,13 +363,62 @@ internal sealed class NodePilotWorkflowReconciler
         NodePilotWorkloadConfiguration configuration,
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken,
-        string? standardInput = null) =>
-        _runner.RunAsync(
+        string? standardInput = null)
+    {
+        var keyFile = ResolveSwitcherKeyFile(configuration);
+        return _runner.RunAsync(
             configuration.CliPath,
             arguments,
             TimeSpan.FromSeconds(configuration.CommandTimeoutSeconds),
             cancellationToken,
-            standardInput);
+            standardInput,
+            keyFile is null ? null : new Dictionary<string, string> { [SwitcherKeyFileVariable] = keyFile });
+    }
+
+    internal const string SwitcherKeyFileVariable = "NODEPILOT_SWITCHER_KEY_FILE";
+
+    private static bool IsThisMachine(string host)
+    {
+        host = host.Trim('[', ']');
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)) return true;
+        try
+        {
+            var addresses = System.Net.IPAddress.TryParse(host, out var literal)
+                ? [literal]
+                : System.Net.Dns.GetHostAddresses(host);
+            if (addresses.Length == 0) return false;
+            var local = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
+                .Select(unicast => unicast.Address)
+                .ToHashSet();
+            return addresses.All(address => System.Net.IPAddress.IsLoopback(address) || local.Contains(address));
+        }
+        catch (Exception ex) when (ex is System.Net.Sockets.SocketException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The machine key written by the local NodePilot service, or null when it does not apply:
+    /// no key file on this machine, or a server that is not on loopback.
+    /// </summary>
+    internal static string? ResolveSwitcherKeyFile(NodePilotWorkloadConfiguration configuration)
+    {
+        // Mirrors the CLI rule: the key only goes to https on an address of this machine.
+        if (!string.IsNullOrWhiteSpace(configuration.ServerUrl)
+            && !(Uri.TryCreate(configuration.ServerUrl, UriKind.Absolute, out var uri)
+                 && uri.Scheme == Uri.UriSchemeHttps
+                 && IsThisMachine(uri.Host)))
+            return null;
+
+        var path = string.IsNullOrWhiteSpace(configuration.SwitcherKeyPath)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "NodePilot", "switcher.key")
+            : configuration.SwitcherKeyPath;
+        return File.Exists(path) ? path : null;
+    }
 
     private static IReadOnlyList<string> WithConnectionArguments(
         NodePilotWorkloadConfiguration configuration,

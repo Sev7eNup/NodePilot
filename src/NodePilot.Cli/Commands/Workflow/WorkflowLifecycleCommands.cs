@@ -80,9 +80,9 @@ public sealed class WorkflowEnableCommand : BaseCommand<WorkflowGetSettings>
     protected override async Task<int> RunAsync(CommandContext _, WorkflowGetSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
         var api = ClientFactory.Create(session);
-        var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
-        await api.EnableWorkflowAsync(w.Id, ct);
-        writer.Success($"Workflow [bold]{Markup.Escape(w.Name)}[/] enabled.");
+        var (id, name) = await WorkflowResolver.ResolveIdAsync(api, session, settings.IdOrName, ct);
+        await api.EnableWorkflowAsync(id, ct);
+        writer.Success($"Workflow [bold]{Markup.Escape(name)}[/] enabled.");
         return ExitCodes.Success;
     }
 }
@@ -94,9 +94,9 @@ public sealed class WorkflowDisableCommand : BaseCommand<WorkflowGetSettings>
     protected override async Task<int> RunAsync(CommandContext _, WorkflowGetSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
         var api = ClientFactory.Create(session);
-        var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
-        await api.DisableWorkflowAsync(w.Id, ct);
-        writer.Success($"Workflow [bold]{Markup.Escape(w.Name)}[/] disabled.");
+        var (id, name) = await WorkflowResolver.ResolveIdAsync(api, session, settings.IdOrName, ct);
+        await api.DisableWorkflowAsync(id, ct);
+        writer.Success($"Workflow [bold]{Markup.Escape(name)}[/] disabled.");
         return ExitCodes.Success;
     }
 }
@@ -108,8 +108,8 @@ public sealed class WorkflowCancelAllCommand : BaseCommand<WorkflowGetSettings>
     protected override async Task<int> RunAsync(CommandContext _, WorkflowGetSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
         var api = ClientFactory.Create(session);
-        var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
-        var result = await api.CancelAllAsync(w.Id, ct);
+        var (id, _) = await WorkflowResolver.ResolveIdAsync(api, session, settings.IdOrName, ct);
+        var result = await api.CancelAllAsync(id, ct);
         writer.Success($"Cancelled {result.Signalled} of {result.Total} running execution(s).");
         return ExitCodes.Success;
     }

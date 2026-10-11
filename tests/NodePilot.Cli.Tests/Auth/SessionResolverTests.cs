@@ -161,6 +161,49 @@ public sealed class SessionResolverTests : IDisposable
         ctx.Tls.SkipVerification.Should().BeTrue();
     }
 
+    [Fact]
+    public void ReadSwitcherKey_NoVariable_ReturnsNull() =>
+        SessionResolver.ReadSwitcherKey(null, "https://localhost").Should().BeNull();
+
+    [Theory]
+    [InlineData("https://localhost:5000")]
+    [InlineData("https://127.0.0.1")]
+    [InlineData("https://[::1]:5000")]
+    public void ReadSwitcherKey_LoopbackHttps_ReadsTrimmedKey(string server)
+    {
+        var file = Path.Combine(_dir, "switcher.key");
+        File.WriteAllText(file, "  secret\r\n");
+
+        SessionResolver.ReadSwitcherKey(file, server).Should().Be("secret");
+    }
+
+    [Theory]
+    [InlineData("http://localhost:5000")]
+    [InlineData("https://192.0.2.7")]
+    [InlineData(null)]
+    public void ReadSwitcherKey_NonLoopbackOrPlainHttp_Throws(string? server)
+    {
+        var file = Path.Combine(_dir, "switcher.key");
+        File.WriteAllText(file, "secret");
+
+        var act = () => SessionResolver.ReadSwitcherKey(file, server);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*https*");
+    }
+
+    [Fact]
+    public void ReadSwitcherKey_MissingOrEmptyFile_Throws()
+    {
+        var empty = Path.Combine(_dir, "empty.key");
+        File.WriteAllText(empty, " \r\n");
+
+        var missing = () => SessionResolver.ReadSwitcherKey(Path.Combine(_dir, "nope.key"), "https://localhost");
+        var blank = () => SessionResolver.ReadSwitcherKey(empty, "https://localhost");
+
+        missing.Should().Throw<InvalidOperationException>();
+        blank.Should().Throw<InvalidOperationException>().WithMessage("*empty*");
+    }
+
     private static StoredSession SessionFor(string server, string token) => new()
     {
         Server = server,

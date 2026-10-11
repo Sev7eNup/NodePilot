@@ -34,7 +34,8 @@ internal static class RestrictedFileWriter
     /// any ACL failure rethrows after the partial file is deleted; when false the caller gets
     /// a false return value and must decide how to recover.
     /// </summary>
-    public static bool WriteText(string path, string content, bool failClosed)
+    public static bool WriteText(
+        string path, string content, bool failClosed, bool administratorsOnly = false)
     {
         // Bind validation and creation to one absolute name. Re-evaluating a relative path
         // after validation would let another thread change CurrentDirectory in between.
@@ -56,7 +57,7 @@ internal static class RestrictedFileWriter
             // CreateNew throws, the filesystem was never touched — never delete somebody
             // else's pre-existing artifact in the catch block.
             stream = OperatingSystem.IsWindows()
-                ? CreateWindowsFileWithRestrictiveAcl(path)
+                ? CreateWindowsFileWithRestrictiveAcl(path, administratorsOnly)
                 : new FileStream(path, new FileStreamOptions
                 {
                     Mode = FileMode.CreateNew,
@@ -260,7 +261,7 @@ internal static class RestrictedFileWriter
         }
     }
 
-    private static FileStream CreateWindowsFileWithRestrictiveAcl(string path)
+    private static FileStream CreateWindowsFileWithRestrictiveAcl(string path, bool administratorsOnly)
     {
         var owner = WindowsIdentity.GetCurrent().User
             ?? throw new InvalidOperationException(
@@ -269,10 +270,27 @@ internal static class RestrictedFileWriter
         var security = new FileSecurity();
         security.SetOwner(owner);
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-        security.AddAccessRule(new FileSystemAccessRule(
-            owner,
-            FileSystemRights.FullControl,
-            AccessControlType.Allow));
+        if (administratorsOnly)
+        {
+            // Only Administrators may read. An OWNER RIGHTS ACE suppresses the owner's implicit
+            // READ_CONTROL/WRITE_DAC, so the creating service identity cannot read the file
+            // back or re-grant itself access. The creator's handle stays valid for the write.
+            security.AddAccessRule(new FileSystemAccessRule(
+                AdministratorsSid,
+                FileSystemRights.Read,
+                AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(
+                OwnerRightsSid,
+                FileSystemRights.Synchronize,
+                AccessControlType.Allow));
+        }
+        else
+        {
+            security.AddAccessRule(new FileSystemAccessRule(
+                owner,
+                FileSystemRights.FullControl,
+                AccessControlType.Allow));
+        }
 
         // The security descriptor is supplied to CreateFile itself. Creating first and calling
         // SetAccessControl later would expose a short inherited-ACL race.

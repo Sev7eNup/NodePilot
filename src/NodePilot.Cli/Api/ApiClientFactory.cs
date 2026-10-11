@@ -30,12 +30,17 @@ public sealed class ApiClientFactory
         if (!session.HasServer)
             throw new InvalidOperationException(
                 "No server URL configured. Run `np config set server <URL>` or pass --server.");
-        if (requireAuth && !session.HasSession)
+        if (requireAuth && !session.HasSession && !session.HasSwitcherKey)
             throw new NotAuthenticatedException(
                 $"Not authenticated for profile '{session.Profile}'. Run `np auth login`.");
 
         var baseUri = NormalizeBaseUri(session.Server!, session.AllowInsecureLoopback);
-        var handler = PinnedCertificateHandlerFactory.Create(session.Tls);
+        // The key header must never follow a redirect to another host.
+        var handler = PinnedCertificateHandlerFactory.Create(
+            session.Tls,
+            session.HasSwitcherKey
+                ? new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }
+                : null);
         if (session.HasSession)
         {
             handler = new TokenRefreshHandler(_tokens, session.Profile)
@@ -50,6 +55,9 @@ public sealed class ApiClientFactory
             Timeout = TimeSpan.FromSeconds(60),
         };
         http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("NodePilot.Cli", "1.0"));
+
+        if (session.HasSwitcherKey)
+            http.DefaultRequestHeaders.Add("X-Switcher-Key", session.SwitcherKey);
 
         var client = new NodePilotApiClient(http);
         if (session.HasSession) client.BearerToken = session.Session!.Token;

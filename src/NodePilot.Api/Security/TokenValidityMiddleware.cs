@@ -106,9 +106,17 @@ public class TokenValidityMiddleware
             || !(ctx.Request.Path.StartsWithSegments("/api")
                  || ctx.Request.Path.StartsWithSegments("/hubs"));
 
+        // The Switcher principal has no session or user row; SwitcherKeyMiddleware already
+        // validated it and limited it to a fixed set of requests.
+        if (ctx.Items.ContainsKey(SwitcherKeyMiddleware.PrincipalItem))
+        {
+            await _next(ctx);
+            return;
+        }
+
         if (ctx.User?.Identity?.IsAuthenticated == true)
         {
-            var jti = ctx.User.FindFirstValue(JwtRegisteredClaimNames.Jti);
+            var jti =ctx.User.FindFirstValue(JwtRegisteredClaimNames.Jti);
             var userIdStr = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
             var sessionIdValue = ctx.User.FindFirstValue(AuthSessionIssuer.SessionIdClaim);
             var stampValue = ctx.User.FindFirstValue("np_secstamp");

@@ -133,6 +133,7 @@ DbContextSetup.WarnAboutInlinePasswords(builder.Configuration, builder.Environme
 builder.Services.AddNodePilotDataProtection(builder.Configuration, builder.Environment);
 builder.Services.AddNodePilotAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddNodePilotForwardedHeaders(builder.Configuration);
+builder.Services.AddSingleton<NodePilot.Api.Security.SwitcherKeyStore>();
 builder.Services.AddNodePilotRateLimiting();
 builder.Services.Configure<HostFilteringOptions>(options =>
 {
@@ -552,6 +553,8 @@ if (builder.Configuration.GetValue<bool>("Cluster:Enabled"))
     app.UseMiddleware<NodePilot.Api.Security.OidcCallbackLeaderFenceMiddleware>();
 }
 app.UseAuthentication();
+// Engine Switcher key: loopback-only, five fixed endpoints, session-less Admin principal.
+app.UseMiddleware<NodePilot.Api.Security.SwitcherKeyMiddleware>();
 // HA defense-in-depth: refuse mutating API + hub traffic on follower nodes with 503,
 // even if the LB mis-routes. Gated behind Cluster:Enabled so single-node deployments
 // pay zero cost. Placed AFTER UseAuthentication so 401 still wins over 503 on a totally

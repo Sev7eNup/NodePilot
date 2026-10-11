@@ -36,6 +36,9 @@ rolls back to the old orchestrator.
 Before any start mode or service is changed, the switcher reads and validates the target's
 allowlist. An unavailable, unreadable, empty, ambiguous, or incomplete list aborts the switch
 without changing a service. Entries may be separated by commas, semicolons, or line breaks.
+A name containing a separator is wrapped in `"..."` or `'...'` (a doubled quote is a literal quote,
+e.g. `'Bob''s Job'`); a quote inside a name, such as `Bob's Job`, needs no wrapping. A quoted name
+must stay on one line, and malformed quoting aborts the switch.
 Whitespace and case-insensitive duplicates are removed. Each entry is either a GUID or an exact,
 unique name; use the GUID when names are duplicated.
 
@@ -177,7 +180,51 @@ Note that the switcher requires elevation. Approving the UAC prompt with a *diff
 account runs it as that account - Kerberos then authenticates that account, and `%APPDATA%`, where
 the CLI session lives, is that account's profile as well.
 
-Without Kerberos, the configured NodePilot CLI profile can be authenticated once under the same
+### Machine key for local administrators
+
+On the NodePilot server itself the switcher needs no NodePilot account at all. The service creates
+`switcher.key` next to `admin-setup.token` (override: `Security:SwitcherKeyPath`; disable:
+`Security:SwitcherKey:Enabled=false`). Only the local Administrators group can read it - not the
+service identity that wrote it, which keeps just a SHA-256 hash (`switcher.key.sha256`). Because the
+switcher runs elevated, a member of the local Administrators group (directly or through an AD group)
+can switch without a domain, Kerberos or a NodePilot password.
+
+The switcher uses the key when the file exists and `serverUrl` is empty or an `https` URL whose host
+resolves only to addresses of this machine (`localhost`, a loopback literal or the machine's own
+name). The key is never sent over plain http, so a stray local listener cannot capture it - TLS
+validation has to succeed first. With `serverUrl` empty, the CLI profile's server must meet the same
+rule. The default key location is the NodePilot data directory
+(`%ProgramData%\NodePilot`); set `switcherKeyPath` when the service stores it elsewhere. In an HA
+cluster every node issues its own key, so run the switcher on the node it talks to. It
+passes the file *path* to `np` in `NODEPILOT_SWITCHER_KEY_FILE` (never the key), and `np` sends it
+as `X-Switcher-Key`. The server accepts it only from this machine (a loopback connection, or one
+whose source address is the server's own) without forwarding headers, and only for
+`GET /api/workflows`, `GET /api/operations/graph` and
+`POST /api/workflows/{id}/enable|disable|cancel-all`; everything else answers 403. With the key `np`
+takes a workflow GUID as given and does not look the workflow up, because the key may not read
+workflow definitions; a workflow *name* therefore fails with 403. A rejected key stops the switch -
+it never falls back to another sign-in. `enable` still needs a workflow that already has a
+publisher; the key carries no user identity to assign. `switcherKeyPath` in `switcher.json`
+overrides the default `%ProgramData%\NodePilot\switcher.key`.
+
+**What this loosens - read before enabling on a shared server:**
+
+1. **The actor is anonymous.** Switcher changes are audited as `switcher`, not as the administrator
+   who ran it, and there is no per-person session to revoke. The key proves possession of the file,
+   not current membership of the Administrators group: a copied key keeps working until the pair is
+   replaced. Revoke it by deleting `switcher.key`; it stops working within seconds and the next
+   service start creates a new one.
+2. **Folder permissions do not apply to it.** The key acts as a global Admin for the five requests
+   above, so it lists, enables, disables and cancels workflows in every folder regardless of
+   folder grants. It cannot change workflows or reach credentials, machines or any other endpoint.
+
+The hash keeps the plaintext key away from processes running as a service identity that is *not* a
+local administrator. It does not make the service identity untrusted: code that runs as the service
+(local workflow scripts) can already reach the JWT signing key and the database, which is the
+existing Operator-trust boundary in the [threat model](threat-model.md). A service identity that
+*is* a local administrator (or LocalSystem) can read the key like any administrator.
+
+Without Kerberos or the machine key, the configured NodePilot CLI profile can be authenticated once under the same
 Windows account that runs the switcher:
 
 ```powershell
