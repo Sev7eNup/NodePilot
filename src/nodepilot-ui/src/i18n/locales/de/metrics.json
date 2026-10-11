@@ -23,5 +23,7 @@
   "notConfigured": "Prometheus ist nicht konfiguriert",
   "notConfiguredDetail": "Hinterlege einen Prometheus Query Endpoint und aktiviere OpenTelemetry, damit NodePilot die Metriken anzeigen kann.",
   "openSettings": "Zu den Einstellungen",
-  "loadFailed": "Metriken konnten nicht geladen werden"
+  "loadFailed": "Metriken konnten nicht geladen werden",
+  "noData": "Keine Daten im Zeitraum",
+  "topSeries": "Top {{shown}} von {{total}}"
 }

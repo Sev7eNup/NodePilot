@@ -147,6 +147,48 @@ describe('MetricsPage', () => {
   });
 });
 
+describe('MetricsPage — dense data', () => {
+  const widgetOf = (type: MetricsWidget['type'], data: MetricsWidget['data']): MetricsWidget => ({
+    id: 200, title: 'Dense', description: null, type, unit: 'short', grid: { x: 0, y: 0, width: 12, height: 8 }, error: null, data,
+  });
+  const single = (label: string, value: number, timestamp = 1) => ({ label, labels: {}, points: [{ timestamp, value }] });
+
+  it('keepsTheEightHighestPeakingLinesOfAWideTimeseries', () => {
+    const data = Array.from({ length: 12 }, (_, index) => single(`s${index}`, index));
+    const option = buildMetricsChartOption(widgetOf('timeseries', data)) as { series?: Array<{ name?: string }> };
+    expect(option.series?.map((s) => s.name)).toEqual(['s11', 's10', 's9', 's8', 's7', 's6', 's5', 's4']);
+  });
+
+  it('ordersHeatmapBucketsByBoundWithInfLast', () => {
+    const data = ['750', '+Inf', '50', '5000'].map((label) => single(label, 1));
+    const option = buildMetricsChartOption(widgetOf('heatmap', data)) as { yAxis?: { data?: string[] } };
+    expect(option.yAxis?.data).toEqual(['50', '750', '5000', '+Inf']);
+  });
+
+  it('sortsBarsDescendingByValue', () => {
+    const option = buildMetricsChartOption(widgetOf('bargauge', [single('a', 1), single('b', 9), single('c', 5)])) as { yAxis?: { data?: string[] } };
+    expect(option.yAxis?.data).toEqual(['b', 'c', 'a']);
+  });
+
+  it('collapsesSmallPieSlicesIntoOneRemainderSlice', () => {
+    const data = Array.from({ length: 12 }, (_, index) => single(`m${index}`, index + 1));
+    const option = buildMetricsChartOption(widgetOf('piechart', data)) as { series?: Array<{ data?: Array<{ name: string; value: number }> }> };
+    const slices = option.series?.[0]?.data ?? [];
+    expect(slices).toHaveLength(8);
+    expect(slices.at(-1)).toMatchObject({ name: '+5', value: 1 + 2 + 3 + 4 + 5 });
+  });
+
+  it('showsTheNoDataStateForChartsWithoutAnyFiniteValue', async () => {
+    server.use(http.get(`${BASE}/api/observability/dashboards/:key`, () => HttpResponse.json({
+      available: true, key: 'mission-control', title: 'Mission Control',
+      widgets: [widgetOf('timeseries', [{ label: 'a', labels: {}, points: [{ timestamp: 1, value: null }] }])],
+    })));
+    renderPage();
+    expect(await screen.findByText('No data in this range')).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Dense' })).not.toBeInTheDocument();
+  });
+});
+
 describe('MetricsPage — chart renderer', () => {
   /**
    * A heatmap draws one cell per bucket and timestamp. The shipped dashboards sample at 1m, so
