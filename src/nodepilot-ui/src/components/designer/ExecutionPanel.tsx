@@ -145,7 +145,7 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
       >
         <div className="flex items-center gap-3">
           <ChevronUp size={14} className="text-on-surface-variant" />
-          <span className="font-label text-xs font-semibold text-on-surface-variant uppercase tracking-wide">{t('execution.title')}</span>
+          <span className="font-label text-sm font-semibold text-on-surface-variant">{t('execution.title')}</span>
           {runningExecutionCount > 0 && (
             <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 dark:bg-blue-950/50 rounded-full">
               <CircleDash size={10} className="text-blue-600 dark:text-blue-400 animate-spin" />
