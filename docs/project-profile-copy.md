@@ -1,6 +1,6 @@
 # Einheitliche Projektbeschreibung
 
-Lokaler Textvorschlag; GitHub-Einstellungen und externe Profile wurden nicht geändert. Die README verwendet dieselbe Einordnung bereits im lokalen Branch.
+Lokaler Textvorschlag; GitHub-Einstellungen und externe Profile wurden nicht geändert. Die README verwendet dieselbe Einordnung bereits auf `main`.
 
 ## GitHub „About“ und englische Kurzbeschreibung
 
@@ -22,6 +22,6 @@ NodePilot is an open-source workflow orchestrator for Windows and PowerShell. De
 
 - Name: **NodePilot**. Ergänzung in Profilüberschriften: **Windows & PowerShell workflow automation**.
 - Hauptlink: `https://www.nodepilot.run/`; keine neue GitHub-Pages-Adresse als Projektwebsite verbreiten.
-- Links bei thematischen Profilen: `/en/powershell-automation/`, `/en/scorch-alternative/` oder `/en/self-hosted-automation/`, sobald diese Seiten veröffentlicht sind.
+- Links bei thematischen Profilen: `/en/powershell-automation/`, `/en/scorch-alternative/` oder `/en/self-hosted-automation/`; die Seiten sind geroutet und vorgerendert, ihre Live-Verfügbarkeit vor dem Verlinken prüfen.
 - Keine Verbindung mit dem gleichnamigen n8n-Produkt suggerieren. Keine vollständige SCOrch-Kompatibilität oder Betriebsgarantie versprechen.
 - Für weitere externe Profile können dieselben Texte verwendet werden. Konkrete zusätzliche Profile wurden noch nicht benannt; es wurden keine Accounts angelegt und keine Nachrichten versendet.

@@ -8,7 +8,7 @@ The external authentication and provisioning paths are opt-in. The SSO status ex
 |---|---|---|---|
 | HA Active/Passive | implemented + field test | Single-node (off) | `Cluster:Enabled=true` |
 | Vault / Secret provider | implemented + field test | DPAPI | `Secrets:Provider=aesgcm` |
-| SIEM logging (ECS-JSON) | implemented | text | `Logging:Format=ecs-json` |
+| SIEM logging (ECS-JSON) | implemented | cmtrace (shipped; `text` if the key is missing) | `Logging:Format=ecs-json` |
 | RBAC stage A (Shared Folders) | implemented | active (all existing users on Root) | — |
 | AD SSO | **Preview**, real field test pending | off | `Authentication:Ldap:Enabled` / `Authentication:Windows:Enabled` |
 | OIDC + SCIM 2.0 | implemented, separate release gate | off | `Authentication:Oidc:Enabled` / `Authentication:Scim:Enabled` |
@@ -352,7 +352,7 @@ start differently.
     last-wins, so duplicate key inputs do not produce double writes.
   - PascalCase → snake_case conversion when translating property names.
 - **`LoggingSetup`** in `Program.cs` reads `Logging:Format` and switches between
-  `text` (default), `cmtrace`, `json` (CLEF), `ecs-json`.
+  `text` (fallback when the key is missing), `cmtrace` (shipped default), `json` (CLEF), `ecs-json`.
 - **`AuditWriter.LogAsync`** wraps the SIEM forward in `BeginScope` and, **after**
   `SaveChanges`, emits exactly one `LogInformation` line per audit row. The scope dictionary
   carries the ECS names (`event.action`, `event.category`, `event.kind`, `event.outcome`,

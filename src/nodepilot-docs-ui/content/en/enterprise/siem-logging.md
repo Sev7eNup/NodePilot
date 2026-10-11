@@ -10,8 +10,8 @@ NodePilot can emit application logs and audit events as Elastic Common Schema 1.
 
 | Format value | Output | Use case |
 |---|---|---|
-| `text` (default) | A plain template | Development, console |
-| `cmtrace` | ConfigMgr CMTrace | Operations on Windows |
+| `text` (code fallback) | A plain template | Development, console |
+| `cmtrace` (shipped default) | ConfigMgr CMTrace | Operations on Windows |
 | `json` | Serilog compact JSON (CLEF) | Generic structured ingest |
 | `ecs-json` | Elastic Common Schema 1.x | SIEM (Elastic/Sentinel/Splunk) |
 
