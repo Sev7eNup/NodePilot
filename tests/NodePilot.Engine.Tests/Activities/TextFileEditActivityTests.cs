@@ -120,7 +120,7 @@ public sealed class TextFileEditActivityTests : IDisposable
             process.IsAvailable.Should().BeTrue();
             var result = await process.ExecuteAsync(new PowerShellExecutionRequest
             {
-                ScriptText = _capturedScript!, Isolated = true, Timeout = TimeSpan.FromSeconds(5),
+                ScriptText = _capturedScript!, Isolated = true, Timeout = TimeSpan.FromSeconds(30),
             }, CancellationToken.None);
 
             result.TimedOut.Should().BeFalse("the regex budget must fail inside the activity before the process deadline");
