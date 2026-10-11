@@ -24,6 +24,39 @@ this file. When removing a finding's last implementation, remove the row.
 | `L-N` | Low | Defensive measures and ergonomic safety nets |
 | `F-N` | Functional | Bug-class fixes that double as security improvements (timeouts, fail-closed paths) |
 
+## Tag collisions and markers without an entry
+
+Two audit rounds (2026-05-15 and a later hardening sweep) reused the same numbers. Where a
+tag means more than one thing, the entries below name every meaning; the finding sections
+that follow describe the first one.
+
+| Tag | Meanings in code |
+|---|---|
+| `H-1` | External-trigger rate-limit partition (this file); SecurityStamp bump / pinning on role change and active toggle (`UsersController`, `AuthSessionIssuer`); no template expansion into raw SQL/script text in `StepRunner` |
+| `H-3` | Capacity caps (this file); owner-only key-file write without a world-readable window in `JwtKeyResolver` / `AdminBootstrap` |
+| `H-4` | Account lockout and static-cache lifecycle (this file); strict `AllowedHosts` boot check (`SecurityHardeningWarnings`); IPv6 /64 rate-limit partition (`RateLimitingSetup`) |
+| `H-17` | LDAP empty-password rejection (this file); revocation / user-state cache in `TokenValidityMiddleware` (`AuthenticationSetup`) |
+| `M-2` | JWT key resolved once at startup (this file); failure-counter ratchet for provisioned LDAP rows (`AuthController`) |
+| `L-2` | Generic "Invalid credentials" response (`AuthController`); resume-override size caps (this file) |
+
+Markers that appear in code but have no finding section of their own:
+
+| Tag | Where | What it protects |
+|---|---|---|
+| `H-2` | `SecurityHardeningWarnings`, `SmtpSettingsDto` | Plaintext SMTP transport with credentials; `EnableSsl` option and warning |
+| `H-5` / `H-6` | `AuthenticationSetup` | JWT stays in the httpOnly `np_auth` cookie; non-Bearer clients authenticate from it |
+| `H-11`, `H-12`, `M-16`, `M-17` | `SecurityHardeningWarnings` | Startup warnings for permissive defaults that stay permissive for upgrades |
+| `M-3` | `WorkflowsController`, `WorkflowEditingController`, `HubRevocationSweeper`, `SecurityPipelineSetup` | Atomic guarded delete and lock clear; two-step hub termination; tightened CSP |
+| `M-6` | `MachinesController` | Raw exception text is not echoed to the client |
+| `M-18` | `OpenApiSetup` | Swagger exposure outside Development; opt-out via `Swagger:DisableInNonDevelopment` |
+| `L-1a` | `AuthSessionIssuer`, `AuthController` | Cookie flags routed through one issuer so the Secure flag matches on set and clear |
+| `L-6` | `WorkflowsController` | A duplicated workflow is always born disabled |
+| `L-17` | `Program.cs` | Forwarded-headers handling runs first, so HSTS, rate limiting and auth see the real scheme and client IP behind a proxy |
+
+Entries below whose tag comment no longer appears in code (for example H-9, H-13, M-7 to
+M-9, M-11, M-12, M-15, M-20, M-23, L-5, F-1, C-2-b) are kept as design rationale; the
+behaviour exists, and the linked files are authoritative.
+
 ## Critical / Cross-cutting
 
 ### C-2 — Debug-Session Ownership
