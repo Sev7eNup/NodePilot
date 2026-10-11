@@ -12,6 +12,8 @@ exhaustive.
 
 ## [Unreleased]
 
+Planned version: **1.5.1**.
+
 ## [1.5.0] - 2026-10-11
 
 The AI agent features and the architecture and security audit below make this a minor release.
