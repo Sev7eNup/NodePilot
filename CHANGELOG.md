@@ -12,8 +12,9 @@ exhaustive.
 
 ## [Unreleased]
 
-Planned version: **1.5.0**. The AI agent features and the architecture and security audit
-below make this a minor release, not 1.4.5.
+## [1.5.0] - 2026-10-11
+
+The AI agent features and the architecture and security audit below make this a minor release.
 
 ### Release highlight: AI Agent & AI Agent Team
 
@@ -1911,8 +1912,9 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.4...main
-[1.4.4]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.3...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.5.0...main
+[1.5.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.0
+[1.4.4]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.4
 [1.4.3]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.3
 [1.4.2]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.2
 [1.4.1]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.1
