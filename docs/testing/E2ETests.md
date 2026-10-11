@@ -512,6 +512,28 @@ Für jede Activity:
 
 ---
 
+### Test 2.14 — Weitere Activity-Typen: Dateien, Aufgaben, Warten, Text, KI, Verzweigung
+
+Pro Typ: Node hinzufügen → Pflichtfelder setzen → Speichern → Run.
+
+- `textFileEdit` (Remote): `operation` `append` mit `appendIfMissing: true`, `path`, `content`. Zweiter Run darf die Zeile nicht doppeln; `dryRun: true` ändert die Datei nicht.
+- `scheduledTask` (Remote): `taskName`, `action` `get` (Default), danach `start`/`stop`/`enable`/`disable`.
+- `fileHash` (Remote): `path`, `algorithm` `SHA256` (Default); mit `expected` vergleicht der Step und scheitert bei Abweichung.
+- `zipOperation` (Remote): `operation` `compress` (Default) mit `source`/`destination`, danach `extract`; `force` steuert das Überschreiben.
+- `waitForCondition` (Hybrid): `conditionType` `pathExists`, `serviceRunning`, `portOpen`, `httpOk` oder `script`, jeweils mit dem eigenen Schlüssel; `timeoutSeconds`/`intervalSeconds` begrenzen das Polling; Timeout → Step fehlgeschlagen.
+- `generateText` (Engine-local): `mode`, `length`; Ergebnis ist ein Zufallsstring, **kein** LLM-Aufruf.
+- `llmQuery` (Engine-local): `prompt`; mit `Llm:Enabled=false` scheitert der Step mit klarer Meldung.
+- `aiAgent` / `aiAgentTeam` (Engine-local): `task` plus Agent- bzw. Team-Definition; ohne aktives LLM-Profil blockiert die Validierung.
+- `decision` (controlFlow): mehrere `cases` mit `condition`; Downstream-Kanten über `{{step.param.case}}`.
+- `forEach` (controlFlow): `items` plus `childWorkflowNameOrId`; Item und Index kommen im Child als `manual.*` an.
+
+**Prüfpunkte:**
+- [ ] Jeder Node wird gerendert, Pflichtfelder werden validiert, Speichern erfolgt
+- [ ] Run liefert das dokumentierte Ergebnis bzw. die dokumentierte Fehlermeldung
+- [ ] Die KI-Typen sind ohne aktives LLM-Profil nicht ausführbar
+
+---
+
 ## Teil 3: Node-Operationen & Designer-Interaktionen
 
 ### Test 3.1 — Node duplizieren
@@ -571,7 +593,7 @@ Für jede Activity:
 ### Test 3.4 — Canvas zoomen & pannen
 
 **Schritte:**
-1. Scroll-Wheel zum Zoomen (oder Ctrl+Scroll)
+1. Scroll-Wheel zum Zoomen (React-Flow-Standard; Ctrl+Scroll zoomt ebenfalls)
 2. Pan mit Mittelmaus-Taste oder Space+Drag
 3. Zoom Out komplett (alle Nodes sichtbar)
 4. Zoom In
@@ -1608,7 +1630,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 | `Ctrl+A` | Alle Nodes auswählen |
 | `Escape` | Auswahl aufheben / Dialog schließen |
 | `Space+Drag` | Canvas pannen |
-| `Ctrl+Scroll` | Zoom in/out |
+| Scroll / `Ctrl+Scroll` | Zoom in/out |
 | `Home` | Fit-to-View |
 
 **Prüfpunkte:**
@@ -1805,6 +1827,21 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 - [ ] Nur Windows (andere OS → Trigger disabled)
 
 **Erwartung:** EventLog-Trigger funktioniert auf Windows
+
+---
+
+### Test 14.6 — `manualTrigger` (UI / API)
+
+**Schritte:**
+1. Add Trigger-Node: `manualTrigger`, optional `parameters` mit `default`-Werten deklarieren
+2. Speichern + Enable Workflow
+3. Run über die UI (Parameter-Dialog) und über `POST /execute` mit `{"parameters": {}}`
+
+**Prüfpunkte:**
+- [ ] Ohne aktiven Trigger startet der Lauf nicht (0 Roots → `Failed`)
+- [ ] Übergebene Werte liegen als `{{manual.NAME}}` an
+- [ ] Ein weggelassener Parameter mit `default` wird mit dem Default geseedet
+- [ ] Ein deklarierter Parameter ohne Default bleibt abwesend, die Referenz scheitert
 
 ---
 
@@ -3540,7 +3577,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ### Test 44.2 — Webhook-Rate-Limit (60/Min)
 
-**Prüfpunkte:** 61. Webhook-POST → 429. Header `RateLimit-Limit: 60`.
+**Prüfpunkte:** 61. Webhook-POST → 429 (die Antwort trägt keine `RateLimit-*`-Header).
 
 ---
 
@@ -4622,7 +4659,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 - [ ] **Viewport 1024 & 1440 px:** klassische Reihe wrappt ganze Cluster mehrzeilig, **kein** horizontaler Overflow; der Layout-Umschalter bleibt sichtbar/erreichbar.
 - [ ] Rollen-/Lifecycle-Verhalten (Run/Publish/Disable/Save) identisch in beiden Layouts (geteilte `RunControls`/`LifecycleControls`).
 
-> Automatisiert: `e2e/toolbar-layout.spec.ts` (79.1–79.4, hermetisch).
+> Automatisiert: `e2e/toolbar-layout.spec.ts` (hermetisch): 79.1 Umschalten, 79.2/79.3 Persistenz und Alt-Profil, 79.4 Overflow bei 1024/1440 px.
 
 ---
 
@@ -4687,7 +4724,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ### Test 80.11 — Widget auf Mobilgeräten und in allen Themes
 1. Widget bei 390 px Breite öffnen; Tastatur öffnen und längeren Verlauf lesen.
-2. Tastaturbedienung und die sieben Themes prüfen.
+2. Tastaturbedienung und alle zehn Themes prüfen.
 - [ ] Eingabe und Minimieren erreichbar; kein horizontaler Seiten-Overflow.
 - [ ] Auf Mobilgeräten bleibt der Tastaturfokus im Panel, Escape minimiert und gibt den Fokus zurück.
 - [ ] Quellen und Antwortdetails sind aufklappbar; lange Codeblöcke scrollen im Chat.
@@ -4962,7 +4999,7 @@ Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automati
 
 ```
 [ ] Teil 1: Workflow-Management (1.1 — 1.4)
-[ ] Teil 2: Activity-Typen (2.1 — 2.13, 2.2b, 2.2c)
+[ ] Teil 2: Activity-Typen (2.1 — 2.14, 2.2b, 2.2c)
 [ ] Teil 3: Node-Operationen (3.1 — 3.5)
 [ ] Teil 4: Edges & Bedingungen (4.1 — 4.8)
 [ ] Teil 5: Properties & Variablen (5.1 — 5.4)
@@ -4974,14 +5011,14 @@ Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automati
 [ ] Teil 11: Dashboard (11.1 — 11.3)
 [ ] Teil 12: Keyboard-Shortcuts (12.1 — 12.6)
 [ ] Teil 13: Spezielle Node-Types (13.1 — 13.2)
-[ ] Teil 14: Alle Trigger-Typen (14.1 — 14.5)
+[ ] Teil 14: Alle Trigger-Typen (14.1 — 14.6)
 [ ] Teil 15: Admin & User-Management (15.1 — 15.4)
 [ ] Teil 16: Audit Log (16.1 — 16.3)
 [ ] Teil 17: Theme & UX (17.1 — 17.5)
 [ ] Teil 18: Workflow-Organisation (18.1 — 18.3)
 [ ] Teil 19: Workflow-Diff / Version-Compare (19.1 — 19.3)
 [ ] Teil 20: Machines & Credentials (20.1 — 20.3)
-[ ] Teil 21: Global Variables (21.1 — 21.10)
+[ ] Teil 21: Global Variables (21.1, 21.2, 21.6 — 21.10)
 [ ] Teil 22: SCOrch Import (22.1 — 22.2)
 [ ] Teil 23: External Trigger API (23.1 — 23.2)
 [ ] Teil 24: Real-time SignalR (24.1 — 24.2)
@@ -5039,7 +5076,7 @@ Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automati
 [ ] Teil 76: Admin Settings UI — SettingsPage Sektionen (76.1 — 76.6)
 [ ] Teil 77: KI-Workflow-Assistent + Streaming (77.1 — 77.10)
 [ ] Teil 78: Alerting (78.1 — 78.9)
-[ ] Teil 79: Toolbar-Layout-Umschalter (79.1 — 79.4)
+[ ] Teil 79: Toolbar-Layout-Umschalter (fünf Prüfpunkte)
 [ ] Teil 80: Globaler AI-Chat (80.1 — 80.12)
 [ ] Teil 81: Custom Activities (81.1 — 81.9)
 [ ] Teil 82: Datenbank-Ausfall zur Laufzeit (82.1 — 82.5)

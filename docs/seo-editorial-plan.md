@@ -1,6 +1,6 @@
 # Artikelplan für die lokale SEO-Vorschau
 
-Alle 16 vorhandenen Beiträge sind zweisprachig eingebunden. **Erster Workflow** ist als dritter Artikel für den 27.09.2026 freigegeben. Die übrigen zwölf Beiträge bleiben Entwürfe und erscheinen nur in der lokalen Vorschau. Für weitere Veröffentlichungen ist zunächst ein Artikel pro Woche vorgesehen, jeweils auf Deutsch und Englisch.
+Alle 16 vorhandenen Beiträge sind zweisprachig eingebunden. Vier Beiträge sind veröffentlicht (zuletzt Supportende SCOrch 2016 am 07.10.2026). Die übrigen zwölf Beiträge bleiben Entwürfe und erscheinen nur in der lokalen Vorschau. Für weitere Veröffentlichungen ist zunächst ein Artikel pro Woche vorgesehen, jeweils auf Deutsch und Englisch.
 
 Die Suchfragen beschreiben die Absicht der Artikel. Sie sind keine nach Suchvolumen validierte Keyword-Auswahl. Nach Veröffentlichung in Search Console nach Sprache, Artikel und Einstiegsseite auswerten.
 
@@ -8,9 +8,9 @@ Jeder Artikel hat im Katalog zusätzlich einen Such-Titel (`seoTitle`, höchsten
 
 | Beitrag / Pfad | Hauptfrage (DE / EN) | Zielgruppe | Einstiegsseite | Doku-Kapitel | Stand |
 | --- | --- | --- | --- | --- | --- |
-| [Warum NodePilot: von PowerShell-Skripten zu Windows-Workflows](http://127.0.0.1:5190/blog/why-nodepilot/) | Warum braucht eine Skriptsammlung einen Workflow-Orchestrator? / Why does a script collection need workflow orchestration? | Windows-/PowerShell-Admins | `powershell-automation` | `getting-started/introduction` | Veröffentlicht: 2026-09-20 |
-| [SCOrch-Runbooks importieren und das Ergebnis prüfen](http://127.0.0.1:5190/blog/scorch-import/) | Was übernimmt der SCOrch-Import und was muss ich nacharbeiten? / What does the SCOrch import preserve and what needs review? | SCOrch-Anwender | `scorch-alternative` | `import-export` | Veröffentlicht: 2026-09-20 |
-| [Einen ersten Workflow mit NodePilot erstellen](https://www.nodepilot.run/blog/first-workflow/) | Wie führe ich meinen ersten PowerShell-Workflow aus und prüfe sein Ergebnis? / How do I run and verify my first PowerShell workflow? | Windows-/PowerShell-Admins | `powershell-automation` | `getting-started/quickstart` | Freigegeben: 2026-09-27 |
+| [Warum NodePilot: von PowerShell-Skripten zu Windows-Workflows](https://www.nodepilot.run/blog/why-nodepilot/) | Warum braucht eine Skriptsammlung einen Workflow-Orchestrator? / Why does a script collection need workflow orchestration? | Windows-/PowerShell-Admins | `powershell-automation` | `getting-started/introduction` | Veröffentlicht: 2026-09-20 |
+| [SCOrch-Runbooks importieren und das Ergebnis prüfen](https://www.nodepilot.run/blog/scorch-import/) | Was übernimmt der SCOrch-Import und was muss ich nacharbeiten? / What does the SCOrch import preserve and what needs review? | SCOrch-Anwender | `scorch-alternative` | `import-export` | Veröffentlicht: 2026-09-20 |
+| [Einen ersten Workflow mit NodePilot erstellen](https://www.nodepilot.run/blog/first-workflow/) | Wie führe ich meinen ersten PowerShell-Workflow aus und prüfe sein Ergebnis? / How do I run and verify my first PowerShell workflow? | Windows-/PowerShell-Admins | `powershell-automation` | `getting-started/quickstart` | Veröffentlicht: 2026-09-27 |
 | [Ein grüner Status ist noch kein erfolgreicher Auftrag](http://127.0.0.1:5190/blog/verify-results/) | Welche Nachweise zeigen, dass ein Auftrag fachlich erfolgreich war? / What evidence proves that an automation task achieved its outcome? | Windows-/PowerShell-Admins | `powershell-automation` | `observability` | Lokale Vorschau |
 | [Was von einem SCOrch-Runbook beim Umzug erhalten bleiben muss](http://127.0.0.1:5190/blog/scorch-migration/) | Wie bleiben Datenübergaben und Fehlerpfade bei einer Migration erhalten? / How do data contracts and failure paths survive a migration? | SCOrch-Anwender | `scorch-alternative` | `import-export` | Lokale Vorschau |
 | [gMSA: Dienstkonten ohne manuell verteilte Kennwörter](http://127.0.0.1:5190/blog/gmsa-service-accounts/) | Wie prüfe ich gMSA-Dienstkonten und ihre tatsächlichen Zugriffsrechte? / How do I verify gMSA service accounts and their actual permissions? | Windows-Administratoren und Betreiber | `self-hosted-automation` | `configuration/remote-execution` | Lokale Vorschau |
@@ -23,7 +23,7 @@ Jeder Artikel hat im Katalog zusätzlich einen Such-Titel (`seoTitle`, höchsten
 | [WinRM verstehen: Was eine erfolgreiche Verbindung tatsächlich belegt](http://127.0.0.1:5190/blog/winrm/) | Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich? / What does a successful WinRM connection test actually prove? | Windows-Administratoren und Betreiber | `self-hosted-automation` | `configuration/remote-execution` | Lokale Vorschau |
 | [Einen bestehenden WinRM-Zugang um HTTPS erweitern](http://127.0.0.1:5190/blog/winrm-https/) | Wie erweitere ich einen bestehenden WinRM-Zugang um HTTPS? / How do I add HTTPS to an existing WinRM connection? | Windows-Administratoren und Betreiber | `self-hosted-automation` | `security/hardening` | Lokale Vorschau |
 | [Automatisierung im Windows-Betrieb: Welche Arbeit den Aufwand lohnt](http://127.0.0.1:5190/blog/windows-automation/) | Welche Windows-Aufgaben rechtfertigen den Aufwand der Automatisierung? / Which Windows tasks justify the cost of automation? | Windows-/PowerShell-Admins | `powershell-automation` | `concepts/workflows` | Lokale Vorschau |
-| [System Center 2016 Orchestrator: Das Supportende am 11. Januar 2027 planen](http://127.0.0.1:5190/blog/orchestrator-2016-end-of-support/) | Was bedeutet das Supportende von SCOrch 2016 und welche Wege gibt es? / What does the end of support for SCOrch 2016 mean, and which paths exist? | SCOrch-Anwender | `scorch-alternative` | `import-export` | Veröffentlicht: 2026-10-07 |
+| [System Center 2016 Orchestrator: Das Supportende am 11. Januar 2027 planen](https://www.nodepilot.run/blog/orchestrator-2016-end-of-support/) | Was bedeutet das Supportende von SCOrch 2016 und welche Wege gibt es? / What does the end of support for SCOrch 2016 mean, and which paths exist? | SCOrch-Anwender | `scorch-alternative` | `import-export` | Veröffentlicht: 2026-10-07 |
 
 ## Freigabe und Daten
 
@@ -39,9 +39,8 @@ Jeder Artikel hat im Katalog zusätzlich einen Such-Titel (`seoTitle`, höchsten
 
 Reihenfolge nach Suchnachfrage: zuerst Themen, nach denen Admins aktiv suchen, dann die Betriebsartikel.
 
-1. Erster Workflow ist für den 27.09.2026 freigegeben; weitere Artikel zunächst wöchentlich veröffentlichen.
+1. Erster Workflow (veröffentlicht 27.09.2026) und Supportende SCOrch 2016 (veröffentlicht 07.10.2026) sind erschienen; weitere Artikel zunächst wöchentlich veröffentlichen.
 2. SCOrch-Migration, passend zum vorhandenen SCOrch-Importartikel.
 3. PowerShell 5.1 und 7 (häufige Suchanfrage „PowerShell 5.1 vs 7").
 4. WinRM über HTTPS, danach gMSA und WinRM-Grundlagen als zusammenhängende Betriebsgrundlagen.
-5. Supportende SCOrch 2016 spätestens Mitte November 2026, damit der Artikel vor dem Stichtag 11.01.2027 indexiert ist.
-6. Erfolg prüfen und die übrigen Betriebsartikel nach tatsächlichen Suchanfragen und Rückmeldungen aus der Search Console priorisieren. Es gibt keinen künstlich vorgegebenen SEO-Veröffentlichungsrhythmus.
+5. Erfolg prüfen und die übrigen Betriebsartikel nach tatsächlichen Suchanfragen und Rückmeldungen aus der Search Console priorisieren. Es gibt keinen künstlich vorgegebenen SEO-Veröffentlichungsrhythmus.

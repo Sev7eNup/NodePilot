@@ -15,8 +15,8 @@ single Filebeat sidecar covers both.
 
 | Format value | Output | Use case |
 |---|---|---|
-| `text` (default) | plain output template | dev, console reading |
-| `cmtrace` | ConfigMgr CMTrace XML-ish | ops on Windows, CMTrace.exe |
+| `text` (code fallback) | plain output template | dev, console reading |
+| `cmtrace` (shipped default) | ConfigMgr CMTrace XML-ish | ops on Windows, CMTrace.exe |
 | `json` | Serilog Compact JSON (CLEF) | generic structured ingest |
 | `ecs-json` | Elastic Common Schema 1.x | SIEM (Elastic / Sentinel / Splunk) |
 
@@ -50,7 +50,7 @@ the JSON root in their proper nested ECS shape rather than appearing under
 | Category | Prefixes | Example | Source |
 |---|---|---|---|
 | Host/service identity | `service.`, `host.`, `deployment.`, `agent.`, `cloud.`, `container.` | `service.name=nodepilot-api` | Serilog enricher (once per process). **Caveat:** the ECS file sink enriches only `service.name` + `deployment.environment` by default. On the OTLP/OTel path, the secure default `OpenTelemetry:RedactHostnames=true` omits `host.name` and uses a process-stable random `service.instance.id`; setting it to `false` restores the `hostname:pid` identity. Add an explicit enricher only if you intentionally need `host.*` in the tailed file. |
-| Per-event ECS fields | `event.`, `user.`, `source.`, `trace.`, `span.`, `error.`, `client.`, `network.`, `url.`, `http.` | `event.action=WORKFLOW_PUBLISHED`, `user.id=...`, `source.ip=10.1.2.3` | per-call from AuditWriter, request middleware, etc. |
+| Per-event ECS fields | `event.`, `user.`, `source.`, `trace.`, `span.`, `error.`, `client.`, `network.`, `url.`, `http.` | `event.action=WORKFLOW_PUBLISHED`, `user.id=...`, `source.ip=10.1.2.3` | per-call from AuditWriter (`event.`, `user.`, `source.`). The formatter writes `error.*` itself for exceptions and also hoists `trace.`, `span.`, `client.`, `network.`, `url.` and `http.`, but nothing emits them today; there is no request middleware that sets them. Trace and span ids are written as `trace_id` / `span_id` by `OtelTagEnricher` and appear under `nodepilot.*`, not at the root. |
 
 Out-of-the-box SIEM detection rules (Sigma, Sentinel analytics, Elastic detection)
 bind to these standard names; a rule that gates on `event.action == "LOGIN_FAILED"`

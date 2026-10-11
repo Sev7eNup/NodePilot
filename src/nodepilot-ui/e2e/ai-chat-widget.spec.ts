@@ -110,7 +110,7 @@ test('adapts to every skin and contains long Markdown without horizontal page ov
   await page.route('**/api/ai/knowledge/ask', (route) =>
     route.fulfill({ contentType: 'text/event-stream', body: reply('A **workflow** connects activities.\n\n1. Choose a trigger.\n2. Add your activities.\n3. Publish when ready.\n\n```powershell\nGet-Service -Name Spooler | Select-Object Name, Status, DisplayName\n```') }));
   await page.goto('/workflows');
-  for (const skin of ['light', 'light-grey', 'light-bank', 'dark', 'dark-lila', 'dark-bank', 'dark-nebula']) {
+  for (const skin of ['light', 'light-minimal', 'light-grey', 'light-bank', 'dark', 'dark-minimal', 'dark-lila', 'dark-bank', 'dark-ion', 'dark-nebula']) {
     await page.evaluate((theme) => {
       localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme }, version: 0 }));
     }, skin);

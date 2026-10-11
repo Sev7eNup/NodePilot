@@ -1353,7 +1353,7 @@ nie abgesenkt.
 sind Sicherheits-Caps gegen pathologische Fälle (Trigger-Schleifen, Sub-Workflow-Kaskaden), kein
 Durchsatz-Hebel — sie sollen im Normalbetrieb nie greifen. Wer einen davon setzt, meint ihn; ihn
 im Auto-Modus durch einen hardware-abgeleiteten Wert zu ersetzen würde genau die Schutzschranke
-entwaffnen, die der Operator eingezogen hat. Sie bleiben rein config-gesteuert (Defaults 500/200)
+entwaffnen, die der Operator eingezogen hat. Sie bleiben rein config-gesteuert (ausgelieferte Werte 5000/2000; Code-Fallback bei fehlendem Key 500/200)
 und gelten in **beiden** Modi. Ein Test hält das fest; die Fehleinschätzung ist beim ersten Anlauf
 aufgefallen, weil `WorkflowEngineCapacityTests` daraufhin endlos auf eine Ablehnung wartete, die
 nie kam.

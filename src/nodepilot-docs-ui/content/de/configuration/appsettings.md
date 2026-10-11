@@ -11,7 +11,7 @@ Beispiel: `ConnectionStrings__Postgres` entspricht `ConnectionStrings:Postgres`.
 | `Database:Provider` | `postgres` \| `sqlserver` | `postgres` |
 | `Remote:Provider` | `winrm` \| `noop` | `winrm` |
 | `Secrets:Provider` | `Dpapi` \| `AesGcm` | `Dpapi` |
-| `Logging:Format` | `text` \| `cmtrace` \| `json` \| `ecs-json` | `text` |
+| `Logging:Format` | `text` \| `cmtrace` \| `json` \| `ecs-json` | `cmtrace` |
 
 `noop`-Remote muss quittiert werden (`Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`), sonst Boot-Abbruch.
 
