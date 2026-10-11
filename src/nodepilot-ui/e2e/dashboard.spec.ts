@@ -51,7 +51,7 @@ function dashboardStats(overrides: Record<string, unknown> = {}) {
       { id: EXEC_RUNNING, workflowId: WF_TOP, workflowName: 'Nightly Backup', status: 'Running', startedAt: new Date(Date.now() - 60_000).toISOString(), triggeredBy: 'schedule' },
     ],
     recent: [
-      { id: EXEC_RECENT, workflowId: WF_TOP, workflowName: 'Nightly Backup', status: 'Succeeded', startedAt: new Date(Date.now() - 300_000).toISOString(), completedAt: new Date(Date.now() - 290_000).toISOString(), durationMs: 4200, triggeredBy: 'schedule' },
+      { id: EXEC_RECENT, workflowId: WF_TOP, workflowName: 'Nightly Backup', status: 'Succeeded', startedAt: new Date(Date.now() - 300_000).toISOString(), completedAt: new Date(Date.now() - 290_000).toISOString(), durationMs: 4200, triggeredBy: 'schedule', startedByUsername: null, stepsTotal: 0, stepsCompleted: 0 },
     ],
     armedTriggers: [],
     pendingCount: 0,

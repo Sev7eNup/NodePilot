@@ -8,7 +8,8 @@ public record TopWorkflow(
 public record RunningExecutionInfo(Guid Id, Guid WorkflowId, string WorkflowName, string Status, DateTime StartedAt, string? TriggeredBy);
 public record RecentExecutionInfo(
     Guid Id, Guid WorkflowId, string WorkflowName, string Status,
-    DateTime StartedAt, DateTime? CompletedAt, long? DurationMs, string? TriggeredBy);
+    DateTime StartedAt, DateTime? CompletedAt, long? DurationMs, string? TriggeredBy,
+    string? StartedByUsername, int StepsTotal, int StepsCompleted);
 
 /// <param name="BlockedByWindowName">
 /// Name of the maintenance window that will suppress the fire shown in <c>NextFireUtc</c> (or,

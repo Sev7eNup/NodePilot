@@ -8,11 +8,12 @@ import {
   DocumentUnknown,
   ErrorFilled,
   FlashFilled,
+  Flow,
   Growth,
   Information,
   Locked,
-  Meter,
   Renew,
+  Repeat,
   Screen,
   SecurityServices,
   Subtract,
@@ -27,7 +28,6 @@ import { useTranslation } from 'react-i18next';
 import type { EChartsOption } from 'echarts';
 import { api } from '../api/client';
 import { EChart } from '../components/common/LazyEChart';
-import { useObservabilityConfig, useTelemetrySummary } from '../api/observability';
 import { useDashboardFeed } from '../hooks/useDashboardFeed';
 import { useMinuteTick } from '../hooks/useMinuteTick';
 import { useOpsClock } from '../hooks/useOpsClock';
@@ -102,6 +102,7 @@ interface RunningExecutionInfo {
 interface RecentExecutionInfo {
   id: string; workflowId: string; workflowName: string; status: string;
   startedAt: string; completedAt: string | null; durationMs: number | null; triggeredBy: string | null;
+  startedByUsername: string | null; stepsTotal: number; stepsCompleted: number;
 }
 
 const STALE_LOCK_THRESHOLD_MS = 24 * 3600 * 1000;
@@ -334,39 +335,7 @@ export function DashboardPage() {
         {recentFiltered.length === 0 ? (
           <EmptyState text={t('dashboard:noExecutionsYet')} />
         ) : (
-          <div className="overflow-x-auto -mx-4">
-            <table className="w-full text-sm">
-              <thead className="text-xs uppercase tracking-wide text-outline">
-                <tr>
-                  <th className="text-left px-4 py-2 font-medium">{t('dashboard:tableHeaders.workflow')}</th>
-                  <th className="text-left px-4 py-2 font-medium">{t('dashboard:tableHeaders.status')}</th>
-                  <th className="text-left px-4 py-2 font-medium">{t('dashboard:tableHeaders.trigger')}</th>
-                  <th className="text-left px-4 py-2 font-medium">{t('dashboard:tableHeaders.started')}</th>
-                  <th className="text-right px-4 py-2 font-medium">{t('dashboard:tableHeaders.duration')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/30">
-                {recentFiltered.map((e) => (
-                  <tr
-                    key={e.id}
-                    className="cursor-pointer hover:bg-surface-low"
-                    onClick={() => navigate(['Running', 'Pending', 'Paused'].includes(e.status)
-                      ? `/workflows/${e.workflowId}` : `/executions?id=${e.id}`)}
-                  >
-                    <td className="px-4 py-2 font-medium text-on-surface">{e.workflowName}</td>
-                    <td className="px-4 py-2"><StatusBadge status={e.status} /></td>
-                    <td className="px-4 py-2 text-on-surface-variant text-xs">{e.triggeredBy ?? t('common:dash')}</td>
-                    <td className="px-4 py-2 text-on-surface-variant text-xs" title={formatDate(e.startedAt)}>
-                      {formatRelative(e.startedAt)}
-                    </td>
-                    <td className="px-4 py-2 text-on-surface-variant text-xs text-right tabular-nums">
-                      {formatDuration(e.durationMs)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <RecentExecutionsTable items={recentFiltered} onOpen={navigate} />
         )}
       </Panel>
       </div>
@@ -381,7 +350,6 @@ export function DashboardPage() {
           <EditLocksList items={stats.editLocks} onOpen={(id) => navigate(`/workflows/${id}`)} />
         </Panel>
       </div>
-      <TelemetrySection />
     </div>
   );
 }
@@ -659,10 +627,158 @@ function RunningList({ items, onOpen, longRunningSeconds }: Readonly<{ items: Ru
   );
 }
 
+const CHILD_TRIGGER_PREFIXES = [
+  { prefix: 'startWorkflow:', key: 'subWorkflow', icon: Flow, className: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-400/15 dark:text-indigo-300' },
+  { prefix: 'forEach:', key: 'forEach', icon: Repeat, className: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-400/15 dark:text-indigo-300' },
+] as const;
+
+interface TriggerBadgeInfo { label: string; icon: React.ElementType; className: string; detail?: string }
+
+/** Resolves a `triggeredBy` value to a badge: a known trigger type or a sub-workflow/forEach child; null means plain text. */
+function useTriggerBadge(triggeredBy: string | null): TriggerBadgeInfo | null {
+  const { t } = useTranslation(['dashboard']);
+  if (!triggeredBy) return null;
+  const known = TRIGGER_META[triggeredBy];
+  if (known) return { label: known.label, icon: known.icon, className: known.className };
+  const child = CHILD_TRIGGER_PREFIXES.find((c) => triggeredBy.startsWith(c.prefix));
+  if (!child) return null;
+  return {
+    label: t(`dashboard:triggerKind.${child.key}`), icon: child.icon, className: child.className,
+    detail: triggeredBy.slice(child.prefix.length),
+  };
+}
+
+const STATUS_STRIPE: Record<string, string> = {
+  Succeeded: '#22c55e', Failed: '#ef4444', Running: '#3b82f6', Pending: 'var(--color-outline)', Paused: '#f59e0b',
+};
+const STATUS_BAR: Record<string, string> = {
+  Succeeded: 'bg-green-500/60', Failed: 'bg-red-500/70', Running: 'bg-blue-500/60',
+};
+
+interface RecentRowGroup {
+  head: RecentExecutionInfo; count: number; maxDurationMs: number | null; childKind: boolean;
+  stepsTotal: number; stepsCompleted: number;
+}
+
+/** Collapses consecutive sub-workflow/forEach runs of the same workflow and status into one row. */
+function groupRecent(items: RecentExecutionInfo[]): RecentRowGroup[] {
+  const groups: RecentRowGroup[] = [];
+  for (const e of items) {
+    const childKind = CHILD_TRIGGER_PREFIXES.some((c) => e.triggeredBy?.startsWith(c.prefix));
+    const last = groups[groups.length - 1];
+    if (childKind && last?.childKind && last.head.workflowId === e.workflowId && last.head.status === e.status) {
+      last.count += 1;
+      last.stepsTotal += e.stepsTotal;
+      last.stepsCompleted += e.stepsCompleted;
+      if (e.durationMs != null) last.maxDurationMs = Math.max(last.maxDurationMs ?? 0, e.durationMs);
+    } else {
+      groups.push({ head: e, count: 1, maxDurationMs: e.durationMs, childKind, stepsTotal: e.stepsTotal, stepsCompleted: e.stepsCompleted });
+    }
+  }
+  return groups;
+}
+
+function RecentExecutionsTable({ items, onOpen }: Readonly<{ items: RecentExecutionInfo[]; onOpen: (path: string) => void }>) {
+  const { t } = useTranslation(['dashboard']);
+  const groups = groupRecent(items);
+  const longest = Math.max(1, ...groups.map((g) => g.maxDurationMs ?? 0));
+  return (
+    <div className="overflow-x-auto -mx-4">
+      <table className="w-full text-sm table-fixed min-w-[900px]">
+        <colgroup>
+          <col />
+          <col className="w-36" />
+          <col className="w-52" />
+          <col className="w-32" />
+          <col className="w-24" />
+          <col className="w-28" />
+          <col className="w-44" />
+        </colgroup>
+        <thead className="text-xs text-outline">
+          <tr>
+            <th className="text-left px-4 py-2 font-medium">{t('dashboard:tableHeaders.workflow')}</th>
+            <th className="text-left px-4 py-2 font-medium">{t('dashboard:tableHeaders.status')}</th>
+            <th className="text-left px-4 py-2 font-medium">{t('dashboard:tableHeaders.trigger')}</th>
+            <th className="text-left px-4 py-2 font-medium">{t('dashboard:tableHeaders.startedBy')}</th>
+            <th className="text-left px-4 py-2 font-medium">{t('dashboard:tableHeaders.steps')}</th>
+            <th className="text-left px-4 py-2 font-medium">{t('dashboard:tableHeaders.started')}</th>
+            <th className="text-right px-4 py-2 font-medium">{t('dashboard:tableHeaders.duration')}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-outline-variant/20">
+          {groups.map((g) => (
+            <RecentRow key={g.head.id} group={g} longest={longest} onOpen={onOpen} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RecentRow({ group, longest, onOpen }: Readonly<{ group: RecentRowGroup; longest: number; onOpen: (path: string) => void }>) {
+  const { t } = useTranslation(['dashboard', 'common']);
+  const { head: e, count, maxDurationMs, childKind, stepsTotal, stepsCompleted } = group;
+  const trigger = useTriggerBadge(e.triggeredBy);
+  const TriggerIcon = trigger?.icon;
+  const pct = maxDurationMs == null ? 0 : Math.max(2, (maxDurationMs / longest) * 100);
+  return (
+    <tr
+      className="np-row cursor-pointer"
+      onClick={() => onOpen(['Running', 'Pending', 'Paused'].includes(e.status)
+        ? `/workflows/${e.workflowId}` : `/executions?id=${e.id}`)}
+    >
+      <td className="px-4 py-2" style={{ boxShadow: `inset 3px 0 0 ${STATUS_STRIPE[e.status] ?? 'transparent'}` }}>
+        <div className={`flex items-center gap-2 min-w-0 ${childKind ? 'pl-3' : ''}`}>
+          <span className={`truncate ${childKind ? 'text-on-surface-variant' : 'font-medium text-on-surface'}`}>{e.workflowName}</span>
+          {count > 1 && (
+            <span
+              className="shrink-0 text-[10px] font-medium tabular-nums px-1.5 py-px rounded-full bg-surface-container text-on-surface-variant"
+              title={t('dashboard:grouped', { count, duration: formatDuration(maxDurationMs) })}
+            >
+              ×{count}
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-2"><StatusBadge status={e.status} /></td>
+      <td className="px-4 py-2 text-xs text-on-surface-variant">
+        {trigger && TriggerIcon ? (
+          <span className="inline-flex items-center gap-1.5 min-w-0">
+            <span className={`inline-flex items-center gap-0.5 px-1 py-px rounded text-[10px] font-medium shrink-0 ${trigger.className}`} title={e.triggeredBy ?? undefined}>
+              <TriggerIcon size={10} />
+              {trigger.label}
+            </span>
+            {trigger.detail && count === 1 && <span className="truncate text-outline">{trigger.detail}</span>}
+          </span>
+        ) : (
+          <span className="truncate block">{e.triggeredBy ?? t('common:dash')}</span>
+        )}
+      </td>
+      <td className="px-4 py-2 text-xs text-on-surface-variant">
+        <span className="truncate block" title={e.startedByUsername ?? undefined}>{e.startedByUsername ?? t('common:dash')}</span>
+      </td>
+      <td className={`px-4 py-2 text-xs tabular-nums ${e.status === 'Failed' ? 'text-red-600 dark:text-red-400' : 'text-on-surface-variant'}`}>
+        {stepsTotal > 0 ? `${stepsCompleted}/${stepsTotal}` : t('common:dash')}
+      </td>
+      <td className="px-4 py-2 text-on-surface-variant text-xs" title={formatDate(e.startedAt, { dateStyle: 'medium', timeStyle: 'medium' })}>
+        {formatRelative(e.startedAt)}
+      </td>
+      <td className="px-4 py-2">
+        <div className="flex items-center justify-end gap-2">
+          <div className="w-16 h-1 rounded-full bg-outline-variant/25 overflow-hidden shrink-0" aria-hidden="true">
+            <div className={`h-full rounded-full ${STATUS_BAR[e.status] ?? 'bg-outline/50'}`} style={{ width: `${pct}%` }} />
+          </div>
+          <span className="w-16 text-right text-xs text-on-surface-variant tabular-nums">{formatDuration(maxDurationMs)}</span>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 function RunningRow({ run: r, longRunningSeconds, nowMs }: Readonly<{ run: RunningExecutionInfo; longRunningSeconds: number; nowMs: number }>) {
   const { t } = useTranslation(['dashboard']);
   const pending = r.status === 'Pending';
-  const trigger = r.triggeredBy ? TRIGGER_META[r.triggeredBy] : undefined;
+  const trigger = useTriggerBadge(r.triggeredBy);
   const TriggerIcon = trigger?.icon;
   const pct = Math.min(100, Math.max(0, ((nowMs - new Date(r.startedAt).getTime()) / (longRunningSeconds * 1000)) * 100));
   const isLong = pct >= 100;
@@ -1143,73 +1259,4 @@ function WindowPending({ status, className }: Readonly<{ status: Exclude<WindowS
   return status === 'loading'
     ? <p role="status" className={`text-outline text-sm ${className}`}>{t('common:loadingDots')}</p>
     : <p className={`text-on-surface-variant text-sm ${className}`}>{t('common:loadError')}</p>;
-}
-
-function TelemetrySection() {
-  const { t } = useTranslation(['dashboard']);
-  const { data: config } = useObservabilityConfig();
-  const available = config?.enabled && config?.prometheusAvailable;
-  const { data: summary, isError, error } = useTelemetrySummary(!!available);
-
-  if (!config?.enabled) return null;
-  if (!config.prometheusAvailable) return null;
-  if (!summary?.available) return null;
-
-  return (
-    <div className="np-card p-5 mb-5">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-on-surface flex items-center gap-2">
-          <Meter size={16} className="text-indigo-500" />
-          {t('dashboard:telemetry')}
-        </h3>
-        <span className="text-xs text-outline">{t('dashboard:telemetryRefresh')}</span>
-      </div>
-      {isError && (
-        <div className="flex items-center gap-2 text-xs text-red-600 mb-3">
-          <WarningAltFilled size={14} />
-          {(error as Error)?.message ?? t('dashboard:telemetryFailed')}
-        </div>
-      )}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        {summary.panels.map((p) => (
-          <TelemetryCard key={p.key} title={p.title} unit={p.unit} value={p.value} error={p.error} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TelemetryCard({ title, unit, value, error }: Readonly<{
-  title: string;
-  unit: string;
-  value: number | null;
-  error: string | null;
-}>) {
-  const display = formatTelemetryValue(value, unit);
-  return (
-    <div className="border border-surface-variant/30 rounded-xl p-3">
-      <p className="text-[11px] uppercase tracking-wide text-outline font-medium">{title}</p>
-      {error ? (
-        <p className="text-xs text-red-500 mt-1 truncate" title={error}>{error}</p>
-      ) : (
-        <p className="text-xl font-semibold text-on-surface mt-1 tabular-nums">{display}</p>
-      )}
-    </div>
-  );
-}
-
-function formatTelemetryValue(value: number | null, unit: string): string {
-  if (value == null || !isFinite(value)) return '–';
-  switch (unit) {
-    case 'ratio':
-      return `${(value * 100).toFixed(1)} %`;
-    case 'ms':
-      return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`;
-    case 'per_min':
-    case 'rps':
-    case 'count':
-      return value < 10 ? value.toFixed(2) : formatNumber(Math.round(value));
-    default:
-      return formatNumber(value);
-  }
 }

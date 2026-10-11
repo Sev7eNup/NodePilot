@@ -289,8 +289,23 @@ public class DashboardController : ControllerBase
         var recent = await execQuery
             .OrderByDescending(e => e.StartedAt)
             .Take(10)
-            .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.TriggeredBy })
+            .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.TriggeredBy, e.StartedByUserId })
             .ToListAsync(ct);
+
+        // Initiator names and step progress for the recent rows, one batched query each.
+        var recentIds = recent.Select(e => e.Id).ToList();
+        var recentUserIds = recent.Where(e => e.StartedByUserId.HasValue).Select(e => e.StartedByUserId!.Value).Distinct().ToList();
+        var recentUserNames = recentUserIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _db.Users.AsNoTracking()
+                .Where(u => recentUserIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.Username })
+                .ToDictionaryAsync(u => u.Id, u => u.Username, ct);
+        var recentStepCounts = await _db.StepExecutions.AsNoTracking()
+            .Where(s => recentIds.Contains(s.WorkflowExecutionId))
+            .GroupBy(s => s.WorkflowExecutionId)
+            .Select(g => new { ExecId = g.Key, Total = g.Count(), Succeeded = g.Count(s => s.Status == ExecutionStatus.Succeeded) })
+            .ToDictionaryAsync(x => x.ExecId, ct);
 
         var recentInfos = recent.Select(e => new RecentExecutionInfo(
             e.Id, e.WorkflowId,
@@ -299,7 +314,10 @@ public class DashboardController : ControllerBase
             e.CompletedAt.HasValue
                 ? (long?)(e.CompletedAt.Value - e.StartedAt).TotalMilliseconds
                 : null,
-            e.TriggeredBy)).ToList();
+            e.TriggeredBy,
+            e.StartedByUserId.HasValue ? recentUserNames.GetValueOrDefault(e.StartedByUserId.Value) : null,
+            recentStepCounts.TryGetValue(e.Id, out var steps) ? steps.Total : 0,
+            recentStepCounts.TryGetValue(e.Id, out var done) ? done.Succeeded : 0)).ToList();
 
         // "Armed" = enabled workflow with at least one non-manual trigger. Trigger types come
         // from the denormalized column; only scheduleTrigger and databaseTrigger need the full

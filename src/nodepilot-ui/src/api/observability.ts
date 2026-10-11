@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from './client';
-import type { MetricsDashboard, ObservabilityConfig, TelemetrySummary } from '../types/api';
+import type { MetricsDashboard, ObservabilityConfig } from '../types/api';
 
 export function useObservabilityConfig() {
   return useQuery({
@@ -9,15 +9,6 @@ export function useObservabilityConfig() {
     staleTime: 10 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     retry: false,
-  });
-}
-
-export function useTelemetrySummary(enabled: boolean) {
-  return useQuery({
-    queryKey: ['observability-summary'],
-    queryFn: () => api.get<TelemetrySummary>('/observability/summary'),
-    refetchInterval: 15_000,
-    enabled,
   });
 }
 

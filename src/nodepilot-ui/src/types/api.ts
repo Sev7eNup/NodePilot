@@ -154,19 +154,6 @@ export interface ObservabilityConfig {
   grafanaBaseUrl: string | null;
 }
 
-export interface TelemetryPanel {
-  key: string;
-  title: string;
-  unit: string;
-  value: number | null;
-  error: string | null;
-}
-
-export interface TelemetrySummary {
-  available: boolean;
-  panels: TelemetryPanel[];
-}
-
 export interface MetricsPoint { timestamp: number; value: number | null; }
 export interface MetricsDataSeries { label: string; labels: Record<string, string>; points: MetricsPoint[]; }
 export interface MetricsWidget {

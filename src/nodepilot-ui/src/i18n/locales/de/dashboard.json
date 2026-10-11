@@ -74,16 +74,20 @@
     "workflow": "Workflow",
     "status": "Status",
     "trigger": "Trigger",
+    "startedBy": "Gestartet von",
+    "steps": "Schritte",
     "started": "Gestartet",
     "duration": "Dauer"
   },
   "manual": "manuell",
   "startedBy": "{{trigger}} · gestartet {{time}}",
   "startedAgo": "gestartet {{time}}",
+  "triggerKind": {
+    "subWorkflow": "Sub-Workflow",
+    "forEach": "forEach"
+  },
+  "grouped": "{{count}} Läufe · längster {{duration}}",
   "runs": "{{count}} Runs",
-  "telemetry": "Telemetrie (Prometheus)",
-  "telemetryRefresh": "Aktualisierung 15 s",
-  "telemetryFailed": "Telemetrie-Übersicht konnte nicht geladen werden",
   "queueDepth": "Queue",
   "queuePending": "Wartend",
   "queueRunning": "Laufend",

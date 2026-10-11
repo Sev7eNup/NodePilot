@@ -106,7 +106,7 @@ const BASE_STATS = {
       id: 'exec-1', workflowId: 'wf-1', workflowName: 'Disk Check',
       status: 'Succeeded', startedAt: new Date(Date.now() - 5000).toISOString(),
       completedAt: new Date(Date.now() - 1000).toISOString(),
-      durationMs: 4000, triggeredBy: 'schedule',
+      durationMs: 4000, triggeredBy: 'schedule', startedByUsername: null, stepsTotal: 0, stepsCompleted: 0,
     },
   ],
 };
@@ -121,6 +121,34 @@ describe('DashboardPage', () => {
     renderPage();
     await userEvent.click(await screen.findByRole('button', { name: /Live workflow/ }));
     expect(screen.getByTestId('location')).toHaveTextContent('/workflows/wf-live');
+  });
+
+  it('groups consecutive child runs and shows trigger badges in recent executions', async () => {
+    const now = Date.now();
+    const child = (id: string, n: number) => ({
+      id, workflowId: 'wf-child', workflowName: 'Child: Echo Item', status: 'Succeeded',
+      startedAt: new Date(now - n * 1000).toISOString(), completedAt: new Date(now - n * 1000 + 500).toISOString(),
+      durationMs: 500 * (n + 1), triggeredBy: `forEach:v1[${n}]`, startedByUsername: null, stepsTotal: 2, stepsCompleted: 2,
+    });
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS,
+      recent: [
+        child('c0', 0), child('c1', 1), child('c2', 2),
+        { id: 'p1', workflowId: 'wf-parent', workflowName: 'Parent run', status: 'Failed',
+          startedAt: new Date(now - 10_000).toISOString(), completedAt: new Date(now - 9_000).toISOString(),
+          durationMs: 1000, triggeredBy: 'scheduleTrigger', startedByUsername: 'alice', stepsTotal: 4, stepsCompleted: 3 },
+      ],
+    })));
+    renderPage();
+    const group = (await screen.findByText('Child: Echo Item')).closest('tr')!;
+    expect(screen.getAllByText('Child: Echo Item')).toHaveLength(1);
+    expect(within(group).getByText('×3')).toBeInTheDocument();
+    expect(within(group).getByTitle('forEach:v1[0]')).toBeInTheDocument();
+    const parent = screen.getByText('Parent run').closest('tr')!;
+    expect(within(parent).getByTitle('scheduleTrigger')).toBeInTheDocument();
+    expect(within(parent).getByText('alice')).toBeInTheDocument();
+    expect(within(parent).getByText('3/4')).toBeInTheDocument();
+    expect(within(group).getByText('6/6')).toBeInTheDocument();
   });
 
   it('shows trigger badge, count and pending marker in the running list', async () => {
@@ -504,8 +532,8 @@ describe('DashboardPage', () => {
       ...BASE_STATS,
       last24h: { total: 2, succeeded: 1, failed: 1, running: 0, cancelled: 0 },
       recent: [
-        { id: 'e-s', workflowId: 'wf-1', workflowName: 'Succ WF', status: 'Succeeded', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), durationMs: 100, triggeredBy: 'schedule' },
-        { id: 'e-f', workflowId: 'wf-1', workflowName: 'Fail WF', status: 'Failed', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), durationMs: 100, triggeredBy: 'schedule' },
+        { id: 'e-s', workflowId: 'wf-1', workflowName: 'Succ WF', status: 'Succeeded', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), durationMs: 100, triggeredBy: 'schedule', startedByUsername: null, stepsTotal: 0, stepsCompleted: 0 },
+        { id: 'e-f', workflowId: 'wf-1', workflowName: 'Fail WF', status: 'Failed', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), durationMs: 100, triggeredBy: 'schedule', startedByUsername: null, stepsTotal: 0, stepsCompleted: 0 },
       ],
     })));
     renderPage();

@@ -117,7 +117,8 @@ public sealed record RunningExecutionInfo(
     Guid Id, Guid WorkflowId, string WorkflowName, string Status, DateTime StartedAt, string? TriggeredBy);
 public sealed record RecentExecutionInfo(
     Guid Id, Guid WorkflowId, string WorkflowName, string Status,
-    DateTime StartedAt, DateTime? CompletedAt, long? DurationMs, string? TriggeredBy);
+    DateTime StartedAt, DateTime? CompletedAt, long? DurationMs, string? TriggeredBy,
+    string? StartedByUsername, int StepsTotal, int StepsCompleted);
 public sealed record ArmedTriggerInfo(
     Guid WorkflowId, string WorkflowName, List<string> TriggerTypes,
     DateTime? NextFireUtc = null, string? NextFireKind = null, int? PollIntervalSeconds = null,

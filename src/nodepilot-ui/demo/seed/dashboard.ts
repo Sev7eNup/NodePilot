@@ -24,7 +24,7 @@ export interface DemoDashboardStats {
   last24hBuckets: { hourStart: string; succeeded: number; failed: number; cancelled: number }[];
   topWorkflows: { id: string; name: string; runCount: number; successCount: number; failCount: number; avgDurationMs: number | null; p95DurationMs: number | null }[];
   running: { id: string; workflowId: string; workflowName: string; status: string; startedAt: string; triggeredBy: string | null }[];
-  recent: { id: string; workflowId: string; workflowName: string; status: string; startedAt: string; completedAt: string | null; durationMs: number | null; triggeredBy: string | null }[];
+  recent: { id: string; workflowId: string; workflowName: string; status: string; startedAt: string; completedAt: string | null; durationMs: number | null; triggeredBy: string | null; startedByUsername: string | null; stepsTotal: number; stepsCompleted: number }[];
   armedTriggers: { workflowId: string; workflowName: string; triggerTypes: string[]; nextFireUtc: string | null; nextFireKind: 'cron' | 'event-driven' | 'polling' | null; pollIntervalSeconds: number | null }[];
   pendingCount: number;
   runningCount: number;
@@ -136,6 +136,9 @@ export function buildDashboard(world: DemoWorld, windowHours: number, now: numbe
     completedAt: e.completedAt,
     durationMs: durationOf(e),
     triggeredBy: e.triggeredBy,
+    startedByUsername: e.startedByUsername ?? null,
+    stepsTotal: e.stepsTotal ?? 0,
+    stepsCompleted: e.stepsCompleted ?? 0,
   }));
 
   const failingWorkflows = world.workflows

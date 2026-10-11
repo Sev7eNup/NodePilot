@@ -442,6 +442,43 @@ public class DashboardControllerExtendedTests
     }
 
     [Fact]
+    public async Task Get_RecentExecutions_IncludeInitiatorAndStepProgress()
+    {
+        var db = TestDbFactory.Create();
+        var user = new User { Id = Guid.NewGuid(), Username = "operator1", Role = UserRole.Operator };
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Nightly", UpdatedAt = DateTime.UtcNow, DefinitionJson = "{}" };
+        var manual = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Succeeded,
+            StartedAt = DateTime.UtcNow.AddMinutes(-1), CompletedAt = DateTime.UtcNow, StartedByUserId = user.Id,
+        };
+        var scheduled = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Succeeded,
+            StartedAt = DateTime.UtcNow.AddMinutes(-2), CompletedAt = DateTime.UtcNow, TriggeredBy = "scheduleTrigger",
+        };
+        db.Users.Add(user);
+        db.Workflows.Add(workflow);
+        db.WorkflowExecutions.AddRange(manual, scheduled);
+        db.StepExecutions.AddRange(
+            new StepExecution { Id = Guid.NewGuid(), WorkflowExecutionId = manual.Id, StepId = "a", Status = ExecutionStatus.Succeeded },
+            new StepExecution { Id = Guid.NewGuid(), WorkflowExecutionId = manual.Id, StepId = "b", Status = ExecutionStatus.Succeeded },
+            new StepExecution { Id = Guid.NewGuid(), WorkflowExecutionId = manual.Id, StepId = "c", Status = ExecutionStatus.Skipped },
+            new StepExecution { Id = Guid.NewGuid(), WorkflowExecutionId = manual.Id, StepId = "d", Status = ExecutionStatus.Failed });
+        await db.SaveChangesAsync();
+
+        var stats = Unwrap(await NewController(db).Get(CancellationToken.None));
+
+        var manualRow = stats.Recent.Single(r => r.Id == manual.Id);
+        manualRow.StartedByUsername.Should().Be("operator1");
+        manualRow.StepsTotal.Should().Be(4);
+        manualRow.StepsCompleted.Should().Be(2, "only succeeded steps count as completed");
+        var scheduledRow = stats.Recent.Single(r => r.Id == scheduled.Id);
+        scheduledRow.StartedByUsername.Should().BeNull();
+        scheduledRow.StepsTotal.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Get_AsViewer_OmitsRecentAudit_Null()
     {
         var db = TestDbFactory.Create();
