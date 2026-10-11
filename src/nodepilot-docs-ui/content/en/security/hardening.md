@@ -83,5 +83,6 @@ Per IP, sliding window:
 | ai-generate | 20/min |
 | audit | 60/min |
 | backup | 10/min |
+| alerting-heavy | 20/min |
 
-`ai-generate` is hard-coded in `RateLimitingSetup.cs` and sits as `[EnableRateLimiting]` on the three AI controllers — it therefore applies to every AI endpoint: `POST /api/ai/generate-script`, `POST /api/ai/generate-workflow`, the workflow chat (`POST /api/ai/chat` including `/chat/applied` and `/chat/activity/{workflowId}`) and the global knowledge chat (`POST /api/ai/knowledge/ask`, `GET /api/ai/knowledge/capabilities`).
+`ai-generate` is hard-coded in `RateLimitingSetup.cs` and sits as `[EnableRateLimiting]` on the four AI controllers — it therefore applies to every AI endpoint: `POST /api/ai/generate-script`, `POST /api/ai/generate-workflow`, `POST /api/ai/generate-agent-team`, the workflow chat (`POST /api/ai/chat` including `/chat/applied` and `/chat/activity/{workflowId}`) and the global knowledge chat (`POST /api/ai/knowledge/ask`, `GET /api/ai/knowledge/capabilities`).

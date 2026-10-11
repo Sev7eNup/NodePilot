@@ -107,7 +107,7 @@ Derselbe Sweep ist auch in der UI verfügbar — **Admin-Einstellungen → Secur
 `nodepilot.credential.crypto.legacy_reads`-Counter bei den Nachtests null bleibt.
 Bei einem History-Skip bleibt `Secrets:LegacyProvider` konfiguriert, bis die genannte Version
 wiederhergestellt/repariert und ein erneuter Sweep sauber ist. Danach
-`Secrets:LegacyProvider`/`LegacyDpapiScope`/`LegacyMasterKey` entfernen und neu starten.
+`Secrets:LegacyProvider`/`LegacyDpapiScope`/`LegacyMasterKey`/`LegacyMasterKeyFile` entfernen und neu starten.
 
 ## AES-GCM Master-Key rotieren
 

@@ -1549,13 +1549,13 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 1. Wähle 3+ Nodes mit Marquee-Select
 2. Drücke **Ctrl+G**
 3. Group-Node erscheint und umschließt die Auswahl
-4. Wähle Group → Rechtsklick → "Ungroup"
+4. Wähle Group → **Delete** → Group entfällt, Child-Nodes bleiben an ihrer absoluten Position
 
 **Prüfpunkte:**
 - [ ] Group-Node wird erstellt
 - [ ] Group kann collapsed/expanded werden
 - [ ] Nodes innerhalb Group behalten ihre Positionen
-- [ ] Ungroup stellt Einzel-Nodes wieder her
+- [ ] Löschen der Group stellt Einzel-Nodes wieder her
 - [ ] Group hat eigenes Label (editierbar)
 
 **Erwartung:** Node-Grouping funktioniert
@@ -1609,7 +1609,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 | `Escape` | Auswahl aufheben / Dialog schließen |
 | `Space+Drag` | Canvas pannen |
 | `Ctrl+Scroll` | Zoom in/out |
-| `Ctrl+0` | Fit-to-View / Zoom reset |
+| `Home` | Fit-to-View |
 
 **Prüfpunkte:**
 - [ ] Alle aufgelisteten Shortcuts funktionieren
@@ -1654,14 +1654,14 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 4. Klick auf Collapse-Icon → Group kollabiert, Child-Nodes ausgeblendet
 5. Expand wieder
 6. Drag Group → alle Child-Nodes werden mitbewegt
-7. Lösche Group → Optionen: nur Group löschen oder mit Kindern
+7. Lösche Group → nur die Group wird gelöscht, Child-Nodes bleiben erhalten
 
 **Prüfpunkte:**
 - [ ] Group umschließt Nodes visuell
 - [ ] Collapse/Expand funktioniert
 - [ ] Drag-Parent bewegt Children
 - [ ] Labels sind editierbar
-- [ ] Delete-Dialog fragt nach Policy (nur Wrapper vs. komplettes Delete)
+- [ ] Delete entfernt nur den Group-Wrapper, Children bleiben an absoluter Position
 
 **Erwartung:** Groups helfen bei Strukturierung
 
@@ -2012,8 +2012,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 2. Menu zeigt Optionen:
    - Duplicate
    - Enable/Disable
-   - Toggle Breakpoint
-   - Copy / Cut
+   - Toggle Breakpoint (nur Expert-Modus)
    - Delete
 3. Klick auf jede Option → Aktion wird ausgeführt
 
@@ -2536,26 +2535,26 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 ### Test 25.2 — Account-Lockout nach Brute-Force
 
 **Schritte:**
-1. Mit `admin` 4× falsches Passwort eingeben.
-2. 5. Versuch ebenfalls falsch.
-3. 6. Versuch jetzt mit korrektem Passwort.
+1. Mit `admin` 9× falsches Passwort eingeben.
+2. 10. Versuch ebenfalls falsch — löst den Lockout aus (Schwelle 10 Fehlversuche, Sperre 15 Minuten).
+3. 11. Versuch jetzt mit korrektem Passwort.
 
 **Prüfpunkte:**
-- [ ] 5. Versuch bekommt 423 (oder UI-Banner "Account gesperrt").
-- [ ] Audit-Log enthält 4× `LOGIN_FAILED` und 1× `LOGIN_LOCKED`.
-- [ ] 6. Versuch (korrekt) wird trotzdem abgewiesen — Lockout greift.
+- [ ] Alle Fehlversuche bekommen 401 `Invalid credentials` (kein eigener Lockout-Status).
+- [ ] Audit-Log enthält 10× `LOGIN_FAILED` (der 10. mit Reason `invalid_password_locked_out`) und für den 11. Versuch 1× `LOGIN_LOCKED`.
+- [ ] 11. Versuch (korrekt) wird trotzdem mit 401 abgewiesen — Lockout greift.
 - [ ] Nach Wartezeit (oder Admin-Reset) ist Login wieder möglich.
 
 **Erwartung:** Brute-Force-Schwelle hard-greift, auch korrekte Credentials werden während Lockout abgewiesen.
 
 ---
 
-### Test 25.3 — Login Rate-Limit (5/min)
+### Test 25.3 — Login Rate-Limit (50/min)
 
-**Schritte:** 6× POST `/api/auth/login` innerhalb 60s mit beliebigen Daten.
+**Schritte:** 51× POST `/api/auth/login` innerhalb 60s mit beliebigen Daten.
 
 **Prüfpunkte:**
-- [ ] 6. Request → HTTP 429 mit `Retry-After`-Header.
+- [ ] 51. Request → HTTP 429.
 - [ ] Pro IP separat (anderes Gerät bleibt nicht betroffen).
 
 ---
@@ -3530,12 +3529,12 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ## Teil 44: Rate-Limiting Headers
 
-### Test 44.1 — Login-Rate-Limit (5/Min)
+### Test 44.1 — Login-Rate-Limit (50/Min)
 
-**Schritte:** 6 fehlgeschlagene Logins in unter einer Minute.
+**Schritte:** 51 fehlgeschlagene Logins in unter einer Minute.
 
 **Prüfpunkte:**
-- [ ] Requests 1–5: 401. Request 6: 429. Response enthält `Retry-After` o. ä.
+- [ ] Requests 1–50: 401. Request 51: 429.
 
 ---
 
@@ -3890,14 +3889,14 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ### Test 55.2 — Node-Größe & Edge-Breite
 
-**Schritte:** Node selektieren → `>` / `<`. Edge selektieren → `]` / `[`.
+**Schritte:** Expert-Modus. Node selektieren → `Ctrl+Shift+>` / `Ctrl+Shift+<`. Edge selektieren → `Ctrl+]` / `Ctrl+[`.
 
 **Prüfpunkte:**
 - [ ] Node größer/kleiner. Edge dicker/dünner. Undo funktioniert.
 
 ---
 
-### Test 55.3 — Label-Schriftgröße (Alt+. / Alt+,)
+### Test 55.3 — Label-Schriftgröße (Ctrl+Alt+. / Ctrl+Alt+,)
 
 **Prüfpunkte:** Node-Label wird größer/kleiner. Persisistiert nach Speichern + Reload.
 
@@ -5039,11 +5038,11 @@ Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automati
 [ ] Teil 75: Quick-Interaktionen im Designer (75.1 — 75.4)
 [ ] Teil 76: Admin Settings UI — SettingsPage Sektionen (76.1 — 76.6)
 [ ] Teil 77: KI-Workflow-Assistent + Streaming (77.1 — 77.10)
-[ ] Teil 78: Alerting (78.1 — 78.8)
+[ ] Teil 78: Alerting (78.1 — 78.9)
 [ ] Teil 79: Toolbar-Layout-Umschalter (79.1 — 79.4)
-[ ] Teil 80: Globaler AI-Chat (80.1 — 80.11)
+[ ] Teil 80: Globaler AI-Chat (80.1 — 80.12)
 [ ] Teil 81: Custom Activities (81.1 — 81.9)
-[ ] Teil 82: Datenbank-Ausfall zur Laufzeit (82.1 — 82.4)
+[ ] Teil 82: Datenbank-Ausfall zur Laufzeit (82.1 — 82.5)
 [ ] Teil 83: Live-Ops Mission Control (83.1 — 83.15)
 ```
 

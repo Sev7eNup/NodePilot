@@ -1,6 +1,6 @@
 # Artikelplan für die lokale SEO-Vorschau
 
-Alle 16 vorhandenen Beiträge sind zweisprachig eingebunden. **Erster Workflow** ist als dritter Artikel für den 27.09.2026 freigegeben. Die übrigen dreizehn Beiträge bleiben Entwürfe und erscheinen nur in der lokalen Vorschau. Für weitere Veröffentlichungen ist zunächst ein Artikel pro Woche vorgesehen, jeweils auf Deutsch und Englisch.
+Alle 16 vorhandenen Beiträge sind zweisprachig eingebunden. **Erster Workflow** ist als dritter Artikel für den 27.09.2026 freigegeben. Die übrigen zwölf Beiträge bleiben Entwürfe und erscheinen nur in der lokalen Vorschau. Für weitere Veröffentlichungen ist zunächst ein Artikel pro Woche vorgesehen, jeweils auf Deutsch und Englisch.
 
 Die Suchfragen beschreiben die Absicht der Artikel. Sie sind keine nach Suchvolumen validierte Keyword-Auswahl. Nach Veröffentlichung in Search Console nach Sprache, Artikel und Einstiegsseite auswerten.
 
@@ -23,7 +23,7 @@ Jeder Artikel hat im Katalog zusätzlich einen Such-Titel (`seoTitle`, höchsten
 | [WinRM verstehen: Was eine erfolgreiche Verbindung tatsächlich belegt](http://127.0.0.1:5190/blog/winrm/) | Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich? / What does a successful WinRM connection test actually prove? | Windows-Administratoren und Betreiber | `self-hosted-automation` | `configuration/remote-execution` | Lokale Vorschau |
 | [Einen bestehenden WinRM-Zugang um HTTPS erweitern](http://127.0.0.1:5190/blog/winrm-https/) | Wie erweitere ich einen bestehenden WinRM-Zugang um HTTPS? / How do I add HTTPS to an existing WinRM connection? | Windows-Administratoren und Betreiber | `self-hosted-automation` | `security/hardening` | Lokale Vorschau |
 | [Automatisierung im Windows-Betrieb: Welche Arbeit den Aufwand lohnt](http://127.0.0.1:5190/blog/windows-automation/) | Welche Windows-Aufgaben rechtfertigen den Aufwand der Automatisierung? / Which Windows tasks justify the cost of automation? | Windows-/PowerShell-Admins | `powershell-automation` | `concepts/workflows` | Lokale Vorschau |
-| [System Center 2016 Orchestrator: Das Supportende am 11. Januar 2027 planen](http://127.0.0.1:5190/blog/orchestrator-2016-end-of-support/) | Was bedeutet das Supportende von SCOrch 2016 und welche Wege gibt es? / What does the end of support for SCOrch 2016 mean, and which paths exist? | SCOrch-Anwender | `scorch-alternative` | `import-export` | Lokale Vorschau; Termin: spätestens Mitte November 2026 |
+| [System Center 2016 Orchestrator: Das Supportende am 11. Januar 2027 planen](http://127.0.0.1:5190/blog/orchestrator-2016-end-of-support/) | Was bedeutet das Supportende von SCOrch 2016 und welche Wege gibt es? / What does the end of support for SCOrch 2016 mean, and which paths exist? | SCOrch-Anwender | `scorch-alternative` | `import-export` | Veröffentlicht: 2026-10-07 |
 
 ## Freigabe und Daten
 

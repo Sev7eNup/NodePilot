@@ -105,7 +105,7 @@ Keine Features, sondern Verstöße gegen Regeln, die im Repo bereits verbindlich
 9. *Inventar-Report* — parallele Zweige→`junction`→`textFileEdit`→`emailNotification` (Ahnen-Scope)
 10. *Ordner-Watcher* — `fileWatcherTrigger`→`fileHash`→`decision`→zip/move (Idempotenz per Hash)
 
-Abdeckung: 20 von 33 Katalog-Typen + alle fünf ControlFlow-Nodes. Bewusst draußen (invasiv oder
+Abdeckung: 20 von 35 Katalog-Typen + alle fünf ControlFlow-Nodes. Bewusst draußen (invasiv oder
 umgebungsabhängig, gehören in die Test-Suite unter `scripts/test-suite/`, siehe
 `docs/workflow-tests.md`): `registryOperation`, `powerManagement`,
 `scheduledTask`, `startProgram`, `xmlQuery`, `generateText`, `sql`, `eventLogTrigger`. Optional und
@@ -133,17 +133,17 @@ gemeinsamen Leitplanken in [`ai-feature-ideas.md`](ai-feature-ideas.md).
 | 24 | **Rerun-from-Step (Hot Resume)** | „Rerun from here" an einem fehlgeschlagenen Step: frische Execution, vorbelegt mit den Outputs aller Upstream-Steps des Originallaufs. Spart das Neu-Ausführen der ersten 46 von 50 Steps. Drei gekoppelte Änderungen, jede mit Risiko — Detail unten. Aufwand ~1,5–2 Tage mit ordentlicher Testabdeckung. |
 | 25 | **Workflow-Tags / Labels** | Farbkodierte Tags am `Workflow` (`prod`, `qa`, `incident-response`); Dashboard, Quick-Switcher und Executions-Liste filtern danach, Pills überall neben dem Namen. ~1 Tag (Migration + UI). Bestes Aufwand/Wirkung-Verhältnis im Designer-Bestand. |
 
-**Detail zu Posten 23** — die drei gekoppelten Änderungen:
+**Detail zu Posten 24** — die drei gekoppelten Änderungen:
 
 1. **Engine-Signatur** — `WorkflowEngine.ExecuteAsync` braucht ein optionales
    `Dictionary<string, ActivityResult>? prefilledResults`. Die Scheduling-Schleife muss `results`
    und `completed` damit vorbelegen, damit der Scheduler sie überspringt und beim ersten
    ungecachten Nachfahren einsetzt. Hot Path — braucht sorgfältige Tests für die
    `waitAny`/`waitAll`/`junction`-Fälle.
-2. **Schema-Migration** — `StepExecution` persistiert `OutputParameters` **nicht** (nur `Output`
-   und `ErrorOutput` als Text). Ohne eine nullable `OutputParametersJson`-Spalte kann ein Rerun
-   `{{step.param.hostName}}`-Referenzen des Originallaufs nicht wiederherstellen — sie würden zu
-   Leerstrings auflösen und Downstream-Logik still brechen.
+2. **Output-Parameter** — `StepExecution` persistiert `OutputParameters` bereits redigiert in der
+   nullable Spalte `OutputParametersJson`. Ein Rerun muss `{{step.param.hostName}}`-Referenzen des
+   Originallaufs daraus wiederherstellen; fehlen sie, lösen sie zu Leerstrings auf und brechen
+   Downstream-Logik still.
 3. **API + UI** — `POST /api/executions/{id}/rerun-from/{stepId}`: Originallauf laden,
    `prefilledResults` bauen (per BFS auf dem Graphen `stepId` und dessen Downstream ausschließen),
    `ExecuteAsync` rufen. UI: Kontextmenü-Eintrag in der History-Step-Liste.
@@ -305,7 +305,7 @@ Per-Rule Dedup-Key-Templates sind bereits implementiert (`DedupKeyTemplate`, in 
 
 ## E — Offene Entscheidungen
 
-Diese vier Punkte können nicht gebaut werden, solange die Entscheidung aussteht. Sie sind
+Diese drei Punkte können nicht gebaut werden, solange die Entscheidung aussteht. Sie sind
 bewusst keine R2-Posten: Es fehlt nicht der Auslöser, es fehlt der Beschluss. Die Frage nach
 Downloads in der Desktop-App ist entschieden: gleiche Herkunft mit nativem Speichern-Dialog (PR #448).
 
@@ -369,7 +369,7 @@ erst mit dem dokumentierten 500-Parallel-Test verifizieren, dann committen. Das 
 Nicht unser Problem, aber dokumentiert, damit es nicht erneut versucht wird:
 
 - **Microsoft.OpenApi 3.x** — Swashbuckle 10.2.3 verlangt die 2.x-Oberfläche (transitiver Floor 2.7.5).
-  Pin auf 2.9.0 bleibt nötig. Erst nach einem Swashbuckle-Major nachziehen.
+  Pin auf 2.x (derzeit 2.12.2) bleibt nötig. Erst nach einem Swashbuckle-Major nachziehen.
 - **TypeScript 7** — `typescript-eslint` bricht beim Laden hart ab; Support erst ab TS ≥ 7.1 geplant.
   Side-by-side TS 6+7 oder das Lint-Gate opfern wurden beide abgelehnt.
 - **Spectre.Console 0.57.2** — `Spectre.Console.Cli` endet stabil bei 0.55.0 und pinnt den Core auf

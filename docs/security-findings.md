@@ -49,15 +49,15 @@ from exhausting thread-pool / DB-pool resources for everyone else.
 - [WorkflowEngine.cs:37](../src/NodePilot.Engine/WorkflowEngine.cs#L37) — `_userExecutionCounts` per-user counter
 - [WorkflowEngine.cs:157](../src/NodePilot.Engine/WorkflowEngine.cs#L157) — capacity check before enqueue
 - [WorkflowEngine.cs:516](../src/NodePilot.Engine/WorkflowEngine.cs#L516) — counter decrement in `finally`
-- [ExecutionCapacityException.cs](../src/NodePilot.Core/Exceptions/ExecutionCapacityException.cs) — typed signal so dispatch can return 503/429
-- [EngineMetrics.cs:37](../src/NodePilot.Engine/EngineMetrics.cs#L37) — `RedactionHits`-counterpart `CapacityRejections` for dashboards
+- [ExecutionCapacityException.cs](../src/NodePilot.Core/Exceptions/ExecutionCapacityException.cs) — typed signal mapped to 503 + `Retry-After` by [CapacityExceptionHandler.cs](../src/NodePilot.Api/Hosting/CapacityExceptionHandler.cs)
+- [EngineMetrics.cs:41](../src/NodePilot.Engine/EngineMetrics.cs#L41) — `ExecutionsRejected` (`nodepilot.executions.rejected`, tagged by reason) for dashboards
 
 ### H-4 — Account Lockout + Static-Cache Lifecycle
 Two separate concerns under the same finding:
 1. Login: 10 failures in 15 minutes locks the account for 15 minutes.
 2. Engine: the three static dicts (`_runningExecutions`, `_debugHandles`, `_userExecutionCounts`) are atomically cleaned in `finally`.
 
-- [AuthController.cs:64](../src/NodePilot.Api/Controllers/AuthController.cs#L64) — `MaxFailedLogins` / `LockoutWindow`
+- [AuthController.cs:121](../src/NodePilot.Api/Controllers/AuthController.cs#L121) — `LockoutFailureThreshold` / `LockoutDuration`
 - [AuthController.cs:176](../src/NodePilot.Api/Controllers/AuthController.cs#L176) — branch logic: locked / lockout-just-expired / fresh-failure
 - [AuthController.cs:301](../src/NodePilot.Api/Controllers/AuthController.cs#L301) — failure-counter increment on bad password
 - [AuthController.cs:334](../src/NodePilot.Api/Controllers/AuthController.cs#L334) — counter clear on successful login
@@ -95,14 +95,15 @@ same redaction as Output / ErrorOutput so they cannot bulk-scrape secrets.
 
 ### H-13 — Database-Trigger ConnectionRef Enforcement
 When `Trigger:Database:RequireConnectionRef=true`, inline connection strings on
-`databaseTrigger` are rejected; only named refs from `Trigger:Database:ConnectionStrings:*`
+`databaseTrigger` are rejected; only named refs from `Trigger:Database:Connections:*`
 are honored. Stops a workflow author from baking DB credentials into the workflow JSON.
 
 - [DatabaseTriggerSource.cs:22](../src/NodePilot.Scheduler/Sources/DatabaseTriggerSource.cs#L22) — config check + rejection
 
 ### H-14 — Webhook Secret Required (Hardening Flag)
 When `Webhook:RequireSecret=true`, any `webhookTrigger` saved without a `secret` is
-rejected at fire-time. Default-tolerant during dev, strict in Production templates.
+rejected at fire-time. Default-on: a missing key reads as `true`; only `appsettings.Development.json`
+sets it to `false`.
 
 - [WebhooksController.cs:118](../src/NodePilot.Api/Controllers/WebhooksController.cs#L118) — fire-path check
 
@@ -113,7 +114,7 @@ they ran with `CancellationToken.None` so a parent cancel would orphan them.
 - [StartWorkflowActivity.cs:212](../src/NodePilot.Engine/Activities/StartWorkflowActivity.cs#L212) — token propagation
 
 ### H-16 — Import-Body Size Cap
-600 MiB → realistic ceilings: 6 MiB single-workflow, 300 MiB SCOrch XML import. Prevents
+600 MiB → realistic ceilings: 40 MiB workflow import, 300 MiB SCOrch XML import. Prevents
 a /api/workflows/import call from pinning the heap with a malicious payload. The SCOrch
 ceiling was later raised from 50 MiB: a whole-estate export is a single file, and at a
 measured ~6.5 KiB per activity 50 MiB stopped at roughly 160 runbooks. That endpoint is
@@ -214,20 +215,19 @@ returning a 10 GiB JSON document cannot OOM the engine.
 traversal rejection) as `fileOperation` / `folderOperation`, so admins can opt into
 traversal-rejection once and have it apply everywhere.
 
-- [JsonQueryActivity.cs:69](../src/NodePilot.Engine/Activities/JsonQueryActivity.cs#L69)
-- [XmlQueryActivity.cs:60](../src/NodePilot.Engine/Activities/XmlQueryActivity.cs#L60)
+- [QueryPayloadSource.cs](../src/NodePilot.Engine/Activities/QueryPayloadSource.cs) — shared file loading + `PathGuard.Validate` for both activities
 
 ### M-9 — `forEach` Item Cap
-Hard cap (4096 items) on the iterable input. A misconfigured upstream step
+Hard cap (10,000 items) on the iterable input. A misconfigured upstream step
 (`Get-ADUser -Filter *`) cannot fan out into hundreds of thousands of step rows.
 
 - [ForEachActivity.cs:121](../src/NodePilot.Engine/Activities/ForEachActivity.cs#L121)
 
-### M-10 — Scrub-Time Window Clamp
-External callers passing absurd `windowDays` values for replay scrub get clamped to a
-max of 7 days so a webhook can't request a year-long replay snapshot.
+### M-10 — Execution-Timeout Clamp
+A caller-supplied execution `timeoutSeconds` (webhook, external trigger) is clamped to a
+max of 7 days (604800 s) so an untrusted caller cannot pin a cancellation token forever.
 
-- [WorkflowEngine.cs:316](../src/NodePilot.Engine/WorkflowEngine.cs#L316)
+- [WorkflowEngine.cs:952](../src/NodePilot.Engine/WorkflowEngine.cs#L952)
 
 ### M-11 — RestApi 307/308 Redirect Hardening
 RFC says 307/308 preserve method + body. But when the redirect target is on a different
@@ -264,7 +264,7 @@ boot.
 
 ### M-20 — Observability PromQL Authorization
 Raw PromQL queries (and the pre-composed summary) can leak infrastructure metrics to
-non-Admin roles. The endpoint enforces Admin-only.
+Viewers. The endpoints require Admin or Operator.
 
 - [ObservabilityController.cs:157](../src/NodePilot.Api/Controllers/ObservabilityController.cs#L157)
 
@@ -286,7 +286,7 @@ a fresh value.
 
 ### M-28 — FileWatcher Per-Path Debounce + Buffer Sizing
 Single shared debounce-timestamp lost simultaneous events on different files. Now
-per-path. Also: `InternalBufferSize` raised from default 8 KiB to a tunable value so
+per-path. Also: `InternalBufferSize` raised from the default 8 KiB to a fixed 64 KiB so
 high-volume directories don't lose events under burst.
 
 - [FileWatcherTriggerSource.cs:32](../src/NodePilot.Scheduler/Sources/FileWatcherTriggerSource.cs#L32) — debounce dict
@@ -398,7 +398,8 @@ exhaust the per-execution dict.
 
 ### L-11 — EventLog Manual-Run Validation
 Even on manual-run, the log name is attacker-controllable via workflow JSON. Enforce
-the `Application/System/Security/Setup` allow-list before opening the channel.
+the allow-list (default `Application`, `System`; `Security` excluded on purpose, extendable via
+`Trigger:EventLog:AllowedLogs`) before opening the channel.
 
 - [EventLogTrigger.cs:55](../src/NodePilot.Engine/Triggers/EventLogTrigger.cs#L55)
 
@@ -454,19 +455,18 @@ any package bump to keep this section honest.
 ### DEP-1 — Microsoft.OpenApi HIGH (GHSA-v5pm-xwqc-g5wc) — FIXED
 `Swashbuckle.AspNetCore` 10.1.7 (and `WireMock.Net.OpenApiParser` in the test graph) pulled
 `Microsoft.OpenApi` 2.4.1, vulnerable to an uncontrolled-recursion DoS on circular schema
-refs. Overridden with a direct pin to 2.9.0 (still 2.x → Swashbuckle Models-namespace stays
+refs. Overridden with a direct pin, currently 2.12.2 (still 2.x → Swashbuckle Models-namespace stays
 compatible).
 
-- [NodePilot.Api.csproj](../src/NodePilot.Api/NodePilot.Api.csproj) — `Microsoft.OpenApi` 2.9.0
-- [NodePilot.Api.Tests.csproj](../tests/NodePilot.Api.Tests/NodePilot.Api.Tests.csproj) — same pin for the WireMock path
+- [NodePilot.Api.csproj](../src/NodePilot.Api/NodePilot.Api.csproj) — `Microsoft.OpenApi` (version in [Directory.Packages.props](../Directory.Packages.props))
+- Test projects: `NodePilot.{Ai,Cli,Mcp}.Tests` — same pin for the WireMock path
 
 ### DEP-2 — Scriban.Signed HIGH (GHSA-24c8-4792-22hx) — FIXED
 `WireMock.Net` (test-only) pulled `Scriban.Signed` 5.5.0, vulnerable to an `array.insert_at`
-unbounded-allocation OOM DoS. Overridden with a direct pin to 7.2.5 in every WireMock-using
-test project. All four suites (Ai/Api/Cli/Mcp) stay green — NodePilot does not use WireMock's
-Scriban response-templating, so the major-version bump has no runtime effect.
+unbounded-allocation OOM DoS. `WireMock.Net` 2.x requests `Scriban.Signed` 7.2.5 itself, so the
+former direct pin was removed — NodePilot does not use WireMock's Scriban response-templating.
 
-- Test projects: `NodePilot.{Ai,Api,Cli,Mcp}.Tests` — `Scriban.Signed` 7.2.5
+- [Directory.Packages.props](../Directory.Packages.props) — `WireMock.Net` 2.x + rationale
 
 ### DEP-3 — SQLitePCLRaw.lib.e_sqlite3 HIGH (GHSA-2m69-gcr7-jv3q / CVE-2025-6965) — FIXED
 Bundled SQLite < 3.50.2 can corrupt memory when a query's aggregate-term count exceeds the
@@ -482,7 +482,7 @@ SQLite 3.50.4 via `SourceGear.sqlite3` — outside the advisory's `<= 2.1.11` ra
 `Microsoft.Data.Sqlite` 10.x still floors the bundle at 2.1.11, so the fix is a direct pin
 that lifts the transitive graph. The audit suppression was removed.
 
-- [Directory.Packages.props](../Directory.Packages.props) — `SQLitePCLRaw.bundle_e_sqlite3` 3.0.3 + rationale
+- [Directory.Packages.props](../Directory.Packages.props) — `SQLitePCLRaw.bundle_e_sqlite3` 3.0.5 + rationale
 - Direct `PackageReference` in every project referencing a `*Sqlite` package:
   `NodePilot.{Data,Engine,Scheduler}`, `NodePilot.{Api,Data,Engine}.Tests`, `NodePilot.TestCommons`
 

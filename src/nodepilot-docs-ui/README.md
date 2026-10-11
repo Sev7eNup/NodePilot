@@ -4,7 +4,7 @@ Dokumentations-Website für NodePilot — eine React 19 SPA (Vite + Tailwind CSS
 
 **Design-Tokens und Sidebar-CSS sind aus `src/nodepilot-ui/src/index.css` kopiert**, nicht importiert (getrennte Vite-Roots, getrenntes `npm ci` in CI). Beim Kopieren werden zwei mechanische Rewrites angewendet, damit ein Re-Sync ein trivialer Diff bleibt — beide sind im Kopf des kopierten Blocks in `src/index.css` dokumentiert:
 
-1. `[data-skin="dark"]` entfällt (die Docs haben nur ein Dark-Skin, kein 7-Skin-System).
+1. `[data-skin="dark"]` entfällt (die Docs haben nur ein Dark-Skin, kein 10-Skin-System).
 2. Blankes `aside` in Selektoren wird zu `.np-sidebar` (sonst erbt die TOC-Rail in `Toc.tsx` den Rail-Gradient).
 
 Im selben Paket liegt außerdem die Projekt-Website (`src/site/`), siehe [Projekt-Website](#projekt-website).
