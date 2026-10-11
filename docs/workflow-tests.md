@@ -115,7 +115,7 @@ Ein `scheduleTrigger` pro Workflow, 7-Feld-Quartz-Cron, Minuten-Offsets gestaffe
 | Stufe | Cron | Inhalt |
 |---|---|---|
 | A — 5 Min | `0 0/5` … `0 4/5 * * * ? *` | leichte Engine-Typen, Dateisystem, ControlFlow, Edge-Conditions, Variable-Resolution |
-| B — 15 Min | `0 5/15`, `0 10/15 * * * ? *` | zipOperation, sql, powerManagement, die vier Negativ-Workflows |
+| B — 15 Min | `0 5/15`, `0 10/15 * * * ? *` | zipOperation, sql, powerManagement, die fünf Negativ-Workflows |
 | C — 30 Min | `0 7/30`, `0 22/30 * * * ? *` | integration und invasive |
 | D — 10 Min | `0 3/10 * * * ? *` | trigger drivers |
 

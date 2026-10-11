@@ -310,7 +310,7 @@ The short version, for orientation while you read this page:
     -ArtifactPath .\NodePilot-<version>.zip `
     -TrustedArtifactSignerThumbprint <thumbprint-from-the-release-notes> `
     -PublicHostname nodepilot.corp.example.com `
-    -CertificateThumbprint <kestrel-cert-thumbprint>
+    -CertThumbprint <kestrel-cert-thumbprint>
 ```
 
 Every parameter, and what the installer deliberately does *not* do, is in

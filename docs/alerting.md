@@ -246,7 +246,7 @@ second event-style source after `execution-result` and follows the same stateles
 each pass reads the `AuditLog` rows of the last `lookbackSeconds` (default 300), one observation per
 row, `InstanceKey` = row id, `OccurredAt` = the row's timestamp, so the per-policy activation watermark
 and the delivery ledger keep a row from alerting twice. Fields: `action` (the `AuditActions` code — a
-free string, not an enum, so the 157 codes are not duplicated into the descriptor), `outcome`
+free string, not an enum, so the 166 codes are not duplicated into the descriptor), `outcome`
 (`success`/`failure`/`unknown`) and `category` (`iam`/`process`/`configuration`) via the same
 `AuditEventClassification` the SIEM forwarder uses, `username`, `ipAddress`, `resourceType`, and
 `details` — the write-side redacted details JSON, which lets a condition match what a code alone

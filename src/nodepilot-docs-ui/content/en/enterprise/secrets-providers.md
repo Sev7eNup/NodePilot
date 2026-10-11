@@ -108,7 +108,7 @@ The same sweep is also available in the UI — **Admin settings → Security →
 `nodepilot.credential.crypto.legacy_reads` counter stays at zero in the follow-up tests.
 If a history row was skipped, `Secrets:LegacyProvider` stays configured until the version named is
 restored/repaired and a further sweep is clean. After that, remove
-`Secrets:LegacyProvider`/`LegacyDpapiScope`/`LegacyMasterKey` and restart.
+`Secrets:LegacyProvider`/`LegacyDpapiScope`/`LegacyMasterKey`/`LegacyMasterKeyFile` and restart.
 
 ## Rotating the AES-GCM master key
 

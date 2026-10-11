@@ -21,7 +21,7 @@ configuration change rather than a code change.
 |---|---|---|---|
 | **DPAPI** (default) | `Dpapi` (or unset) | ❌ machine-bound | `Credentials:DpapiScope=LocalMachine` recommended for production |
 | **AES-GCM** | `AesGcm` | ✅ | shared `Secrets:MasterKey` or `Secrets:MasterKeyFile` (32-byte base64) on every node |
-| **HashiCorp Vault Transit** | (not yet) | ✅ | tracked in plan `enterprise-vault-secrets.md` |
+| **HashiCorp Vault Transit** | (not yet) | ✅ | listed in [`roadmap.md`](roadmap.md) |
 
 ### Startup guardrails
 
@@ -218,7 +218,7 @@ skip counters are zero; and the
 removal of `LegacyProvider`. Resolve every `*SkipDetails` entry and re-run Step 2 until clean.
 
 Once clean, remove the `Secrets:LegacyProvider` / `Secrets:LegacyDpapiScope` /
-`Secrets:LegacyMasterKey` keys and restart. The deployment is now pure-active-provider.
+`Secrets:LegacyMasterKey` / `Secrets:LegacyMasterKeyFile` keys and restart. The deployment is now pure-active-provider.
 
 ### Failure modes
 

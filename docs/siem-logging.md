@@ -70,9 +70,9 @@ with full ECS field coverage. The forwarded properties:
 | ECS field | Source | Example |
 |---|---|---|
 | `event.action` | the action verb | `WORKFLOW_PUBLISHED`, `LOGIN_FAILED` |
-| `event.category` | mapped from action prefix | e.g. `iam` (LOGIN/LOGOUT/TOKEN/USER/GLOBAL_VARIABLE/SECRETS), `process` (EXECUTION/WEBHOOK/TRIGGER lifecycle), `configuration` (workflow/machine mutations). Mapping in `AuditWriter`. |
+| `event.category` | mapped from action prefix | e.g. `iam` (LOGIN/LOGOUT/TOKEN/USER/CREDENTIAL/GLOBAL_VARIABLE/FOLDER_PERMISSION/SECRETS), `process` (EXECUTION/WEBHOOK/TRIGGER lifecycle), `configuration` (workflow/machine mutations). Mapping in `AuditEventClassification` (Core). |
 | `event.kind` | constant | `event` |
-| `event.outcome` | constant on success | `success` |
+| `event.outcome` | derived from the action and `details.success` | `success`, `failure`, or `unknown` for `*_ATTEMPTED` |
 | `event.dataset` | constant | `nodepilot.audit` |
 | `event.id` | the AuditLog row id | UUID — pivot key for joining back to the DB |
 | `event.original` | redacted details JSON | `{"name":"Daily-Report","version":4}` |
@@ -90,7 +90,7 @@ Failed audit *writes* are also logged (at `error` level with the exception in th
 {
   "@timestamp": "2026-05-09T...",
   "log.level": "info",
-  "message": "audit.WORKFLOW_PUBLISHED resource=Workflow/abc... actor=user-42 ip=10.1.2.3",
+  "message": "AUDIT WORKFLOW_PUBLISHED user=alice resource=Workflow/abc... ip=10.1.2.3",
   "ecs.version": "1.12.0",
   "event": {
     "action": "WORKFLOW_PUBLISHED",
@@ -167,7 +167,7 @@ output.http:
   `GET /api/audit`; SIEM ingest of audit events requires Filebeat reading the same
   ECS log file (Audit-Writer events render through Serilog when Logging:Format=ecs-json).
   A dedicated outbox + push-sink with retry / backpressure is on the roadmap
-  (`enterprise-siem-logging.md`).
+  ([`roadmap.md`](roadmap.md), "Audit- und SIEM-Zustellung über eine Outbox absichern").
 - **No CEF / LEEF format.** ArcSight / QRadar customers can wait for the V2 plan.
 - **No syslog sink.** Add via Filebeat or a Serilog.Sinks.Syslog package separately.
 
