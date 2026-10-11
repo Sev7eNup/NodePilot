@@ -1285,6 +1285,9 @@ html[data-skin="light-bank"] .np-tooltip-portal {
   /* Shared accent for the control-flow node-group frame (double-outline). Indigo to match the
      control activities' own colour family; one var since all control colours are indigo. */
   --np-controlflow-accent:#6366f1;
+  /* Group frame hues (user-picked colour on a group node). */
+  --np-group-blue:#3b82f6; --np-group-green:#16a34a; --np-group-amber:#d97706; --np-group-rose:#e11d48; --np-group-slate:#64748b;
+  --np-group-teal:#0d9488; --np-group-orange:#ea580c; --np-group-pink:#db2777; --np-group-violet:#7c3aed;
 }
 
 /* ── Activity-Icon-Palette (dark mode) — dunkles Tint-BG + hellere Icon-Farbe ── */
@@ -1326,7 +1329,50 @@ html.dark {
   --act-returnData-color:#bcc6da;         --act-returnData-bg:#2f3749;         --act-returnData-border:#5a688c;
   /* Control-flow group frame accent (dark): lighter indigo so it reads on the near-black canvas. */
   --np-controlflow-accent:#a5b4fc;
+  --np-group-blue:#60a5fa; --np-group-green:#4ade80; --np-group-amber:#fbbf24; --np-group-rose:#fb7185; --np-group-slate:#94a3b8;
+  --np-group-teal:#2dd4bf; --np-group-orange:#fb923c; --np-group-pink:#f472b6; --np-group-violet:#a78bfa;
 }
+
+/* ── Group frame: quiet tinted section with a label chip, hue from --np-group-<color> ── */
+.np-group-node {
+  --grp: var(--np-group-blue);
+  border: 1px solid color-mix(in srgb, var(--grp) 24%, transparent);
+  border-radius: 16px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--grp) 8%, transparent), color-mix(in srgb, var(--grp) 2%, transparent));
+  transition: border-color .15s, background-color .15s, box-shadow .15s;
+}
+.np-group-node[data-color="green"] { --grp: var(--np-group-green); }
+.np-group-node[data-color="amber"] { --grp: var(--np-group-amber); }
+.np-group-node[data-color="rose"] { --grp: var(--np-group-rose); }
+.np-group-node[data-color="slate"] { --grp: var(--np-group-slate); }
+.np-group-node[data-color="teal"] { --grp: var(--np-group-teal); }
+.np-group-node[data-color="orange"] { --grp: var(--np-group-orange); }
+.np-group-node[data-color="pink"] { --grp: var(--np-group-pink); }
+.np-group-node[data-color="violet"] { --grp: var(--np-group-violet); }
+.react-flow__node.selected .np-group-node {
+  border-color: color-mix(in srgb, var(--grp) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--grp) 40%, transparent), 0 0 24px -6px color-mix(in srgb, var(--grp) 45%, transparent);
+}
+.np-group-node[data-drop-target="true"] {
+  border-color: var(--grp);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--grp) 16%, transparent), color-mix(in srgb, var(--grp) 6%, transparent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--grp) 60%, transparent);
+}
+.np-group-chip {
+  display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%;
+  padding: 3px 10px 3px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--grp) 14%, transparent);
+  color: color-mix(in srgb, var(--grp) 85%, var(--color-on-surface));
+}
+.np-group-chip::before {
+  content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--grp);
+}
+.np-group-action {
+  opacity: 0; transition: opacity .15s;
+}
+.np-group-node:hover .np-group-action,
+.react-flow__node.selected .np-group-node .np-group-action,
+.np-group-collapsed .np-group-action { opacity: 1; }
 
 body {
   font-family: var(--font-body);

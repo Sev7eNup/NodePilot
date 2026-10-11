@@ -99,13 +99,13 @@ html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) .react-flow .np
   outline-offset: 0;
 }
 
-html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) .react-flow .np-activity-card > .rounded-t-xl,
-html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) .react-flow .np-group-node > .rounded-t-xl {
+html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) .react-flow .np-activity-card > .rounded-t-xl {
   border-top-left-radius: 4px;
   border-top-right-radius: 4px;
 }
 
-html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) .react-flow .np-group-node > div > :is(span, input) {
+html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) .react-flow .np-group-node .np-group-chip {
+  border-radius: 4px;
   color: var(--color-on-surface);
 }
 
@@ -118,6 +118,7 @@ html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) .react-flow .re
 html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) .react-flow .react-flow__node.selected .np-group-node {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+  box-shadow: none;
 }
 
 html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) .react-flow [class*="ring-primary/"] {
