@@ -57,6 +57,7 @@ public class FileWatcherTriggerSource : ITriggerSource
 
     private CancellationTokenSource? _probeCts;
     private Task? _probeTask;
+    private TimeSpan _pathTimeout = TimeSpan.FromSeconds(5);
 
     // A single failed probe must never evict a healthy watcher — that would cause exactly the
     // event loss the probe exists to prevent. Not configurable: the cost is only detection
@@ -73,6 +74,8 @@ public class FileWatcherTriggerSource : ITriggerSource
     /// genuinely unreachable host. Production never assigns this.
     /// </summary>
     internal Func<string, bool> DirectoryProbe { get; set; } = Directory.Exists;
+    internal Func<string, string, bool, IEnumerable<string>> SnapshotFiles { get; set; }
+        = FileWatcherPathGuard.EnumerateFilesReparseFree;
 
     // M-28: per-path debounce. A single DateTime was wrong because two simultaneous writes
     // to different files ("a.log" + "b.log") would suppress one of them. Keep a tiny map
@@ -114,6 +117,7 @@ public class FileWatcherTriggerSource : ITriggerSource
         // inline, so by the time a Task exists to WaitAsync on, the blocking already happened.
         var pathTimeout = TimeSpan.FromSeconds(
             Math.Max(1, _config.GetValue<int?>("Trigger:FileWatcher:PathTimeoutSeconds") ?? 5));
+        _pathTimeout = pathTimeout;
 
         _checkpoint = await context.ReadCheckpointAsync();
 
@@ -498,7 +502,23 @@ public class FileWatcherTriggerSource : ITriggerSource
         await _deliveryGate.WaitAsync(ct);
         try
         {
-            var current = CaptureSnapshot();
+            if (_faultReason is not null) return;
+            Dictionary<string, FileStamp> current;
+            try
+            {
+                // Only the local snapshot may outlive this wait. Delivery and checkpoint writes
+                // stay below the deadline so a late SMB response cannot mutate a disposed source.
+                current = await RunBoundedAsync(CaptureSnapshot, _pathTimeout, disposeAbandoned: null, ct);
+            }
+            catch (TimeoutException)
+            {
+                _faultReason ??= $"snapshot scan did not respond within {_pathTimeout.TotalSeconds:F0}s";
+                _logger.LogWarning(
+                    "FileWatcher reconciliation: {Reason}. Marking the source faulted so the orchestrator re-creates it.",
+                    _faultReason);
+                return;
+            }
+            ct.ThrowIfCancellationRequested();
             var changes = new List<(string action, string path, string? oldPath)>();
 
             var created = current.Keys.Except(_snapshot.Keys, StringComparer.OrdinalIgnoreCase)
@@ -628,7 +648,7 @@ public class FileWatcherTriggerSource : ITriggerSource
         var result = new Dictionary<string, FileStamp>(StringComparer.OrdinalIgnoreCase);
         if (_directory is null) return result;
         ValidateDirectory(_directory);
-        foreach (var path in FileWatcherPathGuard.EnumerateFilesReparseFree(
+        foreach (var path in SnapshotFiles(
                      _directory, _filter, _includeSubdirectories))
         {
             FileWatcherPathGuard.Validate(_config, path);

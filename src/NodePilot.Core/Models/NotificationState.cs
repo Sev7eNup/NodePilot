@@ -3,6 +3,19 @@ using NodePilot.Core.Enums;
 namespace NodePilot.Core.Models;
 
 /// <summary>
+/// A matching occurrence already counted toward MinOccurrences, including suppressed events.
+/// Unique per (rule, event). LastObservedAt keeps continuously sampled occurrences alive until
+/// they stop appearing, so retention cannot turn a long-running job into another occurrence.
+/// </summary>
+public class NotificationOccurrenceState
+{
+    public Guid Id { get; set; }
+    public Guid NotificationRuleId { get; set; }
+    public string EventKey { get; set; } = string.Empty;
+    public DateTime LastObservedAt { get; set; }
+}
+
+/// <summary>
 /// Cooldown, dedup and flap-suppression state, one row per (rule, dedup key). Decides whether a
 /// rule may fire again for a key; the delivery ledger holds the per-occurrence history instead.
 /// Unique on (RuleId, DedupKey).

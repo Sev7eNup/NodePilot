@@ -815,9 +815,9 @@ function Restore-ServiceRollbackSnapshot {
 
     if ($Snapshot.Environment.Count -gt 0) {
         $registryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$($Snapshot.Name)"
-        if (@($Snapshot.Environment | Where-Object { $_ -like 'ConnectionStrings__Postgres=*' }).Count -gt 0) {
-            Set-ServiceRegistryAclForSecrets -Path $registryPath
-        }
+        # The snapshot can contain secrets for any provider (including a seed passphrase).
+        # Protect the recreated key before restoring any environment values.
+        Set-ServiceRegistryAclForSecrets -Path $registryPath
         New-ItemProperty `
             -Path $registryPath `
             -Name Environment `
@@ -1416,12 +1416,12 @@ try {
 # burns ~30s; the new config can take 2-3 cycles to take effect. 180s covers that without
 # spamming "false-positive failed" reports for installs that ARE actually succeeding.
 $probeUrl = "https://localhost:$HttpsPort/healthz/ready"
-Write-Info "  Probing $probeUrl (up to 180s)…"
+Write-Info "  Probing $probeUrl (up to 180s)..."
 if (-not (Invoke-HealthProbe -Url $probeUrl -TimeoutSeconds 180)) {
     Show-NodePilotServiceStartDiagnostics -DataPath $DataPath
     throw "Service did not report /healthz/ready within 180s. See diagnostics above."
 }
-Write-Ok "  /healthz/ready → 200 OK"
+Write-Ok "  /healthz/ready -> 200 OK"
 
 # Admin bootstrap token surfaces for first login.
 $tokenPath = Join-Path $DataPath 'admin-setup.token'
@@ -1431,7 +1431,7 @@ if (Test-Path $tokenPath) {
     # The service writes this file with an owner-only ACL (single ACE for the service
     # account), so the installing admin is EXPECTED to hit Access denied here whenever
     # the service identity differs from the installer identity (gMSA and LocalSystem
-    # alike). This read is display convenience only — the install is already healthy at
+    # alike). This read is display convenience only - the install is already healthy at
     # this point, so it must never abort (and thereby roll back) the installation.
     try { $tokenContent = (Get-Content $tokenPath -Raw -ErrorAction Stop).Trim() }
     catch { $tokenUnreadable = $true }

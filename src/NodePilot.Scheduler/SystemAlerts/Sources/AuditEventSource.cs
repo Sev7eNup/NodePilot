@@ -102,14 +102,25 @@ public sealed class AuditEventSource : ISystemAlertSource
 
     public Task<bool> IsAvailableAsync(NodePilotDbContext db, CancellationToken ct) => Task.FromResult(true);
 
-    public async Task<IReadOnlyList<SystemAlertObservation>> ObserveAsync(
+    public Task<IReadOnlyList<SystemAlertObservation>> ObserveAsync(
         NodePilotDbContext db, SystemAlertQuery query, CancellationToken ct)
     {
         var lookback = Math.Clamp(query.GetInt("lookbackSeconds", DefaultLookbackSeconds), 1, MaxLookbackSeconds);
         var cutoff = DateTime.UtcNow.AddSeconds(-lookback);
-        var actions = ParseActions(query.GetString("actions"));
+        return ReadAsync(db.AuditLog.Where(a => a.Timestamp >= cutoff), query, ct);
+    }
 
-        IQueryable<AuditLogEntry> q = db.AuditLog.AsNoTracking().Where(a => a.Timestamp >= cutoff);
+    public async Task<SystemAlertObservation?> FindDeliveryObservationAsync(
+        NodePilotDbContext db, SystemAlertQuery query, string instanceKey, CancellationToken ct)
+        => Guid.TryParseExact(instanceKey, "N", out var id)
+            ? (await ReadAsync(db.AuditLog.Where(a => a.Id == id), query, ct)).SingleOrDefault()
+            : null;
+
+    private async Task<IReadOnlyList<SystemAlertObservation>> ReadAsync(
+        IQueryable<AuditLogEntry> entries, SystemAlertQuery query, CancellationToken ct)
+    {
+        var actions = ParseActions(query.GetString("actions"));
+        var q = entries.AsNoTracking();
         q = actions.Count > 0
             ? q.Where(a => actions.Contains(a.Action))
             : q.Where(a => !DefaultExcludedActions.Contains(a.Action));

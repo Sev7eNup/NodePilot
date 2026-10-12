@@ -205,7 +205,14 @@ public sealed class CanvasAssistantTools
 
         foreach (var node in nodes.EnumerateArray())
             if (node.TryGetProperty("id", out var nid) && nid.ValueKind == JsonValueKind.String && nid.GetString() == nodeId)
-                return new { workflowId = wf.Id, node = DefinitionRedactor.Redact(node) };
+            {
+                // Activity-aware rules need the containing nodes array. Redacting a detached
+                // node loses that context and would expose e.g. trigger defaults and REST URLs.
+                var redacted = DefinitionRedactor.Redact(doc.RootElement);
+                var selected = redacted["nodes"]?.AsArray()
+                    .FirstOrDefault(candidate => candidate?["id"]?.GetValue<string>() == nodeId);
+                return new { workflowId = wf.Id, node = selected };
+            }
 
         throw new McpException($"No node '{nodeId}' in workflow {wf.Id}.");
     }
@@ -217,8 +224,9 @@ public sealed class CanvasAssistantTools
         CancellationToken cancellationToken = default)
     {
         var wf = ExecutionTools.ParseGuid(workflowId, "workflowId");
-        var executions = await ApiErrorMapper.Guard(() => _api.ListExecutionsAsync(wf, activeOnly: false, terminalOnly: true, cancellationToken));
-        var failed = executions.FirstOrDefault(e => string.Equals(e.Status, "Failed", StringComparison.OrdinalIgnoreCase));
+        var executions = await ApiErrorMapper.Guard(() => _api.ListExecutionsAsync(wf, activeOnly: false,
+            terminalOnly: true, limit: 1, status: "Failed", cancellationToken));
+        var failed = executions.Items.FirstOrDefault(e => string.Equals(e.Status, "Failed", StringComparison.OrdinalIgnoreCase));
         if (failed is null)
             return new { workflowId = wf, message = "No failed executions found for this workflow." };
 

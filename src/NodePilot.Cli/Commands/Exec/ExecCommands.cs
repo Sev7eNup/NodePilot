@@ -35,8 +35,7 @@ public sealed class ExecListCommand : BaseCommand<ExecListSettings>
             workflowId = w.Id;
         }
 
-        var rows = await api.ListExecutionsAsync(workflowId, ct);
-        if (settings.Limit is > 0) rows = rows.Take(settings.Limit.Value).ToList();
+        var rows = await api.ListExecutionsAsync(workflowId, ct, settings.Limit);
         writer.WriteData(rows, (console, list) => Renderers.Executions(console, list));
         return ExitCodes.Success;
     }

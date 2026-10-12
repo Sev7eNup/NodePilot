@@ -1,0 +1,135 @@
+{
+    "branch":  "audit/practical-impact-2026-10-12",
+    "baseline":  "de7105810af83cd21d20e32fc86bfbd3b4e280f4",
+    "scope":  "Implementation, tests and CLI documentation for findings 134-142; excludes pre-existing image-manifest change",
+    "files":  [
+                  {
+                      "path":  "src/NodePilot.Cli/Api/NodePilotApiClient.cs",
+                      "sha256":  "990438417aeb9b9c5e2194dea18a9c435636002433b3c45262c2adf72dc312bd"
+                  },
+                  {
+                      "path":  "src/NodePilot.Cli/Commands/BaseCommand.cs",
+                      "sha256":  "9188114c3d988c42bc7f83b3e2a3edf2e3956d7c48f188f5c9ec01da9e62ca72"
+                  },
+                  {
+                      "path":  "src/NodePilot.Cli/Commands/Exec/ExecCommands.cs",
+                      "sha256":  "7e0879453fbdb57d8cca63e74b47fc53f05916d7dae3db08b2bfba28e432deb2"
+                  },
+                  {
+                      "path":  "src/NodePilot.Cli/ExitCodes.cs",
+                      "sha256":  "2da480479533e53719822ee6379749d8fdc5327d7d44e31783ba5f8d62e548fa"
+                  },
+                  {
+                      "path":  "src/NodePilot.Engine/PowerShell/PowerShellActivitySupport.cs",
+                      "sha256":  "9e41583596b3795f4952fdfcc2b331ac5a8d7748449c7c229e84f9c288db305b"
+                  },
+                  {
+                      "path":  "src/NodePilot.Mcp/Api/NodePilotApiClient.cs",
+                      "sha256":  "e20a0503d770a2f85e3e63877e5d222dae47dcc8e6ae7f41cffe47ab085ee127"
+                  },
+                  {
+                      "path":  "src/NodePilot.Mcp/Tools/CanvasAssistantTools.cs",
+                      "sha256":  "070d93d3543ca37ea2aff352c4b8046fb43784d972a112afb4a79cb85595ff59"
+                  },
+                  {
+                      "path":  "src/NodePilot.Mcp/Tools/ExecutionTools.cs",
+                      "sha256":  "00557bb674641b44a15ef2382f96264601488fb0d9aded17a6463b44aa561b5b"
+                  },
+                  {
+                      "path":  "src/NodePilot.Mcp/Tools/WorkflowReadTools.cs",
+                      "sha256":  "ca11c900cb7c024413ac7c079811abc15066388239159fdc68b01667f1422454"
+                  },
+                  {
+                      "path":  "src/NodePilot.Scheduler/ExecutionRetentionService.cs",
+                      "sha256":  "34d9354509a229642cd9bc6b3de8c24eb4096a0b1883dc8d6d40a92ad99cb45b"
+                  },
+                  {
+                      "path":  "src/NodePilot.Scheduler/Sources/FileWatcherTriggerSource.cs",
+                      "sha256":  "06cd165d28afd3a5d09257f11be74ad279e98bd5c37704c795aef03f0cb27771"
+                  },
+                  {
+                      "path":  "src/NodePilot.Switcher/Services/NodePilotWorkflowReconciler.cs",
+                      "sha256":  "83f255fa7ee3dc8c060400b6f940808e842f1afb84ef1379da4d51263adae038"
+                  },
+                  {
+                      "path":  "src/nodepilot-docs-ui/content/de/cli.md",
+                      "sha256":  "8afbc26836401cb09a989a54c4f8fdc2e158ee1e1aad561d4b278dffd5840471"
+                  },
+                  {
+                      "path":  "src/nodepilot-docs-ui/content/en/cli.md",
+                      "sha256":  "8e864f7f215c4c338fed0087ac57911c2fe77145c9b526fd39e0ba59d5b73923"
+                  },
+                  {
+                      "path":  "src/nodepilot-ui/src/__tests__/components/designer/EdgePropertiesPanel.test.tsx",
+                      "sha256":  "4ea025fdb7badbf620bfd18ddb318b07789c1db831bfa26f7726c0c0d2bde180"
+                  },
+                  {
+                      "path":  "src/nodepilot-ui/src/__tests__/components/properties/StepTestPanel.test.tsx",
+                      "sha256":  "9ceeeed236074041284ec544b305ceea71fd5753ef234c2fb9eb3da28f8f9a33"
+                  },
+                  {
+                      "path":  "src/nodepilot-ui/src/__tests__/components/PropertiesPanel.test.tsx",
+                      "sha256":  "d77a0fab749a0dc3fb8189bfb22c103a24e934d7017168ccbc8b401c7dacaecb"
+                  },
+                  {
+                      "path":  "src/nodepilot-ui/src/components/designer/EditorRightPanel.tsx",
+                      "sha256":  "206d2eb67e82de56f42faca481678c2ea8486e1cdfb9c26c65ee1f6f1699491f"
+                  },
+                  {
+                      "path":  "src/nodepilot-ui/src/components/designer/properties/StepTestPanel.tsx",
+                      "sha256":  "71e528bb82ce076040b6e2c63cfa5bc20f6dff37dd6168714d6262523c4df023"
+                  },
+                  {
+                      "path":  "src/nodepilot-ui/src/components/designer/PropertiesPanel.tsx",
+                      "sha256":  "dbdad9b83f1bac9ad49417105becda134a460066b42c916238ad5c8447ff26ff"
+                  },
+                  {
+                      "path":  "src/nodepilot-ui/src/i18n/locales/de/properties.json",
+                      "sha256":  "2843e015aaa53d8bc8660298d36f565ed85b1ed1430ccd20a579a067e091b9b9"
+                  },
+                  {
+                      "path":  "src/nodepilot-ui/src/i18n/locales/en/properties.json",
+                      "sha256":  "4e78f092c3a850c5686ef24b84b5fdd8c6f516adb22b1af4052690dde96df421"
+                  },
+                  {
+                      "path":  "tests/NodePilot.Cli.Tests/Commands/BaseCommandTests.cs",
+                      "sha256":  "b092fce9e931fdf546df669f0b1aeb3eddb3f97670f3e7f0ad3166c7a9931ff1"
+                  },
+                  {
+                      "path":  "tests/NodePilot.Cli.Tests/Commands/CommandIntegrationTests.cs",
+                      "sha256":  "e600ece39ec302571cb3211e5b507f5ead28c378b480b5158d6974205480cc1d"
+                  },
+                  {
+                      "path":  "tests/NodePilot.Engine.Tests/Activities/QualifiedParameterOwnerTests.cs",
+                      "sha256":  "6c397b1f8409ea0f274f00169ffb5b13809e072a52c41ae53340840d92ce6c88"
+                  },
+                  {
+                      "path":  "tests/NodePilot.Engine.Tests/Retention/ExecutionRetentionServiceTests.cs",
+                      "sha256":  "7c0df251009538b7401fcad888f50abfff7c8d3cb09c27f8c4b2b9ca49a40521"
+                  },
+                  {
+                      "path":  "tests/NodePilot.Engine.Tests/Triggers/FileWatcherSnapshotDeadlineTests.cs",
+                      "sha256":  "56d75c754acdc2275b07bca238e9d010faa13ad247fef05a88fb8415abeaac84"
+                  },
+                  {
+                      "path":  "tests/NodePilot.Mcp.Tests/Tools/CanvasAssistantToolsTests.cs",
+                      "sha256":  "156fc8bc625183e67660646beb39c8aa7e064620c801f14f8a9242a797d237ed"
+                  },
+                  {
+                      "path":  "tests/NodePilot.Mcp.Tests/Tools/ExecutionToolsTests.cs",
+                      "sha256":  "e21466477914ed3201b6b3b96ccd3696ca9c2527ef7dc00394894b8868d97ccd"
+                  },
+                  {
+                      "path":  "tests/NodePilot.Mcp.Tests/Tools/MoreReadEditToolsTests.cs",
+                      "sha256":  "eb214344885acfcb00fd3aa534eaa3c20265e565f32fab3fb99d73f3a989784f"
+                  },
+                  {
+                      "path":  "tests/NodePilot.Mcp.Tests/Tools/MoreToolsCoverageTests.cs",
+                      "sha256":  "bf6758fe91b5569a94b04f679b96bf223ef15bb041a1fdde483595290393d8f0"
+                  },
+                  {
+                      "path":  "tests/NodePilot.Switcher.Tests/NodePilotWorkflowReconcilerTests.cs",
+                      "sha256":  "51ebb810c667a3ba8724c9d5bb8f2392da7b9dee7bf8d27b32e74a73cacdbd2d"
+                  }
+              ]
+}

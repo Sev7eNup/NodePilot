@@ -183,11 +183,8 @@ public sealed class SystemAlertEvaluator
     }
 
     /// <summary>
-    /// Best-effort rebuild of a system context from a crash-orphaned attempt's EventKey: re-sample
-    /// the source
-    /// and match the instance. Returns null when the key isn't ours, the source is
-    /// gone/unavailable, or the
-    /// instance no longer appears (the dispatcher then fails the attempt out).
+    /// Rebuild an accepted delivery by source identity. Event sources recover retained rows
+    /// independently of their current sampling window.
     /// </summary>
     public async Task<NotificationContext?> TryReconstructContextAsync(NodePilotDbContext db, string eventKey, CancellationToken ct)
     {
@@ -203,12 +200,12 @@ public sealed class SystemAlertEvaluator
         var source = _catalog.Find(sourceId);
         if (source is null || !await source.IsAvailableAsync(db, ct)) return null;
 
-        IReadOnlyList<SystemAlertObservation> observations;
-        try { observations = await source.ObserveAsync(db, SystemAlertParameters.ToQuery(policy.SourceParametersJson), ct); }
+        SystemAlertObservation? obs;
+        try { obs = await source.FindDeliveryObservationAsync(db,
+            SystemAlertParameters.ToQuery(policy.SourceParametersJson), instanceKey, ct); }
         catch (OperationCanceledException) { throw; }
         catch { return null; }
 
-        var obs = observations.FirstOrDefault(o => string.Equals(o.InstanceKey, instanceKey, StringComparison.Ordinal));
         if (obs is null) return null;
 
         // Retry with the active owning policy's query and severity override, matching first delivery.

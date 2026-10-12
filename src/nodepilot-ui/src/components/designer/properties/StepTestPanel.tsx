@@ -44,7 +44,11 @@ interface Props {
  * Step-test panel with context-aware modes. Always sends the live editor config as
  * `ConfigOverride` so the user tests what they see, not the last saved state.
  */
-export function StepTestPanel({ workflowId, stepId, liveConfig, canRun, expertMode = true }: Readonly<Props>) {
+export function StepTestPanel(props: Readonly<Props>) {
+  return <StepTestPanelContent key={`${props.workflowId}:${props.stepId}`} {...props} />;
+}
+
+function StepTestPanelContent({ workflowId, stepId, liveConfig, canRun, expertMode = true }: Readonly<Props>) {
   const { t } = useTranslation(['properties', 'common']);
   const [mode, setMode] = useState<Mode>(expertMode ? 'empty' : 'lastRun');
   const [pickedRunId, setPickedRunId] = useState<string | null>(null);
@@ -66,16 +70,20 @@ export function StepTestPanel({ workflowId, stepId, liveConfig, canRun, expertMo
       `/workflows/${workflowId}/steps/${stepId}/test-context/runs?limit=10`),
   });
 
-  const { data: context, isFetching: contextFetching, refetch: refetchContext } = useQuery({
-    queryKey: ['step-test-context', workflowId, stepId, pickedRunId],
-    enabled: wantsContext,
+  const contextRunId = mode === 'pickRun' ? pickedRunId : null;
+  const { data: context, isFetching: contextFetching, isError: contextFailed, refetch: refetchContext } = useQuery({
+    queryKey: ['step-test-context', workflowId, stepId, contextRunId],
+    enabled: wantsContext && (mode !== 'pickRun' || !!pickedRunId),
     staleTime: 15_000,
     queryFn: () => {
-      const qs = pickedRunId ? `?executionId=${pickedRunId}` : '';
+      const qs = contextRunId ? `?executionId=${contextRunId}` : '';
       return api.get<StepTestContextResponse>(
         `/workflows/${workflowId}/steps/${stepId}/test-context${qs}`);
     },
   });
+
+  const canStart = canRun && !testing && (mode !== 'pickRun' || !!pickedRunId)
+    && (!wantsContext || (!!context && !contextFetching && !contextFailed));
 
   // The first time pickRun mode opens, default to the most recent run that exercised the
   // step. The user can still pick a different run from the dropdown.
@@ -119,7 +127,7 @@ export function StepTestPanel({ workflowId, stepId, liveConfig, canRun, expertMo
   }, [mode, manualMocksText, context]);
 
   const runTest = useCallback(async () => {
-    if (testing) return;
+    if (!canStart) return;
     setTesting(true);
     setTestResult(null);
     try {
@@ -140,7 +148,7 @@ export function StepTestPanel({ workflowId, stepId, liveConfig, canRun, expertMo
     } finally {
       setTesting(false);
     }
-  }, [testing, workflowId, stepId, liveConfig, buildMocks]);
+  }, [canStart, workflowId, stepId, liveConfig, buildMocks]);
 
   return (
     <div className="space-y-2.5">
@@ -159,13 +167,26 @@ export function StepTestPanel({ workflowId, stepId, liveConfig, canRun, expertMo
           onRefresh={() => refetchContext()}
         />
       )}
+      {wantsContext && contextFailed && (
+        <div role="alert" className="text-xs text-error space-y-1">
+          <p>{t('properties:test.contextLoadFailed')}</p>
+          <button onClick={() => refetchContext()} className="underline">
+            {t('properties:test.refresh')}
+          </button>
+        </div>
+      )}
+      {!expertMode && contextFetching && (
+        <p role="status" className="text-xs text-on-surface-variant">
+          {t('properties:test.loadingContext')}
+        </p>
+      )}
       {expertMode && mode === 'manualMocks' && (
         <ManualMocksEditor value={manualMocksText} onChange={setManualMocksText} />
       )}
       {canRun && (
         <button
           onClick={runTest}
-          disabled={testing || (mode === 'pickRun' && !pickedRunId)}
+          disabled={!canStart}
           className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm font-label font-medium bg-surface-highest text-on-surface hover:bg-surface-high transition-colors disabled:opacity-50"
         >
           {testing

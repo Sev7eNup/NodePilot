@@ -21,6 +21,186 @@ namespace NodePilot.Engine.Tests.Notifications;
 public class NotificationDispatcherTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ElapsedAlertResampling_DoesNotCountOrCooldownTwice(bool minimumOccurrences)
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var workflow = SeedWorkflow(db);
+            var ruleId = SeedRule(db, "ExecutionRunningLong", Route(NotificationChannel.Email, "a@x"));
+            var rule = db.NotificationRules.Single(r => r.Id == ruleId);
+            rule.DedupKeyTemplate = "{{workflowId}}";
+            rule.CooldownMinutes = minimumOccurrences ? 0 : 1;
+            rule.MinOccurrences = minimumOccurrences ? 3 : 1;
+            rule.OccurrenceWindowMinutes = 10;
+            Guid AddRunning()
+            {
+                var id = Guid.NewGuid();
+                db.WorkflowExecutions.Add(new WorkflowExecution { Id = id, WorkflowId = workflow,
+                    Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow.AddHours(-2) });
+                db.SaveChanges();
+                return id;
+            }
+            AddRunning();
+            var sink = new RecordingSink(NotificationChannel.Email);
+            for (var pass = 0; pass < 3; pass++)
+                await Build(factory, new SingleNodeClusterStateProvider(), sink).DispatchOnceAsync(TestContext.Current.CancellationToken);
+            sink.Sends.Should().HaveCount(minimumOccurrences ? 0 : 1);
+            AddRunning();
+            if (!minimumOccurrences)
+            {
+                await Build(factory, new SingleNodeClusterStateProvider(), sink).DispatchOnceAsync(TestContext.Current.CancellationToken);
+                sink.Sends.Should().ContainSingle("a new event waits while the cooldown is active");
+                await db.NotificationSuppressionStates.ExecuteUpdateAsync(s => s.SetProperty(x => x.LastFiredAt, DateTime.UtcNow.AddMinutes(-2)));
+            }
+            await Build(factory, new SingleNodeClusterStateProvider(), sink).DispatchOnceAsync(TestContext.Current.CancellationToken);
+            if (minimumOccurrences)
+            {
+                sink.Sends.Should().BeEmpty();
+                AddRunning();
+                await Build(factory, new SingleNodeClusterStateProvider(), sink).DispatchOnceAsync(TestContext.Current.CancellationToken);
+            }
+            sink.Sends.Should().HaveCount(minimumOccurrences ? 1 : 2);
+        }
+        finally { await db.DisposeAsync(); await conn.DisposeAsync(); }
+    }
+
+    [Fact]
+    public async Task SystemAlertDeliveredEpisode_DoesNotRenewCooldownForLaterEvent()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var workflow = SeedWorkflow(db);
+            var firstId = SeedExecution(db, workflow, ExecutionStatus.Failed, DateTime.UtcNow.AddMinutes(-1));
+            var policy = SystemEventPolicy(cooldownMinutes: 1);
+            db.NotificationRules.Add(policy);
+            await db.SaveChangesAsync();
+            var sink = new RecordingSink(NotificationChannel.Email);
+            var dispatcher = SystemEventDispatcher(factory, sink);
+            await dispatcher.DispatchOnceAsync(TestContext.Current.CancellationToken);
+            sink.Sends.Should().ContainSingle();
+            await db.NotificationSuppressionStates.Where(s => s.NotificationRuleId == policy.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.LastFiredAt, DateTime.UtcNow.AddMinutes(-2)));
+            var secondId = SeedExecution(db, workflow, ExecutionStatus.Failed, DateTime.UtcNow);
+
+            await dispatcher.DispatchOnceAsync(TestContext.Current.CancellationToken);
+
+            sink.Sends.Select(s => s.ctx.SourceKey).Should().BeEquivalentTo(
+                [firstId.ToString("N"), secondId.ToString("N")],
+                "an already delivered episode must not restart a finished cooldown");
+        }
+        finally { await db.DisposeAsync(); await conn.DisposeAsync(); }
+    }
+
+    [Fact]
+    public async Task SystemAlertMinOccurrences_CountsDistinctEpisodesAcrossDispatcherRestarts()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var workflow = SeedWorkflow(db);
+            SeedExecution(db, workflow, ExecutionStatus.Failed, DateTime.UtcNow.AddMinutes(-1));
+            var policy = SystemEventPolicy(minOccurrences: 3);
+            db.NotificationRules.Add(policy);
+            await db.SaveChangesAsync();
+            var sink = new RecordingSink(NotificationChannel.Email);
+            for (var pass = 0; pass < 3; pass++)
+                await SystemEventDispatcher(factory, sink).DispatchOnceAsync(TestContext.Current.CancellationToken);
+            sink.Sends.Should().BeEmpty("sampling one retained event repeatedly is one occurrence");
+            (await db.NotificationSuppressionStates.AsNoTracking().SingleAsync()).OccurrenceCount.Should().Be(1);
+            SeedExecution(db, workflow, ExecutionStatus.Failed, DateTime.UtcNow.AddSeconds(-1));
+            await SystemEventDispatcher(factory, sink).DispatchOnceAsync(TestContext.Current.CancellationToken);
+            sink.Sends.Should().BeEmpty();
+            var thirdId = SeedExecution(db, workflow, ExecutionStatus.Failed, DateTime.UtcNow);
+
+            await SystemEventDispatcher(factory, sink).DispatchOnceAsync(TestContext.Current.CancellationToken);
+
+            sink.Sends.Should().ContainSingle().Which.ctx.SourceKey.Should().Be(thirdId.ToString("N"));
+        }
+        finally { await db.DisposeAsync(); await conn.DisposeAsync(); }
+    }
+
+    private static NotificationRule SystemEventPolicy(int cooldownMinutes = 0, int minOccurrences = 1) => new()
+    {
+        Id = Guid.NewGuid(), Name = "distinct-events", IsEnabled = true,
+        Kind = NotificationRuleKind.System, EventTypes = "SystemAlert", SystemSourceId = "execution-result",
+        ScopeKind = NotificationScopeKind.Global, DedupKeyTemplate = "{{workflowId}}",
+        CooldownMinutes = cooldownMinutes, MinOccurrences = minOccurrences, OccurrenceWindowMinutes = 10,
+        Routes = [Route(NotificationChannel.Email, "a@x")],
+    };
+
+    private static NotificationDispatcher SystemEventDispatcher(IServiceScopeFactory factory, INotificationSink sink) => new(
+        factory, new SingleNodeClusterStateProvider(), [sink], new SystemAlertCatalog([new ExecutionResultSource()]),
+        new ConfigurationBuilder().Build(), NullLogger<NotificationDispatcher>.Instance, TestDatabaseAvailability.Available);
+
+    [Theory]
+    [InlineData("execution-result", false)]
+    [InlineData("audit-event", false)]
+    [InlineData("execution-result", true)]
+    [InlineData("audit-event", true)]
+    public async Task SystemAlertRetry_RecoversRetainedEventOutsideLookback(string sourceId, bool deleted)
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            ISystemAlertSource source = sourceId == "execution-result" ? new ExecutionResultSource() : new AuditEventSource();
+            var eventId = Guid.NewGuid();
+            if (sourceId == "execution-result")
+                eventId = SeedExecution(db, SeedWorkflow(db), ExecutionStatus.Failed, DateTime.UtcNow);
+            else
+                db.AuditLog.Add(new AuditLogEntry { Id = eventId, Action = "LOGIN_FAILED", Timestamp = DateTime.UtcNow });
+            db.NotificationRules.Add(new NotificationRule
+            {
+                Id = Guid.NewGuid(), Name = "retained-event", IsEnabled = true,
+                Kind = NotificationRuleKind.System, EventTypes = "SystemAlert", SystemSourceId = sourceId,
+                ScopeKind = NotificationScopeKind.Global, SeverityOverride = NotificationSeverity.Critical,
+                Routes = [Route(NotificationChannel.Email, "a@x")],
+            });
+            await db.SaveChangesAsync();
+            var sink = new RecordingSink(NotificationChannel.Email) { Behavior = () => NotificationSendResult.Fail("temporary outage") };
+            NotificationDispatcher Dispatcher() => new(factory, new SingleNodeClusterStateProvider(), [sink],
+                new SystemAlertCatalog([source]), new ConfigurationBuilder().Build(),
+                NullLogger<NotificationDispatcher>.Instance, TestDatabaseAvailability.Available);
+            await Dispatcher().DispatchOnceAsync(TestContext.Current.CancellationToken);
+            var pending = await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync();
+            pending.Status.Should().Be(NotificationDeliveryStatus.Pending);
+
+            var old = DateTime.UtcNow.AddHours(-1);
+            if (sourceId == "execution-result")
+            {
+                if (deleted) await db.WorkflowExecutions.Where(e => e.Id == eventId).ExecuteDeleteAsync();
+                else await db.WorkflowExecutions.Where(e => e.Id == eventId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(e => e.CompletedAt, old).SetProperty(e => e.StartedAt, old.AddSeconds(-1)));
+            }
+            else
+            {
+                if (deleted) await db.AuditLog.Where(e => e.Id == eventId).ExecuteDeleteAsync();
+                else await db.AuditLog.Where(e => e.Id == eventId).ExecuteUpdateAsync(s => s.SetProperty(e => e.Timestamp, old));
+            }
+            (await source.ObserveAsync(db, SystemAlertQuery.Empty, TestContext.Current.CancellationToken)).Should().BeEmpty(
+                "normal sampling must retain its lookback limit");
+            sink.Behavior = () => NotificationSendResult.Ok;
+
+            await Dispatcher().DispatchOnceAsync(TestContext.Current.CancellationToken);
+
+            var recovered = await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync();
+            recovered.Id.Should().Be(pending.Id);
+            recovered.Status.Should().Be(deleted ? NotificationDeliveryStatus.Failed : NotificationDeliveryStatus.Sent);
+            sink.Sends.Should().HaveCount(deleted ? 1 : 2);
+            if (!deleted)
+            {
+                sink.Sends[1].ctx.EventKey.Should().Be(pending.EventKey);
+                sink.Sends[1].ctx.SourceKey.Should().Be(eventId.ToString("N"));
+                sink.Sends[1].ctx.Severity.Should().Be(NotificationSeverity.Critical);
+            }
+        }
+        finally { await db.DisposeAsync(); await conn.DisposeAsync(); }
+    }
+
+    [Theory]
     [InlineData(10)]
     [InlineData(1)]
     public async Task SystemAlertRetry_PreservesPolicyQueryAndSeverity(int ageMinutes)

@@ -634,6 +634,41 @@ public class CommandIntegrationTests
 
     // ---- Exec --------------------------------------------------------------
 
+    [Theory]
+    [InlineData(10, 1000000, 1)]
+    [InlineData(250, 1000000, 2)]
+    [InlineData(0, 401, 3)]
+    public void ExecList_LimitBoundsRequestsWithoutChangingPageOffsets(int limit, int total, int expectedRequests)
+    {
+        using var h = new CommandTestHarness();
+        var pageSize = limit > 0 ? Math.Min(200, limit) : 200;
+        var ids = Enumerable.Range(0, Math.Min(total, expectedRequests * pageSize))
+            .Select(_ => Guid.NewGuid()).ToArray();
+        for (var page = 1; page <= expectedRequests; page++)
+        {
+            var rows = ids.Skip((page - 1) * pageSize).Take(pageSize)
+                .Select(id => new { id, workflowId = Guid.NewGuid(), status = "Succeeded", startedAt = DateTime.UtcNow });
+            h.Server.Given(Request.Create().WithPath("/api/executions").UsingGet()
+                    .WithParam("page", page.ToString()).WithParam("pageSize", pageSize.ToString()))
+                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+                {
+                    items = rows, page, pageSize, total,
+                    totalPages = (int)Math.Ceiling((double)total / pageSize),
+                }));
+        }
+
+        var args = new List<string> { "exec", "list", "-o", "json" };
+        if (limit > 0) args.AddRange(new[] { "--limit", limit.ToString() });
+        var result = h.Run(args.ToArray());
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        using var output = System.Text.Json.JsonDocument.Parse(result.Output);
+        var actualIds = output.RootElement.EnumerateArray().Select(row => row.GetProperty("id").GetGuid()).ToArray();
+        actualIds.Should().Equal(ids.Take(limit > 0 ? limit : total));
+        actualIds.Should().OnlyHaveUniqueItems();
+        h.Server.LogEntries.Should().HaveCount(expectedRequests);
+    }
+
     [Fact]
     public void ExecList_NoFilter_ReturnsRows()
     {

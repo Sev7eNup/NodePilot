@@ -1,5 +1,12 @@
 # Architecture and security review — 2026-10-09
 
+Current continuation: the user resumed on 2026-10-12 with Critical/High and
+Medium findings that affect everyday use; pure edge cases are excluded. The
+new branch is `audit/practical-impact-2026-10-12`. A subsequent fresh review found
+additional defects after rounds 5–7; see the [independent review and current
+results](independent-review-2026-10-12.md). The historical scope and pause below remain
+the record of the earlier review, not the current handoff.
+
 Baseline: `a96eb96`. Working branch: `audit/architecture-security-2026-10-09`.
 Method: `improve-codebase-architecture`, `audit-ai-slop-code`, additional structural
 review, independent counter-review of candidates and fixes, and executable regressions.

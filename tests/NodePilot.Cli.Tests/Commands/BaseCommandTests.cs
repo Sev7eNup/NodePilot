@@ -82,6 +82,30 @@ public sealed class BaseCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task ServiceUnavailable_MapsToServerUnavailable()
+    {
+        var rc = await Run(() => throw new ApiException(HttpStatusCode.ServiceUnavailable, "Starting", null, null));
+        rc.Should().Be(5);
+    }
+
+    [Fact]
+    public async Task ConnectionRefused_MapsToServerUnavailable()
+    {
+        var rc = await Run(() => throw new HttpRequestException(HttpRequestError.ConnectionError, "No listener",
+            new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused)));
+        rc.Should().Be(5);
+    }
+
+    [Theory]
+    [InlineData(HttpRequestError.SecureConnectionError)]
+    [InlineData(HttpRequestError.NameResolutionError)]
+    public async Task NonStartupNetworkFailure_RemainsGenericError(HttpRequestError error)
+    {
+        var rc = await Run(() => throw new HttpRequestException(error, "Invalid connection configuration"));
+        rc.Should().Be(ExitCodes.Error);
+    }
+
+    [Fact]
     public async Task NotAuthenticatedException_MapsToAuthRequired()
     {
         var rc = await Run(() => throw new NotAuthenticatedException("no session for profile 'default'"));

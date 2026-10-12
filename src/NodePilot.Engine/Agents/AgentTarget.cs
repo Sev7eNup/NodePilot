@@ -47,7 +47,6 @@ public sealed class AgentTarget(ManagedMachine machine, Credential? credential, 
     IRemoteSessionFactory sessions, PowerShellEngineFactory engines, IOptionsMonitor<AgentOptions> options,
     string stepId, ILogger logger) : IAsyncDisposable
 {
-    private IRemoteSession? _session;
     public string Hostname => machine.Hostname;
     public string WorkingRoot { get; private set; } = "";
 
@@ -70,8 +69,8 @@ public sealed class AgentTarget(ManagedMachine machine, Credential? credential, 
             if (!result.Success) throw new InvalidOperationException(result.Error);
             return PowerShellActivitySupport.ExtractMarkers(result.Output, stepId, logger).cleanOutput;
         }
-        _session ??= await sessions.CreateSessionAsync(machine, credential, ct);
-        var remote = await _session.ExecuteScriptAsync(script, timeoutSeconds, ct);
+        await using var session = await sessions.CreateSessionAsync(machine, credential, ct);
+        var remote = await session.ExecuteScriptAsync(script, timeoutSeconds, ct);
         if (!remote.Success) throw new InvalidOperationException(remote.ErrorOutput);
         return remote.Output;
     }
@@ -101,6 +100,5 @@ public sealed class AgentTarget(ManagedMachine machine, Credential? credential, 
             }
             catch (Exception ex) { logger.LogWarning(ex, "Agent target staging cleanup failed on {Machine}", machine.Hostname); }
         }
-        if (_session is not null) await _session.DisposeAsync();
     }
 }

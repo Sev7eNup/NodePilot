@@ -44,6 +44,8 @@
       "manualMocks": "Manual mocks"
     },
     "loadingRuns": "Loading run history …",
+    "loadingContext": "Loading test inputs …",
+    "contextLoadFailed": "The test context could not be loaded. Refresh it before running the activity.",
     "noRuns": "No completed runs for this workflow yet.",
     "selectRun": "Select a run …",
     "stepDidNotRun": "step did not run",

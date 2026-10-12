@@ -9,6 +9,92 @@ namespace NodePilot.Switcher.Tests;
 public sealed class NodePilotWorkflowReconcilerTests
 {
     [Fact]
+    public async Task Reconcile_StartupNeverReady_StopsAtSharedDeadlineWithoutMutation()
+    {
+        var runner = new StartupRunner(initialFailures: int.MaxValue);
+        var action = () => new NodePilotWorkflowReconciler(runner, new RecordingLogger())
+            .ReconcileAsync(Configuration() with { CommandTimeoutSeconds = 1 }, ["Allowed"], null,
+                TestContext.Current.CancellationToken);
+
+        await action.Should().ThrowAsync<TimeoutException>().WithMessage("*did not become available*");
+        runner.Calls.Should().OnlyContain(call => call == "list");
+    }
+
+    [Fact]
+    public async Task Reconcile_StartupUnavailable_RetriesOnlyInitialReadBeforeMutating()
+    {
+        var runner = new StartupRunner(initialFailures: 2);
+        await new NodePilotWorkflowReconciler(runner, new RecordingLogger())
+            .ReconcileAsync(Configuration(), ["Allowed"], null, TestContext.Current.CancellationToken);
+
+        runner.Calls.Should().Equal("list", "list", "list", "graph", "enable", "list");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task Reconcile_PermanentInitialFailure_DoesNotRetryOrMutate(int exitCode)
+    {
+        var runner = new StartupRunner(initialFailures: 1, initialExitCode: exitCode);
+        var action = () => new NodePilotWorkflowReconciler(runner, new RecordingLogger())
+            .ReconcileAsync(Configuration(), ["Allowed"], null, TestContext.Current.CancellationToken);
+
+        await action.Should().ThrowAsync<InvalidOperationException>();
+        runner.Calls.Count(call => call == "list").Should().Be(1);
+        runner.Calls.Should().NotContain("enable");
+    }
+
+    [Theory]
+    [InlineData("enable")]
+    [InlineData("verification")]
+    public async Task Reconcile_UnavailableAfterInitialRead_DoesNotReplay(string failedStage)
+    {
+        var runner = new StartupRunner(failedStage: failedStage);
+        var action = () => new NodePilotWorkflowReconciler(runner, new RecordingLogger())
+            .ReconcileAsync(Configuration(), ["Allowed"], null, TestContext.Current.CancellationToken);
+
+        await action.Should().ThrowAsync<InvalidOperationException>();
+        runner.Calls.Count(call => call == "enable").Should().Be(1);
+        runner.Calls.Count(call => call == "list").Should().Be(failedStage == "verification" ? 2 : 1);
+    }
+
+    private sealed class StartupRunner(int initialFailures = 0, int initialExitCode = 5, string? failedStage = null) : ICommandRunner
+    {
+        private readonly Guid _workflowId = Guid.NewGuid();
+        private bool _enabled;
+        public List<string> Calls { get; } = [];
+
+        public Task<CommandResult> RunAsync(string executable, IReadOnlyList<string> arguments,
+            TimeSpan timeout, CancellationToken cancellationToken, string? standardInput = null,
+            IReadOnlyDictionary<string, string>? environment = null)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var operation = arguments[1];
+            Calls.Add(operation);
+            if (operation == "list")
+            {
+                if (initialFailures-- > 0)
+                    return Task.FromResult(new CommandResult(initialExitCode, "", "API starting"));
+                if (_enabled && failedStage == "verification")
+                    return Task.FromResult(new CommandResult(5, "", "API unavailable"));
+                return Task.FromResult(new CommandResult(0,
+                    JsonSerializer.Serialize(new[] { new NodePilotWorkflow(_workflowId, "Allowed", _enabled) }), ""));
+            }
+            if (operation == "graph")
+                return Task.FromResult(new CommandResult(0,
+                    JsonSerializer.Serialize(new { nodes = new[] { new { workflowId = _workflowId, runningCount = 0 } } }), ""));
+            if (operation == "enable")
+            {
+                if (failedStage == "enable") return Task.FromResult(new CommandResult(5, "", "API unavailable"));
+                _enabled = true;
+                return Task.FromResult(new CommandResult(0, "", ""));
+            }
+            return Task.FromResult(new CommandResult(1, "", "Authentication unavailable"));
+        }
+    }
+
+    [Fact]
     public async Task Reconcile_DisablesAndCancelsUnlistedAndPermanentlyEnablesAllowed()
     {
         var allowedId = Guid.NewGuid();

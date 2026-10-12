@@ -265,6 +265,49 @@ public class ExecutionRetentionServiceTests
         }
     }
 
+    [Fact]
+    public async Task RunIterationAsync_ArchiveBecomesWritable_ResumesWithoutConfigurationChange()
+    {
+        var root = Directory.CreateTempSubdirectory("exec-archive-recovery-").FullName;
+        var blockedParent = Path.Combine(root, "archive-parent");
+        var archivePath = Path.Combine(blockedParent, "executions");
+        await File.WriteAllTextAsync(blockedParent, "temporarily unavailable");
+        var (db, factory, conn) = CreateEnvironment();
+        try
+        {
+            var workflow = SeedWorkflow(db);
+            SeedExecution(db, workflow.Id, ExecutionStatus.Succeeded, DateTime.UtcNow.AddDays(-40));
+            var options = new RetentionOptions();
+            options.Executions.ArchivePath = archivePath;
+            var service = new ExecutionRetentionService(factory,
+                new StaticOptionsMonitor<RetentionOptions>(options),
+                new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+                NullLogger<ExecutionRetentionService>.Instance,
+                TestDatabaseAvailability.Available);
+
+            await service.RunIterationAsync(TestContext.Current.CancellationToken);
+            (await db.WorkflowExecutions.CountAsync()).Should().Be(0,
+                "the documented best-effort archive policy still permits deletion during an outage");
+
+            File.Delete(blockedParent);
+            Directory.CreateDirectory(blockedParent);
+            var recovered = SeedExecution(db, workflow.Id, ExecutionStatus.Succeeded, DateTime.UtcNow.AddDays(-40));
+
+            await service.RunIterationAsync(TestContext.Current.CancellationToken);
+
+            Directory.Exists(archivePath).Should().BeTrue("the same path must be probed again after failure");
+            var archive = Directory.GetFiles(archivePath, "executions-*.ndjson").Should().ContainSingle().Subject;
+            (await File.ReadAllTextAsync(archive)).Should().Contain(recovered.Id.ToString());
+            (await db.WorkflowExecutions.CountAsync()).Should().Be(0);
+        }
+        finally
+        {
+            db.Dispose();
+            conn.Dispose();
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     /// <summary>
     /// Hot-reload: RunIterationAsync reads IOptionsMonitor&lt;RetentionOptions&gt;.CurrentValue per
     /// pass, so a live toggle of Retention:Executions:Enabled takes effect without a restart.

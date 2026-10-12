@@ -204,30 +204,7 @@ public class NotificationDispatcher : BackgroundService
         var suppressionCache = new Dictionary<(Guid, string), NotificationSuppressionState>();
         foreach (var (policy, ctx) in fires)
         {
-            var dedupKey = NotificationRuleSemantics.BuildDedupKey(policy, ctx);
-            var supp = await GetSuppressionAsync(db, suppressionCache, policy.Id, dedupKey, ct);
-            if (!ShouldFire(supp, policy, now)) continue;
-            supp.LastFiredAt = now;
-
-            foreach (var route in NotificationRuleSemantics.MatchingRoutes(policy, ctx))
-            {
-                var eventKey = ctx.EventKey;
-                var exists = await db.NotificationDeliveryAttempts
-                    .AnyAsync(a => a.NotificationRuleId == policy.Id && a.NotificationRouteId == route.Id && a.EventKey == eventKey, ct);
-                if (exists) continue;
-                var attempt = new NotificationDeliveryAttempt
-                {
-                    Id = Guid.NewGuid(),
-                    NotificationRuleId = policy.Id,
-                    NotificationRouteId = route.Id,
-                    EventKey = eventKey,
-                    DedupKey = dedupKey,
-                    Status = NotificationDeliveryStatus.Pending,
-                    CreatedAt = now,
-                };
-                db.NotificationDeliveryAttempts.Add(attempt);
-                toSend.Add((attempt, route, ctx));
-            }
+            await StageOccurrenceAsync(db, policy, ctx, suppressionCache, toSend, now, ct);
         }
 
         return await PersistAndSendAsync(db, store, toSend, now, leaseEpoch, ct);
@@ -255,37 +232,45 @@ public class NotificationDispatcher : BackgroundService
             {
                 if (!NotificationRuleSemantics.RuleMatches(rule, ctx)) continue;
 
-                var matchingRoutes = NotificationRuleSemantics.MatchingRoutes(rule, ctx);
-                if (matchingRoutes.Count == 0) continue;
-
-                var dedupKey = NotificationRuleSemantics.BuildDedupKey(rule, ctx);
-                var supp = await GetSuppressionAsync(db, suppressionCache, rule.Id, dedupKey, ct);
-                if (!ShouldFire(supp, rule, now)) continue;
-                supp.LastFiredAt = now;
-
-                foreach (var route in matchingRoutes)
-                {
-                    var eventKey = ctx.EventKey;
-                    var exists = await db.NotificationDeliveryAttempts
-                        .AnyAsync(a => a.NotificationRuleId == rule.Id && a.NotificationRouteId == route.Id && a.EventKey == eventKey, ct);
-                    if (exists) continue;
-                    var attempt = new NotificationDeliveryAttempt
-                    {
-                        Id = Guid.NewGuid(),
-                        NotificationRuleId = rule.Id,
-                        NotificationRouteId = route.Id,
-                        EventKey = eventKey,
-                        DedupKey = dedupKey,
-                        Status = NotificationDeliveryStatus.Pending,
-                        CreatedAt = now,
-                    };
-                    db.NotificationDeliveryAttempts.Add(attempt);
-                    toSend.Add((attempt, route, ctx));
-                }
+                await StageOccurrenceAsync(db, rule, ctx, suppressionCache, toSend, now, ct);
             }
         }
 
         return await PersistAndSendAsync(db, store, toSend, now, leaseEpoch, ct);
+    }
+
+    // Delivery identity is checked before mutating cooldown/count state in either rule family.
+    private async Task StageOccurrenceAsync(
+        NodePilotDbContext db, NotificationRule rule, NotificationContext ctx,
+        Dictionary<(Guid, string), NotificationSuppressionState> suppressionCache,
+        List<(NotificationDeliveryAttempt attempt, NotificationRoute route, NotificationContext ctx)> toSend,
+        DateTime now, CancellationToken ct)
+    {
+        var matchingRoutes = NotificationRuleSemantics.MatchingRoutes(rule, ctx);
+        if (matchingRoutes.Count == 0) return;
+        var deliveredRouteIds = await db.NotificationDeliveryAttempts
+            .Where(a => a.NotificationRuleId == rule.Id && a.EventKey == ctx.EventKey)
+            .Select(a => a.NotificationRouteId).ToListAsync(ct);
+        var routes = matchingRoutes.Where(r => !deliveredRouteIds.Contains(r.Id)
+            && !toSend.Any(s => s.attempt.NotificationRuleId == rule.Id
+                && s.attempt.NotificationRouteId == r.Id && s.attempt.EventKey == ctx.EventKey)).ToList();
+        if (routes.Count == 0) return;
+
+        var dedupKey = NotificationRuleSemantics.BuildDedupKey(rule, ctx);
+        var supp = await GetSuppressionAsync(db, suppressionCache, rule.Id, dedupKey, ct);
+        if (!await ShouldFireAsync(db, supp, rule, ctx.EventKey, now, ct)) return;
+        supp.LastFiredAt = now;
+        foreach (var route in routes)
+        {
+            var attempt = new NotificationDeliveryAttempt
+            {
+                Id = Guid.NewGuid(), NotificationRuleId = rule.Id, NotificationRouteId = route.Id,
+                EventKey = ctx.EventKey, DedupKey = dedupKey,
+                Status = NotificationDeliveryStatus.Pending, CreatedAt = now,
+            };
+            db.NotificationDeliveryAttempts.Add(attempt);
+            toSend.Add((attempt, route, ctx));
+        }
     }
 
     /// <summary>
@@ -468,13 +453,34 @@ public class NotificationDispatcher : BackgroundService
     }
 
     // Cooldown + flap suppression. Returns true when the rule may fire for this occurrence.
-    private static bool ShouldFire(NotificationSuppressionState supp, NotificationRule rule, DateTime now)
+    private static async Task<bool> ShouldFireAsync(NodePilotDbContext db,
+        NotificationSuppressionState supp, NotificationRule rule, string eventKey,
+        DateTime now, CancellationToken ct)
     {
+        var countsOccurrences = rule.MinOccurrences > 1 && rule.OccurrenceWindowMinutes > 0;
+        if (countsOccurrences)
+        {
+            var counted = db.NotificationOccurrenceStates.Local.FirstOrDefault(s =>
+                s.NotificationRuleId == rule.Id && s.EventKey == eventKey)
+                ?? await db.NotificationOccurrenceStates.FirstOrDefaultAsync(s =>
+                    s.NotificationRuleId == rule.Id && s.EventKey == eventKey, ct);
+            if (counted is not null)
+            {
+                counted.LastObservedAt = now;
+                return false;
+            }
+        }
         if (rule.CooldownMinutes > 0 && supp.LastFiredAt is { } last && now < last.AddMinutes(rule.CooldownMinutes))
             return false;
 
-        if (rule.MinOccurrences > 1 && rule.OccurrenceWindowMinutes > 0)
+        if (countsOccurrences)
         {
+            // Commit the counted identity together with suppression/episode/cursor state and
+            // Pending deliveries. A restart cannot count an unsent, resampled event again.
+            db.NotificationOccurrenceStates.Add(new NotificationOccurrenceState
+            {
+                Id = Guid.NewGuid(), NotificationRuleId = rule.Id, EventKey = eventKey, LastObservedAt = now,
+            });
             if (supp.WindowStartedAt is not { } start || now > start.AddMinutes(rule.OccurrenceWindowMinutes))
             {
                 supp.WindowStartedAt = now;
@@ -482,7 +488,7 @@ public class NotificationDispatcher : BackgroundService
             }
             supp.OccurrenceCount++;
             if (supp.OccurrenceCount < rule.MinOccurrences) return false;
-            supp.OccurrenceCount = 0; // reset after firing
+            supp.OccurrenceCount = 0;
         }
         return true;
     }

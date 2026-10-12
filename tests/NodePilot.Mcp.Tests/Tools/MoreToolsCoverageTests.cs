@@ -154,7 +154,11 @@ public sealed class MoreToolsCoverageTests
 
         var tools = new CanvasAssistantTools(api.Client());
         var json = J(await tools.GetWorkflowNode(id.ToString(), "n1"));
-        json.Should().Contain("https://x");
+        // The shared definition policy treats REST URLs as opaque runtime content, including
+        // URLs without a recognizable token pattern. The single-node tool must match it.
+        json.Should().NotContain("https://x");
+        json.Should().Contain("\"url\":\"***\"");
+        json.Should().Contain("\"activityType\":\"restApi\"");
         json.Should().NotContain("sk-live");
         json.Should().Contain("***");
 

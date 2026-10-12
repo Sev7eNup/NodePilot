@@ -19,6 +19,83 @@ public sealed class MoreReadEditToolsTests
 
     // ---- Workflow read gaps -------------------------------------------------
 
+    [Theory]
+    [InlineData("manualTrigger", "parameters")]
+    [InlineData("restApi", "url")]
+    public async Task GetWorkflowNode_PreservesActivityAwareRedaction(string activityType, string opaqueKey)
+    {
+        var id = Guid.NewGuid();
+        var definition = JsonSerializer.Serialize(new
+        {
+            nodes = new[] { new { id = "selected", data = new
+            {
+                activityType, label = "Selected step", config = new Dictionary<string, object>
+                {
+                    [opaqueKey] = activityType == "manualTrigger"
+                        ? new[] { new { name = "token", type = "string", required = false, @default = "private-runtime-value" } }
+                        : "https://service.example/api?code=private-runtime-value",
+                    ["method"] = "GET",
+                },
+            } } },
+            edges = Array.Empty<object>(),
+        });
+        using var api = new TestApi();
+        api.Server.Given(Request.Create().WithPath($"/api/workflows/{id}").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithBodyAsJson(TestApi.WorkflowResponse(id, "WF", definition)));
+
+        var serialized = J(await new CanvasAssistantTools(api.Client()).GetWorkflowNode(id.ToString(), "selected"));
+        serialized.Should().NotContain("private-runtime-value");
+        using var document = JsonDocument.Parse(serialized);
+        var node = document.RootElement.GetProperty("node");
+        node.GetProperty("id").GetString().Should().Be("selected");
+        node.GetProperty("data").GetProperty("label").GetString().Should().Be("Selected step");
+        var config = node.GetProperty("data").GetProperty("config");
+        config.GetProperty(opaqueKey).GetString().Should().Be("***");
+        config.GetProperty("method").GetString().Should().Be("GET");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GetWorkflowContract_MasksLiteralDefaultsInToolOutput_PreservingDeclarations(bool byName)
+    {
+        var id = Guid.NewGuid();
+        using var api = new TestApi();
+        var path = byName ? "/api/workflows/by-name/Provision/contract" : $"/api/workflows/{id}/contract";
+        api.Server.Given(Request.Create().WithPath(path).UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                workflowId = id, workflowName = "Provision", hasManualTrigger = true, hasReturnData = true,
+                hasMultipleReturnDataNodes = false,
+                inputs = new[]
+                {
+                    new { name = "token", type = "string", required = false, @default = "private-deployment-token", description = "API token", hasConflict = false },
+                    new { name = "optional", type = "string", required = false, @default = "", description = "Optional input", hasConflict = true },
+                    new { name = "target", type = "string", required = true, @default = (string?)null, description = "Machine", hasConflict = false },
+                },
+                outputs = new[] { new { name = "result", source = "single" } },
+            }));
+
+        var serialized = J(await new WorkflowReadTools(api.Client())
+            .GetWorkflowContract(byName ? "Provision" : id.ToString()));
+        serialized.Should().NotContain("private-deployment-token");
+        using var document = JsonDocument.Parse(serialized);
+        var root = document.RootElement;
+        root.GetProperty("workflowId").GetGuid().Should().Be(id);
+        var inputs = root.GetProperty("inputs");
+        inputs.GetArrayLength().Should().Be(3);
+        inputs[0].GetProperty("default").GetString().Should().Be("***");
+        inputs[0].GetProperty("name").GetString().Should().Be("token");
+        inputs[0].GetProperty("type").GetString().Should().Be("string");
+        inputs[0].GetProperty("description").GetString().Should().Be("API token");
+        inputs[1].GetProperty("default").GetString().Should().Be("***");
+        inputs[1].GetProperty("hasConflict").GetBoolean().Should().BeTrue();
+        inputs[2].GetProperty("default").ValueKind.Should().Be(JsonValueKind.Null);
+        inputs[2].GetProperty("required").GetBoolean().Should().BeTrue();
+        root.GetProperty("outputs")[0].GetProperty("name").GetString().Should().Be("result");
+    }
+
     [Fact]
     public async Task GetWorkflowContract_ById_ReturnsInputsOutputs()
     {

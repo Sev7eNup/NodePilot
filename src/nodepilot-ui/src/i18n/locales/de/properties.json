@@ -44,6 +44,8 @@
       "manualMocks": "Manuelle Mocks"
     },
     "loadingRuns": "Lade Run-Historie …",
+    "loadingContext": "Lade Testeingaben …",
+    "contextLoadFailed": "Der Testkontext konnte nicht geladen werden. Lade ihn erneut, bevor du die Activity ausführst.",
     "noRuns": "Noch keine abgeschlossenen Runs für diesen Workflow.",
     "selectRun": "Run wählen …",
     "stepDidNotRun": "Step lief nicht",

@@ -266,7 +266,9 @@ public sealed class CanvasAssistantToolsTests
         var wf = Guid.NewGuid();
         var exec = Guid.NewGuid();
         using var api = new TestApi();
-        api.Server.Given(Request.Create().WithPath("/api/executions").UsingGet())
+        api.Server.Given(Request.Create().WithPath("/api/executions").UsingGet()
+                .WithParam("workflowId", wf.ToString()).WithParam("status", "Failed")
+                .WithParam("page", "1").WithParam("pageSize", "1"))
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
                 items = new[]
@@ -274,7 +276,7 @@ public sealed class CanvasAssistantToolsTests
                     new { id = exec, workflowId = wf, status = "Failed", startedAt = DateTime.UtcNow,
                           completedAt = (DateTime?)DateTime.UtcNow, triggeredBy = "manual", errorMessage = "boom" },
                 },
-                page = 1, pageSize = 200, total = 1, totalPages = 1,
+                page = 1, pageSize = 1, total = 100_000, totalPages = 100_000,
             }));
         api.Server.Given(Request.Create().WithPath($"/api/executions/{exec}/steps").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[]
@@ -288,5 +290,6 @@ public sealed class CanvasAssistantToolsTests
         var json = J(await Tools(api).GetFailureContext(wf.ToString()));
         json.Should().Contain("access denied");
         json.Should().Contain("n1");
+        api.Server.LogEntries.Should().HaveCount(2, "only the latest failed run and its steps are needed");
     }
 }

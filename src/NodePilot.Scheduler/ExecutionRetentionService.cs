@@ -145,9 +145,9 @@ public class ExecutionRetentionService : LeaderGatedRetentionService
         return totalDeleted;
     }
 
-    // L-16: probe — caches whether the archive path is write-good, bad, or unset.
-    // null = not yet probed, "" = disabled (probe failed or unset), otherwise the validated
-    // absolute path. Lives on the instance so we don't re-probe the disk every hour.
+    // L-16: cache successful probes and an unset archive path.
+    // null = needs a probe (including a previous failure), "" = unset, otherwise the
+    // validated absolute path. Failed probes are retried on the next sweep pass.
     //
     // Hot-reload: when the configured path changes (Admin-Settings-UI save or runtime config
     // overlay), we drop the cache so the new path is re-validated (and its directory created)
@@ -192,9 +192,8 @@ public class ExecutionRetentionService : LeaderGatedRetentionService
         {
             _logger.LogError(ex,
                 "Retention archive path '{Path}' is not writable. Retention will still delete " +
-                "rows but will NOT archive them. Fix Retention:Executions:ArchivePath or clear " +
+                "rows but will NOT archive them during this pass. The next pass retries the path. Fix Retention:Executions:ArchivePath or clear " +
                 "it to silence this message.", configured);
-            _validatedArchivePath = "";
             return "";
         }
     }

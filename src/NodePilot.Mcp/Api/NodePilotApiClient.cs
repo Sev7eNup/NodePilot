@@ -258,25 +258,19 @@ public sealed partial class NodePilotApiClient
 
     // ---- Executions (read) --------------------------------------------------
 
-    public async Task<List<ExecutionResponse>> ListExecutionsAsync(
-        Guid? workflowId, bool? activeOnly, bool? terminalOnly, CancellationToken ct)
+    public async Task<PagedResponse<ExecutionResponse>> ListExecutionsAsync(
+        Guid? workflowId, bool? activeOnly, bool? terminalOnly, int limit, string? status, CancellationToken ct)
     {
         EnsureReady();
         var q = new List<string>();
         if (workflowId is { } w) q.Add($"workflowId={w}");
         if (activeOnly == true) q.Add("activeOnly=true");
         if (terminalOnly == true) q.Add("terminalOnly=true");
-        var baseUrl = "api/executions" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
-        var results = new List<ExecutionResponse>();
-        for (var page = 1; ; page++)
-        {
-            var separator = baseUrl.Contains('?') ? '&' : '?';
-            using var res = await _http.GetAsync(
-                $"{baseUrl}{separator}page={page}&pageSize=200", ct);
-            var response = await ParseAsync<PagedResponse<ExecutionResponse>>(res, ct);
-            results.AddRange(response.Items);
-            if (page >= response.TotalPages) return results;
-        }
+        if (!string.IsNullOrWhiteSpace(status)) q.Add($"status={Uri.EscapeDataString(status)}");
+        q.Add("page=1");
+        q.Add($"pageSize={Math.Clamp(limit, 1, 200)}");
+        using var res = await _http.GetAsync("api/executions?" + string.Join("&", q), ct);
+        return await ParseAsync<PagedResponse<ExecutionResponse>>(res, ct);
     }
 
     public async Task<ExecutionResponse> GetExecutionAsync(Guid id, CancellationToken ct)

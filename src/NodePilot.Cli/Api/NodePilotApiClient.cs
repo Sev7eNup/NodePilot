@@ -294,20 +294,21 @@ public sealed partial class NodePilotApiClient
 
     // ---- Executions ---------------------------------------------------------
 
-    public async Task<List<ExecutionResponse>> ListExecutionsAsync(Guid? workflowId, CancellationToken ct)
+    public async Task<List<ExecutionResponse>> ListExecutionsAsync(Guid? workflowId, CancellationToken ct, int? limit = null)
     {
         var basePath = workflowId.HasValue
             ? $"api/executions?workflowId={workflowId}"
             : "api/executions";
         var results = new List<ExecutionResponse>();
+        var pageSize = limit is > 0 ? Math.Min(200, limit.Value) : 200;
         for (var page = 1; ; page++)
         {
             var separator = basePath.Contains('?') ? '&' : '?';
             using var res = await _http.GetAsync(
-                $"{basePath}{separator}page={page}&pageSize=200", ct);
+                $"{basePath}{separator}page={page}&pageSize={pageSize}", ct);
             var response = await ParseAsync<PagedResponse<ExecutionResponse>>(res, ct);
-            results.AddRange(response.Items);
-            if (page >= response.TotalPages) return results;
+            results.AddRange(limit is > 0 ? response.Items.Take(limit.Value - results.Count) : response.Items);
+            if (page >= response.TotalPages || (limit is > 0 && results.Count >= limit.Value)) return results;
         }
     }
 

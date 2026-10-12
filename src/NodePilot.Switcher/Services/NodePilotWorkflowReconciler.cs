@@ -116,7 +116,7 @@ internal sealed class NodePilotWorkflowReconciler
         CancellationToken cancellationToken)
     {
         progress?.Report(new SwitchProgress(SwitchProgressKind.ReconcilingWorkloads, "NodePilot workflows"));
-        var workflows = await ListAsync(configuration, cancellationToken).ConfigureAwait(false);
+        var workflows = await ListAsync(configuration, cancellationToken, waitForStartup: true).ConfigureAwait(false);
         if (workflows.Count >= 500)
             throw new InvalidOperationException("NodePilot returned 500 workflows. Strict reconciliation is unsafe because the API result may be truncated.");
 
@@ -249,9 +249,10 @@ internal sealed class NodePilotWorkflowReconciler
 
     private async Task<IReadOnlyList<NodePilotWorkflow>> ListAsync(
         NodePilotWorkloadConfiguration configuration,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool waitForStartup = false)
     {
-        var result = await RunAsync(configuration, ["workflow", "list", "-o", "json", "--no-color"], cancellationToken)
+        var result = await RunAsync(configuration, ["workflow", "list", "-o", "json", "--no-color"], cancellationToken, waitForStartup)
             .ConfigureAwait(false);
         try
         {
@@ -275,10 +276,13 @@ internal sealed class NodePilotWorkflowReconciler
     private async Task<CommandResult> RunAsync(
         NodePilotWorkloadConfiguration configuration,
         IReadOnlyList<string> commandArguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool waitForStartup = false)
     {
         var arguments = WithConnectionArguments(configuration, commandArguments);
-        var result = await RunCommandAsync(configuration, arguments, cancellationToken).ConfigureAwait(false);
+        var result = waitForStartup
+            ? await RunInitialReadAsync(configuration, arguments, cancellationToken).ConfigureAwait(false)
+            : await RunCommandAsync(configuration, arguments, cancellationToken).ConfigureAwait(false);
         // With the machine key there is no sign-in to retry: a rejected key must stop the switch
         // instead of silently continuing under another identity.
         if (result.ExitCode != 0 && ResolveSwitcherKeyFile(configuration) is not null)
@@ -302,6 +306,33 @@ internal sealed class NodePilotWorkflowReconciler
         if (result.ExitCode != 0)
             throw CommandFailure(result);
         return result;
+    }
+
+    private async Task<CommandResult> RunInitialReadAsync(
+        NodePilotWorkloadConfiguration configuration,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
+    {
+        // SCM Running precedes database boot and Kestrel readiness. Only this first read
+        // may retry the CLI's explicit unavailable result; never replay mutations or auth.
+        const int serverUnavailable = 5; // NodePilot.Cli.ExitCodes.ServerUnavailable
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(configuration.CommandTimeoutSeconds));
+        try
+        {
+            while (true)
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                var result = await RunCommandAsync(configuration, arguments, deadline.Token).ConfigureAwait(false);
+                if (result.ExitCode != serverUnavailable) return result;
+                _logger.Info("NodePilot API is starting; waiting before reading the workflow inventory again.");
+                await Task.Delay(TimeSpan.FromMilliseconds(250), deadline.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"NodePilot API did not become available within {configuration.CommandTimeoutSeconds} seconds.");
+        }
     }
 
     /// <summary>

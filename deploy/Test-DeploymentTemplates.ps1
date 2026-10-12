@@ -2355,6 +2355,62 @@ Assert-TextDoesNotMatch -Name 'the registry ACL is never addressed with -Literal
 Assert-TextMatches -Name 'the service registry key is restricted before the passphrase is written' `
     -Text $installerScript `
     -Pattern '(?s)if \(\$SeedBackupPassphrase\) \{[\s\S]{0,400}Set-ServiceRegistryAclForSecrets[\s\S]{0,400}Provisioning__SeedBackupPassphrase'
+
+# Execute only the rollback helper with fake OS commands. In SQL Server deployments the
+# seed passphrase still needs protection even though no Postgres connection string exists.
+& {
+    $rollbackTokens = $null
+    $rollbackErrors = $null
+    $installerAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $installerScript, [ref]$rollbackTokens, [ref]$rollbackErrors)
+    if ($rollbackErrors.Count) { throw 'Installer contains PowerShell syntax errors.' }
+    $restoreFunction = $installerAst.Find({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Restore-ServiceRollbackSnapshot'
+    }, $false)
+    if (-not $restoreFunction) { throw 'Service rollback helper was not found.' }
+    . ([scriptblock]::Create($restoreFunction.Extent.Text))
+    $state = @{ Events = New-Object 'System.Collections.Generic.List[string]'; AclFails = $false; Written = @() }
+    function Invoke-CimMethod {
+        param($ClassName, $MethodName, $Arguments)
+        $state.Events.Add('create')
+        [pscustomobject]@{ ReturnValue = 0 }
+    }
+    function Set-ServiceRegistryAclForSecrets {
+        param($Path)
+        $state.Events.Add('acl')
+        if ($state.AclFails) { throw 'Fixture ACL failure' }
+    }
+    function New-ItemProperty {
+        param($Path, $Name, $PropertyType, $Value, [switch]$Force)
+        $state.Events.Add('write')
+        $state.Written = @($Value)
+    }
+    function Start-Service { param($Name, $ErrorAction) $state.Events.Add('start') }
+    function sc.exe { throw 'Unexpected native service-control call in rollback fixture.' }
+    $snapshot = [pscustomobject]@{
+        Name = 'NodePilotFixture'; DisplayName = 'NodePilot fixture'; PathName = 'fixture.exe'
+        StartName = 'LocalSystem'; StartMode = 'Manual'; DelayedAutoStart = 0
+        DependOnService = @(); WasRunning = $true
+        Environment = @('Database__Provider=SqlServer', 'Provisioning__SeedBackupPassphrase=fixture-only')
+    }
+    Restore-ServiceRollbackSnapshot -Snapshot $snapshot
+    if (($state.Events -join ',') -ne 'create,acl,write,start') {
+        throw 'Service rollback must restrict the registry ACL before restoring a SQL Server seed passphrase and restarting.'
+    }
+    if (($state.Written -join "`n") -cne ($snapshot.Environment -join "`n")) {
+        throw 'Service rollback must preserve the complete environment snapshot.'
+    }
+    $state.Events.Clear()
+    $state.Written = @()
+    $state.AclFails = $true
+    $failure = $null
+    try { Restore-ServiceRollbackSnapshot -Snapshot $snapshot } catch { $failure = $_ }
+    if ($null -eq $failure -or ($state.Events -join ',') -ne 'create,acl' -or $state.Written.Count -ne 0) {
+        throw 'A failed rollback ACL restriction must prevent both environment writes and service restart.'
+    }
+    Write-Host '  OK  service rollback protects SQL Server seed secrets before writes and fails closed on ACL errors' -ForegroundColor DarkGray
+}
 # Copied in with the same restricted writer as the configuration; a plain Copy-Item would inherit
 # from DataPath.
 Assert-TextMatches -Name 'the staged seed file gets a restricted ACL' `

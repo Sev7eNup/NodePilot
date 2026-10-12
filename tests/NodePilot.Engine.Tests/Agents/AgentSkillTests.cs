@@ -218,8 +218,10 @@ public sealed class AgentSkillTests
         }
         finally { await target.DisposeAsync(); }
         Assert.False(Directory.Exists(staging));
-        factory.Verify(f => f.CreateSessionAsync(It.IsAny<ManagedMachine>(), It.IsAny<Credential>(), It.IsAny<CancellationToken>()), Times.Once);
-        session.Verify(s => s.DisposeAsync(), Times.Once);
+        var scriptCalls = session.Invocations.Count(i => i.Method.Name == nameof(IRemoteSession.ExecuteScriptAsync));
+        Assert.True(scriptCalls > 1);
+        factory.Verify(f => f.CreateSessionAsync(It.IsAny<ManagedMachine>(), It.IsAny<Credential>(), It.IsAny<CancellationToken>()), Times.Exactly(scriptCalls));
+        session.Verify(s => s.DisposeAsync(), Times.Exactly(scriptCalls));
     }
 
     [Theory]

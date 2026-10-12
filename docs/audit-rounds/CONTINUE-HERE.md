@@ -1,65 +1,99 @@
-# Hier das pausierte Audit fortsetzen
+# Auditstand und nächster Einstieg
 
-Stand: 9. Oktober 2026. Projekt: `E:\NodePilot`.
-Branch: `audit/architecture-security-2026-10-09`; Ausgangscommit: `a96eb96`.
+Stand: 12. Oktober 2026. Projekt: E:\NodePilot.
+Aktueller Branch nach der beauftragten lokalen Übernahme: `main`.
+Audit-Branch: `audit/practical-impact-2026-10-12`.
+Basis: `de7105810af83cd21d20e32fc86bfbd3b4e280f4` auf lokalem `main`.
 
-## Vor dem Weiterarbeiten
+## Aktuelles Ergebnis
 
-Der Nutzer hat das Audit ausdrücklich pausiert und anschließend die Sicherung des
-Zwischenstands angefordert. **Erst auf seine Aufforderung weiterprüfen.** Das Goal
-ist `paused`, nicht `complete`. Keine neue Goal-Kopie anlegen.
+Die ausdrücklich angeforderte unabhängige Zusatzprüfung ist abgeschlossen.
+Ein neuer Agent ohne Gesprächskontext und ohne Kenntnis früherer Auditberichte,
+Fixlisten oder Prüfprotokolle hat beide Skills auf den aktuellen Arbeitsbaum
+angewandt. Zwei ebenfalls kontextfreie Teilprüfer unterstützten die Quellprüfung.
 
-Zuerst `git status` und den Branch prüfen. Umfangreiche lokale Änderungen und neue
-Dateien sind beabsichtigt. Nichts zurücksetzen, bereinigen oder durch einen älteren
-Stand ersetzen. Es gibt keinen Audit-Commit. Commit, Push, PR und Deployment sind
-weiterhin nicht freigegeben.
+**Diese Runde war keine Nullfundrunde:** Sie bestätigte fünf weitere Medium-Funde
+(#143–#147), davon einen Sicherheitsbefund. Alle fünf wurden nach Gegenprüfung
+behoben und gezielt getestet. Die anschließende Gegenprüfung der Integration und
+weitere Quellprüfungen ergaben keine weiteren bestätigten Funde im beauftragten
+Scope: Critical/High sowie Medium mit konkreter Alltagsauswirkung. Das ist ein
+risikobasiertes Ergebnis, keine Zusicherung unbekannter Fehlerfreiheit.
+
+Runde 5 hatte acht Korrekturen (#134–#141), Runde 6 eine weitere (#142). Das
+damalige Nullfundergebnis der Runde 7 bleibt historisch nachvollziehbar, wurde
+aber durch die zusätzlichen Funde dieser unabhängigen Runde ergänzt.
 
 ## Maßgebliche Unterlagen
 
-1. [Pausenstand](pause-2026-10-09.md): letzte Testergebnisse, offene Punkte und Grenzen.
-2. [Alle 131 Korrekturen](fix-list-de.md): einfache Erklärung und mögliche Alltagsfolgen.
-3. [Gesamtbericht](../architecture-security-review-2026-10-09.md): Methodik und Vorgeschichte.
-4. [Runde 4](round-4.md) und deren verlinkte Teilberichte: tatsächliche Quellenabdeckung.
-5. [Designer-Restprüfung](round-4-designer.md): genauer Lesestand und Kandidat 134.
+1. [Unabhängiger Bericht](../independent-review-2026-10-12.md): Funde,
+   Quellabdeckung und Grenzen, Gegenprüfung, vollständige Testbefehle.
+2. [Alle 145 Korrekturen einfach erklärt](fix-list-de.md): mögliche Alltagsfolgen,
+   keine behaupteten Vorfälle auf der Nutzerinstallation.
+3. [Aktuelle Dateihashes](independent-state-2026-10-12.json): Produktcode,
+   Tests, Deploymentskripte und betroffene Produktdokumentation.
+4. Historische [Runde 5](round-5.md), [Runde 6](round-6.md),
+   [Runde 7](round-7.md) und deren [Hashmanifest](final-state-2026-10-12.json).
+5. [Ursprünglicher Review](../architecture-security-review-2026-10-09.md)
+   und [früherer Pausenstand](pause-2026-10-09.md).
 
-Diese Unterlagen enthalten den fachlichen Stand; nicht aus einer verkürzten
-Chat-Zusammenfassung auf einen Abschluss oder eine Nullfundrunde schließen.
+## Neue Korrekturen und Nachweise
 
-## Auftrag nach Wiederaufnahme
+- #143: Gespeicherte ausstehende Execution-/Audit-Alarme finden ihre erhaltenen
+  Quellereignisse auch außerhalb des normalen Suchzeitraums.
+- #144: Agenten halten WinRM-Verbindungsplätze nur während des Remote-Aufrufs.
+- #145: Gemeinsame Alarmverarbeitung prüft vorhandene Zustellungen vor der
+  Sperrzeit und zählt Ereignisse dauerhaft nur einmal. Neue Migration:
+  `20261012070731_TrackNotificationOccurrences`. Bereinigung und Regellöschung
+  entfernen die zugehörigen Einträge.
+- #146: Desktop-Rollback stellt die ursprüngliche Verbindungsdatei samt ACL wieder her.
+- #147: Server-Rollback schützt die Registry vor Wiederherstellung der
+  Dienstumgebung auch bei SQL-Server-/Seed-Backup-Konfigurationen.
 
-Die Skills `improve-codebase-architecture` und `audit-ai-slop-code` erneut anwenden;
-zusätzlich strukturelle Probleme, Duplikate und unnötigen Code untersuchen. Ihre
-Quellen sind `E:/NodePilot/.agents/skills/improve-codebase-architecture/SKILL.md`
-und `C:/Users/flori/.codex/skills/audit-ai-slop-code/SKILL.md`.
-Root-/UI-`CLAUDE.md`, `CONTEXT.md` und passende ADRs beachten.
+102 gezielte Engine-/Alert-/Pooltests und zwei Skillintegrationen bestanden;
+anschließend 96 Alarm-/Bereinigungstests, zwölf Migrationsprüfungen und sechs
+Regel-Lebenszyklustests. Die Testmengen überschneiden sich; ihre Summe ist keine
+Anzahl einzigartiger Tests. Drei PowerShell-Prüfskripte bestanden.
+RED-Nachweise existieren für #145–#147; für #143/#144 wurde kein RED-Lauf ausgeführt.
 
-Zuerst offene Runde-4-Flächen und die im Pausenstand dokumentierten Punkte 133/134
-bearbeiten. 134 ist ein **vorläufiger Medium-Kandidat ohne unabhängige Gegenprüfung
-und ohne Reproduktion**; nicht als bestätigten oder behobenen Fund ausgeben.
-133 wurde nicht implementiert. ID 70 bleibt unbestätigt und fehlt deshalb bewusst
-in der Fixliste. Nächste neue Finding-ID: 135.
+Die Logs für #145 liegen unter `E:/NodePilot-independent-145-*.log` (red, green,
+drift, rule-lifecycle, migration, build). Die übrigen Nachweise sind in den
+Toolausgaben und im unabhängigen Bericht dokumentiert. Der erste Debug-Build
+scheiterte an gesperrten DLLs der laufenden Entwicklungs-API; Migrationserzeugung
+mit separater Buildkonfiguration `Independent145` und Folgeprüfungen gelangen.
 
-Danach einen neuen Inventarstand festhalten und eine frische vollständige Runde 5
-beider Analysen durchführen. Nach sinnvollen bestätigten Korrekturen wieder
-projektweit prüfen. Erst eine vollständige Runde ohne neue/offene Critical-,
-High- oder Medium-Funde erfüllt das ursprüngliche Ziel. Regressionstests allein
-erfüllen es nicht. Der Nutzer hat einen zu frühen Abschluss ausdrücklich beanstandet.
+## Arbeitsbaum und Freigaben
 
-## Arbeitsregeln und Sicherung
+- Die 14 neuen Korrekturen dieser Fortsetzung (#134–#147) wurden auf ausdrücklichen
+  Nutzerauftrag lokal committet und per Fast-forward nach `main` übernommen.
+  Commit-Titel: `Fix practical-impact audit findings and record independent review`.
+  Kein Push, PR oder Deployment. Die Auditberichte und Hashmanifeste dokumentieren
+  den Prüfstand vor dieser anschließenden lokalen Übernahme.
+- Frühere Korrekturen wurden mit `318ae01` lokal committet und sind in der Basis.
+- `src/nodepilot-docs-ui/src/site/image-manifest.json` war vorher geändert und
+  wurde nicht bearbeitet. Nicht als Auditänderung übernehmen.
+- Die neue Migration wurde weder auf die laufende Entwicklungsdatenbank noch
+  auf CM1 angewandt. Bestehende Dienste und Entwicklungsprozesse wurden nicht
+  neu gestartet. Die laufende Instanz repräsentiert daher weiterhin ihren zuvor
+  gestarteten Stand.
+- Lose Auditlogs und Buildartefakte nicht pauschal mitcommitten. Vor einer
+  späteren Fortsetzung Branch, Arbeitsbaum und aktuelles Hashmanifest prüfen;
+  nichts zurücksetzen oder aus alten Sicherungen überschreiben.
 
-- Alle bisherigen Agenten und Testprozesse sind beendet. Ihre Reports sind die
-  verlässliche Übergabe; keine Verfügbarkeit ihrer Sitzungen voraussetzen.
-- .NET-Builds/Tests seriell ausführen: gemeinsame `bin`-/`obj`-Verzeichnisse.
-- Keine echten Installer, Restore-, Dienst-, WinRM-, Lab- oder Lastaktionen aus
-  diesem Audit ableiten. Bekannte externe Test-Skips ausdrücklich benennen.
-- Die Fixliste ist numerisch sortiert. ID 81 umfasst gemeinsam Backend und Clients;
-  sie nicht wieder aufteilen oder doppelt zählen.
-- Eine zusätzliche lokale ZIP-Sicherung liegt unter `E:\NodePilot-snapshots`.
-  Die Datei `LATEST.txt` dort verweist auf das zuletzt erzeugte Sicherungsarchiv.
-  Das ZIP enthält Quellstand, nicht ignorierte neue Dateien, Audit-Testprotokolle,
-  Git-Diffs, Git-Status und ein SHA-256-Dateimanifest. Es enthält keine Buildoutputs
-  oder installierten Abhängigkeiten. Vor Wiederherstellung zuerst in ein separates
-  Verzeichnis entpacken und mit dem aktuellen Arbeitsbaum vergleichen.
+## Grenzen und weiterer Einstieg
 
-Ein geeigneter Wiederaufnahmeauftrag lautet: „Setze das pausierte Audit anhand von
-docs/audit-rounds/CONTINUE-HERE.md fort.“
+Keine neue CM1-/Browser-/Installer-/WinRM-/HA-Abnahme oder echte
+Providerdatenbankprüfung. Tests verwenden SQLite, lokale Runspaces und
+simulierte Dienst-/Registry-Aufrufe. Keine vollständige Testsuite oder lückenlose
+Zeilenprüfung behauptet; konkrete Abdeckungslücken stehen in der Berichtsmatrix.
+
+Agent-Registries im portablen Backup sind dokumentiert ausgeschlossen und wurden
+nicht als Defekt behandelt. Ein Verdacht zu großen Skriptausgabepuffern blieb
+unbestätigt; Ausgabe wurde wegen des Databus-Vertrags nicht pauschal gekürzt.
+Pure Edge Cases, Low und kosmetische Refactorings bleiben außerhalb des Auftrags.
+#133 ist Low und nicht implementiert; #70 ist unbestätigt. Nächste freie ID: 148.
+
+Skills: `E:/NodePilot/.agents/skills/improve-codebase-architecture/SKILL.md` und
+`C:/Users/flori/.codex/skills/audit-ai-slop-code/SKILL.md`.
+Root-/UI-CLAUDE, CONTEXT und passende ADRs gelten weiter. .NET-Builds wegen
+gemeinsamer bin-/obj-Verzeichnisse seriell koordinieren. Ohne ausdrückliche
+Anweisung keinen Commit, Push oder Deployment ableiten.

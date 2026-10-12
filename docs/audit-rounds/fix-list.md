@@ -1,7 +1,12 @@
 # Fixed items, explained
 
-Working state on `audit/architecture-security-2026-10-09`. This list was extended during the
-review. The effects describe possible everyday situations, not incidents claimed on your
+Continued on `audit/practical-impact-2026-10-12`; earlier changes from
+`audit/architecture-security-2026-10-09` are included in its base. As of 2026-10-12,
+there are 145 confirmed corrections. An independent follow-up after [Round 7](round-7.md)
+found and repaired five additional Medium defects (#143–#147).
+Their repairs are appended below; the current disposition is in the
+[independent report](../independent-review-2026-10-12.md).
+The effects describe possible everyday situations, not incidents claimed on your
 installation. Technical evidence, severities and limits are in the
 [full report](../architecture-security-review-2026-10-09.md) and the individual round reports.
 A German version is in [fix-list-de.md](fix-list-de.md).
@@ -742,3 +747,103 @@ The same required write permission applies to replace as well as tidy/restore in
 ### 132. Open operations details reload the final error diagnosis
 
 **Low, function.** When an observed run changes from Running to Failed, the error text, failed steps and final count are reloaded. Before, only the status display changed. A mounted component reproduced the missing diagnosis; afterwards all 39 operations detail/page tests pass.
+
+### 134. Step tests use their selected context and retain the correct result owner (Medium)
+
+Context-based tests now wait for successfully loaded inputs and offer retry on load failure.
+Workflow/step identity owns test state, preventing an old response from appearing under the next
+selected step. Empty/manual tests remain available. In practice, a script test receives the
+promised predecessor values and its result is attributed correctly. Delayed response/error
+regressions reproduced the failure; the combined step-test/properties suite passes 41 cases.
+
+### 135. System switching waits for the starting NodePilot API (Medium)
+
+- **Problem:** SCM reports Running while database preparation still delays the API listener. The first CLI read could fail and shut down both automation systems.
+- **Fix:** Only the initial workflow inventory read retries connection refusal or HTTP503 within one bounded deadline. Authentication, TLS and configuration errors still fail immediately; workflow mutations are never replayed.
+- **In practice:** Switching from SCOrch to a stopped NodePilot instance now tolerates normal API startup latency.
+- **Evidence:** Independently confirmed. One reconciler and two CLI regressions failed first; then 132/132 Switcher and 12/12 CLI base-command tests passed, including the deadline and non-replayed writes.
+
+### 136. Scripts preserve the owner of qualified step parameters (Medium)
+
+- **Problem:** A missing `{{lookup.param.hostName}}` could resolve to a same-named short variable from another predecessor.
+- **Fix:** Qualified references use only their named step or output alias. Explicit PowerShell short variables such as `$hostName` remain available.
+- **In practice:** An empty server lookup no longer silently makes the following script use the server returned by a different step.
+- **Evidence:** Independently confirmed; four real RunScript/custom Runspace cases failed first, then 110/110 variable/template/execution cases passed.
+
+### 137. Agent configuration fields belong to the selected step (Medium)
+
+Switching between two agents could retain the first agent's paths or result schema and write
+them into the second on edit. A workflow/node key now resets the existing configuration component
+at the selection boundary. The real panel-switch regression failed before and passes after the
+fix, with 41 combined panel tests and an independent source check.
+
+### 138. MCP protects confidential values in partial views (Medium)
+
+- **Problem:** Contract and individual-node reads could expose stored parameter defaults or REST URLs to the model even though full-definition reads masked them.
+- **Fix:** Contract defaults are masked too; individual nodes are selected from the fully redacted definition. Names, types and other non-secret metadata remain usable.
+- **In practice:** An agent can inspect workflow inputs or a selected node without receiving stored inline secrets. Masked parameters are omitted so the server can apply its real default.
+- **Evidence:** Four actual HTTP/tool-output cases failed first, then all 212 MCP tests passed. Both source paths were independently checked.
+
+### 139. Connection properties show the condition the engine actually evaluates (Medium)
+
+Switching from a simple edge to one with a structured expression retained the simple editor.
+Its edits were ineffective while the hidden expression kept priority. A workflow/edge key now
+opens the appropriate editor. A real selection-change regression failed before; 29 focused
+edge/permissions/condition-editor tests pass, and engine precedence was independently checked.
+
+### 140. Bounded MCP and CLI execution queries read only required pages (Medium)
+
+- **Problem:** Asking for the last 50 executions fetched the entire history first. Older installations paid for increasingly many HTTP requests and large responses; finding the latest failure also scanned every historical run.
+- **Fix:** The existing API bounds the returned page and filters the latest failed execution on the server. The true total remains available.
+- **In practice:** Agents retrieve recent executions and the latest failure diagnosis with few requests even after long periods of operation.
+- **Evidence:** Four HTTP-contract cases failed first, then all 215 MCP tests passed, covering large totals, limit bounds and the server-side failure filter.
+- **CLI countercheck:** `np exec list --limit` now bounds fetching with a constant page size and distinct IDs across page boundaries. Without a positive limit it still reads all pages. Two limit cases failed first; then 136 CLI tests passed. Limit 250 takes two requests and limit 10 takes one.
+
+### 141. An unresponsive share no longer blocks trigger management (Medium)
+
+- **Problem:** Periodic file enumeration could hang on an unavailable share. Disposing that watcher then blocked shared trigger reconciliation.
+- **Fix:** Snapshot collection uses the existing deadline. A stalled source becomes unhealthy; late results cannot publish checkpoints or events.
+- **In practice:** Other schedules and file watchers remain manageable when a watched network share stops responding.
+- **Evidence:** Two barrier cases failed first, then 102/102 FileWatcher/orchestrator tests passed; independently reviewed. No real UNC outage was staged; the native worker may survive until its OS call returns.
+
+### 142. Execution archiving recovers after a temporary path failure (Medium)
+
+- **Problem:** A failed write probe permanently disabled archiving, even after the share recovered. Later expired executions were deleted without an archive until a restart or configuration change.
+- **Fix:** Failed probes retry on the next retention pass. Successful probes stay cached; the documented best-effort deletion policy remains unchanged.
+- **In practice:** Archiving resumes automatically after a temporary archive outage.
+- **Evidence:** A SQLite/filesystem case with a blocked then available directory failed first; all 18 retention tests passed after the fix. Root independently checked the cause, change and evidence. No live UNC outage was required.
+
+### 143. Pending alerts survive longer interruptions (Medium)
+
+- **Problem:** A persisted delivery could fail after an outage because its still-existing execution/audit event had aged out of the short sampling window.
+- **Fix:** Recovery looks up the exact event identity; ordinary sampling retains its time bound.
+- **In practice:** Pending failure notifications resume after a restart while their source record and active rule remain available.
+- **Evidence:** Dispatcher regressions cover retained and deleted old execution/audit rows. Independently reviewed; 104 focused tests passed together with #144. No live CM1 outage exercise.
+
+### 144. Agents release remote connection capacity between calls (Medium)
+
+- **Problem:** Each member held a WinRM lease until the entire team ended. Larger teams could occupy every slot and wait for capacity that would only be released after the waiting team finished.
+- **Fix:** Each actual remote operation owns its lease; the pool retains reusable connections. Member staging and cleanup remain intact.
+- **In practice:** Larger teams and concurrent runs no longer block on idle member reservations until their timeout.
+- **Evidence:** Six members in two batches against the real five-slot pool using local test runspaces; skill upload, integrity checks and cleanup after policy revocation also passed. 104 focused tests with #143; no live WinRM test.
+
+### 145. Alerts count distinct events and old deliveries do not suppress new ones (Medium)
+
+- **Problem:** Repeated sampling could satisfy a minimum-occurrence threshold with one event. Previously delivered events could renew an expired cooldown and suppress a later event. Both system alerts and long-running/queued execution rules were affected.
+- **Fix:** Both paths check delivery identity before suppression. Rules with an occurrence threshold persist counted identities; retention prunes stale entries.
+- **In practice:** A threshold of three means three different events, including after restart. An old delivery cannot restart cooldown and hide a new failure.
+- **Evidence:** Four actual dispatcher regressions failed first; 96 alert/retention tests, twelve migration checks and six rule-lifecycle tests then passed. Rule deletion removes counted identities. The provider-independent `TrackNotificationOccurrences` migration has not been applied to the running development instance or CM1.
+
+### 146. Desktop rollback restores the connection handoff (Medium)
+
+- **Problem:** A failed staged update restored the old application/database but retained the new desktop handoff. A different available port left the shell pointing at the wrong API endpoint.
+- **Fix:** Restore the previous handoff bytes and ACL before restarting, or remove a newly created handoff if none existed before.
+- **In practice:** The shell's endpoint matches the restored API after update failure.
+- **Evidence:** Offline rollback regression with changed ports and ACLs failed before and passed after the fix. OS/database commands are simulated; this is not a full installer run.
+
+### 147. Server rollback retains protection of stored passwords (Medium, security)
+
+- **Problem:** Service recreation restricted the registry key only for PostgreSQL connection strings. A SQL Server installation could still carry a seed-backup passphrase, exposed to local standard users by the recreated key's default permissions.
+- **Fix:** Restrict the key before restoring any service environment. ACL failure prevents secret writes and service restart.
+- **In practice:** A failed repair followed by rollback does not expose the previously protected backup passphrase. Decryption additionally requires the corresponding backup artifact; direct database compromise was not established.
+- **Evidence:** The actual rollback helper runs against simulated Windows commands to verify protection-before-write and fail-closed behavior. Red then green; no live service ACL mutation.

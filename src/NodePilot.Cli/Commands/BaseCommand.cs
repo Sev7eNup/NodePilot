@@ -1,4 +1,6 @@
 using System.Runtime.Versioning;
+using System.Net;
+using System.Net.Sockets;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Auth;
 using NodePilot.Cli.Output;
@@ -66,12 +68,15 @@ public abstract class BaseCommand<TSettings> : AsyncCommand<TSettings>
         catch (ApiException ex)
         {
             writer.Error($"API error: {ex.Message}");
-            return ExitCodes.Error;
+            return ex.StatusCode == HttpStatusCode.ServiceUnavailable
+                ? ExitCodes.ServerUnavailable : ExitCodes.Error;
         }
         catch (HttpRequestException ex)
         {
             writer.ErrorBlock(NetworkErrorRenderer.Render(ex, resolved?.Server ?? settings.Server));
-            return ExitCodes.Error;
+            return ex.HttpRequestError == HttpRequestError.ConnectionError
+                && ex.GetBaseException() is SocketException { SocketErrorCode: SocketError.ConnectionRefused }
+                ? ExitCodes.ServerUnavailable : ExitCodes.Error;
         }
         catch (InvalidOperationException ex)
         {

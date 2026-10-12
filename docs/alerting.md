@@ -27,6 +27,9 @@ and matches this optional `Filter`, deliver via these `Routes` — unless suppre
 - **State tables, kept separate from the rule on purpose:**
   - `NotificationSuppressionState` — cooldown/flap state, one row per `(RuleId, DedupKey)`. Answers
     "may this rule fire again for this key yet?".
+  - `NotificationOccurrenceState` — event identities already counted toward `MinOccurrences`,
+    unique on `(RuleId, EventKey)`, including events below the delivery threshold. Repeated
+    samples refresh `LastObservedAt` without increasing the count; retention removes stale identities.
   - `NotificationDeliveryAttempt` — the per-occurrence, per-route ledger **and** the idempotency
     guard, unique on `(RuleId, RouteId, EventKey)`. `IsTest` marks test-fires (they never touch
     suppression).
@@ -41,7 +44,7 @@ and matches this optional `Filter`, deliver via these `Routes` — unless suppre
   encrypted at rest via `ISecretProtector`; an `__unchanged__` sentinel lets an edit keep a stored
   secret without re-sending it. `UpdateAsync` **diffs** routes (matched-by-id updated in place, new
   added via the `DbSet`, dropped removed) so the EF ChangeTracker never sees a duplicate key, and
-  `DeleteAsync` also clears the orphan suppression + attempt rows (no FK from those to the rule).
+  `DeleteAsync` also clears occurrence, suppression and attempt rows (no FK from those to the rule).
 - Migration: `AddNotificationRules` (provider-agnostic; `type:` annotations stripped per repo rule).
 
 ## Matching + dispatch
@@ -51,14 +54,17 @@ so in an HA cluster only the leader dispatches. Each pass:
 
 1. **Recover** Pending delivery attempts orphaned by a crash — each collector reconstructs the
    contexts of its own `EventKey` form via `TryReconstructContextAsync` (if the referenced
-   execution is gone, the attempt is failed out).
+   execution is gone, the attempt is failed out). System execution/audit sources recover a
+   retained event by identity, independently of the sampling lookback, while the policy is active.
 2. **Collect** terminal executions since the persisted watermark. On the very first run the watermark
    is **seeded to "now"** so existing history is never back-alerted; thereafter it advances by
    `(CompletedAt, Id)`.
 3. **Match** each event against enabled rules: event-type pre-filter → scope → filter AST (via the
    shared `ConditionEvaluator`, `EventFields` = `NotificationContext.ToFieldMap()`) → route-local filters.
-4. **Suppress** via cooldown (skip if within `CooldownMinutes` of the dedup key's last fire) and flap
-   (`MinOccurrences` within `OccurrenceWindowMinutes`).
+4. **Suppress** after excluding routes with an existing delivery attempt for this occurrence.
+   Cooldown skips events within `CooldownMinutes` of the dedup key's last fire. Flap suppression
+   counts distinct event identities toward `MinOccurrences` within `OccurrenceWindowMinutes`,
+   including across dispatcher restarts. Re-reading one event cannot renew cooldown or count again.
 5. **Persist** a Pending `NotificationDeliveryAttempt` per route **before any network I/O**
    (idempotent on `(RuleId, RouteId, EventKey)`), advance the watermark in the same save, **then**
    send. Delivery is **at-least-once**: a crash after the receiver accepted the message but before
@@ -69,7 +75,7 @@ so in an HA cluster only the leader dispatches. Each pass:
 
 The dispatcher writes a `SystemHealthWriter` heartbeat (`NotificationDispatcher`) each pass, so the
 dashboard's service-freshness view tracks it like the other scheduler services. Execution and gauge
-contexts share one `MatchAndSendAsync` pipeline (match → suppress → persist-Pending → send).
+contexts use the shared `StageOccurrenceAsync` and `PersistAndSendAsync` pipeline after matching.
 
 **Database outages are monitored externally, not by a system-alert source:** rules and the delivery
 ledger need the unavailable database themselves. Use `/healthz/database` or the

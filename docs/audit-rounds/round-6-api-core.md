@@ -1,0 +1,37 @@
+# Runde 6 – API, Core und Hosting
+
+Stand: 12.10.2026, Branch `audit/practical-impact-2026-10-12`, Basis `de71058` mit den gemeinsamen Korrekturen bis #142. Eigenständige frische, risikobasierte Quellenprüfung mit `improve-codebase-architecture` und `audit-ai-slop-code`; CLAUDE, CONTEXT und die einschlägigen ADR-Verträge bilden den Maßstab. Keine reine Diff-Prüfung. Der aktuelle Auftrag beschränkt Maßnahmen auf Critical/High sowie Medium mit konkreter alltäglicher Auswirkung.
+
+Ergebnis: **keine neuen bestätigten Critical-, High- oder praktisch relevanten Medium-Befunde** in diesem Teilbereich. Keine Produktänderung, kein eigener Build/Testlauf in Runde 6. Dies ist ein Teilbericht; #142 der parallelen Runtime-Prüfung macht die gesamte Runde 6 weiterhin zu einer Findingsrunde.
+
+## Tatsächliche Prüfflächen
+
+Alle API-/Core-Modulgruppen wurden inventarisiert und über ihre Eingänge, Regelbesitzer und gefährlichen Ausgänge risikoorientiert verfolgt. Die Tabelle bezeichnet gelesene Pfade und ausgewählte Implementierungen, keine vollständige Zeilenlektüre jeder DTO-, Fixture- oder Hilfsdatei.
+
+| Familie | Frisch geprüfter Pfad / Belege | Ergebnis |
+| --- | --- | --- |
+| Hosting, Verfügbarkeit, Cluster | Program-Middlewarefolge und Registrierungen; AuthenticationSetup, SecurityPipelineSetup, RateLimitingSetup, DatabaseBootService, DatabaseAvailabilityMiddleware/Probe, ClusterFencingHost, DataProtectionSetup, KestrelHttpsConfigurator, RemoteExecutionSetup, DocsSiteSetup; Bootvalidator-Fehlerpfade | Auth vor fachlichen Eingängen, DB-Ausfall vor DB-Verwendung, feste Hosting-/Zertifikatsbesitzer; kein neuer Befund |
+| Auth, Sessions, externe Identitäten | TokenValidityMiddleware, CsrfMiddleware, AuthSessionIssuer; Auth-/Users-/OIDC-Eingänge, ExternalAuthorizationEvaluator, OidcIdentityMapper, SCIM-Mutations- und LDAP-/Sync-Pfade, Staleness-Transaktion | JTI/Session/Stamp/Rolle und aktuelle externe Gruppenfrische geprüft; lokale Login-/Refresh- und Widerrufspfade konsistent |
+| Ressourcen- und Ordnerrechte | ResourceAuthorizationService, DirectoryGroupPrincipal, SubWorkflowAuthorizationResolver; SharedFolderPermissions-/SharedWorkflowFolders-Mutationen | Globale Rollenobergrenze vor Ordnerrechten, explizite Gruppenfrische, Quell-/Zielprüfung und Cache-/Live-Invalidierung verfolgt |
+| Workflows und Ausführungen | WorkflowsControllerBase, Update/Delete, Editing.Publish, ExecutionDebugController, ExecutionsController; Import-/Export-Gates | Definitionen nach Berechtigung redigiert, Snapshot-/CAS-Prüfung bei Mutationen, Debug-Ownership und Run-Rechte, filter-before-paging nachvollzogen |
+| Externe Eingänge und Dispatch | ExternalTriggerController, ExternalTriggerKeyScopeResolver, WebhooksController Signatur-/Replay-Pfad; ExecutionDispatchService Zulassung und Fehlerbehandlung | Schlüssel begrenzen Workflow-IDs, HMAC/Replay vor Intent, persistierte Identität wird vor tatsächlichem Start erneut autorisiert |
+| Live-Ausgaben | ExecutionHub, HubRevocationSweeper, Registrierung der Notifier-/Subscription-Besitzer | Read-Gate beim Join, Gruppenlimit, Ablauf und frische Ordnerrechte bei Revalidierung; keine neue berechtigte Live-Ausgabe-Lücke bestätigt |
+| Kataloge und schreibende Ressourcen | CredentialsController, GlobalVariablesController, CustomActivitiesController, MachinesController, zugehörige Ordner-/Importpfade | Credential-Metadaten ohne Secret-Rückgabe, Governance/CAS, Hostvalidierung; dokumentierte Operator-Autorenrechte nicht als Sandbox behandelt |
+| KI, DB-Admin, Observability | AiChat-/AiKnowledge-/Agents-/AgentToolsController, AgentTeamDraftResolver; DbAdminQueryExecutor, ReadOnlySqlGuard, SecretColumns, SqlKnowledgeReader; Observability-Scopes | Serverseitige Folder-Scopes und Toolfreigaben, Read-only-/Secret-Guard vor Query, begrenzte Ausgabe; feste Upstream-/Kataloggrenzen |
+| Projektionen und Statistik | FolderScopedQueries, WorkflowListOrdering, DashboardAggregateCache; Dashboard/Operations/WorkflowTelemetry und ExecutionStatsRollup-Aufrufer | Berechtigung vor Aggregation/Paging, stabile globale Sortierung, Generationstausch verhindert Wiederveröffentlichung alter Cache-Daten |
+| Backup, Settings, Secrets | BackupRestoreService Commit-/Kompensationspfad, BackupFileReader, DatabaseSecretRotation, SecretsController; RuntimeOverridesWriter/Setup, EncryptingJsonConfigurationProvider, AdminSettingsController und Schema-/Adapterregistrierung | Commit-Verifikation vor Rücknahme, begrenzte verschlüsselte Eingaben, CAS-Rotation aller Familien, Writer-Lock/ETag und ehrliche Partial-Ergebnisse |
+| Betrieb, Diagnose, Audit | MaintenanceWindowsController, SystemAlerting-/Alerting-Eingänge, AppLogController, RedactedLogFileResult, RollingLogFiles, SupportEventFlushService, AuditStager/CsvWriter | Admin-Gates, bounded Preview/Tail, Streaming-Redaktion und Cancellation, keine neue praktisch relevante Speicher-/Ausgabegrenze verletzt |
+| Gemeinsame Core-Verträge | WorkflowDefinitionParser/StructuralValidator/ContractDefinition/SecretContent; Analyzer-/DataBus-/EdgeCondition-Verwendungen, SqlStatementInspector; CustomActivityValidation, TriggerSettings, ProxyBypassPattern | Gemeinsame Parser/Validatoren statt zusätzlicher Parallelinterpretation; deaktivierte Schritte, Namen, Regex-Deadlines und Secret-Konventionen berücksichtigt |
+| Core-Clients, Modelle und Interfaces | TokenRefreshHandler, TokenStore, PinnedCertificateHandlerFactory; Modell-/Interface-/Enum-Inventar mit den jeweiligen konsumierenden Pfaden | Profil-/Originbindung, serialisierte Tokenrotation, persistierter CAS und dokumentierte Zertifikatssemantik; keine neue Vertragsabweichung bestätigt |
+
+## Architektur und Security getrennt
+
+Die Architekturprüfung verwendet Regelbesitz, Löschtest, Interface-Tiefe und konkrete Änderungsfolgen. Settings-Adapter, Ressourcenautorisierung, durable Dispatch, Definition-/SQL-Fakten sowie Ordnerprojektion und Live-Invalidierung bleiben nachvollziehbare gemeinsame Besitzer. Große Dateien oder ein dünner historischer Validator-Wrapper allein begründen im aktuellen Auftrag keine praktisch relevante Medium-Maßnahme. Es wurde keine neue parallele Abstraktion eingeführt.
+
+Die Securityprüfung verfolgt Eingabe → Identität/Berechtigung → Persistenz bzw. Prozess/Netzwerk → Ausgabe. Administratoren, Operator-Skriptautoren und genehmigte Erweiterungsanbieter bleiben die dokumentierte Vertrauensgrenze. Globale Maschinen-/Credential-Metadaten und ausdrücklich autorisierte Admin-Schreibqueries sind keine belegte Rechteausweitung. SQL-Blocklisten werden nicht als vollständiger SQL-Sandboxbeweis beschrieben; geprüft wurden konkrete Aufrufer, bekannte gefährliche Ausdrucksklassen und Ausgabegrenzen.
+
+Nicht hochgestuft wurden hypothetische Subscriber-Races, seltene konkurrierende Admin-Kompensationen, fehlerhafte Admin-DTOs ohne belegte relevante Folge, reine Dateilänge und kosmetische Duplikation. Es liegt dazu kein bestätigter offener Befund der geltenden Schweregrade vor.
+
+## Grenzen und nächster Schritt
+
+Read-only-Quellenprüfung, keine Live-AD/OIDC/SCIM-, HA-, externen LLM-, WinRM- oder Produktionszugriffe. Tests und Migrations-/Providerverträge wurden risikobasiert als Gegenbelege herangezogen; nicht jede Fixture, DTO-Zeile, generierte Datei oder konstante Katalogdefinition wurde neu vollständig gelesen. Keine neuen Testausführungen werden beansprucht. Die abschließende Runde 7 prüft die Integrationsketten erneut auf dem nach #142 stabilen Gesamtstand; frühere grüne Tests ersetzen diese Quellenprüfung nicht.

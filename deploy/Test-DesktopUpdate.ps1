@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <# Offline behavioral checks: execute the updater's rollback statements with fake services,
-   database tools and no components. No installer, database or service is touched. #>
+   database tools and isolated fixture files. No installer, database or service is touched. #>
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
@@ -49,6 +49,11 @@ $backupFile = 'fixture.dump'
 $pgRestore = 'Invoke-FakeRestore'
 $DbServiceName = 'fake-db'
 $ApiServiceName = 'fake-api'
+$fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('nodepilot-desktop-rollback-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
+$DesktopJson = Join-Path $fixtureRoot 'desktop.json'
+$previousDesktopJsonBytes = $null
+$previousDesktopJsonAcl = $null
 $previousPassword = [Environment]::GetEnvironmentVariable('PGPASSWORD')
 try {
     foreach ($exitCode in @(0, 1)) {
@@ -78,6 +83,48 @@ try {
     Assert-True (-not $script:events.Contains('restore')) 'Failed shutdown must prevent database restore.'
     Assert-True (-not $script:events.Contains('start-api')) 'Failed shutdown must not restart the API.'
 
+    # A changed free-port choice must roll back together with the old API configuration.
+    $script:stopFails = $false
+    $script:restoreExit = 0
+    $InstallPath = Join-Path $fixtureRoot 'install'
+    $rollbackRoot = Join-Path $fixtureRoot 'rollback'
+    $newApp = Join-Path $InstallPath 'app'
+    $savedApp = Join-Path $rollbackRoot 'app'
+    New-Item -ItemType Directory -Path $newApp, $savedApp -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $newApp 'appsettings.Production.json'), '{"port":47000}')
+    [IO.File]::WriteAllText((Join-Path $savedApp 'appsettings.Production.json'), '{"port":47001}')
+    [IO.File]::WriteAllText($DesktopJson, '{"origin":"https://localhost:47001"}')
+    $oldAcl = Get-Acl -LiteralPath $DesktopJson
+    $oldAcl.SetAccessRuleProtection($true, $true)
+    Set-Acl -LiteralPath $DesktopJson -AclObject $oldAcl
+    $previousDesktopJsonBytes = [IO.File]::ReadAllBytes($DesktopJson)
+    $previousDesktopJsonAcl = Get-Acl -LiteralPath $DesktopJson
+    $oldAccess = $previousDesktopJsonAcl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
+    [IO.File]::WriteAllText($DesktopJson, '{"origin":"https://localhost:47000"}')
+    $newAcl = Get-Acl -LiteralPath $DesktopJson
+    $newAcl.SetAccessRuleProtection($false, $true)
+    Set-Acl -LiteralPath $DesktopJson -AclObject $newAcl
+    $swappedComponents = @('app')
+    & $rollback
+    $restoredApp = Get-Content -LiteralPath (Join-Path $newApp 'appsettings.Production.json') -Raw | ConvertFrom-Json
+    $restoredDesktop = Get-Content -LiteralPath $DesktopJson -Raw | ConvertFrom-Json
+    Assert-True ($restoredDesktop.origin -eq "https://localhost:$($restoredApp.port)") 'Rollback must restore the desktop origin together with the old API port.'
+    $restoredAccess = (Get-Acl -LiteralPath $DesktopJson).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
+    Assert-True ($restoredAccess -eq $oldAccess) 'Rollback must restore the original desktop configuration ACL.'
+
+    $swappedComponents = @()
+    $script:events.Clear()
+    function Set-Acl { param($LiteralPath, $AclObject) throw 'Fixture desktop ACL restore failure' }
+    try { & $rollback } finally { Remove-Item Function:\Set-Acl }
+    Assert-True (-not $script:events.Contains('restore')) 'Failed desktop ACL restoration must prevent database restore.'
+    Assert-True (-not $script:events.Contains('start-api')) 'Failed desktop ACL restoration must not restart the API.'
+    Assert-True ($script:lastError -match 'rollback failed') 'Failed desktop ACL restoration must be reported as failed rollback.'
+
+    $previousDesktopJsonBytes = $null
+    $previousDesktopJsonAcl = $null
+    & $rollback
+    Assert-True (-not (Test-Path -LiteralPath $DesktopJson)) 'Rollback must remove a handoff created by a failed update when none existed before.'
+
     # Exercise the actual readiness loop independently; only its native calls are simulated.
     $readyFunction = $program.Find({ param($node)
         $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Start-DatabaseForRestore'
@@ -101,7 +148,14 @@ try {
     Assert-True ($null -ne $failure -and $script:readyCalls -eq 30) 'Readiness must fail within its bounded attempt count.'
 } finally {
     [Environment]::SetEnvironmentVariable('PGPASSWORD', $previousPassword)
+    $resolvedFixture = [IO.Path]::GetFullPath($fixtureRoot)
+    $expectedParent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    if (-not $resolvedFixture.StartsWith($expectedParent, [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($resolvedFixture) -notlike 'nodepilot-desktop-rollback-*') {
+        throw 'Refusing to remove an unexpected fixture path.'
+    }
+    Remove-Item -LiteralPath $resolvedFixture -Recurse -Force
 }
 # The mocks above set the exit code of a native command; do not leak it to the caller.
 $global:LASTEXITCODE = 0
-Write-Host 'Desktop rollback checks passed (restore success/failure, failed shutdown, readiness success/timeout).'
+Write-Host 'Desktop rollback checks passed (database restore, shutdown, desktop origin/ACL, readiness).'

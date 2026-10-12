@@ -3,10 +3,15 @@ using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
+using NodePilot.Core.Agents;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Remote;
+using NodePilot.Engine.Agents;
+using NodePilot.Engine.PowerShell;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Remote;
@@ -19,6 +24,37 @@ namespace NodePilot.Engine.Tests.Remote;
 /// </summary>
 public class WinRmSessionPoolTests
 {
+    [Fact]
+    public async Task AgentMembers_ReleaseSessionCapacityBetweenDelegationBatches()
+    {
+        var (pool, factory) = BuildPool();
+        await using var ownedPool = pool;
+        var options = new Mock<IOptionsMonitor<AgentOptions>>();
+        options.SetupGet(o => o.CurrentValue).Returns(new AgentOptions());
+        var machine = Machine();
+        var credential = new Credential { Id = Guid.NewGuid(), Username = "team-reader" };
+        var engine = Mock.Of<IPowerShellExecutionEngine>();
+        var engines = new PowerShellEngineFactory(engine, engine, engine);
+        var targets = Enumerable.Range(0, 6).Select(_ => new AgentTarget(machine, credential, false,
+            pool, engines, options.Object, "team", NullLogger.Instance)).ToArray();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        try
+        {
+            foreach (var batch in targets.Chunk(3))
+            {
+                var results = await Task.WhenAll(batch.Select(t => t.ExecuteAsync("'read completed'", deadline.Token)));
+                results.Should().OnlyContain(result => result == "read completed");
+            }
+            factory.CreateCount.Should().BeLessThanOrEqualTo(3,
+                "finished members return their leases while the pool retains reusable connections");
+        }
+        finally
+        {
+            foreach (var target in targets) await target.DisposeAsync();
+        }
+    }
+
     /// <summary>
     /// Test factory: creates a local runspace on each call and counts how many times it was
     /// invoked — the pool still gets real <see cref="WinRmSession"/> instances without needing

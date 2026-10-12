@@ -61,6 +61,40 @@ function renderPanel({
 }
 
 describe('PropertiesPanel — header', () => {
+  it('shows the selected agent node schema and path restrictions after changing selection', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    qc.setQueryData(['agent-skills'], []);
+    qc.setQueryData(['agent-mcp-servers'], []);
+    qc.setQueryData(['ai-knowledge-capabilities'], { llm: false, enabled: false });
+    qc.setQueryData(['global-variables'], []);
+    const onUpdate = vi.fn();
+    const first = makeNode('aiAgent', { config: {
+      resultFormat: 'json', resultSchema: { type: 'string' },
+      agent: { id: 'agent', role: 'Assistant', tools: [{ name: 'files_read', allowedPaths: ['C:\\first'] }] },
+    } });
+    const second = { ...makeNode('aiAgent', { config: {
+      resultFormat: 'json', resultSchema: { type: 'object' },
+      agent: { id: 'agent', role: 'Assistant', tools: [{ name: 'files_read', allowedPaths: ['C:\\second'] }] },
+    } }), id: 'step-2' };
+    const panel = (node: Node) => <QueryClientProvider client={qc}>
+      <PropertiesPanel node={node} allNodes={[first, second]} edges={[]} machines={[]} credentials={[]}
+        onUpdate={onUpdate} onClose={vi.fn()} />
+    </QueryClientProvider>;
+    const view = render(panel(first));
+    expect(screen.getByDisplayValue('C:\\first')).toBeInTheDocument();
+    view.rerender(panel(second));
+
+    expect(screen.getByDisplayValue('C:\\second')).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/"type": "object"/)).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('C:\\first')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue('C:\\second'), { target: { value: 'C:\\second\nC:\\extra' } });
+    expect(onUpdate).toHaveBeenLastCalledWith('step-2', expect.objectContaining({
+      config: expect.objectContaining({
+        agent: expect.objectContaining({ tools: [{ name: 'files_read', allowedPaths: ['C:\\second', 'C:\\extra'] }] }),
+      }),
+    }));
+  });
+
   it('renders the node label and activity-type label in the sticky header', () => {
     renderPanel({ node: makeNode('runScript', { label: 'Check Disk' }) });
 

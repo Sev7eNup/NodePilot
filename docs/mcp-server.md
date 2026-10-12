@@ -96,6 +96,9 @@ before retrying a start whose response was lost.
   executable/runtime payloads (scripts, bodies, headers, arguments, queries, prompts, condition
   literals and Custom-Activity string inputs) are masked to `***`. The API only redacts by role;
   MCP re-applies the shared `WorkflowSecretRedactor` for everyone.
+- Calling-contract input defaults are also masked as `***`, including for editors. The input
+  names, types and required flags remain visible. Never send the mask as an execution parameter;
+  omit that parameter to use the real default stored on the server.
 - On `publish_workflow`/`update_workflow_definition`/`apply_workflow_patch`, real secrets are
   **restored from the stored version** by node id (including masks nested in condition/case arrays)
   — the agent's `***` never overwrites them, and a

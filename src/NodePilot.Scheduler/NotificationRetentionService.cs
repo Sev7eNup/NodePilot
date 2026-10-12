@@ -120,6 +120,10 @@ public class NotificationRetentionService : LeaderGatedRetentionService
             .Where(s => s.LastObservedAt < cutoff)
             .ExecuteDeleteAsync(ct);
 
-        return deletedAttempts + deletedSuppressions + deletedPolicyStates;
+        var deletedOccurrences = await db.NotificationOccurrenceStates
+            .Where(s => s.LastObservedAt < cutoff)
+            .ExecuteDeleteAsync(ct);
+
+        return deletedAttempts + deletedSuppressions + deletedPolicyStates + deletedOccurrences;
     }
 }

@@ -71,7 +71,7 @@ np workflow list --profile prod -o json --no-color -v
 np exec get 7e3f... --server https://np.internal:8443 -o yaml
 ```
 
-**Exit codes:** `0` ok, `1` generic, `2` run failed/cancelled, `3` authentication required, `4` permission denied.
+**Exit codes:** `0` ok, `1` generic, `2` run failed/cancelled, `3` authentication required, `4` permission denied, `5` server unavailable (connection refused or HTTP 503). Code `5` does not mean a write command is safe to retry.
 
 ## auth
 

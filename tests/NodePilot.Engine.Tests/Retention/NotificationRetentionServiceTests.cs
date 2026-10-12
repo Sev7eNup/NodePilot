@@ -16,6 +16,25 @@ namespace NodePilot.Engine.Tests.Retention;
 
 public class NotificationRetentionServiceTests
 {
+    [Fact]
+    public async Task PurgeOnce_PrunesOnlyNoLongerObservedOccurrenceIdentities()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            db.NotificationOccurrenceStates.AddRange(
+                new NotificationOccurrenceState { Id = Guid.NewGuid(), NotificationRuleId = Guid.NewGuid(),
+                    EventKey = "old", LastObservedAt = DateTime.UtcNow.AddDays(-100) },
+                new NotificationOccurrenceState { Id = Guid.NewGuid(), NotificationRuleId = Guid.NewGuid(),
+                    EventKey = "still-sampled", LastObservedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+
+            (await Service(factory).PurgeOnceAsync(90, TestContext.Current.CancellationToken)).Should().Be(1);
+            (await db.NotificationOccurrenceStates.SingleAsync()).EventKey.Should().Be("still-sampled");
+        }
+        finally { await db.DisposeAsync(); await conn.DisposeAsync(); }
+    }
+
     private static (NodePilotDbContext db, IServiceScopeFactory factory, SqliteConnection conn) CreateEnv()
     {
         var conn = new SqliteConnection("DataSource=:memory:");

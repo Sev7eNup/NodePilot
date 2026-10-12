@@ -521,8 +521,7 @@ internal static class PowerShellActivitySupport
         if (property.StartsWith("param.", StringComparison.Ordinal) && match.Groups[3].Success)
         {
             var paramName = match.Groups[3].Value;
-            value = variables.GetValueOrDefault($"{varName}.param.{paramName}")
-                 ?? variables.GetValueOrDefault(paramName);
+            value = variables.GetValueOrDefault($"{varName}.param.{paramName}");
         }
         else if (property == "output")
         {
@@ -601,7 +600,7 @@ internal static class PowerShellActivitySupport
             if (property.StartsWith("param.") && match.Groups[3].Success)
             {
                 var pn = match.Groups[3].Value;
-                value = variables.GetValueOrDefault($"{varName}.param.{pn}") ?? variables.GetValueOrDefault(pn);
+                value = variables.GetValueOrDefault($"{varName}.param.{pn}");
             }
             else if (property == "output") value = variables.GetValueOrDefault($"{varName}.output");
             else if (property == "error") value = variables.GetValueOrDefault($"{varName}.error");

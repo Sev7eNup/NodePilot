@@ -48,4 +48,10 @@ public interface ISystemAlertSource
     /// </summary>
     Task<IReadOnlyList<SystemAlertObservation>> ObserveAsync(
         NodePilotDbContext db, SystemAlertQuery query, CancellationToken ct);
+
+    /// <summary>Recover an accepted delivery; durable event sources look up its identity outside the sampling window.</summary>
+    async Task<SystemAlertObservation?> FindDeliveryObservationAsync(
+        NodePilotDbContext db, SystemAlertQuery query, string instanceKey, CancellationToken ct)
+        => (await ObserveAsync(db, query, ct)).FirstOrDefault(o =>
+            string.Equals(o.InstanceKey, instanceKey, StringComparison.Ordinal));
 }

@@ -52,6 +52,7 @@ public class NodePilotDbContext : DbContext
     public DbSet<NotificationRoute> NotificationRoutes => Set<NotificationRoute>();
     public DbSet<NotificationRuleTarget> NotificationRuleTargets => Set<NotificationRuleTarget>();
     public DbSet<NotificationSuppressionState> NotificationSuppressionStates => Set<NotificationSuppressionState>();
+    public DbSet<NotificationOccurrenceState> NotificationOccurrenceStates => Set<NotificationOccurrenceState>();
     public DbSet<NotificationDeliveryAttempt> NotificationDeliveryAttempts => Set<NotificationDeliveryAttempt>();
     public DbSet<NotificationDispatcherState> NotificationDispatcherStates => Set<NotificationDispatcherState>();
     public DbSet<SystemAlertPolicyState> SystemAlertPolicyStates => Set<SystemAlertPolicyState>();
@@ -609,6 +610,14 @@ public class NodePilotDbContext : DbContext
             e.Property(x => x.TargetKind).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(x => new { x.NotificationRuleId, x.TargetKind, x.TargetId }).IsUnique();
             e.HasIndex(x => x.TargetId);
+        });
+
+        modelBuilder.Entity<NotificationOccurrenceState>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.EventKey).HasMaxLength(300).IsRequired();
+            e.HasIndex(x => new { x.NotificationRuleId, x.EventKey }).IsUnique();
+            e.HasIndex(x => x.LastObservedAt);
         });
 
         modelBuilder.Entity<NotificationSuppressionState>(e =>

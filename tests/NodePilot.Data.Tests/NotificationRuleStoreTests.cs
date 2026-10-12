@@ -171,7 +171,7 @@ public sealed class NotificationRuleStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task Delete_RemovesSuppressionAndAttemptState()
+    public async Task Delete_RemovesSuppressionOccurrenceAndAttemptState()
     {
         Guid id;
         await using (var c = Ctx())
@@ -180,6 +180,8 @@ public sealed class NotificationRuleStoreTests : IDisposable
             id = created.Id;
             c.NotificationSuppressionStates.Add(new NotificationSuppressionState
             { Id = Guid.NewGuid(), NotificationRuleId = id, DedupKey = "k", LastFiredAt = DateTime.UtcNow });
+            c.NotificationOccurrenceStates.Add(new NotificationOccurrenceState
+            { Id = Guid.NewGuid(), NotificationRuleId = id, EventKey = "e", LastObservedAt = DateTime.UtcNow });
             c.NotificationDeliveryAttempts.Add(new NotificationDeliveryAttempt
             { Id = Guid.NewGuid(), NotificationRuleId = id, NotificationRouteId = created.Routes.First().Id, EventKey = "e", DedupKey = "k" });
             await c.SaveChangesAsync();
@@ -191,6 +193,7 @@ public sealed class NotificationRuleStoreTests : IDisposable
         await using var read = Ctx();
         (await Store(read).GetAsync(id, CancellationToken.None)).Should().BeNull();
         (await read.NotificationSuppressionStates.CountAsync()).Should().Be(0);
+        (await read.NotificationOccurrenceStates.CountAsync()).Should().Be(0);
         (await read.NotificationDeliveryAttempts.CountAsync()).Should().Be(0);
     }
 }

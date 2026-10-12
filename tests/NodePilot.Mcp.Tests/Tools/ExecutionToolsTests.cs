@@ -10,6 +10,33 @@ namespace NodePilot.Mcp.Tests.Tools;
 
 public sealed class ExecutionToolsTests
 {
+    [Theory]
+    [InlineData(50, 50)]
+    [InlineData(0, 1)]
+    [InlineData(1000, 200)]
+    public async Task ListExecutions_LargeHistory_RequestsOnlyBoundedFirstPageAndRetainsTotal(int limit, int expectedSize)
+    {
+        using var api = new TestApi();
+        var wf = Guid.NewGuid();
+        var newest = Guid.NewGuid();
+        api.Server.Given(Request.Create().WithPath("/api/executions").UsingGet()
+                .WithParam("workflowId", wf.ToString()).WithParam("activeOnly", "true")
+                .WithParam("page", "1").WithParam("pageSize", expectedSize.ToString()))
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                items = new[] { new { id = newest, workflowId = wf, status = "Running", startedAt = DateTime.UtcNow } },
+                page = 1, pageSize = expectedSize, total = 1_000_000, totalPages = 1_000_000 / expectedSize,
+            }));
+
+        var result = await new ExecutionTools(api.Client()).ListExecutions(wf.ToString(), activeOnly: true,
+            limit: limit, cancellationToken: TestContext.Current.CancellationToken);
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(result));
+        document.RootElement.GetProperty("totalAvailable").GetInt64().Should().Be(1_000_000);
+        document.RootElement.GetProperty("count").GetInt32().Should().Be(1);
+        document.RootElement.GetProperty("executions")[0].GetProperty("id").GetGuid().Should().Be(newest);
+        api.Server.LogEntries.Should().HaveCount(1);
+    }
+
     [Fact]
     public async Task ListExecutions_ProjectsSlimRowsAndRespectsLimit()
     {

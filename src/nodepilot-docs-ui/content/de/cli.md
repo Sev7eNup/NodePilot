@@ -71,7 +71,7 @@ np workflow list --profile prod -o json --no-color -v
 np exec get 7e3f... --server https://np.internal:8443 -o yaml
 ```
 
-**Exit-Codes:** `0` ok, `1` generic, `2` run failed/cancelled, `3` auth required, `4` permission denied.
+**Exit-Codes:** `0` erfolgreich, `1` allgemeiner Fehler, `2` Lauf fehlgeschlagen/abgebrochen, `3` Anmeldung erforderlich, `4` Zugriff verweigert, `5` Server nicht verfügbar (Verbindung abgelehnt oder HTTP 503). Code `5` bedeutet nicht, dass ein schreibender Befehl gefahrlos wiederholt werden kann.
 
 ## auth
 

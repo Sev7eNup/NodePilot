@@ -74,7 +74,7 @@ public sealed class WorkflowReadTools
     }
 
     [McpServerTool(Name = "get_workflow_contract", ReadOnly = true)]
-    [Description("Get a workflow's calling contract: declared inputs (from manualTrigger.parameters) and downstream outputs (from returnData keys + system outputs). Use this before calling a workflow as a sub-workflow or via execute_workflow.")]
+    [Description("Get a workflow's calling contract: declared inputs (from manualTrigger.parameters) and downstream outputs (from returnData keys + system outputs). Literal defaults are masked as '***'. Never pass that mask as an execution parameter: omit the parameter to let the server use its stored default. Use this before calling a workflow as a sub-workflow or via execute_workflow.")]
     public async Task<object> GetWorkflowContract(
         [Description("The workflow GUID or exact (case-sensitive) name.")] string idOrName,
         CancellationToken cancellationToken = default)
@@ -82,7 +82,15 @@ public sealed class WorkflowReadTools
         var contract = Guid.TryParse(idOrName, out var id)
             ? await ApiErrorMapper.Guard(() => _api.GetContractAsync(id, cancellationToken))
             : await ApiErrorMapper.Guard(() => _api.GetContractByNameAsync(idOrName, cancellationToken));
-        return contract;
+        // The API deliberately exposes defaults to workflow editors. MCP must also protect
+        // privileged sessions, just as get_workflow_definition protects trigger parameters.
+        return contract with
+        {
+            Inputs = contract.Inputs.Select(input => input with
+            {
+                Default = input.Default is null ? null : "***",
+            }).ToArray(),
+        };
     }
 
     [McpServerTool(Name = "list_workflow_versions", ReadOnly = true)]

@@ -49,15 +49,26 @@ public sealed class ExecutionResultSource : ISystemAlertSource
 
     public Task<bool> IsAvailableAsync(NodePilotDbContext db, CancellationToken ct) => Task.FromResult(true);
 
-    public async Task<IReadOnlyList<SystemAlertObservation>> ObserveAsync(
+    public Task<IReadOnlyList<SystemAlertObservation>> ObserveAsync(
         NodePilotDbContext db, SystemAlertQuery query, CancellationToken ct)
     {
         var lookback = Math.Max(1, query.GetInt("lookbackSeconds", DefaultLookbackSeconds));
         var cutoff = DateTime.UtcNow.AddSeconds(-lookback);
 
-        var rows = await db.WorkflowExecutions.AsNoTracking()
-            .Where(e => e.CompletedAt != null && e.CompletedAt >= cutoff
-                && (e.Status == ExecutionStatus.Succeeded
+        return ReadAsync(db.WorkflowExecutions.Where(e => e.CompletedAt >= cutoff), ct);
+    }
+
+    public async Task<SystemAlertObservation?> FindDeliveryObservationAsync(
+        NodePilotDbContext db, SystemAlertQuery query, string instanceKey, CancellationToken ct)
+        => Guid.TryParseExact(instanceKey, "N", out var id)
+            ? (await ReadAsync(db.WorkflowExecutions.Where(e => e.Id == id), ct)).SingleOrDefault()
+            : null;
+
+    private async Task<IReadOnlyList<SystemAlertObservation>> ReadAsync(
+        IQueryable<WorkflowExecution> executions, CancellationToken ct)
+    {
+        var rows = await executions.AsNoTracking()
+            .Where(e => e.CompletedAt != null && (e.Status == ExecutionStatus.Succeeded
                     || e.Status == ExecutionStatus.Failed
                     || e.Status == ExecutionStatus.Cancelled))
             .Select(e => new

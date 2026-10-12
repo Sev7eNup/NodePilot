@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StepTestPanel } from '../../../components/designer/properties/StepTestPanel';
 
@@ -33,7 +33,86 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+function pendingResponse() {
+  let resolve: (response: Response) => void = () => { throw new Error('Promise not initialized'); };
+  const promise = new Promise<Response>((complete) => { resolve = complete; });
+  return { promise, resolve };
+}
+
 describe('StepTestPanel', () => {
+  it('waits for the standard-mode context before allowing a real activity test', async () => {
+    const pending = pendingResponse();
+    fetchMock.mockImplementation((url: string) => url.includes('/test-context')
+      ? pending.promise
+      : Promise.resolve(jsonResponse({ success: true, output: 'OK', outputParameters: {}, durationMs: 1 })));
+    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveConfig={{}} canRun expertMode={false} />);
+
+    const run = screen.getByRole('button', { name: /Test activity/i });
+    expect(run).toBeDisabled();
+    fireEvent.click(run);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/test'))).toBe(false);
+
+    await act(async () => pending.resolve(jsonResponse({
+      variables: [{ key: 'upstream.output', origin: 'upstream', source: 'output', value: 'production-server' }],
+      executedAt: null, status: null,
+    })));
+    await waitFor(() => expect(run).toBeEnabled());
+    fireEvent.click(run);
+    await screen.findByText('OK');
+    const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/test'));
+    expect(JSON.parse(call![1].body).mockVariables).toEqual({ 'upstream.output': 'production-server' });
+  });
+
+  it('shows a failed context load in standard mode and allows retry before running', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('Context unavailable'));
+    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveConfig={{}} canRun expertMode={false} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/context/i);
+    expect(screen.getByRole('button', { name: /Test activity/i })).toBeDisabled();
+    fetchMock.mockResolvedValue(jsonResponse({ variables: [], executedAt: null, status: null }));
+    fireEvent.click(screen.getByRole('button', { name: /Reload context/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Test activity/i })).toBeEnabled());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['wf1', 'step2'],
+    ['wf2', 'step1'],
+  ])('does not attach an in-flight result to a different panel (%s/%s)', async (nextWorkflowId, nextStepId) => {
+    const pending = pendingResponse();
+    fetchMock.mockReturnValue(pending.promise);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const panel = (workflowId: string, stepId: string) => <QueryClientProvider client={qc}>
+      <StepTestPanel workflowId={workflowId} stepId={stepId} liveConfig={{}} canRun />
+    </QueryClientProvider>;
+    const view = render(panel('wf1', 'step1'));
+    fireEvent.click(screen.getByRole('button', { name: /Run test/i }));
+    view.rerender(panel(nextWorkflowId, nextStepId));
+    expect(screen.getByRole('button', { name: /Run test/i })).toBeEnabled();
+
+    await act(async () => pending.resolve(jsonResponse({
+      success: true, output: 'Result from first activity', outputParameters: {}, durationMs: 1,
+    })));
+    expect(screen.queryByText('Result from first activity')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Succeeded/i)).not.toBeInTheDocument();
+  });
+
+  it('waits for the selected execution context instead of running with the previous inputs', async () => {
+    const pending = pendingResponse();
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/test-context/runs')) return Promise.resolve(jsonResponse([
+        { executionId: 'exec1', startedAt: '2026-05-08T10:00:00Z', status: 'Succeeded', stepRan: true },
+      ]));
+      return pending.promise;
+    });
+    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveConfig={{}} canRun />);
+    fireEvent.click(screen.getByRole('button', { name: /^Pick a run$/ }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('?executionId=exec1'))).toBe(true));
+    expect(screen.getByRole('button', { name: /Run test/i })).toBeDisabled();
+    await act(async () => pending.resolve(jsonResponse({ variables: [], executedAt: null, status: null })));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Run test/i })).toBeEnabled());
+  });
+
   it('standardMode_rendersOneContextAwareTestAction', () => {
     fetchMock.mockResolvedValue(jsonResponse({ variables: [], executedAt: null, status: null }));
     wrap(

@@ -216,12 +216,15 @@ public class NotificationRuleStore : INotificationRuleStore
             .FirstOrDefaultAsync(r => r.Id == id, ct)
             ?? throw new KeyNotFoundException($"NotificationRule {id} not found");
 
-        // Routes + targets cascade via FK; suppression + delivery-attempt rows do not (no rule FK,
+        // Routes + targets cascade via FK; suppression, occurrence and delivery-attempt rows do not (no rule FK,
         // to avoid multiple-cascade-paths), so clear them explicitly or a deleted rule leaves a
         // stale cooldown record + orphan ledger rows behind.
         var suppression = await _db.NotificationSuppressionStates
             .Where(s => s.NotificationRuleId == id).ToListAsync(ct);
         _db.NotificationSuppressionStates.RemoveRange(suppression);
+        var occurrences = await _db.NotificationOccurrenceStates
+            .Where(s => s.NotificationRuleId == id).ToListAsync(ct);
+        _db.NotificationOccurrenceStates.RemoveRange(occurrences);
         var attempts = await _db.NotificationDeliveryAttempts
             .Where(a => a.NotificationRuleId == id).ToListAsync(ct);
         _db.NotificationDeliveryAttempts.RemoveRange(attempts);

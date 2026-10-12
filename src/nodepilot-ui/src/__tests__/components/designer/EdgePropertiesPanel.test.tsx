@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Edge, Node } from '@xyflow/react';
 import { EdgePropertiesPanel } from '../../../components/designer/EdgePropertiesPanel';
+import { EditorRightPanel } from '../../../components/designer/EditorRightPanel';
 import { useDesignStore } from '../../../stores/designStore';
 
 // The store-driven confirm dialog replaces the native confirm() and resolves true by default.
@@ -41,6 +42,33 @@ function makeEdge(id: string, source: string, target: string, data: Record<strin
 beforeEach(() => {
   vi.mocked(confirmDialog).mockClear();
   useDesignStore.setState({ designerMode: 'expert' });
+});
+
+it('shows the selected edge condition when switching between simple and expression edges', () => {
+  const expression = { type: 'comparison', op: '==', left: { kind: 'literal', value: 'production' }, right: { kind: 'literal', value: 'test' } };
+  const simple = makeEdge('simple', 'a', 'b', { condition: 'a.success' });
+  const structured = makeEdge('structured', 'a', 'c', { conditionExpression: expression });
+  const props = {
+    fullscreen: false, nodes: [], edges: [simple, structured], selectedNode: null,
+    machines: [], credentials: [], workflowId: 'workflow', canWrite: true, panelSize: 320,
+    panelHandleProps: { onMouseDown: vi.fn(), onDoubleClick: vi.fn() }, setNodes: vi.fn(),
+    setSelected: vi.fn(), setLeftTab: vi.fn(), setLeftCollapsed: vi.fn(), handleBulkApply: vi.fn(),
+    handleNodeDataUpdate: vi.fn(), handleEdgeUpdate: vi.fn(), handleEdgeDelete: vi.fn(), onVarHover: vi.fn(),
+  };
+  const { rerender } = render(<EditorRightPanel {...props} selectedEdge={simple} />);
+  expect(screen.getByDisplayValue('a.success')).toBeInTheDocument();
+
+  rerender(<EditorRightPanel {...props} selectedEdge={structured} />);
+  expect(screen.getByTestId('condition-builder')).toHaveTextContent(JSON.stringify(expression));
+  expect(props.handleEdgeUpdate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText('cb-set-expr'));
+  expect(props.handleEdgeUpdate).toHaveBeenCalledWith('structured', expect.objectContaining({
+    data: expect.objectContaining({ conditionExpression: expect.objectContaining({ op: '==' }) }),
+  }));
+
+  rerender(<EditorRightPanel {...props} selectedEdge={simple} />);
+  expect(screen.queryByTestId('condition-builder')).not.toBeInTheDocument();
+  expect(screen.getByDisplayValue('a.success')).toBeInTheDocument();
 });
 
 describe('EdgePropertiesPanel', () => {

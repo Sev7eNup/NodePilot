@@ -1,7 +1,12 @@
 # Behobene Punkte – verständlich erklärt
 
-Arbeitsstand auf `audit/architecture-security-2026-10-09`. Diese Liste wird während der Prüfung
-fortgeschrieben; sie ist noch keine Abschlussfreigabe. Die Auswirkungen beschreiben mögliche
+Fortsetzung auf `audit/practical-impact-2026-10-12`; die früheren Korrekturen vom
+Branch `audit/architecture-security-2026-10-09` sind bereits in der Basis enthalten.
+Stand 12. Oktober 2026: 145 bestätigte Korrekturen. Die unabhängige Zusatzprüfung
+nach [Runde 7](round-7.md) hat fünf weitere Medium-Probleme aufgedeckt und behoben.
+Ihre Korrekturen (#143–#147) sind unten ergänzt;
+der aktuelle Abschlussstand steht im [unabhängigen Bericht](../independent-review-2026-10-12.md).
+Die Auswirkungen beschreiben mögliche
 Alltagssituationen, keine behaupteten Vorfälle auf deiner Installation. Technische Nachweise,
 Schweregrade und Grenzen stehen im [Gesamtbericht](../architecture-security-review-2026-10-09.md)
 und den einzelnen Rundennachweisen.
@@ -741,3 +746,102 @@ Dasselbe erforderliche Schreibrecht gilt für Ersetzen sowie Tidy/Restore im kom
 ### 132. Offene Operations-Details laden die endgültige Fehlerdiagnose nach
 
 **Low, Funktion.** Wechselt ein beobachteter Lauf von Running zu Failed, werden Fehlertext, fehlgeschlagene Schritte und Endzählung erneut geladen. Vorher änderte sich nur die Statusanzeige. Eine gemountete Komponente reproduzierte die fehlende Diagnose; anschließend bestehen alle 39 Operations-Detail-/Seitentests.
+
+### 134. Schritttests verwenden den gewählten Kontext und zeigen das passende Ergebnis (Medium)
+
+- **Problem:** „Mit letztem Laufkontext“ konnte gestartet werden, bevor die dazugehörigen Eingaben geladen waren. Eine noch laufende Testantwort konnte nach dem Wechsel zu einem anderen Schritt dort erscheinen.
+- **Korrektur:** Kontextabhängige Tests warten auf erfolgreich geladene Eingaben. Ladefehler lassen sich wiederholen; Workflow und Schritt besitzen ihren eigenen Testzustand. Tests mit leeren oder manuell gesetzten Eingaben bleiben möglich.
+- **Im Alltag:** Ein Skripttest erhält die erwarteten Werte seines Vorgängers. Das Ergebnis eines vorher ausgewählten Schritts wird nicht dem gerade geöffneten Schritt zugeschrieben.
+- **Nachweis:** Verzögerte Kontext- und Testantworten sowie Ladefehler reproduziert; die Schritttest- und Eigenschaftenpanel-Suite besteht mit 41 Tests. TypeScript ohne Fehler.
+
+### 135. Systemwechsel wartet auf die startende NodePilot-API (Medium)
+
+- **Problem:** Windows meldet den Dienst bereits als laufend, während die Datenbank vorbereitet wird. Der erste CLI-Abruf konnte deshalb scheitern und beide Automationssysteme wieder abschalten.
+- **Korrektur:** Nur das erste lesende Workflowinventar wartet begrenzt bei Verbindungsablehnung oder HTTP503. TLS-, Konfigurations- und Berechtigungsfehler bleiben sofortige Abbrüche; Änderungen an Workflows werden nicht wiederholt.
+- **Im Alltag:** Ein normaler Wechsel von SCOrch zu einer noch startenden NodePilot-Instanz scheitert nicht mehr allein an deren Startlatenz.
+- **Nachweis:** Unabhängige Gegenprüfung, ein Reconciler- und zwei CLI-Fälle zunächst rot. Danach 132/132 Switcher- und 12/12 CLI-Basiskommando-Tests grün, einschließlich Deadline und unverändertem Abbruch bei Schreibfehlern.
+
+### 136. Skripte behalten die Herkunft eines Schrittparameters bei (Medium)
+
+- **Problem:** Fehlte etwa `{{lookup.param.hostName}}`, konnte PowerShell den gleichnamigen Wert eines anderen Vorgängerschritts übernehmen.
+- **Korrektur:** Qualifizierte Zugriffe verwenden ausschließlich den genannten Schritt oder dessen Ausgabealias. Bewusst verwendete Kurzvariablen wie `$hostName` bleiben verfügbar.
+- **Im Alltag:** Liefert eine Serversuche keinen Treffer, verwendet das nachfolgende Skript nicht unbemerkt den Server aus einem anderen Arbeitsschritt.
+- **Nachweis:** Unabhängig gegengeprüft; vier echte RunScript-/Custom-Runspace-Fälle zunächst rot, danach 110/110 Variablen-/Template-/Ausführungsfälle grün.
+
+### 137. Agent-Einstellungen gehören zum ausgewählten Schritt (Medium)
+
+- **Problem:** Beim Wechsel zwischen zwei Agent-Schritten blieben lokale Eingabefelder des ersten Schritts stehen, beispielsweise erlaubte Dateipfade und das Ergebnisschema. Eine Bearbeitung konnte diese fremden Werte in den zweiten Schritt schreiben.
+- **Korrektur:** Die vorhandene Konfigurationskomponente erhält eine Identität aus Workflow und Schritt. Beim normalen Wechsel startet sie mit den tatsächlichen Werten des neuen Schritts.
+- **Im Alltag:** Wer nacheinander zwei Agenten konfiguriert, verändert deren eigene Pfade und Schemas, ohne versehentlich Einstellungen des anderen zu übernehmen.
+- **Nachweis:** Echter Panelwechsel mit gleichen internen Agent-IDs zuerst rot, danach grün; unabhängige Gegenprüfung, insgesamt 41 betroffene Paneltests und TypeScript bestanden.
+
+### 138. MCP schützt vertrauliche Werte auch in Teilansichten (Medium)
+
+- **Problem:** Vertrags- und Einzelknotenabrufe konnten vertrauliche Parameterdefaults bzw. REST-URLs an das Modell weitergeben, obwohl der volle Definitionsabruf sie maskierte.
+- **Korrektur:** Contractdefaults werden ebenfalls maskiert; Einzelknoten werden aus der vollständig redigierten Definition ausgewählt. Namen, Typen und andere unkritische Metadaten bleiben nutzbar.
+- **Im Alltag:** Der Agent kann vor einem Workflowstart dessen Parameter oder einen ausgewählten Knoten prüfen, ohne dabei gespeicherte Inline-Geheimnisse zu erhalten. Maskierte Defaults werden weggelassen, damit der Server den echten Default nutzt.
+- **Nachweis:** Vier echte HTTP-/Toolausgabefälle zunächst rot, danach komplette MCP-Suite 212/212 grün; Root hat beide Quellpfade unabhängig gegengeprüft.
+
+### 139. Verbindungen zeigen ihre tatsächlich wirksame Bedingung (Medium)
+
+- **Problem:** Beim Wechsel von einer einfachen zu einer komplexen Verbindungsbedingung blieb das einfache Eingabefeld geöffnet. Änderungen darin konnten wirkungslos bleiben, weil die verborgene komplexe Bedingung in der Engine Vorrang hat.
+- **Korrektur:** Das Verbindungspanel wird an Workflow und Verbindungs-ID gebunden und öffnet den passenden Bedingungseditor.
+- **Im Alltag:** Die im Designer angezeigte und bearbeitete Bedingung entspricht wieder der Bedingung, die entscheidet, welcher nächste Arbeitsschritt ausgeführt wird.
+- **Nachweis:** Normaler Wechsel zwischen zwei Verbindungen zunächst rot, anschließend 29 Panel-/Bedingungseditor-Tests grün; Engine-Priorität unabhängig gegengeprüft.
+
+### 140. MCP und CLI lesen für begrenzte Ausführungsfragen nur benötigte Seiten (Medium)
+
+- **Problem:** Die Frage nach den letzten 50 Ausführungen lud zunächst die gesamte Historie. Mit wachsender Laufzeit des Systems entstanden unnötig viele HTTP-Anfragen und große Datenmengen; auch die letzte Fehlerdiagnose las alle älteren Läufe.
+- **Korrektur:** Die bestehende API begrenzt die Liste vor der Übertragung. Die Fehlerdiagnose filtert auf dem Server nach dem neuesten fehlgeschlagenen Lauf. Die Gesamtzahl bleibt korrekt.
+- **Im Alltag:** Ein Agent erhält aktuelle Ausführungen und die letzte Fehlerursache auch bei langer Betriebshistorie mit wenigen Anfragen.
+- **Nachweis:** Vier HTTP-Vertragsfälle zunächst rot, danach 215/215 MCP-Tests grün; hoher Totalwert, Limitgrenzen und serverseitiger Fehlerfilter geprüft.
+- **CLI-Gegenlauf:** `np exec list --limit` begrenzt jetzt schon den Abruf, mit konstanter Seitengröße und eindeutigen IDs über Seitengrenzen. Ohne positives Limit bleibt die vollständige Liste erhalten. Zwei Limitfälle zunächst rot; danach 136/136 CLI-Tests grün. Limit 250 benötigt zwei Requests, Limit 10 einen.
+
+### 141. Eine hängende Freigabe hält die Triggerverwaltung nicht mehr fest (Medium)
+
+- **Problem:** Die regelmäßige Dateibestandsaufnahme konnte beim Ausfall einer Netzwerkfreigabe hängen. Das Beenden dieses Wächters blockierte dann die gemeinsame Triggerverwaltung.
+- **Korrektur:** Der Scan nutzt die vorhandene Zeitgrenze. Eine nicht antwortende Quelle wird als fehlerhaft markiert; ein verspätetes Ergebnis verändert weder Checkpoints noch Ereignisse.
+- **Im Alltag:** Andere Zeitpläne und Dateiwächter bleiben verwaltbar, wenn eine überwachte Freigabe nicht mehr antwortet.
+- **Nachweis:** Zwei Barrieretests zuerst rot, danach 102/102 FileWatcher-/Orchestrator-Tests grün; Ursache und Diff unabhängig geprüft. Kein echter Netzwerkausfalltest; der native Scanthread kann bis zur OS-Rückkehr weiterleben.
+
+### 142. Das Ausführungsarchiv erholt sich nach einem vorübergehenden Pfadfehler (Medium)
+
+- **Problem:** Eine einmal fehlgeschlagene Schreibprobe deaktivierte das Archiv dauerhaft, auch wenn die Freigabe später wieder erreichbar war. Ohne Neustart oder Pfadänderung wurden weitere alte Ausführungen ohne Archiv gelöscht.
+- **Korrektur:** Eine fehlgeschlagene Probe wird beim nächsten Bereinigungsdurchlauf wiederholt. Erfolgreiche Proben bleiben gecacht; die dokumentierte Best-effort-Löschregel bleibt erhalten.
+- **Im Alltag:** Nach einer vorübergehenden Archivstörung nimmt der Dienst die Archivierung selbstständig wieder auf.
+- **Nachweis:** Ein SQLite-/Dateisystemtest mit zunächst blockiertem und anschließend verfügbarem Verzeichnis zuerst rot, danach 18/18 Retention-Tests grün. Root hat Ursache, Fix und Nachweis unabhängig geprüft; kein echter UNC-Ausfall nötig.
+
+### 143. Ausstehende Alarme überstehen längere Unterbrechungen (Medium)
+
+- **Problem:** Nach einem längeren Dienstausfall konnte eine bereits gespeicherte Alarmzustellung scheitern, weil ihr Ereignis aus dem kurzen Suchzeitraum der Alarmquelle gefallen war. Der eigentliche Ausführungs- oder Auditdatensatz existierte weiterhin.
+- **Korrektur:** Bereits angenommene Zustellungen laden ihr konkretes Ereignis anhand seiner ID. Die normale Suche nach neuen Ereignissen behält ihren begrenzten Zeitraum.
+- **Im Alltag:** Nach einem Neustart oder Ausfall werden ausstehende Fehlermeldungen weiter zugestellt, solange der Quelldatensatz noch vorhanden und die Regel aktiv ist.
+- **Nachweis:** Dispatcher-Tests mit alten vorhandenen und gelöschten Ausführungs-/Auditdatensätzen; unabhängige Gegenprüfung. Zusammen mit #144 bestanden 104 gezielte Tests. Keine echte Ausfallübung auf CM1.
+
+### 144. Agenten geben Remote-Verbindungen nach jedem Arbeitsschritt frei (Medium)
+
+- **Problem:** Jeder Agent behielt eine reservierte WinRM-Verbindung bis zum Ende des gesamten Teams. Bei mehreren Agenten auf demselben Server konnten alle verfügbaren Plätze belegt sein. Weitere Agenten warteten dann auf Verbindungen, die erst nach Ende des wartenden Teams frei geworden wären.
+- **Korrektur:** Eine Verbindung bleibt nur während des tatsächlichen Remote-Aufrufs reserviert. Der Pool kann sie anschließend wiederverwenden. Arbeitsdateien und deren spätere Bereinigung bleiben erhalten.
+- **Im Alltag:** Größere Agententeams und parallele Aufträge blockieren sich nicht mehr durch ungenutzte Verbindungsreservierungen bis zum Timeout.
+- **Nachweis:** Sechs Agenten in zwei Dreiergruppen am echten Pool mit fünf Plätzen und lokalen Test-Runspaces; Skillübertragung, Integritätsprüfung und Aufräumen nach Policywiderruf mitgeprüft. Zusammen mit #143 bestanden 104 Tests; kein Live-WinRM-Test.
+
+### 145. Alarme zählen echte Ereignisse und sperren neue Meldungen nicht durch alte (Medium)
+
+- **Problem:** Wiederholte Abfragen desselben Ereignisses konnten die Mindestanzahl erreichen, obwohl nur ein Fehler aufgetreten war. Bereits zugestellte Ereignisse konnten außerdem eine abgelaufene Sperrzeit neu starten und dadurch einen neuen Fehleralarm unterdrücken. Das betraf Systemalarme und Regeln für lange laufende oder wartende Ausführungen.
+- **Korrektur:** Beide Alarmwege prüfen vorhandene Zustellungen vor der Sperrzeit. Für Regeln mit Mindestanzahl wird dauerhaft gespeichert, welche Ereignisse schon gezählt wurden. Die Bereinigung entfernt veraltete Einträge.
+- **Im Alltag:** „Erst nach drei Ereignissen melden“ bedeutet drei verschiedene Ereignisse, auch nach einem Neustart. Ein alter Alarm verhindert nicht, dass ein neuer nach Ablauf der Sperrzeit gemeldet wird.
+- **Nachweis:** Vier echte Dispatcher-Reproduktionen zunächst rot, danach 96 Alarm-/Bereinigungstests, zwölf Migrationsprüfungen und sechs Tests des Regel-Lebenszyklus grün. Regellöschung entfernt auch die Zähleinträge. Neue providerunabhängige Migration `TrackNotificationOccurrences`; noch nicht auf der laufenden Entwicklungsinstanz oder CM1 angewandt.
+
+### 146. Desktop-Rollback stellt auch die Verbindungsadresse wieder her (Medium)
+
+- **Problem:** Nach einem fehlgeschlagenen gestuften Update wurden die alte Anwendung und Datenbank wiederhergestellt, aber die neue Desktop-Verbindungsdatei blieb stehen. Hatte das Update einen anderen freien Port gewählt, suchte die Oberfläche danach am falschen Anschluss.
+- **Korrektur:** Der Updater sichert die bisherige Verbindungsdatei und ihre Zugriffsrechte und stellt beides vor dem Neustart wieder her. Gab es vorher keine Datei, wird die neu erzeugte entfernt.
+- **Im Alltag:** Ein fehlgeschlagenes Update hinterlässt eine Desktop-Oberfläche, die weiterhin zur wiederhergestellten API passt.
+- **Nachweis:** Offline-Rollbacktest mit unterschiedlichen alten/neuen Ports und Dateirechten, zunächst rot und anschließend grün. Dienste und Datenbankwerkzeuge sind dabei simuliert; kein vollständiger Installerlauf.
+
+### 147. Auch beim Server-Rollback bleiben gespeicherte Passwörter geschützt (Medium, Sicherheit)
+
+- **Problem:** Beim Wiederherstellen eines Windows-Dienstes wurde der Registry-Schlüssel nur geschützt, wenn die Umgebung einen PostgreSQL-Verbindungsstring enthielt. Eine SQL-Server-Installation konnte aber ebenfalls eine vertrauliche Seed-Backup-Passphrase enthalten. Nach einem fehlgeschlagenen Installationsvorgang konnte diese für lokale Standardbenutzer lesbar werden.
+- **Korrektur:** Vor dem Wiederherstellen der Dienstumgebung werden immer die restriktiven Registry-Rechte gesetzt. Schlägt das fehl, werden die Werte nicht geschrieben und der Dienst nicht gestartet.
+- **Im Alltag:** Eine Reparatur mit anschließendem Rollback gibt keine zuvor geschützte Backup-Passphrase durch neu entstandene Standardrechte preis. Zum Entschlüsseln wäre zusätzlich die passende Backupdatei nötig; ein direkter Datenbankzugriff wurde nicht nachgewiesen.
+- **Nachweis:** Ausführung des echten Rollback-Helfers mit simulierten Windows-Aufrufen: Schutz vor Schreiben und Neustart sowie Abbruch bei ACL-Fehler geprüft; zunächst rot, anschließend grün. Keine Änderung an realen Dienstrechten.

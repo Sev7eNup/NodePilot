@@ -285,6 +285,7 @@ function PropertiesPanelImpl({
         {configComponent && (
           <Section title={t('properties:configuration')}>
             {createElement(configComponent, {
+              key: `${workflowId}:${node.id}`,
               config,
               onUpdate: updateConfig,
               upstreamVars,

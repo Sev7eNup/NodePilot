@@ -36,8 +36,10 @@ public sealed class ExecutionTools
             wf = parsed;
         }
 
-        var all = await ApiErrorMapper.Guard(() => _api.ListExecutionsAsync(wf, activeOnly, terminalOnly, cancellationToken));
-        var rows = all.Take(Math.Clamp(limit, 1, 200)).Select(e => new
+        var clamped = Math.Clamp(limit, 1, 200);
+        var page = await ApiErrorMapper.Guard(() => _api.ListExecutionsAsync(wf, activeOnly, terminalOnly,
+            clamped, status: null, cancellationToken));
+        var rows = page.Items.Take(clamped).Select(e => new
         {
             id = e.Id,
             workflowId = e.WorkflowId,
@@ -49,7 +51,7 @@ public sealed class ExecutionTools
             stepsTotal = e.StepsTotal,
             failedSteps = e.FailedSteps?.Select(f => f.StepName ?? f.StepId),
         }).ToList();
-        return new { count = rows.Count, totalAvailable = all.Count, executions = rows };
+        return new { count = rows.Count, totalAvailable = page.Total, executions = rows };
     }
 
     [McpServerTool(Name = "get_execution", ReadOnly = true)]

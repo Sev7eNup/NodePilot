@@ -123,6 +123,12 @@ $backupFile = New-DatabaseBackup
 $rollbackRoot = Join-Path $DataPath ("rollback\{0}" -f (Get-Date).ToString('yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Force -Path $rollbackRoot | Out-Null
 $swappedComponents = New-Object 'System.Collections.Generic.List[string]'
+$previousDesktopJsonBytes = $null
+$previousDesktopJsonAcl = $null
+if (Test-Path -LiteralPath $DesktopJson) {
+    $previousDesktopJsonBytes = [IO.File]::ReadAllBytes($DesktopJson)
+    $previousDesktopJsonAcl = Get-Acl -LiteralPath $DesktopJson
+}
 
 function Stop-Everything {
     Write-Step 'Stopping shell and services'
@@ -213,6 +219,14 @@ catch {
             if (Test-Path -LiteralPath $saved) {
                 Move-Item -LiteralPath $saved -Destination $cur -Force
             }
+        }
+        # The shell handoff lives outside the swapped binaries. Restore its origin and ACL
+        # together with the previous API configuration before restarting either service.
+        if ($null -ne $previousDesktopJsonBytes) {
+            [IO.File]::WriteAllBytes($DesktopJson, $previousDesktopJsonBytes)
+            Set-Acl -LiteralPath $DesktopJson -AclObject $previousDesktopJsonAcl
+        } elseif (Test-Path -LiteralPath $DesktopJson) {
+            Remove-Item -LiteralPath $DesktopJson -Force -ErrorAction Stop
         }
         # The API migrates and writes the database at startup. Keep it stopped until the
         # complete snapshot has been restored, and leave it stopped if restoration fails.

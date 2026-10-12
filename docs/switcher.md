@@ -112,6 +112,12 @@ before the replacement. If the server URL is unset, the update derives one from 
 `AllowedHosts` and Kestrel HTTPS port. Install and update share the URL helper,
 `deploy/SwitcherConfig.ps1`.
 
+After the NodePilot service reaches SCM Running, the API may still be preparing its database.
+The switcher retries only its initial workflow inventory read when `np` reports connection
+refused or HTTP 503 (exit code 5), within one `commandTimeoutSeconds` budget. Authentication,
+certificate, configuration and other errors still stop the switch immediately. Workflow changes
+and the final verification read are never replayed by this startup wait.
+
 Both allowlist paths must be absolute paths and may point either to a local file (`C:\...`) or to a
 UNC share (`\\server\share\...`). Relative allowlist paths are rejected. The account that starts the
 elevated switcher must have read access to the files or shares.

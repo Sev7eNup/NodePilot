@@ -112,6 +112,7 @@ export function EditorRightPanel({
       <>
         <ResizeHandle direction="horizontal" {...panelHandleProps} />
         <EdgePropertiesPanel
+          key={`${workflowId}:${selectedEdge.id}`}
           edge={selectedEdge}
           allNodes={nodes}
           allEdges={edges}
