@@ -23,6 +23,20 @@ export function getDownstreamNodeIds(startId: string, edges: Edge[]): Set<string
 }
 
 /**
+ * Marks the elements of <c>next</c> as selected exactly when the element with the same id was
+ * selected in <c>prev</c>. Used when the server graph is re-adopted for the open workflow, so the
+ * user's selection (and the properties panel behind it) survives. A <c>selected</c> flag stored in
+ * the saved JSON is overwritten.
+ */
+export function carrySelection<T extends { id: string; selected?: boolean }>(
+  next: T[],
+  prev: ReadonlyArray<{ id: string; selected?: boolean }>,
+): T[] {
+  const selectedIds = new Set(prev.filter((el) => el.selected).map((el) => el.id));
+  return next.map((el) => ({ ...el, selected: selectedIds.has(el.id) }));
+}
+
+/**
  * Rewrite every <c>{{oldAlias.…}}</c> token in the JSON-serialised node config to use
  * the new alias. Used when an outputVariable rename needs to propagate to downstream
  * nodes that already reference the old name.

@@ -2827,6 +2827,18 @@ Pflicht-Lese: CLAUDE.md "Edit-Lifecycle (SCOrch-style Edit-Lock)" — die 4-Stat
 
 ---
 
+### Test 27.9 — Lock behält Selektion und Properties-Panel
+
+**Voraussetzung:** Workflow ohne Lock mit mindestens zwei Nodes.
+
+**Schritte:** Node anklicken (Properties-Panel öffnet) → "Bearbeiten".
+
+**Prüfpunkte:**
+- [ ] Nach dem Lock (Save/Publish sichtbar) ist der Node weiterhin selektiert und das Properties-Panel offen, jetzt editierbar.
+- [ ] Gleiches gilt für "Beenden" und "Veröffentlichen".
+
+---
+
 ## Teil 28: Step-Test mit Kontext
 
 Pflicht-Lese: CLAUDE.md "Step-Test mit Kontext".
@@ -4114,6 +4126,15 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ---
 
+### Test 63.1b — Sortierung bleibt nach Workflow-Wechsel erhalten
+
+**Schritte:** Tabelle nach "Name" absteigend sortieren → Workflow öffnen → zurück (Zurück-Pfeil im Designer, danach ebenso Browser-Zurück).
+
+**Prüfpunkte:**
+- [ ] Die Liste erscheint mit derselben Spalte und Richtung wie zuvor, ohne erneutes Sortieren. Die Sortierung überlebt auch ein Neuladen der Seite.
+
+---
+
 ### Test 63.2 — Enable/Disable-Toggle in Listenzeile
 
 **Prüfpunkte:**
@@ -4279,6 +4300,17 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 ### Test 70.2 — Kein Lint-Problem bei validem Workflow
 
 **Prüfpunkte:** LintPanel zeigt "No issues found". Lint-Button grün.
+
+---
+
+### Test 70.3 — Panel schließt bei Klick außerhalb
+
+**Voraussetzung:** Workflow mit Lint-Problem, vom Benutzer ausgecheckt (Nodes verschiebbar).
+
+**Schritte:** Lint-Button → LintPanel öffnet → Klick auf einen Node.
+
+**Prüfpunkte:**
+- [ ] Panel schließt. Lint-Button öffnet es wieder, ein zweiter Klick auf den Button schließt es (öffnet es nicht erneut).
 
 ---
 
@@ -5036,7 +5068,7 @@ Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automati
 [ ] Teil 24: Real-time SignalR (24.1 — 24.2)
 [ ] Teil 25: Authentication-Lifecycle (25.1 — 25.7)
 [ ] Teil 26: RBAC — Rollen-Crossings (26.1 — 26.5)
-[ ] Teil 27: Edit-Lock-Lifecycle (27.1 — 27.8)
+[ ] Teil 27: Edit-Lock-Lifecycle (27.1 — 27.9)
 [ ] Teil 28: Step-Test mit Kontext (28.1 — 28.6)
 [ ] Teil 29: Sub-Workflow Contracts V1 (29.1 — 29.9)
 [ ] Teil 30: Coverage Heatmap (30.1 — 30.5)
@@ -5072,14 +5104,14 @@ Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automati
 [ ] Teil 60: BulkEditPanel & ActivityTypeFilter (60.1 — 60.2)
 [ ] Teil 61: Edge-Reshape Handles (61.1 — 61.2)
 [ ] Teil 62: Designer Status-Banner (62.1 — 62.2)
-[ ] Teil 63: Workflows-Listenansicht UI (63.1 — 63.3)
+[ ] Teil 63: Workflows-Listenansicht UI (63.1 — 63.3, inkl. 63.1b)
 [ ] Teil 64: Audit-Log Pagination & Multi-Filter (64.1 — 64.2)
 [ ] Teil 65: Credential- & Machine-Picker (65.1 — 65.2)
 [ ] Teil 66: SignalR-Verbindungsstatus (66.1 — 66.2)
 [ ] Teil 67: Import-Dialog mit Drag & Drop (67.1 — 67.2)
 [ ] Teil 68: Activity-Palette & Node-Kontext-Menü (68.1 — 68.4)
 [ ] Teil 69: Editor-Toolbar View-Toggles (69.1 — 69.3)
-[ ] Teil 70: Lint Panel (70.1 — 70.2)
+[ ] Teil 70: Lint Panel (70.1 — 70.3)
 [ ] Teil 71: LiveConsole — Filter & Pause (71.1 — 71.3)
 [ ] Teil 72: WorkflowBreadcrumbs — Calls → Navigation (72.1 — 72.2)
 [ ] Teil 73: Edge-Label manuell überschreiben (73.1 — 73.2)

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
@@ -69,6 +69,22 @@ describe('GlobalFolderTree', () => {
     vi.clearAllMocks();
     vi.mocked(confirmDialog).mockResolvedValue(true);
     useToastStore.setState({ toasts: [] });
+  });
+
+  it('shows each folder with the variables below it, so Root matches the full list', async () => {
+    // The server counts only the variables directly in a folder; selecting a folder lists its
+    // whole subtree, so the badge adds the descendants.
+    mockApi.list.mockResolvedValue([rootFolder, env, prod, keys]);
+
+    renderWithClient(
+      <GlobalFolderTree selectedFolderId={null} onFolderSelected={() => {}} canManage={false} />);
+    await waitFor(() => expect(screen.getByText('Environment')).toBeInTheDocument());
+
+    const badge = (id: string) => within(screen.getByTestId(`global-folder-${id}`)).getByText(/^\d+$/);
+    expect(badge(ROOT_FOLDER_ID)).toHaveTextContent('6'); // 0 + (2 + 3) + 1
+    expect(badge('env')).toHaveTextContent('5');          // 2 + Prod's 3
+    expect(badge('prod')).toHaveTextContent('3');
+    expect(badge('keys')).toHaveTextContent('1');
   });
 
   it('shows no bulk controls without canManage', async () => {

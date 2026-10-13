@@ -103,6 +103,24 @@ test.describe('Lint Panel (Teil 70)', () => {
     expect(consoleErrors.join('\n')).not.toMatch(/Cannot read|is not a function|Maximum update depth/i);
   });
 
+  test('70.3 — clicking a node closes the panel', async ({ page }) => {
+    await openEditor(page, true);
+
+    const pill = page.getByTitle(/\d+ errors?,\s*\d+ warnings?/i);
+    const panelHeading = page.getByRole('heading', { name: /workflow validation|workflow-validierung/i });
+
+    await pill.click();
+    await expect(panelHeading).toBeVisible({ timeout: 10_000 });
+
+    // The mock user holds the lock, so nodes are draggable; node drag swallows mousedown bubbling.
+    await page.locator('.react-flow__node[data-id="step-a"]').click({ position: { x: 15, y: 15 } });
+    await expect(panelHeading).toHaveCount(0, { timeout: 10_000 });
+
+    // The pill opens it again.
+    await pill.click();
+    await expect(panelHeading).toBeVisible({ timeout: 10_000 });
+  });
+
   test('70.2 — a clean workflow shows no lint pill at all', async ({ page }) => {
     await openEditor(page, false);
 

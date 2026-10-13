@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Edge, Node } from '@xyflow/react';
 import { AiWorkflowChatPanel } from '../../../components/ai/AiWorkflowChatPanel';
-import { aiApi, type WorkflowChatRequest, type ChatStreamHandlers } from '../../../api/ai';
+import { aiApi, type WorkflowChatRequest, type ChatStreamHandlers, type ChatDiagnostic } from '../../../api/ai';
 import { useAiChatStore } from '../../../stores/aiChatStore';
 import { useAuthStore } from '../../../stores/authStore';
 import { hashDefinition } from '../../../lib/workflowDiff';
@@ -518,6 +518,80 @@ describe('AiWorkflowChatPanel (streaming)', () => {
     expect(req1.workflowJson).not.toContain('l1');     // first turn: bare canvas
     expect(req2.workflowJson).toContain('l1');          // refine turn: the proposal as base
     expect(req2.baseDefinitionHash).toBe(req1.baseDefinitionHash); // stale-guard = real canvas
+  });
+
+  describe('designer validation findings', () => {
+    const finding: ChatDiagnostic = {
+      severity: 'error', code: 'isolated-node', message: 'Node is not connected', nodeId: 't1',
+    };
+
+    it('sends the findings with a normal question', async () => {
+      chatMock.mockImplementation(streamMock({ reply: 'ok' }));
+      setup({ getDiagnostics: () => [finding] });
+
+      await ask('Why is my workflow red?');
+
+      await waitFor(() => expect(chatMock).toHaveBeenCalledTimes(1));
+      expect((chatMock.mock.calls[0][0] as WorkflowChatRequest).diagnostics).toEqual([finding]);
+    });
+
+    it('reads the findings when the question is sent, not when the panel renders', async () => {
+      chatMock.mockImplementation(streamMock({ reply: 'ok' }));
+      let current: ChatDiagnostic[] = [];
+      const getDiagnostics = vi.fn(() => current);
+      setup({ getDiagnostics });
+      expect(getDiagnostics).not.toHaveBeenCalled();
+
+      current = [finding];
+      await ask('Why is my workflow red?');
+
+      await waitFor(() => expect(chatMock).toHaveBeenCalledTimes(1));
+      expect((chatMock.mock.calls[0][0] as WorkflowChatRequest).diagnostics).toEqual([finding]);
+    });
+
+    it.each([
+      ['no findings', { getDiagnostics: () => [] as ChatDiagnostic[] }],
+      ['no getDiagnostics prop', {}],
+    ])('leaves the field out with %s', async (_name, over) => {
+      chatMock.mockImplementation(streamMock({ reply: 'ok' }));
+      setup(over);
+
+      await ask('Explain.');
+
+      await waitFor(() => expect(chatMock).toHaveBeenCalledTimes(1));
+      expect(chatMock.mock.calls[0][0]).not.toHaveProperty('diagnostics');
+    });
+
+    it('sends the current findings again when the answer is regenerated', async () => {
+      chatMock.mockImplementation(streamMock({ reply: 'first answer' }));
+      let current: ChatDiagnostic[] = [];
+      setup({ getDiagnostics: () => current });
+      await ask('explain');
+      await waitFor(() => expect(screen.getByText(/first answer/i)).toBeInTheDocument());
+
+      current = [finding];
+      chatMock.mockImplementation(streamMock({ reply: 'second answer' }));
+      fireEvent.click(screen.getByRole('button', { name: /regenerate/i }));
+
+      await waitFor(() => expect(chatMock).toHaveBeenCalledTimes(2));
+      expect((chatMock.mock.calls[1][0] as WorkflowChatRequest).diagnostics).toEqual([finding]);
+    });
+
+    it('does not send the findings on a refine turn (the LLM works on the proposal, not the canvas)', async () => {
+      chatMock.mockImplementation(streamMock({ reply: 'Added a log step.', proposal: true }));
+      setup({ getDiagnostics: () => [finding] });
+      await ask('Add a log step.');
+      await screen.findByRole('button', { name: /^apply$/i });
+
+      fireEvent.click(screen.getByRole('button', { name: /^refine$/i }));
+      chatMock.mockImplementation(streamMock({ reply: 'refined' }));
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'make it warn' } });
+      fireEvent.click(screen.getByRole('button', { name: /send/i }));
+
+      await waitFor(() => expect(chatMock).toHaveBeenCalledTimes(2));
+      expect(chatMock.mock.calls[0][0]).toHaveProperty('diagnostics');
+      expect(chatMock.mock.calls[1][0]).not.toHaveProperty('diagnostics');
+    });
   });
 
   it('offers Undo and Auto-Layout after applying', async () => {

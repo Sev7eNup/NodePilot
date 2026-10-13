@@ -21,7 +21,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Edge, Node } from '@xyflow/react';
-import { aiApi, type AiChatTurn, type WorkflowChatProposal, type ChatActivityEntry } from '../../api/ai';
+import { aiApi, type AiChatTurn, type WorkflowChatProposal, type ChatActivityEntry, type ChatDiagnostic } from '../../api/ai';
 import { hashDefinition, buildChangelog, assembleSelectiveDefinition, type WorkflowDefinition, type ChangelogEntry } from '../../lib/workflowDiff';
 import { Markdown } from '../common/Markdown';
 import { CopyButton } from '../common/CopyButton';
@@ -62,6 +62,8 @@ interface Props {
   onAutoLayout?: () => void;
   /** Current canvas selection that limits the question to selected nodes. */
   selection?: { nodeLabels: string[]; edgeCount: number };
+  /** Returns the validation findings of the canvas as it is right now, sent along as context. */
+  getDiagnostics?: () => ChatDiagnostic[];
 }
 
 /**
@@ -72,7 +74,7 @@ interface Props {
  * recalls the last question.
  */
 export function AiWorkflowChatPanel({
-  workflowId, getCurrentDefinition, applyDefinition, canApply, isViewer, onClose, onUndo, onAutoLayout, selection,
+  workflowId, getCurrentDefinition, applyDefinition, canApply, isViewer, onClose, onUndo, onAutoLayout, selection, getDiagnostics,
 }: Readonly<Props>) {
   const { t } = useTranslation(['ai', 'common']);
   const userId = useAuthStore((s) => s.userId);
@@ -158,8 +160,9 @@ export function AiWorkflowChatPanel({
     // `llmBase` = what the LLM sees as its base (the previous proposal, when refining); `applyBase`
     // =
     // the real canvas (used for the staleness guard + diff base). For normal turns both are the
-    // same.
-    async (question: string, history: AiChatTurn[], llmBase: WorkflowDefinition, applyBase: WorkflowDefinition = llmBase) => {
+    // same. `diagnostics` are the validation findings of the canvas; they are left out when
+    // refining, because the LLM then works on the previous proposal, not the canvas.
+    async (question: string, history: AiChatTurn[], llmBase: WorkflowDefinition, applyBase: WorkflowDefinition = llmBase, diagnostics?: ChatDiagnostic[]) => {
       setError(null);
       const baseDefinitionHash = hashDefinition(applyBase);
       setMessages((prev) => [...prev, { role: 'assistant', content: '', streaming: true }]);
@@ -170,7 +173,11 @@ export function AiWorkflowChatPanel({
       abortRef.current = ac;
       try {
         await aiApi.chatStream(
-          { question, workflowJson: JSON.stringify(llmBase), workflowId: workflowId ?? null, baseDefinitionHash, history: trimHistory(history) },
+          {
+            question, workflowJson: JSON.stringify(llmBase), workflowId: workflowId ?? null, baseDefinitionHash,
+            history: trimHistory(history),
+            ...(diagnostics && diagnostics.length > 0 ? { diagnostics } : {}),
+          },
           {
             signal: ac.signal,
             onDelta: (text) => setMessages((prev) => appendToLastAssistant(prev, text)),
@@ -209,10 +216,14 @@ export function AiWorkflowChatPanel({
       const refine = refineTarget;
       setRefineTarget(null);
       setScopeToSelection(false);
-      if (refine) void streamAssistant(scoped, history, refine.def, refine.applyBase);
-      else void streamAssistant(scoped, history, getCurrentDefinition());
+      if (refine) {
+        void streamAssistant(scoped, history, refine.def, refine.applyBase);
+      } else {
+        const canvas = getCurrentDefinition();
+        void streamAssistant(scoped, history, canvas, canvas, getDiagnostics?.());
+      }
     },
-    [sending, messages, getCurrentDefinition, setMessages, streamAssistant, refineTarget, scopeToSelection, selection],
+    [sending, messages, getCurrentDefinition, getDiagnostics, setMessages, streamAssistant, refineTarget, scopeToSelection, selection],
   );
 
   const startRefine = useCallback((def: WorkflowDefinition, applyBase: WorkflowDefinition) => {
@@ -229,8 +240,9 @@ export function AiWorkflowChatPanel({
     const question = messages[lastUserIdx].content;
     const history: AiChatTurn[] = messages.slice(0, lastUserIdx).map((m) => ({ role: m.role, content: m.content }));
     setMessages((prev) => prev.slice(0, lastUserIdx + 1)); // cut off everything after the last question
-    void streamAssistant(question, history, getCurrentDefinition());
-  }, [sending, messages, setMessages, streamAssistant, getCurrentDefinition]);
+    const canvas = getCurrentDefinition();
+    void streamAssistant(question, history, canvas, canvas, getDiagnostics?.());
+  }, [sending, messages, setMessages, streamAssistant, getCurrentDefinition, getDiagnostics]);
 
   const handleStop = useCallback(() => abortRef.current?.abort(), []);
 

@@ -27,13 +27,21 @@ function definition() {
   });
 }
 
-function workflowJson() {
+function workflowJson(definitionJson = definition()) {
   return JSON.stringify({
     id: WF_ID, name: 'WF-Assistant', description: '', isEnabled: false,
     checkedOutByUserId: MOCK_USER.id, checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
-    definitionJson: definition(), version: 1,
+    definitionJson, version: 1,
   });
+}
+
+/** The default graph plus a node without any edge, which lints as an `isolated-node` error. */
+function definitionWithIsolatedNode() {
+  const base = JSON.parse(definition());
+  base.nodes.push({ id: 'step-orphan', type: 'activity', position: { x: 40, y: 400 },
+    data: { label: 'Lonely', activityType: 'log', config: { message: 'alone' } } });
+  return JSON.stringify(base);
 }
 
 function proposalDefinition() {
@@ -70,9 +78,9 @@ async function mockChat(page: Page, withProposal: boolean) {
   });
 }
 
-async function openEditor(page: Page) {
+async function openEditor(page: Page, definitionJson?: string) {
   await page.route(`**/api/workflows/${WF_ID}`, (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() }),
+    route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson(definitionJson) }),
   );
   await page.goto(`/workflows/${WF_ID}`);
   await expect(page.locator('.react-flow__node[data-id="step-a"]')).toBeVisible({ timeout: 20_000 });
@@ -106,6 +114,30 @@ test.describe('KI-Workflow-Assistent', () => {
     await panel.getByRole('button', { name: /send/i }).click();
 
     await expect(panel.getByText(/starts manually/i)).toBeVisible();
+  });
+
+  test('sends the validation findings of the canvas along with the question', async ({ page }) => {
+    let chatBody: { diagnostics?: Array<{ severity: string; code: string; nodeId?: string }> } = {};
+    await page.route('**/api/ai/chat', (route) => {
+      chatBody = JSON.parse(route.request().postData() || '{}');
+      route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: `event: delta\ndata: ${JSON.stringify({ text: 'Node Lonely is not connected.' })}\n\n`
+          + `event: done\ndata: ${JSON.stringify({ model: 'test-model', durationMs: 5 })}\n\n`,
+      });
+    });
+    await openEditor(page, definitionWithIsolatedNode());
+
+    await page.getByTestId('toggle-ai-assistant').click();
+    const panel = page.getByRole('complementary', { name: /AI workflow assistant/i });
+    await panel.getByRole('textbox').fill('Why is my workflow red?');
+    await panel.getByRole('button', { name: /send/i }).click();
+
+    await expect(panel.getByText(/not connected/i)).toBeVisible();
+    expect(chatBody.diagnostics).toContainEqual(
+      expect.objectContaining({ severity: 'error', code: 'isolated-node', nodeId: 'step-orphan' }),
+    );
   });
 
   test('admin sees an Apply button for a proposal and can apply it', async ({ page }) => {

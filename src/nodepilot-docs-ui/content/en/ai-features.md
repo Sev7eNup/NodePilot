@@ -55,6 +55,7 @@ The assistant knows the currently open workflow. Possible tasks are:
 
 - Explaining the structure and flow
 - Describing possible failure points
+- Explaining the errors and warnings of the validation panel — they are sent along with every question
 - Analysing the execution history and failed steps
 - Suggesting error handling or additional steps
 - Including selected nodes deliberately through `@` or the current canvas selection

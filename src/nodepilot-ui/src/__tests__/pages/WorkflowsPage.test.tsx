@@ -7,6 +7,7 @@ import { setupServer } from 'msw/node';
 import { WorkflowsPage } from '../../pages/WorkflowsPage';
 import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
+import { useWorkflowListStore } from '../../stores/workflowListStore';
 import type { WorkflowListItem } from '../../types/api';
 import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
@@ -48,7 +49,13 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
 afterEach(() => { server.resetHandlers(); vi.restoreAllMocks(); });
 afterAll(() => server.close());
 
-beforeEach(() => navigateMock.mockReset());
+const initialListState = useWorkflowListStore.getState();
+beforeEach(() => {
+  navigateMock.mockReset();
+  // The table sort is persisted; without a reset it would leak into the next test's first request.
+  localStorage.clear();
+  useWorkflowListStore.setState(initialListState, true);
+});
 
 function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
   useAuthStore.setState({ isAuthenticated: true, username: 'admin', role });
@@ -828,7 +835,72 @@ describe('WorkflowsPage — Sorting', () => {
     await waitFor(() => expect(requests.at(-1)?.get('sortDir')).toBe('desc'));
     await screen.findByText('Server first');
   });
+
+  it('keeps the sort when the page is left and opened again', async () => {
+    const requests: URLSearchParams[] = [];
+    server.use(http.get(`${BASE}/api/workflows/paged`, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      requests.push(params);
+      const items = [mkWorkflow({ name: params.has('sortBy') ? 'Sorted list' : 'Initial' })];
+      return HttpResponse.json({ items, page: 1, pageSize: 50, total: items.length, totalPages: 1 });
+    }));
+    const first = renderPage();
+    await screen.findByText('Initial');
+    fireEvent.click(screen.getByRole('button', { name: 'Name' }));
+    await screen.findByText('Sorted list');
+    fireEvent.click(screen.getByRole('button', { name: 'Name' }));
+    await waitFor(() => expect(requests.at(-1)?.get('sortDir')).toBe('desc'));
+
+    // Opening a workflow unmounts the page; coming back mounts a fresh one.
+    first.unmount();
+    requests.length = 0;
+    vi.restoreAllMocks(); // renderPage() wraps fetch again; a second wrapper would recurse
+    renderPage();
+
+    await screen.findByText('Sorted list');
+    expect(requests[0].get('sortBy')).toBe('name');
+    expect(requests[0].get('sortDir')).toBe('desc');
+  });
 });
+
+describe('workflow list sort persistence', () => {
+  const STORAGE_KEY = 'nodepilot.workflows.list';
+
+  it('setSort_writesTheSortToLocalStorage', () => {
+    useWorkflowListStore.getState().setSort('runtime', 'desc');
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.state).toEqual({ sortBy: 'runtime', sortDir: 'desc' });
+  });
+
+  it('rehydrate_validStoredSort_isRestored', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ state: { sortBy: 'created', sortDir: 'desc' }, version: 1 }));
+
+    await useWorkflowListStore.persist.rehydrate();
+
+    expect(useWorkflowListStore.getState().sortBy).toBe('created');
+    expect(useWorkflowListStore.getState().sortDir).toBe('desc');
+  });
+
+  it('rehydrate_unknownColumnOrDirection_fallsBackToDefaults', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ state: { sortBy: 'bogus', sortDir: 'sideways' }, version: 1 }));
+
+    await useWorkflowListStore.persist.rehydrate();
+
+    expect(useWorkflowListStore.getState().sortBy).toBeNull();
+    expect(useWorkflowListStore.getState().sortDir).toBe('asc');
+  });
+
+  it('rehydrate_corruptJson_keepsDefaults', async () => {
+    localStorage.setItem(STORAGE_KEY, '{not json');
+
+    await useWorkflowListStore.persist.rehydrate();
+
+    expect(useWorkflowListStore.getState().sortBy).toBeNull();
+    expect(useWorkflowListStore.getState().sortDir).toBe('asc');
+  });
+});
+
 describe('WorkflowsPage — Export & SCOrch result modal', () => {
   it('Export All button is disabled when there are no workflows', async () => {
     server.use(http.get(`${BASE}/api/workflows/paged`, () => HttpResponse.json([])));

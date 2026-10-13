@@ -11,8 +11,9 @@ import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
  *
  * Covers:
  *   - 63.1 — column-header sorting (Name ascending, then descending, then switch to Updated).
- *            The page sorts client-side (WorkflowsPage.handleSort/sortedWorkflows), so the
- *            assertion is on the visual row order.
+ *            The server sorts (the mock mirrors it in fixtures/mockApi.ts), so the assertion is
+ *            on the visual row order.
+ *   - 63.1b — the sort is kept when a workflow is opened and the list is entered again.
  *   - 63.2 — enable/disable toggle in a list row: POST /enable|/disable fires and the
  *            mutation's setQueryData flips isEnabled without a refetch.
  *   - 63.3 — delete confirm dialog (in-app ConfirmHost modal): cancel leaves the row, OK fires
@@ -107,6 +108,44 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
     // Switch to the Updated header: ascending by updatedAt (Alpha=Jan, Charlie=Feb, Bravo=Mar).
     await page.getByRole('button', { name: /^Updated$|Geändert/i }).click();
     await expect.poll(() => rowNames(page)).toEqual(['Alpha', 'Charlie', 'Bravo']);
+  });
+
+  // ---------- 63.1b — sort survives opening a workflow and coming back ----------
+  test('63.1b — the table sort is kept after opening a workflow and returning', async ({ page }) => {
+    const rows = [
+      workflow({ id: ID_BRAVO, name: 'Bravo' }),
+      workflow({ id: ID_ALPHA, name: 'Alpha' }),
+      workflow({ id: ID_CHARLIE, name: 'Charlie' }),
+    ];
+    await page.route('**/api/workflows/paged**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowPage(route, rows)) }),
+    );
+    await page.route(`**/api/workflows/${ID_CHARLIE}`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows[2]) }),
+    );
+
+    await page.goto('/workflows');
+    await expect(page.getByRole('button', { name: 'Alpha' })).toBeVisible({ timeout: 15_000 });
+
+    // Name descending.
+    await page.getByRole('button', { name: /^Name$/i }).click();
+    await expect.poll(() => rowNames(page)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    await page.getByRole('button', { name: /^Name$/i }).click();
+    await expect.poll(() => rowNames(page)).toEqual(['Charlie', 'Bravo', 'Alpha']);
+
+    // Leave through the designer's back button (a bare /workflows navigation). Without the kept
+    // sort the list falls back to the unsorted server order Bravo, Alpha, Charlie.
+    await page.getByTestId('workflow-row-name').first().click();
+    await page.waitForURL(`**/workflows/${ID_CHARLIE}`);
+    await page.getByRole('button', { name: /back to workflow list|zur workflow-liste/i }).click();
+    await page.waitForURL('**/workflows');
+    await expect.poll(() => rowNames(page)).toEqual(['Charlie', 'Bravo', 'Alpha']);
+
+    // ... and through the browser's back button.
+    await page.getByTestId('workflow-row-name').first().click();
+    await page.waitForURL(`**/workflows/${ID_CHARLIE}`);
+    await page.goBack();
+    await expect.poll(() => rowNames(page)).toEqual(['Charlie', 'Bravo', 'Alpha']);
   });
 
   // ---------- 63.2 — enable/disable toggle ----------

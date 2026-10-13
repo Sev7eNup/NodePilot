@@ -7,7 +7,7 @@ import { SharedFolderContextMenu } from '../workflows/SharedFolderContextMenu';
 import { FolderBulkBar } from '../common/FolderBulkBar';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { useFolderBulkDelete } from '../../hooks/useFolderBulkDelete';
-import { flattenVisible } from '../../lib/folderSelection';
+import { countWithDescendants, flattenVisible } from '../../lib/folderSelection';
 
 /** Identity function for the selection hook. Module level so its reference stays stable. */
 const folderKey = (folder: GlobalFolder) => folder.id;
@@ -260,7 +260,7 @@ export function GlobalFolderTree({
             {isRoot ? t('globals:folder.allRoot', { defaultValue: 'All variables' }) : node.folder.name}
           </span>
           <span className={`text-xs ${isSelected ? 'text-on-primary-fixed/80' : 'text-on-surface-variant'}`}>
-            {node.folder.variableCount}
+            {countWithDescendants(node, (f) => f.variableCount)}
           </span>
           {canManage && (
             <button

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { SharedFolder } from '../../api/sharedFolders';
 import {
+  countWithDescendants,
   flattenVisible,
   topMostFolders,
   subtreeImpact,
@@ -70,6 +71,20 @@ describe('flattenVisible', () => {
 
   it('emptyTree_returnsEmpty', () => {
     expect(flattenVisible([], new Set())).toEqual([]);
+  });
+});
+
+describe('countWithDescendants', () => {
+  it('leaf_returnsItsOwnCount', () => {
+    expect(countWithDescendants(node(b), workflowCountOf)).toBe(5);
+  });
+
+  it('parent_addsAllDescendants', () => {
+    expect(countWithDescendants(TREE[0].children[0], workflowCountOf)).toBe(2 + 3 + 0);
+  });
+
+  it('root_countsTheWholeTree', () => {
+    expect(countWithDescendants(TREE[0], workflowCountOf)).toBe(0 + 2 + 3 + 0 + 5);
   });
 });
 

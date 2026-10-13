@@ -12,7 +12,10 @@ NodePilot integriert einen LLM für drei No-Code-Helfer:
    dem Standard/Experte-Toggle). Erklärt den aktuellen Workflow live als Markdown und
    schlägt auf Wunsch komplette Umbauten vor. Alle Rollen dürfen fragen; nur Admin/Operator
    können einen Vorschlag übernehmen. Stale-Schutz via Canvas-Hash; Secrets werden vor dem
-   LLM-Call redigiert; Vorschläge werden per Node-ID aufs Original zurückgemergt
+   LLM-Call redigiert; die Meldungen der Workflow-Validierung (Fehler/Warnungen aus dem
+   Lint-Panel) gehen als Datenblock mit jeder Frage mit (`diagnostics`, serverseitig auf
+   100 einzeilige Meldungen zu Nodes/Edges des gesendeten Workflows begrenzt, nicht im
+   Verfeinern-Modus); Vorschläge werden per Node-ID aufs Original zurückgemergt
    (Layout/Secrets/Felder bleiben erhalten). Die Proposal-Karte zeigt ein strukturiertes
    Changelog, selektives Übernehmen, Verfeinern und Rückgängig/Tidy. Chat-UX: benannte
    Threads je Workflow, reload-persistenter Verlauf, Markdown-Export und AI-Aktivitäts-

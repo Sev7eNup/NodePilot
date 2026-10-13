@@ -17,12 +17,17 @@ export function LintPanel({ result, nodes, edges, onJump, onJumpEdge, onClose }:
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as HTMLElement)) {
+      const target = e.target as HTMLElement;
+      // The header pill toggles the panel itself; closing here would let its click reopen it.
+      if (target.closest?.('[data-lint-toggle]')) return;
+      if (panelRef.current && !panelRef.current.contains(target)) {
         onClose();
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    // Capture phase: React Flow's node drag stops propagation of mousedown on nodes, so a
+    // bubble-phase listener on document never sees a click on a node.
+    document.addEventListener('mousedown', handler, true);
+    return () => document.removeEventListener('mousedown', handler, true);
   }, [onClose]);
 
   const all = useMemo(

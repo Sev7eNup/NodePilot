@@ -88,6 +88,15 @@ export interface AiChatTurn {
   content: string;
 }
 
+/** A validation finding the designer shows for the open workflow (same data as the lint panel). */
+export interface ChatDiagnostic {
+  severity: 'error' | 'warning';
+  code: string;
+  message: string;
+  nodeId?: string;
+  edgeId?: string;
+}
+
 export interface WorkflowChatRequest {
   question: string;
   /** Current canvas definition (cleaned via stripRuntimeDefinition), as a JSON string. */
@@ -97,6 +106,8 @@ export interface WorkflowChatRequest {
    *  when the user tries to apply it (the canvas may have changed in the meantime). */
   baseDefinitionHash: string;
   history: AiChatTurn[];
+  /** Validation findings for that canvas state. Omitted when there are none. */
+  diagnostics?: ChatDiagnostic[];
 }
 
 export interface WorkflowChatProposal {

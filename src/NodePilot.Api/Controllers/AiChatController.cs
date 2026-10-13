@@ -12,6 +12,7 @@ using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Data;
 
 namespace NodePilot.Api.Controllers;
@@ -34,8 +35,12 @@ public sealed class AiChatController : ControllerBase
     private const int MaxHistoryTurns = 20;
     private const int MaxHistoryChars = 50_000;
     private const int MaxQuestionChars = 8_000;
+    private const int MaxDiagnostics = 100;
+    private const int MaxDiagnosticMessageChars = 500;
+    private const int MaxDiagnosticCodeChars = 64;
 
     private static readonly HashSet<string> _allowedRoles = new(StringComparer.OrdinalIgnoreCase) { "user", "assistant" };
+    private static readonly HashSet<string> _allowedSeverities = new(StringComparer.Ordinal) { "error", "warning" };
 
     private readonly IOptionsMonitor<LlmOptions> _options;
     private readonly WorkflowAssistantService _assistant;
@@ -130,7 +135,11 @@ public sealed class AiChatController : ControllerBase
                     && await _authz.CanAccessWorkflowAsync(User, workflow.FolderId, ResourceOp.Read, ct);
             }
 
-            var normalized = request with { History = history };
+            var normalized = request with
+            {
+                History = history,
+                Diagnostics = NormalizeDiagnostics(request.Diagnostics, doc.RootElement),
+            };
 
             await using var en = _assistant
                 .StreamChatAsync(normalized, doc.RootElement, allowModify, allowExecutionTools, ct)
@@ -302,6 +311,61 @@ public sealed class AiChatController : ControllerBase
                         && _allowedRoles.Contains(h.Role))
             .Select(h => new AiChatTurnDto(h.Role.ToLowerInvariant(), h.Content))
             .ToList();
+    }
+
+    /// <summary>
+    /// Validates the designer findings the client sent along. They reach the LLM as prompt text,
+    /// so only well-formed entries about elements of the submitted workflow are kept: known
+    /// severity, a plain code, one-line messages of bounded length without inline secrets. The
+    /// list is capped rather than rejected, since it is advisory context for the question.
+    /// </summary>
+    private static List<ChatDiagnosticDto> NormalizeDiagnostics(
+        IReadOnlyList<ChatDiagnosticDto>? diagnostics, JsonElement workflow)
+    {
+        var result = new List<ChatDiagnosticDto>();
+        if (diagnostics is null || diagnostics.Count == 0) return result;
+
+        var nodeIds = CollectIds(workflow, "nodes");
+        var edgeIds = CollectIds(workflow, "edges");
+        foreach (var d in diagnostics)
+        {
+            if (result.Count >= MaxDiagnostics) break;
+            if (d is null || d.Severity is null || d.Code is null || d.Message is null) continue;
+            if (!_allowedSeverities.Contains(d.Severity)) continue;
+            if (!IsPlainCode(d.Code)) continue;
+            if (d.NodeId is not null && !nodeIds.Contains(d.NodeId)) continue;
+            if (d.EdgeId is not null && !edgeIds.Contains(d.EdgeId)) continue;
+
+            var message = d.Message.ReplaceLineEndings(" ").Trim();
+            if (message.Length == 0 || WorkflowSecretContent.LooksSecret(message)) continue;
+            if (message.Length > MaxDiagnosticMessageChars) message = message[..MaxDiagnosticMessageChars];
+
+            result.Add(new ChatDiagnosticDto(d.Severity, d.Code, message, d.NodeId, d.EdgeId));
+        }
+        return result;
+    }
+
+    private static bool IsPlainCode(string code) =>
+        code.Length is > 0 and <= MaxDiagnosticCodeChars
+        && code.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-');
+
+    private static HashSet<string> CollectIds(JsonElement workflow, string arrayName)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        if (workflow.TryGetProperty(arrayName, out var items) && items.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.Object
+                    && item.TryGetProperty("id", out var id)
+                    && id.ValueKind == JsonValueKind.String
+                    && id.GetString() is { } value)
+                {
+                    ids.Add(value);
+                }
+            }
+        }
+        return ids;
     }
 
 }

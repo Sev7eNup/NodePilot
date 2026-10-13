@@ -1275,6 +1275,78 @@ describe('WorkflowEditorPage — Lock Mutations', () => {
   });
 });
 
+describe('WorkflowEditorPage — selection survives lifecycle refetch', () => {
+  /**
+   * Lock/unlock refetch the workflow and re-adopt the server graph. The user's selection, and the
+   * properties panel behind it, must stay. The first load selects step-a through the stored JSON;
+   * the refetched JSON carries no selection, so only the client-side carry-over keeps the panel.
+   */
+  const propertiesPanelText = /Log Message|Nachricht protokollieren/;
+
+  function definitionWith(selectedId: string | null) {
+    const node = (id: string, label: string) => ({
+      id, type: 'activity', position: { x: id === 'step-a' ? 100 : 400, y: 100 },
+      ...(id === selectedId ? { selected: true } : {}),
+      data: { label, activityType: 'log', config: { message: 'hi' } },
+    });
+    return JSON.stringify({ nodes: [node('step-a', 'First'), node('step-b', 'Second')], edges: [] });
+  }
+
+  it('Edit (lock) keeps the properties panel open', async () => {
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-smoke-1`, () =>
+        HttpResponse.json({ ...MOCK_DISABLED, definitionJson: definitionWith('step-a') })),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/lock`, () => HttpResponse.json(MOCK_DISABLED)),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByText(propertiesPanelText)).toBeInTheDocument());
+
+    server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () =>
+      HttpResponse.json({ ...MOCK_WORKFLOW, definitionJson: definitionWith(null) })));
+    fireEvent.click(screen.getByRole('button', { name: /^Edit$/i }));
+
+    // The End button only exists once the refetch delivered the locked workflow.
+    await waitFor(() => expect(screen.getByRole('button', { name: /^End/i })).toBeInTheDocument());
+    expect(screen.getByText(propertiesPanelText)).toBeInTheDocument();
+  });
+
+  it('End editing (unlock) keeps the properties panel open', async () => {
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-smoke-1`, () =>
+        HttpResponse.json({ ...MOCK_WORKFLOW, definitionJson: definitionWith('step-a') })),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/unlock`, () => HttpResponse.json(MOCK_DISABLED)),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByText(propertiesPanelText)).toBeInTheDocument());
+
+    server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () =>
+      HttpResponse.json({ ...MOCK_DISABLED, definitionJson: definitionWith(null) })));
+    fireEvent.click(screen.getByRole('button', { name: /^End/i }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Edit$/i })).toBeInTheDocument());
+    expect(screen.getByText(propertiesPanelText)).toBeInTheDocument();
+  });
+
+  it('a selection stored in the refetched JSON does not replace the user selection', async () => {
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-smoke-1`, () =>
+        HttpResponse.json({ ...MOCK_DISABLED, definitionJson: definitionWith('step-a') })),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/lock`, () => HttpResponse.json(MOCK_DISABLED)),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByText(propertiesPanelText)).toBeInTheDocument());
+
+    server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () =>
+      HttpResponse.json({ ...MOCK_WORKFLOW, definitionJson: definitionWith('step-b') })));
+    fireEvent.click(screen.getByRole('button', { name: /^Edit$/i }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^End/i })).toBeInTheDocument());
+    const selectedIds = [...document.querySelectorAll('.react-flow__node.selected')]
+      .map((n) => n.getAttribute('data-id'));
+    expect(selectedIds).toEqual(['step-a']);
+  });
+});
+
 describe('WorkflowEditorPage — Right Sidebar (Properties / EdgeProperties / BulkEdit)', () => {
   /**
    * ReactFlow honors the initial selected:true on nodes/edges in its store. Pre-select via

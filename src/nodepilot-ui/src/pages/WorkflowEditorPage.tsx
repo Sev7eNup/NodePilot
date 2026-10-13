@@ -60,6 +60,7 @@ import { EdgeContextMenu } from '../components/designer/overlays/EdgeContextMenu
 import { QuickConnectPicker } from '../components/designer/overlays/QuickConnectPicker';
 import { pushRecentWorkflow } from '../components/designer/overlays/WorkflowQuickSwitcher';
 import {
+  carrySelection,
   getDownstreamNodeIds,
   renameVariableInNodeData,
   renameVariableInEdge,
@@ -348,6 +349,9 @@ function WorkflowEditorInner() {
   // Tracks which workflow id was already fit-viewed, so lifecycle refetches
   // (lock/unlock/publish/disable) do not re-fit and steal the user's current zoom and pan.
   const fittedWorkflowIdRef = useRef<string | null>(null);
+  // Workflow whose server graph is already on the canvas. A refetch of the same workflow keeps the
+  // user's selection, so the open properties panel survives lock/unlock/publish.
+  const seededWorkflowIdRef = useRef<string | null>(null);
 
   // ---- Copy / Paste -------------------------------------------------------
   const { copySelection, pasteBuffer, resetPasteCount, updateSelection } = useWorkflowClipboard(commitHistory, markDirty, graphSource);
@@ -362,8 +366,16 @@ function WorkflowEditorInner() {
         const def = JSON.parse(workflow.definitionJson ?? '{}');
         // Groups must come before their children in the array (React Flow renders in array order).
         const rawNodes: Node[] = (def.nodes || []);
-        setNodes([...rawNodes].sort((a) => (a.type === 'group' ? -1 : 1)));
-        setEdges(def.edges || []);
+        const serverNodes = [...rawNodes].sort((a) => (a.type === 'group' ? -1 : 1));
+        const serverEdges: Edge[] = def.edges || [];
+        if (seededWorkflowIdRef.current === workflow.id) {
+          setNodes((prev) => carrySelection(serverNodes, prev));
+          setEdges((prev) => carrySelection(serverEdges, prev));
+        } else {
+          setNodes(serverNodes);
+          setEdges(serverEdges);
+        }
+        seededWorkflowIdRef.current = workflow.id;
         // Fit the view once, on the first load of a workflow that has nodes. The setTimeout
         // lets React Flow render the nodes into its internal store before the viewport is
         // computed. The fitView prop on <ReactFlow> is not used because it re-fires on every
@@ -1098,6 +1110,13 @@ function WorkflowEditorInner() {
     () => lintWorkflow(settledGraph.nodes, settledGraph.edges, allWorkflows),
     [settledGraph, allWorkflows],
   );
+  // Handed to the AI chat at send time, so it sees what the panel shows for the canvas as it is
+  // now rather than one settle interval ago.
+  const getAiDiagnostics = useCallback(() => {
+    const live = liveGraphRef.current;
+    const { errors, warnings } = lintWorkflow(live.nodes, live.edges, allWorkflows);
+    return [...errors, ...warnings];
+  }, [allWorkflows]);
   const [lintPanelOpen, setLintPanelOpen] = useState(false);
 
   // Pre-publish lint folds the standard lint with extra publish-time-only checks (no trigger,
@@ -1861,6 +1880,7 @@ function WorkflowEditorInner() {
                 onUndo={undo}
                 onAutoLayout={tidyLayout}
                 selection={aiSelection}
+                getDiagnostics={getAiDiagnostics}
               />
             </div>
           </>

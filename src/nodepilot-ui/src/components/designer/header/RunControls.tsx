@@ -79,6 +79,7 @@ export function RunControls({ variant, roleCanWrite, liveExecution, handleRunCli
       {lintCount > 0 && (
         <button
           type="button"
+          data-lint-toggle
           onClick={() => setLintPanelOpen((o) => !o)}
           className={`flex items-center gap-1.5 rounded-md h-9 px-2.5 text-xs font-label font-semibold transition-colors ${
             lintResult.errors.length > 0

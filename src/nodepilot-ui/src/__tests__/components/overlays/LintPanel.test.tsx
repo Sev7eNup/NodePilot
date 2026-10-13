@@ -108,6 +108,51 @@ describe('LintPanel', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  describe('outside click', () => {
+    const result = { errors: [err('E1', 'broken', 'node-1')], warnings: [] };
+
+    it('mouseDownOutside_callsOnClose', () => {
+      const onClose = vi.fn();
+      render(<LintPanel result={result} nodes={[]} edges={[]} onJump={vi.fn()} onClose={onClose} />);
+
+      fireEvent.mouseDown(document.body);
+      expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('mouseDownInsidePanel_doesNotCallOnClose', () => {
+      const onClose = vi.fn();
+      render(<LintPanel result={result} nodes={[]} edges={[]} onJump={vi.fn()} onClose={onClose} />);
+
+      fireEvent.mouseDown(screen.getByText('broken'));
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('mouseDownOnTargetThatStopsPropagation_stillCallsOnClose', () => {
+      // React Flow's node drag stops mousedown from bubbling to document.
+      const node = document.createElement('div');
+      node.addEventListener('mousedown', (e) => e.stopImmediatePropagation());
+      document.body.appendChild(node);
+      const onClose = vi.fn();
+      render(<LintPanel result={result} nodes={[]} edges={[]} onJump={vi.fn()} onClose={onClose} />);
+
+      fireEvent.mouseDown(node);
+      expect(onClose).toHaveBeenCalledOnce();
+      node.remove();
+    });
+
+    it('mouseDownOnLintToggle_doesNotCallOnClose', () => {
+      const toggle = document.createElement('button');
+      toggle.setAttribute('data-lint-toggle', '');
+      document.body.appendChild(toggle);
+      const onClose = vi.fn();
+      render(<LintPanel result={result} nodes={[]} edges={[]} onJump={vi.fn()} onClose={onClose} />);
+
+      fireEvent.mouseDown(toggle);
+      expect(onClose).not.toHaveBeenCalled();
+      toggle.remove();
+    });
+  });
+
   it('emptyResult_rendersZeroCounts', () => {
     const result = { errors: [], warnings: [] };
     render(<LintPanel result={result} nodes={[]} edges={[]} onJump={vi.fn()} onClose={vi.fn()} />);

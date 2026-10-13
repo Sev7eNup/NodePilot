@@ -65,19 +65,28 @@ public sealed record GenerateWorkflowResponse(
 public sealed record AiChatTurnDto(string Role, string Content);
 
 /// <summary>
+/// One validation finding the designer shows for the open workflow (error or warning). The
+/// designer computes these in the browser; the server only passes them on to the assistant.
+/// <c>Severity</c> is <c>"error"</c> or <c>"warning"</c>; <c>NodeId</c>/<c>EdgeId</c> name the
+/// element the finding is about, when there is one.
+/// </summary>
+public sealed record ChatDiagnosticDto(string Severity, string Code, string Message, string? NodeId = null, string? EdgeId = null);
+
+/// <summary>
 /// Request body for <c>POST /api/ai/chat</c>. Multi-turn assistant for the workflow currently open
 /// in the editor. <c>WorkflowJson</c> is the current canvas definition (already cleaned up by the
 /// frontend's <c>stripRuntimeDefinition</c>); it is secret-redacted server-side before the LLM
 /// call. <c>BaseDefinitionHash</c> hashes that same canvas snapshot and is echoed back in the
 /// response, so the frontend can refuse to apply a proposal when the canvas changed in the
-/// meantime.
+/// meantime. <c>Diagnostics</c> are the validation findings the designer shows for that canvas.
 /// </summary>
 public sealed record WorkflowChatRequest(
     string Question,
     string WorkflowJson,
     Guid? WorkflowId,
     string BaseDefinitionHash,
-    IReadOnlyList<AiChatTurnDto> History);
+    IReadOnlyList<AiChatTurnDto> History,
+    IReadOnlyList<ChatDiagnosticDto>? Diagnostics = null);
 
 /// <summary>
 /// A workflow change proposed by the assistant (sent in the SSE <c>proposal</c> event).

@@ -55,6 +55,7 @@ Der Assistent kennt den aktuell geöffneten Workflow. Mögliche Aufgaben sind:
 
 - Aufbau und Ablauf erklären
 - mögliche Fehlerstellen beschreiben
+- Fehler und Warnungen der Workflow-Validierung erklären — sie gehen mit jeder Frage mit
 - Ausführungshistorie und fehlgeschlagene Schritte analysieren
 - Error-Handling oder zusätzliche Schritte vorschlagen
 - ausgewählte Nodes über `@` oder die aktuelle Canvas-Auswahl gezielt einbeziehen

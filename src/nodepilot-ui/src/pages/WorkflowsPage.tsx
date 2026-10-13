@@ -32,6 +32,7 @@ import { useAiCapabilities } from '../hooks/useAiCapabilities';
 import { MobileCardList } from '../components/common/MobileCardList';
 import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
+import { useWorkflowListStore, type WorkflowColKey } from '../stores/workflowListStore';
 import {
   AuthBoundaryChangedError,
   assertAuthBoundaryGenerationCurrent,
@@ -64,7 +65,6 @@ type ScorchImportResponse = {
 
 /** Module-level so the identity stays stable across renders; useBulkSelection memoizes on it. */
 const workflowKey = (w: WorkflowListItem) => w.id;
-type ColKey = 'name' | 'activities' | 'triggers' | 'status' | 'lastRun' | 'successRate' | 'runtime' | 'created' | 'updated';
 const PAGE_SIZE = 50;
 const EMPTY_WORKFLOWS: WorkflowListItem[] = [];
 
@@ -172,8 +172,9 @@ export function WorkflowsPage() {
   // an empty installation. silentError suppresses the global toast because this page shows the
   // failure in place, with a retry button.
   const [page, setPage] = useState(1);
-  const [sortBy, setSortBy] = useState<ColKey | null>(null);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const sortBy = useWorkflowListStore((s) => s.sortBy);
+  const sortDir = useWorkflowListStore((s) => s.sortDir);
+  const setSort = useWorkflowListStore((s) => s.setSort);
   const {
     data: workflowPage,
     isLoading,
@@ -496,10 +497,10 @@ export function WorkflowsPage() {
   const [runDialogWorkflow, setRunDialogWorkflow] = useState<Workflow | null>(null);
 
   // --- Column resizing ---
-  // ColKey covers all columns (sort uses it). ResizableColKey excludes Name —
+  // WorkflowColKey covers all columns (sort uses it). ResizableColKey excludes Name —
   // Name auto-flexes to fill remaining horizontal space under table-layout:fixed,
   // so it has no inline width and no drag-handle.
-  type ResizableColKey = Exclude<ColKey, 'name'>;
+  type ResizableColKey = Exclude<WorkflowColKey, 'name'>;
   const NAME_MIN_WIDTH = 280;
   const ACTIONS_WIDTH = 220; // ≤7 buttons × ~28px + gap-1 + px-4 cell padding
   const SELECT_WIDTH = 44;   // checkbox + px-3 cell padding
@@ -514,9 +515,8 @@ export function WorkflowsPage() {
   const { colWidths, startResize } = useColumnResize(DEFAULT_WIDTHS, MIN_WIDTHS);
 
   // The server orders the entire authorized set before taking this page.
-  const handleSort = (col: ColKey) => {
-    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortBy(col); setSortDir('asc'); }
+  const handleSort = (col: WorkflowColKey) => {
+    setSort(col, sortBy === col && sortDir === 'asc' ? 'desc' : 'asc');
     changePage(1);
   };
   const sortedWorkflows = workflows;

@@ -41,6 +41,18 @@ export function flattenVisible<T extends FolderLike>(
 }
 
 /**
+ * Items in a folder and everything below it. The server reports only the items directly in a
+ * folder, while selecting a folder lists its whole subtree, so the tree badge has to add the
+ * descendants to match what the list shows.
+ */
+export function countWithDescendants<T extends FolderLike>(
+  node: FolderTreeNode<T>,
+  countOf: (folder: T) => number,
+): number {
+  return node.children.reduce((sum, child) => sum + countWithDescendants(child, countOf), countOf(node.folder));
+}
+
+/**
  * Reduces a selection to the folders that are no other selected folder's descendant.
  *
  * Deleting this cover set removes the same folders while avoiding a second request for a child

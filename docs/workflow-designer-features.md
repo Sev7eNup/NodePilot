@@ -263,7 +263,7 @@ Each activity type has its own config component (`properties/activities/`, regis
 
 ## 16. Lint & pre-publish
 
-- **Lint panel** (`Ctrl+Shift+L`): lists every error and warning with its code, the target node or edge, and click-to-jump. Lint runs live on every graph change; a node badge shows the count.
+- **Lint panel** (`Ctrl+Shift+L`): lists every error and warning with its code, the target node or edge, and click-to-jump. Lint runs live on every graph change; a node badge shows the count. A click anywhere outside the panel closes it (the header pill toggles it); a click on an issue row keeps it open.
 - **Rules detected (excerpt):**
   - **Errors (block publishing):** `no-trigger`, `isolated-node`, `dup-output-variable`, `duplicate-edge`, `missing-required-config`, `missing-target-machine`.
   - **Warning `dup-published-param`:** two activities on one path publish the same name. A published value has exactly one owner, so the unqualified `$name` is not bound at all — reference it as `{{stepA.param.name}}`. Reported only when at least one publisher named the value itself; names that follow from the activity type (`exitCode` on every `runScript`, a `registryOperation`'s operation-shaped outputs, a `wmiQuery`'s `count`) collide by construction and cannot be renamed, so a clash between two of those is not flagged.
@@ -325,6 +325,7 @@ Depending on the selection it shows: bulk edit (2 or more nodes, Expert), proper
 - **Disable/enable:** the kill switch (disable is **not** lock-gated); enable only without a foreign lock.
 - **Force unlock** (admin, `Ctrl+Shift+U`): breaks a foreign lock (confirmation plus an audit entry).
 - **Read-only behaviour:** without `canWrite`, dragging, connecting, deleting, context menus and inline edits are all disabled.
+- **Selection survives lifecycle changes:** every action above refetches the workflow and re-adopts the server graph. The current selection and the open properties panel stay; the panel just switches between read-only and editable.
 
 ## 19. Persistence & export
 

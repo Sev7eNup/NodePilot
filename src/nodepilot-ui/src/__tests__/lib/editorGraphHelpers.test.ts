@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Edge } from '@xyflow/react';
 import {
+  carrySelection,
   getDownstreamNodeIds,
   renameVariableInNodeData,
   renameVariableInEdge,
@@ -42,6 +43,30 @@ describe('getDownstreamNodeIds', () => {
     const edges = [mkEdge('e1', 'X', 'Y')];
     const result = getDownstreamNodeIds('Z', edges);
     expect(result.size).toBe(0);
+  });
+});
+
+describe('carrySelection', () => {
+  const el = (id: string, selected?: boolean) => ({ id, selected });
+
+  it('keeps the selection of elements that exist in both lists', () => {
+    const result = carrySelection([el('a'), el('b')], [el('a', true), el('b')]);
+    expect(result.map((e) => e.selected)).toEqual([true, false]);
+  });
+
+  it('overrides a selected flag that came with the new elements', () => {
+    const result = carrySelection([el('a', true), el('b', true)], [el('a', true), el('b', false)]);
+    expect(result.map((e) => e.selected)).toEqual([true, false]);
+  });
+
+  it('ignores selected ids that are gone from the new list', () => {
+    const result = carrySelection([el('b')], [el('a', true), el('b')]);
+    expect(result).toEqual([{ id: 'b', selected: false }]);
+  });
+
+  it('keeps the other properties of the new elements', () => {
+    const next = [{ id: 'a', position: { x: 5, y: 6 } }];
+    expect(carrySelection(next, [el('a', true)])).toEqual([{ id: 'a', position: { x: 5, y: 6 }, selected: true }]);
   });
 });
 

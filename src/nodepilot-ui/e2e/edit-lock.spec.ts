@@ -83,6 +83,44 @@ test.describe('Edit-Lock-Lifecycle', () => {
     await expect(page.getByRole('button', { name: /beenden|end editing|finish editing|cancel edit/i })).toBeVisible();
   });
 
+  test('27.9 — Bearbeiten keeps the selected node and its properties panel', async ({ page }) => {
+    const definitionJson = JSON.stringify({
+      nodes: [
+        { id: 'step-a', type: 'activity', position: { x: 60, y: 60 },
+          data: { label: 'First', activityType: 'log', config: { message: 'hi' } } },
+        { id: 'step-b', type: 'activity', position: { x: 60, y: 260 },
+          data: { label: 'Second', activityType: 'log', config: { message: 'ho' } } },
+      ],
+      edges: [],
+    });
+    let locked = false;
+    await page.route(`**/api/workflows/${WORKFLOW_ID}`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: locked
+          ? workflowJson({ definitionJson, isEnabled: false, checkedOutByUserId: ME_ID, checkedOutAt: new Date().toISOString() })
+          : workflowJson({ definitionJson, isEnabled: false }),
+      }),
+    );
+    await page.route(`**/api/workflows/${WORKFLOW_ID}/lock`, (route) => {
+      locked = true;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    });
+
+    await page.goto(`/workflows/${WORKFLOW_ID}`);
+    // Click near the top-left corner, clear of the MiniMap and Controls overlays.
+    await page.locator('.react-flow__node[data-id="step-a"]').click({ position: { x: 15, y: 15 } });
+    const closePanel = page.getByRole('button', { name: /close properties panel/i });
+    await expect(closePanel).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole('button', { name: /bearbeiten|edit/i }).first().click();
+
+    // Save only renders once the refetched, locked workflow is on the canvas.
+    await expect(page.getByRole('button', { name: /zwischen-speichern|speichern|save/i }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(closePanel).toBeVisible();
+  });
+
   test('27.7 — State D: locked-by-other renders read-only banner', async ({ page }) => {
     await page.route(`**/api/workflows/${WORKFLOW_ID}`, (route) =>
       route.fulfill({
