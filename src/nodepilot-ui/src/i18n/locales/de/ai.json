@@ -101,6 +101,7 @@
     "proposalExpired": "Vorschlag nach Reload nicht mehr anwendbar — bitte erneut fragen.",
     "emptyQuestion": "Bitte eine Frage eingeben.",
     "regenerate": "Antwort neu generieren",
+    "historyDropped": "Der bisherige Verlauf wurde nicht mitgesendet, weil sich das KI-Profil oder die Freigabe für Skripte geändert hat.",
     "retry": "Erneut versuchen",
     "scrollToBottom": "Nach unten scrollen",
     "suggestion1": "Erkläre diesen Workflow",

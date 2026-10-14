@@ -12,7 +12,8 @@ NodePilot integriert einen LLM für drei No-Code-Helfer:
    dem Standard/Experte-Toggle). Erklärt den aktuellen Workflow live als Markdown und
    schlägt auf Wunsch komplette Umbauten vor. Alle Rollen dürfen fragen; nur Admin/Operator
    können einen Vorschlag übernehmen. Stale-Schutz via Canvas-Hash; Secrets werden vor dem
-   LLM-Call redigiert; die Meldungen der Workflow-Validierung (Fehler/Warnungen aus dem
+   LLM-Call redigiert, Skripte, SQL und Argumente sieht der Assistent je nach
+   `ShareScriptsWithAssistant` (siehe Profil-Tabelle); die Meldungen der Workflow-Validierung (Fehler/Warnungen aus dem
    Lint-Panel) gehen als Datenblock mit jeder Frage mit (`diagnostics`, serverseitig auf
    100 einzeilige Meldungen zu Nodes/Edges des gesendeten Workflows begrenzt, nicht im
    Verfeinern-Modus); Vorschläge werden per Node-ID aufs Original zurückgemergt
@@ -120,6 +121,7 @@ ausgehenden Proxy, damit Prompt und API-Key den Host nicht im Klartext verlassen
 | `TimeoutSeconds` | `90` | **Antwort**-Budget: wie lange das Modell denken darf. Deckt ausdrücklich **nicht** den Verbindungsaufbau — der hat seine eigenen, kurzen Fristen (siehe unten). Großzügig setzen ist deshalb gefahrlos: ein unerreichbarer Endpunkt scheitert trotzdem in Sekunden. |
 | `EnableToolCalling` | `false` | Opt-in. Lässt die Chat-Assistenten read-only Analyse-Tools per OpenAI-Function-Calling callen (`tool_choice: auto`). Braucht ein Modell, das Function-Calling zuverlässig kann — viele kleine lokale Modelle nicht. **Pro Profil**, weil das eine Eigenschaft des Modells ist, nicht der Installation: beim Umschalten auf ein kleines lokales Modell wandert die Fähigkeit mit. |
 | `ToolCallMaxDepth` | `6` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). Lässt bei text2sql nach Schema-Discovery noch Raum für SQL-Korrekturen. In der letzten erlaubten Runde sendet der Server **keine** `tools` → erzwingt eine Text-Antwort. |
+| `ShareScriptsWithAssistant` | `true` | Der Workflow-Assistent liest Skripte (runScript, waitForCondition), SQL (sql, databaseTrigger) und Programm-Argumente (startProgram, scheduledTask, wmiQuery) im Klartext — der Anbieter dieses Profils sieht sie. Werte mit **erkanntem** Secret-Muster gehen als Ganzes `***` raus; die Erkennung ist eine Heuristik (positionsbasierte Argumente oder unbekannte Formate rutschen durch). Alle anderen opaken Felder und benannten Secrets bleiben maskiert. **Pro Profil**, damit ein Cloud-Profil abgeschaltet sein kann, während ein lokales Modell Skripte sieht. Wechselt Profil, Endpunkt oder dieser Schalter, sendet der Chat den bisherigen Verlauf nicht mehr mit. |
 
 **Outbound-Proxy (`Llm:Proxy:*`):**
 

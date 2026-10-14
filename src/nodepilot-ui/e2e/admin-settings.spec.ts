@@ -35,7 +35,7 @@ const LLM_PAYLOAD = {
     {
       id: 'cloud', name: 'Cloud', baseUrl: 'https://api.example.com/v1', apiKey: null,
       model: 'gpt-4o-mini', maxTokens: 4096, timeoutSeconds: 90,
-      enableToolCalling: false, toolCallMaxDepth: 6, managedBy: null,
+      enableToolCalling: false, toolCallMaxDepth: 6, shareScriptsWithAssistant: true, managedBy: null,
     },
   ],
   proxy: {

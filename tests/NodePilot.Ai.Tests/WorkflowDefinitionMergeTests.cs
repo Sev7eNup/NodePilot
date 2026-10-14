@@ -11,6 +11,32 @@ public class WorkflowDefinitionMergeTests
     // ---- Field preservation (layout / semantics) -------------------------------------
 
     [Fact]
+    public void Merge_MaskedSecretScript_RestoredFromOriginal_NextToAReadableScript()
+    {
+        // The assistant saw the second script in clear and the first one masked (it holds a
+        // password). Echoing the mask must bring back the original, editing the clear one sticks.
+        var original = Parse("""
+            { "nodes": [
+                { "id": "s1", "type": "activity", "data": { "activityType": "runScript",
+                  "config": { "script": "$pw = 'abc'; Connect-Box -Password $pw" } } },
+                { "id": "s2", "type": "activity", "data": { "activityType": "runScript",
+                  "config": { "script": "Get-PSDrive C" } } }
+              ], "edges": [] }
+            """);
+        var proposed = Parse("""
+            { "nodes": [
+                { "id": "s1", "type": "activity", "data": { "activityType": "runScript", "config": { "script": "***" } } },
+                { "id": "s2", "type": "activity", "data": { "activityType": "runScript", "config": { "script": "Get-PSDrive D" } } }
+              ], "edges": [] }
+            """);
+
+        var nodes = WorkflowDefinitionMerge.Merge(original, proposed).Definition["nodes"]!.AsArray();
+
+        nodes[0]!["data"]!["config"]!["script"]!.GetValue<string>().Should().Be("$pw = 'abc'; Connect-Box -Password $pw");
+        nodes[1]!["data"]!["config"]!["script"]!.GetValue<string>().Should().Be("Get-PSDrive D");
+    }
+
+    [Fact]
     public void Merge_UnchangedFields_BackfilledFromOriginal_WhenAiOmitsThem()
     {
         var original = Parse("""

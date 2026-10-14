@@ -55,4 +55,12 @@ public class LlmProfileOptions
 
     /// <summary>Maximum LLM rounds with tool calls per chat turn, guarding against loops.</summary>
     public int ToolCallMaxDepth { get; set; } = 6;
+
+    /// <summary>
+    /// Lets the workflow assistant read scripts, SQL queries and program arguments in clear, so
+    /// this provider sees them. Values with a recognised secret pattern stay masked; the
+    /// recognition is a heuristic. Default <c>true</c>; switch off for providers that must not
+    /// see workflow code.
+    /// </summary>
+    public bool ShareScriptsWithAssistant { get; set; } = true;
 }

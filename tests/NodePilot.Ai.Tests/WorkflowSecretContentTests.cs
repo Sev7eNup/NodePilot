@@ -46,6 +46,48 @@ public sealed class WorkflowSecretContentTests
     public void LooksSecret_False_ForReferencesAndBenignContent(string value)
         => WorkflowSecretContent.LooksSecret(value).Should().BeFalse();
 
+    [Theory]
+    // Short secrets: no minimum length on the script patterns.
+    [InlineData("$pw = 'abc'")]
+    [InlineData("$cred = \"x\"")]
+    [InlineData("$key='k'")]
+    [InlineData("$dbPassword = 'abc'")]
+    // SQL.
+    [InlineData("CREATE LOGIN app WITH PASSWORD = 'abc'")]
+    [InlineData("ALTER LOGIN app WITH PASSWORD = N'x', CHECK_POLICY = OFF")]
+    [InlineData("CREATE USER app IDENTIFIED BY \"s3\"")]
+    [InlineData("ALTER USER app IDENTIFIED BY tiger")]
+    // Connection strings with an unquoted value.
+    [InlineData("$cs = \"Server=db01;Database=x;User Id=sa;Password=abc;\"")]
+    [InlineData("Data Source=db01;Pwd=x")]
+    // PowerShell credential handling and parameters.
+    [InlineData("$s = ConvertTo-SecureString 'P@ss' -AsPlainText -Force")]
+    [InlineData("ConvertTo-SecureString -String \"x\" -AsPlainText -Force")]
+    [InlineData("New-LocalUser -Name svc -Password 'abc'")]
+    [InlineData("Connect-Thing -Token:\"t\"")]
+    // Mixed template and literal: the literal part remains.
+    [InlineData("Connect-Thing -Password 'abc{{globals.SUFFIX}}'")]
+    // Everything LooksSecret catches still counts.
+    [InlineData("Authorization: Bearer sk-live-abc123")]
+    public void LooksSecretInScript_True_ForScriptSecrets(string value)
+        => WorkflowSecretContent.LooksSecretInScript(value).Should().BeTrue();
+
+    [Theory]
+    [InlineData("Get-PSDrive C")]
+    [InlineData("SELECT * FROM dbo.Jobs WHERE Status = 'Failed'")]
+    [InlineData("Restart-Service -Name Spooler -Force")]
+    [InlineData("$password = Read-Host -AsSecureString")]
+    [InlineData("$cred = Get-Credential")]
+    [InlineData("$keyPath = 'HKLM:\\SOFTWARE\\Vendor'")]
+    [InlineData("ALTER LOGIN app WITH PASSWORD = @newPassword")]
+    [InlineData("Connect-Thing -Password $pw")]
+    [InlineData("Connect-Thing -Password '{{globals.PW}}'")]
+    [InlineData("$cs = \"Server=db01;Password={{globals.DB_PW}};\"")]
+    [InlineData("/c robocopy C:\\src D:\\dst /MIR")]
+    [InlineData("")]
+    public void LooksSecretInScript_False_ForReferencesAndBenignScripts(string value)
+        => WorkflowSecretContent.LooksSecretInScript(value).Should().BeFalse();
+
     [Fact]
     public void CredentialHeaderNames_CoverTheKnownAuthHeaders()
         => WorkflowSecretContent.CredentialHeaderNames.Should().Contain(new[]

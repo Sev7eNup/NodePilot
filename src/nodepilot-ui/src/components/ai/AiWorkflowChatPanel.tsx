@@ -35,6 +35,7 @@ import {
   appendToLastAssistant,
   finalizeStreaming,
   isAbort,
+  lastHistoryContextKey,
   markToolDoneOnLast,
   patchLastAssistant,
   trimHistory,
@@ -162,7 +163,11 @@ export function AiWorkflowChatPanel({
     // the real canvas (used for the staleness guard + diff base). For normal turns both are the
     // same. `diagnostics` are the validation findings of the canvas; they are left out when
     // refining, because the LLM then works on the previous proposal, not the canvas.
-    async (question: string, history: AiChatTurn[], llmBase: WorkflowDefinition, applyBase: WorkflowDefinition = llmBase, diagnostics?: ChatDiagnostic[]) => {
+    // `historyContextKey` comes from the last answer; the server drops the history without it.
+    async (
+      question: string, history: AiChatTurn[], historyContextKey: string | null,
+      llmBase: WorkflowDefinition, applyBase: WorkflowDefinition = llmBase, diagnostics?: ChatDiagnostic[],
+    ) => {
       setError(null);
       const baseDefinitionHash = hashDefinition(applyBase);
       setMessages((prev) => [...prev, { role: 'assistant', content: '', streaming: true }]);
@@ -176,6 +181,7 @@ export function AiWorkflowChatPanel({
           {
             question, workflowJson: JSON.stringify(llmBase), workflowId: workflowId ?? null, baseDefinitionHash,
             history: trimHistory(history),
+            historyContextKey,
             ...(diagnostics && diagnostics.length > 0 ? { diagnostics } : {}),
           },
           {
@@ -216,11 +222,12 @@ export function AiWorkflowChatPanel({
       const refine = refineTarget;
       setRefineTarget(null);
       setScopeToSelection(false);
+      const contextKey = lastHistoryContextKey(messages);
       if (refine) {
-        void streamAssistant(scoped, history, refine.def, refine.applyBase);
+        void streamAssistant(scoped, history, contextKey, refine.def, refine.applyBase);
       } else {
         const canvas = getCurrentDefinition();
-        void streamAssistant(scoped, history, canvas, canvas, getDiagnostics?.());
+        void streamAssistant(scoped, history, contextKey, canvas, canvas, getDiagnostics?.());
       }
     },
     [sending, messages, getCurrentDefinition, getDiagnostics, setMessages, streamAssistant, refineTarget, scopeToSelection, selection],
@@ -241,7 +248,7 @@ export function AiWorkflowChatPanel({
     const history: AiChatTurn[] = messages.slice(0, lastUserIdx).map((m) => ({ role: m.role, content: m.content }));
     setMessages((prev) => prev.slice(0, lastUserIdx + 1)); // cut off everything after the last question
     const canvas = getCurrentDefinition();
-    void streamAssistant(question, history, canvas, canvas, getDiagnostics?.());
+    void streamAssistant(question, history, lastHistoryContextKey(messages.slice(0, lastUserIdx)), canvas, canvas, getDiagnostics?.());
   }, [sending, messages, setMessages, streamAssistant, getCurrentDefinition, getDiagnostics]);
 
   const handleStop = useCallback(() => abortRef.current?.abort(), []);
@@ -623,6 +630,9 @@ function MessageBubble({
             )}
             {message.meta && <UsageFooter meta={message.meta} />}
           </div>
+        )}
+        {message.meta?.historyDropped && (
+          <p className="pl-1 text-[11px] text-on-surface-variant">{t('ai:chat.historyDropped')}</p>
         )}
 
         {message.building && !message.proposal && (

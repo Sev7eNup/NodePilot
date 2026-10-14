@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Edge, Node } from '@xyflow/react';
 import { AiWorkflowChatPanel } from '../../../components/ai/AiWorkflowChatPanel';
-import { aiApi, type WorkflowChatRequest, type ChatStreamHandlers, type ChatDiagnostic } from '../../../api/ai';
+import { aiApi, type WorkflowChatRequest, type ChatStreamHandlers, type ChatDiagnostic, type ChatDoneMeta } from '../../../api/ai';
 import { useAiChatStore } from '../../../stores/aiChatStore';
 import { useAuthStore } from '../../../stores/authStore';
 import { hashDefinition } from '../../../lib/workflowDiff';
@@ -518,6 +518,56 @@ describe('AiWorkflowChatPanel (streaming)', () => {
     expect(req1.workflowJson).not.toContain('l1');     // first turn: bare canvas
     expect(req2.workflowJson).toContain('l1');          // refine turn: the proposal as base
     expect(req2.baseDefinitionHash).toBe(req1.baseDefinitionHash); // stale-guard = real canvas
+  });
+
+  describe('history context key', () => {
+    function doneWith(meta: Partial<ChatDoneMeta>, reply = 'ok') {
+      return (_req: WorkflowChatRequest, h?: ChatStreamHandlers) => {
+        if (!h) return Promise.resolve();
+        h.onDelta(reply);
+        h.onDone?.({ model: 'm', durationMs: 1, ...meta });
+        return Promise.resolve();
+      };
+    }
+
+    it('sends no key on the first turn and the last answer\'s key on the next one', async () => {
+      chatMock.mockImplementation(doneWith({ historyContextKey: 'key-a' }, 'first answer'));
+      setup();
+      await ask('first');
+      await waitFor(() => expect(screen.getByText(/first answer/i)).toBeInTheDocument());
+
+      chatMock.mockImplementation(doneWith({ historyContextKey: 'key-a' }, 'second answer'));
+      await ask('second');
+
+      await waitFor(() => expect(chatMock).toHaveBeenCalledTimes(2));
+      expect((chatMock.mock.calls[0][0] as WorkflowChatRequest).historyContextKey).toBeNull();
+      expect((chatMock.mock.calls[1][0] as WorkflowChatRequest).historyContextKey).toBe('key-a');
+    });
+
+    it('regenerate sends the key of the answer before the regenerated one', async () => {
+      chatMock.mockImplementation(doneWith({ historyContextKey: 'key-a' }, 'first answer'));
+      setup();
+      await ask('first');
+      await waitFor(() => expect(screen.getByText(/first answer/i)).toBeInTheDocument());
+      chatMock.mockImplementation(doneWith({ historyContextKey: 'key-b' }, 'second answer'));
+      await ask('second');
+      await waitFor(() => expect(screen.getByText(/second answer/i)).toBeInTheDocument());
+
+      chatMock.mockImplementation(doneWith({ historyContextKey: 'key-b' }, 'third answer'));
+      fireEvent.click(screen.getByRole('button', { name: /regenerate/i }));
+
+      await waitFor(() => expect(chatMock).toHaveBeenCalledTimes(3));
+      expect((chatMock.mock.calls[2][0] as WorkflowChatRequest).historyContextKey).toBe('key-a');
+    });
+
+    it('shows a note under an answer whose history the server dropped', async () => {
+      chatMock.mockImplementation(doneWith({ historyContextKey: 'key-b', historyDropped: true }, 'fresh answer'));
+      setup();
+      await ask('again');
+
+      await waitFor(() => expect(screen.getByText(/fresh answer/i)).toBeInTheDocument());
+      expect(screen.getByText(/earlier conversation was not sent/i)).toBeInTheDocument();
+    });
   });
 
   describe('designer validation findings', () => {

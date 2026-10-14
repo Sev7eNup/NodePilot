@@ -108,6 +108,8 @@ export interface WorkflowChatRequest {
   history: AiChatTurn[];
   /** Validation findings for that canvas state. Omitted when there are none. */
   diagnostics?: ChatDiagnostic[];
+  /** `historyContextKey` from the last answer's done event; the history is only used with it. */
+  historyContextKey?: string | null;
 }
 
 export interface WorkflowChatProposal {
@@ -193,6 +195,10 @@ export interface ChatDoneMeta {
   generationMs?: number | null;
   promptTokens?: number | null;
   completionTokens?: number | null;
+  /** Workflow assistant: send back with the next turn, otherwise the server drops the history. */
+  historyContextKey?: string | null;
+  /** Workflow assistant: this turn's history was left out (LLM profile or sharing changed). */
+  historyDropped?: boolean;
 }
 
 export interface ChatStreamHandlers {

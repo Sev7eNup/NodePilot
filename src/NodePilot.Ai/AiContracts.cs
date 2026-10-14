@@ -79,6 +79,8 @@ public sealed record ChatDiagnosticDto(string Severity, string Code, string Mess
 /// call. <c>BaseDefinitionHash</c> hashes that same canvas snapshot and is echoed back in the
 /// response, so the frontend can refuse to apply a proposal when the canvas changed in the
 /// meantime. <c>Diagnostics</c> are the validation findings the designer shows for that canvas.
+/// <c>HistoryContextKey</c> is the key from the previous turn's <c>done</c> event; without a match
+/// the server leaves <c>History</c> out.
 /// </summary>
 public sealed record WorkflowChatRequest(
     string Question,
@@ -86,7 +88,8 @@ public sealed record WorkflowChatRequest(
     Guid? WorkflowId,
     string BaseDefinitionHash,
     IReadOnlyList<AiChatTurnDto> History,
-    IReadOnlyList<ChatDiagnosticDto>? Diagnostics = null);
+    IReadOnlyList<ChatDiagnosticDto>? Diagnostics = null,
+    string? HistoryContextKey = null);
 
 /// <summary>
 /// A workflow change proposed by the assistant (sent in the SSE <c>proposal</c> event).

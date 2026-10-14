@@ -61,20 +61,48 @@ public static class WorkflowSecretRedactor
             ["eventLogTrigger"] = Keys("messagePattern"),
         };
 
+    // Config fields of built-in activities the workflow assistant may read in clear when the active
+    // LLM profile allows it. Keyed by activity type, never by key name alone, so a custom-activity
+    // input called "script" stays opaque.
+    private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> AssistantReadableConfigKeys =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["runScript"] = Keys("script"),
+            ["waitForCondition"] = Keys("script"),
+            ["sql"] = Keys("query", "parameters"),
+            ["databaseTrigger"] = Keys("query", "parameters"),
+            ["startProgram"] = Keys("arguments"),
+            ["scheduledTask"] = Keys("arguments"),
+            ["wmiQuery"] = Keys("arguments", "query", "filter"),
+        };
+
     /// <summary>Returns a redacted copy of <paramref name="root"/> with secret config values masked
     /// to <c>"***"</c>.</summary>
     public static JsonNode Redact(JsonElement root)
+        => Redact(root, revealAssistantReadable: false);
+
+    /// <summary>
+    /// Like <see cref="Redact(JsonElement)"/>, but scripts, SQL queries and program arguments of
+    /// built-in activities stay readable for the workflow assistant. Such a value is masked whole
+    /// when <see cref="WorkflowSecretContent.LooksSecretInScript"/> recognises a secret in it.
+    /// Every other opaque field and every named secret stays masked.
+    /// </summary>
+    public static JsonNode RedactForAssistant(JsonElement root)
+        => Redact(root, revealAssistantReadable: true);
+
+    private static JsonNode Redact(JsonElement root, bool revealAssistantReadable)
     {
         var node = JsonNode.Parse(root.GetRawText())
             ?? throw new InvalidOperationException("Workflow definition is not valid JSON.");
-        return Walk(node, parentName: null, isHttpHeaderValue: false, activityType: null);
+        return Walk(node, parentName: null, isHttpHeaderValue: false, activityType: null, revealAssistantReadable);
     }
 
     private static JsonNode Walk(
         JsonNode node,
         string? parentName,
         bool isHttpHeaderValue,
-        string? activityType)
+        string? activityType,
+        bool revealAssistantReadable)
     {
         switch (node)
         {
@@ -92,21 +120,27 @@ public static class WorkflowSecretRedactor
                 var isLiteralOperand = string.Equals(
                     TryGetString(obj, "kind"), "literal", StringComparison.OrdinalIgnoreCase);
                 foreach (var (name, value) in obj)
-                    result[name] = value is null
-                        ? null
-                        : OpaqueDefinitionKeys.Contains(name)
-                          || IsOpaqueActivityConfigValue(parentName, localActivityType, name, value)
-                          || (isLiteralOperand && string.Equals(name, "value", StringComparison.OrdinalIgnoreCase))
-                          || IsNonStringSecretValue(name, value)
-                            ? JsonValue.Create(Mask)
-                            : Walk(value, name, isHeadersObject, localActivityType);
+                {
+                    if (value is null)
+                        result[name] = null;
+                    else if (revealAssistantReadable
+                             && TryGetAssistantReadable(parentName, localActivityType, name, value, out var text))
+                        result[name] = JsonValue.Create(WorkflowSecretContent.LooksSecretInScript(text) ? Mask : text);
+                    else if (OpaqueDefinitionKeys.Contains(name)
+                             || IsOpaqueActivityConfigValue(parentName, localActivityType, name, value)
+                             || (isLiteralOperand && string.Equals(name, "value", StringComparison.OrdinalIgnoreCase))
+                             || IsNonStringSecretValue(name, value))
+                        result[name] = JsonValue.Create(Mask);
+                    else
+                        result[name] = Walk(value, name, isHeadersObject, localActivityType, revealAssistantReadable);
+                }
                 return result;
             }
             case JsonArray arr:
             {
                 var result = new JsonArray();
                 foreach (var item in arr)
-                    result.Add(item is null ? null : Walk(item, parentName, isHttpHeaderValue, activityType));
+                    result.Add(item is null ? null : Walk(item, parentName, isHttpHeaderValue, activityType, revealAssistantReadable));
                 return result;
             }
             case JsonValue val when val.TryGetValue(out string? s) && s is not null:
@@ -146,6 +180,28 @@ public static class WorkflowSecretRedactor
                && key is not "__customDefinitionId" and not "__customKey"
                && value is JsonValue jsonValue
                && jsonValue.TryGetValue(out string? _);
+    }
+
+    // Only a string directly under a built-in node's config qualifies; objects and arrays (e.g. a
+    // structured sql parameters list) stay opaque.
+    private static bool TryGetAssistantReadable(
+        string? parentName,
+        string? activityType,
+        string key,
+        JsonNode value,
+        out string text)
+    {
+        text = "";
+        if (!string.Equals(parentName, "config", StringComparison.OrdinalIgnoreCase)
+            || activityType is null
+            || !AssistantReadableConfigKeys.TryGetValue(activityType, out var keys)
+            || !keys.Contains(key)
+            || value is not JsonValue jsonValue
+            || !jsonValue.TryGetValue(out string? s)
+            || s is null)
+            return false;
+        text = s;
+        return true;
     }
 
     private static string? TryGetString(JsonObject obj, string name)

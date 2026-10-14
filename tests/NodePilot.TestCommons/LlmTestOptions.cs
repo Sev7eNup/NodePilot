@@ -18,7 +18,8 @@ public static class LlmTestOptions
         int maxTokens = 4096,
         int timeoutSeconds = 90,
         bool enableToolCalling = false,
-        int toolCallMaxDepth = 6)
+        int toolCallMaxDepth = 6,
+        bool shareScriptsWithAssistant = true)
         => new()
         {
             Enabled = enabled,
@@ -35,6 +36,7 @@ public static class LlmTestOptions
                     TimeoutSeconds = timeoutSeconds,
                     EnableToolCalling = enableToolCalling,
                     ToolCallMaxDepth = toolCallMaxDepth,
+                    ShareScriptsWithAssistant = shareScriptsWithAssistant,
                 },
             },
         };

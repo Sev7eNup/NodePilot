@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
+import { installDefaultMocks, MOCK_USER, seedExpertMode, workflowPage } from './fixtures/mockApi';
 
 /**
  * Covers section 8 of docs/testing/E2ETests.md: saving and persistence.
@@ -190,5 +190,81 @@ test.describe('Speichern & Persistierung (Teil 8)', () => {
       const def = JSON.parse(state.lastPut.definitionJson) as { nodes: { data: { config: { seconds: number } } }[] };
       return def.nodes[0].data.config.seconds;
     }, { timeout: 10_000 }).toBe(99);
+  });
+
+  // ---------- 8.3 — "Back to workflow list" after hopping between workflows ----------
+  test.describe('8.3 — list button next to the back arrow', () => {
+    const OTHER_ID = '8888cccc-8888-8888-8888-888888888888';
+    const OTHER_NODE = 'step-other';
+
+    /** Opens WF-Persist, then switches to "Second Workflow" through Ctrl+P, so the editor
+     *  carries fromWorkflow state and the back arrow would only step back one workflow. */
+    async function openSecondViaSwitcher(page: Page) {
+      routeWorkflow(page);
+      await page.route('**/api/workflows/paged**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(workflowPage(route, [
+            { id: WF_ID, name: 'WF-Persist', description: '', isEnabled: false },
+            { id: OTHER_ID, name: 'Second Workflow', description: '', isEnabled: false },
+          ])),
+        }),
+      );
+      await page.route(`**/api/workflows/${OTHER_ID}`, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: workflowJson({
+            id: OTHER_ID,
+            name: 'Second Workflow',
+            definitionJson: JSON.stringify({
+              nodes: [{ id: OTHER_NODE, type: 'activity', position: { x: 60, y: 60 },
+                data: { label: 'Other Wait', activityType: 'delay', config: { seconds: 5 } } }],
+              edges: [],
+            }),
+          }),
+        }),
+      );
+
+      await seedExpertMode(page);
+      await page.goto(`/workflows/${WF_ID}`);
+      await expect(node(page, NODE_ID)).toBeVisible({ timeout: 20_000 });
+      await page.keyboard.press('Control+p');
+      await page.getByPlaceholder(/switch to workflow/i).fill('second');
+      await expect(page.getByRole('button').filter({ hasText: OTHER_ID.slice(0, 8) })).toBeVisible({ timeout: 10_000 });
+      await page.keyboard.press('Enter');
+      await expect(page).toHaveURL(new RegExp(`/workflows/${OTHER_ID}`), { timeout: 10_000 });
+      await expect(node(page, OTHER_NODE)).toBeVisible({ timeout: 20_000 });
+      // The arrow now names the previous workflow; the list button sits next to it.
+      await expect(page.getByRole('button', { name: /^Back to: / })).toBeVisible();
+    }
+
+    const listButton = (page: Page) => page.getByRole('button', { name: 'Back to workflow list', exact: true });
+
+    test('8.3a — without changes one click reaches the workflow list', async ({ page }) => {
+      await openSecondViaSwitcher(page);
+
+      await listButton(page).click();
+
+      await expect(page).toHaveURL(/\/workflows$/, { timeout: 10_000 });
+    });
+
+    test('8.3b — with unsaved changes: Cancel stays, OK discards and leaves', async ({ page }) => {
+      await openSecondViaSwitcher(page);
+      await node(page, OTHER_NODE).click({ position: { x: 15, y: 15 } });
+      await editSeconds(page, '31');
+
+      await listButton(page).click();
+      await expect(page.getByText(/unsaved changes/i)).toBeVisible({ timeout: 10_000 });
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      await expect(page).toHaveURL(new RegExp(`/workflows/${OTHER_ID}`));
+      await expect(page.locator('input[type="number"]').first()).toHaveValue('31');
+
+      await listButton(page).click();
+      await expect(page.getByText(/unsaved changes/i)).toBeVisible({ timeout: 10_000 });
+      await page.getByRole('button', { name: 'OK' }).click();
+      await expect(page).toHaveURL(/\/workflows$/, { timeout: 10_000 });
+    });
   });
 });

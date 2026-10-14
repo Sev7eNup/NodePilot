@@ -28,8 +28,8 @@ const sections = {
   Llm: {
     enabled: true, activeProfileId: 'local',
     profiles: [
-      { id: 'local', name: 'Local Ollama', baseUrl: 'http://localhost:11434/v1', apiKey: null, model: 'qwen3:8b', maxTokens: 8192, timeoutSeconds: 120, enableToolCalling: true, toolCallMaxDepth: 6, managedBy: null },
-      { id: 'cloud', name: 'Cloud API', baseUrl: 'https://llm.example.test/v1', apiKey: '***', model: 'demo-model', maxTokens: 8192, timeoutSeconds: 90, enableToolCalling: true, toolCallMaxDepth: 6, managedBy: null },
+      { id: 'local', name: 'Local Ollama', baseUrl: 'http://localhost:11434/v1', apiKey: null, model: 'qwen3:8b', maxTokens: 8192, timeoutSeconds: 120, enableToolCalling: true, toolCallMaxDepth: 6, shareScriptsWithAssistant: true, managedBy: null },
+      { id: 'cloud', name: 'Cloud API', baseUrl: 'https://llm.example.test/v1', apiKey: '***', model: 'demo-model', maxTokens: 8192, timeoutSeconds: 90, enableToolCalling: true, toolCallMaxDepth: 6, shareScriptsWithAssistant: true, managedBy: null },
     ],
     proxy: { mode: 'off', address: '', bypassList: [], username: null, password: null, useDefaultCredentials: false },
   },

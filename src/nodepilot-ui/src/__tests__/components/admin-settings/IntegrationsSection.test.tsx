@@ -20,7 +20,8 @@ const smtpSnapshot = {
 
 const llmProfile = (over: Record<string, unknown> = {}) => ({
   id: 'openai', name: 'OpenAI', baseUrl: 'http://127.0.0.1:1234/v1', apiKey: null, model: 'gpt',
-  maxTokens: 4096, timeoutSeconds: 60, enableToolCalling: false, toolCallMaxDepth: 4, managedBy: null,
+  maxTokens: 4096, timeoutSeconds: 60, enableToolCalling: false, toolCallMaxDepth: 4,
+  shareScriptsWithAssistant: true, managedBy: null,
   ...over,
 });
 
@@ -232,9 +233,31 @@ describe('IntegrationsSection — LLM card', () => {
       expect(body.Profiles[0].ApiKey).toBeNull();
       expect(body.Profiles[0].EnableToolCalling).toBe(false);
       expect(body.Profiles[0].ToolCallMaxDepth).toBe(4);
+      expect(body.Profiles[0].ShareScriptsWithAssistant).toBe(true);
       // The proxy block always rides along, defaulting to the direct connection.
       expect(body.Proxy.Mode).toBe('off');
       expect(body.Proxy.Address).toBe('');
+    });
+  });
+
+  it('script sharing checkbox reflects the profile and saves the toggled value', async () => {
+    let putBody: unknown = null;
+    server.use(http.put('/api/admin/settings/Llm', async ({ request }) => {
+      putBody = await request.json();
+      return HttpResponse.json({ ...llmSnapshot, etag: '"llm-2"' });
+    }));
+
+    renderSection();
+    const share = await screen.findByRole('checkbox', { name: /Skripte, SQL und Argumente|Share scripts, SQL and arguments/i });
+    expect(share).toBeChecked();
+
+    fireEvent.click(share);
+    clickLlmSave();
+
+    await waitFor(() => {
+
+      const body = putBody as any;
+      expect(body?.Profiles[0].ShareScriptsWithAssistant).toBe(false);
     });
   });
 

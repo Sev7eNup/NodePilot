@@ -71,6 +71,12 @@ public sealed class LlmProfileSettingsDto
     public int ToolCallMaxDepth { get; set; } = 6;
 
     /// <summary>
+    /// Lets the workflow assistant read scripts, SQL queries and program arguments in clear, so
+    /// this profile's provider sees them. Recognised secret patterns stay masked. Default on.
+    /// </summary>
+    public bool ShareScriptsWithAssistant { get; set; } = true;
+
+    /// <summary>
     /// Response-only. The configuration source that owns this profile besides the runtime
     /// overrides file (<c>appsettings</c>, <c>production</c>, <c>env</c>, <c>cli</c>), or
     /// <c>null</c> when the Settings UI fully owns it.

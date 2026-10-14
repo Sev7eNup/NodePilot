@@ -282,6 +282,8 @@ Seven clusters with a proximity-driven colour glow (purely cosmetic, prefers-red
 6. **Lifecycle** (with role write permission): edit-lock toggle, save (with a dirty dot), publish/disable/enable.
 7. **Export** (Expert): JSON, PNG. In standard mode these live in the more menu.
 
+Back navigation (far left): the arrow goes to the workflow list. After switching from another workflow (sub-workflow link, breadcrumb, `Ctrl+P`) it steps back to that workflow instead, and a **list button** next to it leads straight to the workflow list. Unsaved changes ask for confirmation in both cases.
+
 Outside the seven clusters in the header (to the right of the standard/expert toggle):
 - **AI workflow assistant button** (violet, sparkles icon) — opens the chat panel; described fully in § 15.
 - **Toolbar layout switch** (`Rows3` icon, `data-testid="toggle-toolbar-layout"`, to the left of the skin switcher, visible in **both** layouts): flips the header between the compact three-zone layout (the default; grouped view/overlays/tools popovers, a centred name, a green "run" CTA) and the classic inline row (every toggle and tool as an individual button, a right-aligned name, an icon-only play). Persisted in the `designStore` (`toolbarLayout`, default `compact`). Both layouts share `EditorIdentity`/`SkinSwitcher`/`RunControls`/`LifecycleControls`/`StandardMoreMenu` (so there is no double-maintenance drift); the `EditorHeader` dispatcher only reads `toolbarLayout` and renders `CompactEditorHeader` or `ClassicEditorHeader`. The classic row wraps whole clusters onto several lines in narrow windows and keeps the proximity glow trays.

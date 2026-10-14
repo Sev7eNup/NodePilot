@@ -212,6 +212,55 @@ public class AiChatControllerTests
         turn.Should().Contain(new string('a', 500)).And.NotContain(new string('a', 501));
     }
 
+    // ---- Script sharing and history binding -----------------------------------------
+
+    [Fact]
+    public async Task Chat_DoneEventCarriesHistoryKey_AndAuditRecordsSharing()
+    {
+        var (controller, audit, llm, body) = NewController();
+        llm.EnqueueStream("ok");
+
+        await controller.Chat(Req(), CancellationToken.None);
+
+        var done = ParseSse(body).Single(e => e.ev == "done").data;
+        done.Should().MatchRegex("\"historyContextKey\":\"[0-9a-f]{16}\"");
+        done.Should().Contain("\"historyDropped\":false");
+        var details = audit.Calls.Single(c => c.Action == "AI_WORKFLOW_EXPLAINED").Details;
+        details.Should().Contain("\"scriptsShared\":true");
+        details.Should().Contain("\"historyDropped\":false");
+    }
+
+    [Fact]
+    public async Task Chat_HistoryWithoutKey_IsDroppedAndAudited()
+    {
+        var (controller, audit, llm, body) = NewController();
+        llm.EnqueueStream("ok");
+        var history = new[] { new AiChatTurnDto("user", "Frage"), new AiChatTurnDto("assistant", "zitiertes Skript") };
+
+        await controller.Chat(Req(history: history), CancellationToken.None);
+
+        llm.Calls.Single().Conversation!.Should().ContainSingle();
+        ParseSse(body).Single(e => e.ev == "done").data.Should().Contain("\"historyDropped\":true");
+        audit.Calls.Single(c => c.Action == "AI_WORKFLOW_EXPLAINED").Details.Should().Contain("\"historyDropped\":true");
+    }
+
+    [Fact]
+    public async Task Chat_HistoryWithKeyFromPreviousTurn_IsSent()
+    {
+        var (controller, _, llm, body) = NewController();
+        llm.EnqueueStream("Antwort eins");
+        await controller.Chat(Req(), CancellationToken.None);
+        var key = System.Text.RegularExpressions.Regex
+            .Match(ParseSse(body).Single(e => e.ev == "done").data, "\"historyContextKey\":\"([0-9a-f]+)\"").Groups[1].Value;
+
+        var (second, _, llm2, _) = NewController();
+        llm2.EnqueueStream("ok");
+        var history = new[] { new AiChatTurnDto("user", "Frage"), new AiChatTurnDto("assistant", "Antwort eins") };
+        await second.Chat(Req(history: history) with { HistoryContextKey = key }, CancellationToken.None);
+
+        llm2.Calls.Single().Conversation!.Should().Contain(m => m.Content == "Antwort eins");
+    }
+
     // ---- Streaming (SSE) ------------------------------------------------------------
 
     [Fact]

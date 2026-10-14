@@ -1311,6 +1311,16 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 - [ ] Rollback ist möglich
 - [ ] Alte Versionen sind abrufbar
 
+---
+
+### Test 8.3 — Direkt zur Workflow-Liste nach Workflow-Wechsel
+
+**Schritte:** Workflow A öffnen → per Strg+P zu Workflow B wechseln → Listen-Button neben dem Zurück-Pfeil klicken.
+
+**Prüfpunkte:**
+- [ ] Ohne Änderung: ein Klick führt zur Workflow-Liste (der Pfeil führt zurück zu A).
+- [ ] Mit ungespeicherter Änderung: Bestätigungsdialog; „Cancel" bleibt im Designer mit Änderung, „OK" verwirft und öffnet die Liste.
+
 **Erwartung:** Versions-Tracking funktioniert
 
 ---
@@ -5049,7 +5059,7 @@ Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automati
 [ ] Teil 5: Properties & Variablen (5.1 — 5.4)
 [ ] Teil 6: Workflow-Ausführung (6.1 — 6.7)
 [ ] Teil 7: Fehlerbehandlung (7.1 — 7.5)
-[ ] Teil 8: Speichern & Persistierung (8.1 — 8.2)
+[ ] Teil 8: Speichern & Persistierung (8.1 — 8.3)
 [ ] Teil 9: Spezielle Szenarien (9.1 — 9.4)
 [ ] Teil 10: UI/UX Tests (10.1 — 10.3)
 [ ] Teil 11: Dashboard (11.1 — 11.3)

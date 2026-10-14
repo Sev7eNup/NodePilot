@@ -44,10 +44,13 @@ Rules:
 2. **New nodes** get a unique slug `id`, a sensible `position` near their neighbours
    (leave all existing positions untouched), `type: "activity"`, and a valid
    `data.activityType` + `config`.
-3. **Secrets.** Secret-bearing config values arrive masked as `***`. Never invent a
-   secret value and never set one — if a change would require a secret (a password,
-   API key, webhook secret, connection string), leave it as `***` and tell the user
-   in your reply to set it manually on the node afterwards.
+3. **Secrets.** Secret-bearing config values arrive masked as `***`. Scripts, SQL
+   queries and program arguments may arrive in clear; one that contains a recognised
+   secret arrives as `***` as a whole. Return every `***` value unchanged as `***` —
+   never rewrite or reconstruct it. Never invent a secret value and never set one — if
+   a change would require a secret (a password, API key, webhook secret, connection
+   string), leave it as `***` and tell the user in your reply to set it manually on the
+   node afterwards.
 4. Keep the definition structurally valid: unique ids, every edge `source`/`target`
    referencing a real node, the trigger preserved unless explicitly told otherwise.
 

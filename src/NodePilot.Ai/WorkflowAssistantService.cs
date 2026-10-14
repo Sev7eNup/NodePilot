@@ -80,25 +80,37 @@ public sealed class WorkflowAssistantService
     {
         var sw = Stopwatch.StartNew();
 
+        // One profile snapshot per turn. Redaction, client, tools and history binding all follow
+        // it, so a settings reload mid-request cannot pair one profile's sharing decision with
+        // another profile's provider. No defaults fallback: an unresolved profile is an error.
+        var options = _options.CurrentValue;
+        if (!options.TryResolveActiveProfile(out var profile))
+            throw LlmClientFactory.NoActiveProfile();
+        var scriptsShared = profile.ShareScriptsWithAssistant;
+
+        // Earlier turns may quote content the current provider must not see (scripts shared with
+        // another profile, or before sharing was switched off). Only history from the same context
+        // goes out again.
+        var contextKey = HistoryContextKey(options.ActiveProfileId.Trim(), profile);
+        var historyDropped = request.History.Count > 0
+            && !string.Equals(request.HistoryContextKey, contextKey, StringComparison.Ordinal);
+        var turn = historyDropped ? request with { History = Array.Empty<AiChatTurnDto>() } : request;
+
         // Secrets must not reach the external LLM, so redact before building the prompt. The
         // unredacted original is kept for the later merge.
-        var redacted = WorkflowSecretRedactor.Redact(original);
+        var redacted = scriptsShared
+            ? WorkflowSecretRedactor.RedactForAssistant(original)
+            : WorkflowSecretRedactor.Redact(original);
         var redactedJson = redacted.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 
         // Enabled custom activities, so the assistant knows their inputs and outputs.
         var customFacts = await LoadCustomFactsAsync(ct);
         var systemPrompt = BuildSystemPrompt(original, customFacts);
-        var conversation = new List<LlmMessage>(BuildConversation(request, redactedJson));
+        var conversation = new List<LlmMessage>(BuildConversation(turn, redactedJson));
 
-        // Tool-calling only when opted in: without it, tools stay null and the turn is a single
-        // round. The setting is read from the active profile per turn, so a config change or a
-        // switch to a model without reliable function-calling applies on the next turn.
-        var llm = _llmFactory.Create(); // throws unless an active profile resolves
-        // Re-read the profile instead of reusing an earlier one: a config reload between the two
-        // calls can leave none resolvable. Fresh defaults keep tool-calling off, the safe fallback.
-        var profile = _options.CurrentValue.TryResolveActiveProfile(out var active)
-            ? active
-            : new LlmProfileOptions();
+        // Tool-calling only when the snapshot profile opts in: without it, tools stay null and the
+        // turn is a single round.
+        var llm = _llmFactory.Create(profile);
         var maxDepth = Math.Max(1, profile.ToolCallMaxDepth);
         IReadOnlyList<LlmToolDefinition>? tools = null;
         ChatToolContext? toolContext = null;
@@ -219,7 +231,25 @@ public sealed class WorkflowAssistantService
             yield return ChatStreamEvent.Proposal(proposal);
 
         sw.Stop();
-        yield return ChatStreamEvent.Done(model ?? "unknown", (int)sw.ElapsedMilliseconds, promptTokens, completionTokens, generationMs);
+        yield return (ChatStreamEvent.DoneEvent)ChatStreamEvent.Done(
+            model ?? "unknown", (int)sw.ElapsedMilliseconds, promptTokens, completionTokens, generationMs) with
+        {
+            HistoryContextKey = contextKey,
+            HistoryDropped = historyDropped,
+            ScriptsShared = scriptsShared,
+        };
+    }
+
+    /// <summary>
+    /// Identifies what a chat history may have been shown: the profile id, its endpoint (an
+    /// operator can repoint a profile from a local model to a cloud one) and whether scripts were
+    /// shared. History is only sent again under the same key.
+    /// </summary>
+    internal static string HistoryContextKey(string profileId, LlmProfileOptions profile)
+    {
+        var material = $"{profileId}\n{profile.BaseUrl}\n{profile.ShareScriptsWithAssistant}";
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(material));
+        return Convert.ToHexString(hash, 0, 8).ToLowerInvariant();
     }
 
     /// <summary>
@@ -536,5 +566,13 @@ public abstract record ChatStreamEvent
     /// <paramref name="CompletionTokens"/> by this, not by <paramref name="DurationMs"/>, for a
     /// throughput that matches what the LLM server reports.
     /// </param>
-    public sealed record DoneEvent(string Model, int DurationMs, int? PromptTokens, int? CompletionTokens, int? GenerationMs = null) : ChatStreamEvent;
+    /// <param name="HistoryContextKey">Workflow assistant only: the key the client sends back so
+    /// the next turn's history is accepted (see <c>WorkflowAssistantService.HistoryContextKey</c>).</param>
+    /// <param name="HistoryDropped">Workflow assistant only: the request's history was left out
+    /// because it came from another profile or sharing setting.</param>
+    /// <param name="ScriptsShared">Workflow assistant only: scripts, SQL and arguments were sent
+    /// in clear.</param>
+    public sealed record DoneEvent(
+        string Model, int DurationMs, int? PromptTokens, int? CompletionTokens, int? GenerationMs = null,
+        string? HistoryContextKey = null, bool HistoryDropped = false, bool ScriptsShared = false) : ChatStreamEvent;
 }

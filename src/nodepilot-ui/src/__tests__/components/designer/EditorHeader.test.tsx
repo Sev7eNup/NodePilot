@@ -133,9 +133,12 @@ function renderWithState(
 }
 
 function getBackButton(): HTMLButtonElement {
-  // The button always renders; only its title varies with the fromWorkflow state.
-  return screen.getByRole('button', { name: /^(Back to:|Back to workflow list)/i }) as HTMLButtonElement;
+  // The arrow always renders first; only its title varies with the fromWorkflow state. With
+  // fromWorkflow a second "Back to workflow list" button follows it.
+  return screen.getAllByRole('button', { name: /^(Back to:|Back to workflow list)/i })[0] as HTMLButtonElement;
 }
+
+const listButtons = () => screen.queryAllByRole('button', { name: /^Back to workflow list$/i });
 
 describe('EditorHeader — designer back button (location.state)', () => {
   beforeEach(() => {
@@ -175,6 +178,31 @@ describe('EditorHeader — designer back button (location.state)', () => {
   it('clickWithoutFromWorkflow_navigatesToWorkflowList', () => {
     renderWithState(undefined);
     fireEvent.click(getBackButton());
+    expect(capturedPathname).toBe('/workflows');
+  });
+
+  it('withoutFromWorkflow_rendersOnlyTheArrow', () => {
+    renderWithState(undefined);
+    // The arrow itself is titled "Back to workflow list"; no second button exists.
+    expect(listButtons()).toHaveLength(1);
+    expect(listButtons()[0]).toBe(getBackButton());
+  });
+
+  it('fromWorkflow_listButtonGoesStraightToWorkflowList', () => {
+    renderWithState(
+      { fromWorkflow: { id: 'wf-prev', name: 'Previous Workflow' } },
+      [
+        { pathname: '/workflows/wf-first' },
+        { pathname: '/workflows/wf-prev', state: { fromWorkflow: { id: 'wf-first', name: 'First' } } },
+        { pathname: '/workflows/wf-current', state: { fromWorkflow: { id: 'wf-prev', name: 'Previous Workflow' } } },
+      ],
+      2,
+    );
+    expect(getBackButton()).toHaveAttribute('title', 'Back to: Previous Workflow');
+    expect(listButtons()).toHaveLength(1);
+
+    fireEvent.click(listButtons()[0]);
+
     expect(capturedPathname).toBe('/workflows');
   });
 

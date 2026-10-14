@@ -23,6 +23,15 @@ export function trimHistory(history: AiChatTurn[]): AiChatTurn[] {
   return turns;
 }
 
+/** The history context key of the most recent answer, or null when no answer carries one. */
+export function lastHistoryContextKey(messages: ChatMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const key = messages[i].role === 'assistant' ? messages[i].meta?.historyContextKey : null;
+    if (key) return key;
+  }
+  return null;
+}
+
 /** Appends text to the last assistant message (immutably). */
 export function appendToLastAssistant(prev: ChatMessage[], text: string): ChatMessage[] {
   const next = prev.slice();

@@ -36,6 +36,8 @@ type LlmProfileDto = {
   timeoutSeconds: number;
   enableToolCalling: boolean;
   toolCallMaxDepth: number;
+  /** Workflow assistant may read scripts, SQL and arguments in clear (default true). */
+  shareScriptsWithAssistant: boolean;
   /**
    * Response-only. Non-null means the profile also exists in a configuration source below the
    * runtime overrides file, so deleting it here wouldn't stick — the entry would resurface on
@@ -300,7 +302,7 @@ function LlmCard() {
       id, name,
       baseUrl: 'https://api.openai.com/v1',
       apiKey: null, model: 'gpt-5.5', maxTokens: 128000, timeoutSeconds: 90,
-      enableToolCalling: false, toolCallMaxDepth: 6, managedBy: null,
+      enableToolCalling: false, toolCallMaxDepth: 6, shareScriptsWithAssistant: true, managedBy: null,
     };
     setForm((f) => ({
       ...f,
@@ -336,6 +338,7 @@ function LlmCard() {
     TimeoutSeconds: p.timeoutSeconds,
     EnableToolCalling: p.enableToolCalling,
     ToolCallMaxDepth: p.toolCallMaxDepth,
+    ShareScriptsWithAssistant: p.shareScriptsWithAssistant,
     ApiKey: serializeSecretField(secretOf(p.id).mode, secretOf(p.id).value),
   });
 
@@ -709,6 +712,19 @@ function LlmProfileForm({
           />
         </div>
       )}
+
+      <label className="flex items-center gap-2 text-sm cursor-pointer mt-3">
+        <input
+          type="checkbox"
+          checked={profile.shareScriptsWithAssistant}
+          onChange={(e) => onPatch({ shareScriptsWithAssistant: e.target.checked })}
+          disabled={isEnvLocked(key('ShareScriptsWithAssistant'))}
+          className="rounded"
+        />
+        {t('adminSettings:integrations.shareScriptsWithAssistant')}
+        <EnvOverrideBadge source={effectiveSource[key('ShareScriptsWithAssistant')] ?? ''} configKey={key('ShareScriptsWithAssistant')} />
+      </label>
+      <p className="mt-1 text-xs text-on-surface-variant">{t('adminSettings:integrations.shareScriptsWithAssistantHint')}</p>
 
       {profile.managedBy && (
         <p className="mt-3 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1.5">

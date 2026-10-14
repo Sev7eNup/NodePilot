@@ -30,6 +30,14 @@ public interface ILlmClientFactory
     /// fails <see cref="LlmEndpointGuard.ResolveEndpoint"/>.
     /// </exception>
     ILlmClient Create(LlmConnection? overrides = null);
+
+    /// <summary>
+    /// Builds a client for <paramref name="profile"/> instead of re-reading the active one. For
+    /// callers that already took a profile snapshot and base other decisions on it (what the
+    /// workflow assistant may send), so a settings reload cannot swap the provider in between.
+    /// </summary>
+    /// <exception cref="LlmException">The effective BaseUrl fails <see cref="LlmEndpointGuard.ResolveEndpoint"/>.</exception>
+    ILlmClient Create(LlmProfileOptions profile, LlmConnection? overrides = null);
 }
 
 /// <inheritdoc cref="ILlmClientFactory"/>
@@ -54,12 +62,17 @@ public sealed class LlmClientFactory : ILlmClientFactory
         // Read the live LlmOptions per Create() so a config edit takes effect without a restart.
         // The factory is a singleton, so IOptionsMonitor is the correct live source.
         if (!_options.CurrentValue.TryResolveActiveProfile(out var profile))
-        {
-            throw new LlmException(LlmErrorKind.Unreachable,
-                "No active LLM profile is configured. Add a profile under Settings → System → "
-                + "Integrations → LLM and select it as the active profile.");
-        }
+            throw NoActiveProfile();
+        return Create(profile, overrides);
+    }
 
+    /// <summary>The error every caller raises when no active profile resolves.</summary>
+    public static LlmException NoActiveProfile() => new(LlmErrorKind.Unreachable,
+        "No active LLM profile is configured. Add a profile under Settings → System → "
+        + "Integrations → LLM and select it as the active profile.");
+
+    public ILlmClient Create(LlmProfileOptions profile, LlmConnection? overrides = null)
+    {
         // Validate the effective BaseUrl and resolve its wire dialect here: the factory is the
         // central override entry point and cannot assume callers have pre-checked it.
         var endpoint = LlmEndpointGuard.ResolveEndpoint(overrides?.BaseUrl ?? profile.BaseUrl);

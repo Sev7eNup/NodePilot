@@ -1,4 +1,4 @@
-import { ArrowLeft, ChatBot } from '@carbon/icons-react';
+import { ArrowLeft, ChatBot, List } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router';
 import { WorkflowDesignerIcon } from '../WorkflowDesignerIcon';
@@ -39,6 +39,19 @@ export function EditorIdentity({ aiChatOpen, onToggleAiChat }: Readonly<{
       >
         <ArrowLeft size={20} />
       </button>
+      {/* After hopping between workflows the arrow walks back one at a time, so a second button
+          leads straight to the list. Without fromWorkflow the arrow already does that. */}
+      {fromWorkflow && (
+        <button
+          type="button"
+          onClick={() => routerNavigate('/workflows')}
+          className="text-on-surface-variant hover:text-on-surface transition-colors shrink-0"
+          title={t('editor:backToWorkflowList', { defaultValue: 'Zurück zur Workflow-Liste' })}
+          aria-label={t('editor:backToWorkflowList', { defaultValue: 'Zurück zur Workflow-Liste' })}
+        >
+          <List size={20} />
+        </button>
+      )}
       <WorkflowDesignerIcon className="shrink-0 h-6 w-6 xl:h-8 xl:w-8 drop-shadow-[0_3px_10px_color-mix(in_srgb,var(--color-primary)_45%,transparent)]" />
       {/* A quiet workflow label sits above the designer title. Below xl the wordmark yields
           space to the centered workflow name; the logo stays visible. */}

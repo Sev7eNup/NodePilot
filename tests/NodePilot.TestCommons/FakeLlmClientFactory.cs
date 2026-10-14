@@ -30,10 +30,20 @@ public sealed class FakeLlmClientFactory : ILlmClientFactory
     /// configured".</summary>
     public LlmException? ThrowOnCreate { get; set; }
 
+    /// <summary>The profiles passed to <see cref="Create(LlmProfileOptions, LlmConnection?)"/>, in
+    /// call order.</summary>
+    public List<LlmProfileOptions> Profiles { get; } = new();
+
     public ILlmClient Create(LlmConnection? overrides = null)
     {
         Connections.Add(overrides);
         if (ThrowOnCreate is not null) throw ThrowOnCreate;
         return Client;
+    }
+
+    public ILlmClient Create(LlmProfileOptions profile, LlmConnection? overrides = null)
+    {
+        Profiles.Add(profile);
+        return Create(overrides);
     }
 }

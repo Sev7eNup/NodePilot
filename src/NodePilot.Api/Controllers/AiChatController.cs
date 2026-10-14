@@ -170,6 +170,8 @@ public sealed class AiChatController : ControllerBase
             var model = "unknown";
             var durationMs = 0;
             int? promptTokens = null, completionTokens = null;
+            var scriptsShared = false;
+            var historyDropped = false;
 
             async Task Write(ChatStreamEvent e)
             {
@@ -181,6 +183,17 @@ public sealed class AiChatController : ControllerBase
                     durationMs = done.DurationMs;
                     promptTokens = done.PromptTokens;
                     completionTokens = done.CompletionTokens;
+                    scriptsShared = done.ScriptsShared;
+                    historyDropped = done.HistoryDropped;
+
+                    // The workflow chat's done event also carries the history binding.
+                    await sse.WriteAsync("done", new
+                    {
+                        model = done.Model, durationMs = done.DurationMs, generationMs = done.GenerationMs,
+                        promptTokens = done.PromptTokens, completionTokens = done.CompletionTokens,
+                        historyContextKey = done.HistoryContextKey, historyDropped = done.HistoryDropped,
+                    }, ct);
+                    return;
                 }
 
                 if (await AiStreamSupport.TryWriteSharedEventAsync(sse, e, onToolCall: null, ct))
@@ -212,12 +225,14 @@ public sealed class AiChatController : ControllerBase
             catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
             {
                 RecordResult("cancelled");
-                await AuditAsync(model, durationMs, proposed, cancelled: true, history.Count + 1, request.WorkflowId);
+                await AuditAsync(model, durationMs, proposed, cancelled: true, history.Count + 1, request.WorkflowId,
+                    scriptsShared, historyDropped);
                 return new EmptyResult();
             }
 
             RecordSuccess(model, durationMs, promptTokens, completionTokens);
-            await AuditAsync(model, durationMs, proposed, cancelled: false, history.Count + 1, request.WorkflowId, ct);
+            await AuditAsync(model, durationMs, proposed, cancelled: false, history.Count + 1, request.WorkflowId,
+                scriptsShared, historyDropped, ct);
             return new EmptyResult();
         }
     }
@@ -286,14 +301,16 @@ public sealed class AiChatController : ControllerBase
         AiStreamSupport.RecordSuccess(LlmKind, model, durationMs, promptTokens, completionTokens);
 
     private Task AuditAsync(string model, int durationMs, bool proposed, bool cancelled, int turnCount,
-        Guid? workflowId, CancellationToken ct = default) =>
+        Guid? workflowId, bool scriptsShared, bool historyDropped, CancellationToken ct = default) =>
         _audit.LogAsync(AuditActions.AiWorkflowExplained, "Workflow", workflowId,
             AuditDetails.Json(
                 ("model", model),
                 ("durationMs", durationMs),
                 ("modifyProposed", proposed),
                 ("cancelled", cancelled),
-                ("turnCount", turnCount)),
+                ("turnCount", turnCount),
+                ("scriptsShared", scriptsShared),
+                ("historyDropped", historyDropped)),
             ct);
 
     /// <summary>

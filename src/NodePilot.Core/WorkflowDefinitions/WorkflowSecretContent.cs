@@ -54,7 +54,9 @@ public static class WorkflowSecretContent
         if (string.IsNullOrEmpty(value) || IsPublicHttpHeader(name)) return false;
 
         var withoutTemplates = SafeReplace(TemplateSpan, value, " ");
-        return SafeReplace(SchemePrefix, withoutTemplates, string.Empty).Trim().Length > 0;
+        if (withoutTemplates is null) return true;
+        var remainder = SafeReplace(SchemePrefix, withoutTemplates, string.Empty);
+        return remainder is null || remainder.Trim().Length > 0;
     }
 
     /// <summary>
@@ -120,7 +122,30 @@ public static class WorkflowSecretContent
         // The expected pattern is `{{globals.X}}` — a reference, never a literal secret. Strip all
         // template spans first so a header/body/script that only references a secret is not masked.
         var scrubbed = SafeReplace(TemplateSpan, value, " ");
+        return scrubbed is null || LooksSecretScrubbed(scrubbed);
+    }
 
+    /// <summary>
+    /// <see cref="LooksSecret"/> plus patterns for script, SQL and command-line text that the AI
+    /// assistant may see in clear: SQL password clauses, connection-string passwords,
+    /// <c>ConvertTo-SecureString</c> literals, credential parameters and credential-named
+    /// variables, all without a minimum length. A heuristic: positional arguments and unknown
+    /// formats are not recognised.
+    /// </summary>
+    public static bool LooksSecretInScript(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+
+        var scrubbed = SafeReplace(TemplateSpan, value, " ");
+        if (scrubbed is null || LooksSecretScrubbed(scrubbed)) return true;
+
+        foreach (var rx in ScriptSecretPatterns)
+            if (SafeIsMatch(rx, scrubbed)) return true;
+        return false;
+    }
+
+    private static bool LooksSecretScrubbed(string scrubbed)
+    {
         // (1) A credential HTTP header line whose value has a literal remainder (not just a scheme
         // word).
         foreach (var line in scrubbed.Split('\n'))
@@ -129,8 +154,8 @@ public static class WorkflowSecretContent
             if (m is null) return true;
             if (m.Success && CredentialHeaderNames.Contains(m.Groups[1].Value))
             {
-                var remainder = SafeReplace(SchemePrefix, m.Groups[2].Value, string.Empty).Trim();
-                if (remainder.Length >= 3) return true;
+                var remainder = SafeReplace(SchemePrefix, m.Groups[2].Value, string.Empty);
+                if (remainder is null || remainder.Trim().Length >= 3) return true;
             }
         }
 
@@ -142,23 +167,46 @@ public static class WorkflowSecretContent
         return SafeIsMatch(QuotedAssignment, scrubbed);
     }
 
+    // A quoted literal with at least one non-blank character. Template spans are replaced by a
+    // blank before matching, so a literal that only held a reference does not count.
+    private const string QuotedLiteral = @"(?:'(?=[^']*[^\s'])[^']+'|""(?=[^""]*[^\s""])[^""]+"")";
+
+    private static readonly Regex[] ScriptSecretPatterns =
+    {
+        // SQL: CREATE/ALTER LOGIN|USER … PASSWORD = 'x' (also N'x'), and IDENTIFIED BY 'x'.
+        new(@"\bPASSWORD\s*=\s*N?" + QuotedLiteral, Opts, Timeout),
+        new(@"\bIDENTIFIED\s+BY\s+(?:" + QuotedLiteral + @"|[^\s;'""]+)", Opts, Timeout),
+        // Connection-string fragment with an unquoted value: Password=abc; / Pwd=abc. A PowerShell
+        // variable ($password = …) is not a connection string, and values that start with a
+        // variable, parameter or expression ($, @, :, (, {) are references, not literals.
+        new(@"(?<![$\w])(?:password|pwd)\s*=\s*[^\s;'""$@:({][^\s;'""]*", Opts, Timeout),
+        // PowerShell: ConvertTo-SecureString 'x' / -String "x".
+        new(@"ConvertTo-SecureString\s+(?:-String\s+)?" + QuotedLiteral, Opts, Timeout),
+        // Credential parameters with a literal: -Password 'x', -Token:"x".
+        new(@"(?<![\w-])-(?:password|pass|passwd|pwd|token|apikey|api-key|secret|clientsecret|credential|accesskey)\s*[:\s]\s*" + QuotedLiteral, Opts, Timeout),
+        // Credential-named variables assigned a literal: $pw = 'x', $cred = "x", $apiToken = 'x'.
+        new(@"\$(?:pw|pwd|pass|passwd|passphrase|cred|creds|credential|key|secret|token|apikey|api_key|accesskey|clientsecret)\s*=\s*" + QuotedLiteral, Opts, Timeout),
+        new(@"\$\w*(?:password|passwd|secret|token|apikey)\w*\s*=\s*" + QuotedLiteral, Opts, Timeout),
+    };
+
     // Regex helpers that fail closed: a pathological input that trips the timeout is treated as
-    // suspicious (mask it) rather than silently passing through.
-    private static bool SafeIsMatch(Regex rx, string input)
+    // suspicious (mask it) rather than silently passing through. SafeReplace returns null on a
+    // timeout so the caller can treat the value as secret instead of scanning it unstripped.
+    internal static bool SafeIsMatch(Regex rx, string input)
     {
         try { return rx.IsMatch(input); }
         catch (RegexMatchTimeoutException) { return true; }
     }
 
-    private static Match? SafeMatch(Regex rx, string input)
+    internal static Match? SafeMatch(Regex rx, string input)
     {
         try { return rx.Match(input); }
         catch (RegexMatchTimeoutException) { return null; }
     }
 
-    private static string SafeReplace(Regex rx, string input, string replacement)
+    internal static string? SafeReplace(Regex rx, string input, string replacement)
     {
         try { return rx.Replace(input, replacement); }
-        catch (RegexMatchTimeoutException) { return input; }
+        catch (RegexMatchTimeoutException) { return null; }
     }
 }

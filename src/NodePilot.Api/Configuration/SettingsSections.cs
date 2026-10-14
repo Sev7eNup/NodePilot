@@ -433,7 +433,7 @@ public static class SettingsSectionAdapters
     private static readonly string[] LlmProfileFieldNames =
     [
         "Name", "BaseUrl", "ApiKey", "Model", "MaxTokens", "TimeoutSeconds",
-        "EnableToolCalling", "ToolCallMaxDepth",
+        "EnableToolCalling", "ToolCallMaxDepth", "ShareScriptsWithAssistant",
     ];
 
     /// <summary>
@@ -486,6 +486,7 @@ public static class SettingsSectionAdapters
                 TimeoutSeconds = kv.Value.TimeoutSeconds,
                 EnableToolCalling = kv.Value.EnableToolCalling,
                 ToolCallMaxDepth = kv.Value.ToolCallMaxDepth,
+                ShareScriptsWithAssistant = kv.Value.ShareScriptsWithAssistant,
                 ManagedBy = LlmProfileManagedBy(configRoot, kv.Key),
             })
             .ToList(),
@@ -531,6 +532,7 @@ public static class SettingsSectionAdapters
                     TimeoutSeconds = p["TimeoutSeconds"]?.GetValue<int>() ?? 90,
                     EnableToolCalling = p["EnableToolCalling"]?.GetValue<bool>() ?? false,
                     ToolCallMaxDepth = p["ToolCallMaxDepth"]?.GetValue<int>() ?? 6,
+                    ShareScriptsWithAssistant = p["ShareScriptsWithAssistant"]?.GetValue<bool>() ?? true,
                     ManagedBy = LlmProfileManagedBy(configRoot, id),
                 });
             }
@@ -575,6 +577,7 @@ public static class SettingsSectionAdapters
                 ["TimeoutSeconds"] = p.TimeoutSeconds,
                 ["EnableToolCalling"] = p.EnableToolCalling,
                 ["ToolCallMaxDepth"] = p.ToolCallMaxDepth,
+                ["ShareScriptsWithAssistant"] = p.ShareScriptsWithAssistant,
             };
             // Match the previous secret by id, never by position: ids are immutable, so a rename or
             // a deletion elsewhere in the list can't hand this profile someone else's API key.

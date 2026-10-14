@@ -2,6 +2,7 @@ using NodePilot.TestCommons;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace NodePilot.Ai.Tests;
@@ -277,6 +278,200 @@ public class WorkflowAssistantServiceTests
         userTurn.Should().NotContain("https://example.test");
     }
 
+    // ---- Script sharing, profile snapshot, history binding --------------------------
+
+    private const string ScriptWorkflow = """
+        { "nodes": [
+            { "id": "t1", "type": "activity", "data": { "label": "Start", "activityType": "manualTrigger", "config": {} } },
+            { "id": "s1", "type": "activity", "data": { "label": "Disk", "activityType": "runScript",
+              "config": { "script": "Get-PSDrive C | Select-Object Used" } } },
+            { "id": "q1", "type": "activity", "data": { "label": "Query", "activityType": "sql",
+              "config": { "query": "SELECT COUNT(*) FROM dbo.Jobs", "connectionString": "Server=x;Password=p;" } } }
+          ],
+          "edges": [ { "id": "e1", "source": "t1", "target": "s1" }, { "id": "e2", "source": "s1", "target": "q1" } ] }
+        """;
+
+    private static WorkflowAssistantService ServiceWith(FakeLlmClient client, IOptionsMonitor<LlmOptions> options,
+        IChatToolRegistry? tools = null, FakeLlmClientFactory? factory = null)
+        => new(factory ?? new FakeLlmClientFactory(client), new PromptCatalog(), tools ?? new WorkflowChatToolRegistry(),
+            options, customStore: null, executionLogs: null);
+
+    private static async Task<List<ChatStreamEvent>> Events(WorkflowAssistantService svc, WorkflowChatRequest req)
+    {
+        using var doc = JsonDocument.Parse(req.WorkflowJson);
+        var events = new List<ChatStreamEvent>();
+        await foreach (var e in svc.StreamChatAsync(req, doc.RootElement, true, false, CancellationToken.None))
+            events.Add(e);
+        return events;
+    }
+
+    [Fact]
+    public async Task StreamChat_ShareScriptsOn_ScriptAndSqlInClear_SecretsMasked()
+    {
+        var fake = new FakeLlmClient().EnqueueStream("ok");
+        var options = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(shareScriptsWithAssistant: true));
+
+        var events = await Events(ServiceWith(fake, options), Req("Was macht das Skript?", ScriptWorkflow));
+
+        var userTurn = fake.Calls.Single().Conversation!.Last().Content;
+        userTurn.Should().Contain("Get-PSDrive C | Select-Object Used");
+        userTurn.Should().Contain("SELECT COUNT(*) FROM dbo.Jobs");
+        userTurn.Should().NotContain("Password=p");
+        events.OfType<ChatStreamEvent.DoneEvent>().Single().ScriptsShared.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task StreamChat_ShareScriptsOff_ScriptMasked()
+    {
+        var fake = new FakeLlmClient().EnqueueStream("ok");
+        var options = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(shareScriptsWithAssistant: false));
+
+        var events = await Events(ServiceWith(fake, options), Req("Was macht das Skript?", ScriptWorkflow));
+
+        var userTurn = fake.Calls.Single().Conversation!.Last().Content;
+        userTurn.Should().NotContain("Get-PSDrive");
+        userTurn.Should().NotContain("dbo.Jobs");
+        events.OfType<ChatStreamEvent.DoneEvent>().Single().ScriptsShared.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task StreamChat_ScriptWithRecognisedSecret_MaskedWholeEvenWhenShared()
+    {
+        const string workflow = """
+            { "nodes": [ { "id": "s1", "type": "activity", "data": { "activityType": "runScript",
+              "config": { "script": "$pw = 'abc'; Connect-Box -Password $pw" } } } ], "edges": [] }
+            """;
+        var fake = new FakeLlmClient().EnqueueStream("ok");
+
+        await Events(ServiceWith(fake, new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile())), Req("Erkläre.", workflow));
+
+        var userTurn = fake.Calls.Single().Conversation!.Last().Content;
+        userTurn.Should().NotContain("abc");
+        userTurn.Should().NotContain("Connect-Box");
+    }
+
+    [Fact]
+    public async Task StreamChat_ToolContext_SeesSharedScript()
+    {
+        var fake = new FakeLlmClient().EnqueueStream("ok");
+        var capturing = new CapturingChatToolRegistry();
+        var options = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(enableToolCalling: true));
+
+        await Events(ServiceWith(fake, options, capturing), Req("Prüfe.", ScriptWorkflow));
+
+        capturing.LastGetToolsContext!.WorkflowDefinition.GetRawText().Should().Contain("Get-PSDrive C");
+    }
+
+    [Fact]
+    public async Task StreamChat_UsesOneProfileSnapshot_ForClientAndRedaction()
+    {
+        // First read: a local profile that shares scripts. Any later read would see a cloud
+        // profile that does not. Client and redaction must both follow the first read.
+        var local = LlmTestOptions.WithProfile(id: "local", baseUrl: "http://localhost:11434/v1", shareScriptsWithAssistant: true);
+        var cloud = LlmTestOptions.WithProfile(id: "cloud", baseUrl: "https://llm.example/v1", shareScriptsWithAssistant: false);
+        var options = new SequencedOptionsMonitor<LlmOptions>(local, cloud);
+        var fake = new FakeLlmClient().EnqueueStream("ok");
+        var factory = new FakeLlmClientFactory(fake);
+
+        await Events(ServiceWith(fake, options, factory: factory), Req("Erkläre.", ScriptWorkflow));
+
+        factory.Profiles.Should().ContainSingle().Which.BaseUrl.Should().Be("http://localhost:11434/v1");
+        factory.Connections.Should().ContainSingle().Which.Should().BeNull();
+        fake.Calls.Single().Conversation!.Last().Content.Should().Contain("Get-PSDrive C");
+    }
+
+    [Fact]
+    public async Task StreamChat_NoActiveProfile_ThrowsBeforeAnyLlmCall()
+    {
+        var fake = new FakeLlmClient().EnqueueStream("ok");
+        var factory = new FakeLlmClientFactory(fake);
+        var options = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.EnabledWithoutProfile());
+
+        var act = () => Events(ServiceWith(fake, options, factory: factory), Req("Erkläre.", ScriptWorkflow));
+
+        await act.Should().ThrowAsync<LlmException>();
+        factory.Profiles.Should().BeEmpty();
+        fake.Calls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task StreamChat_HistoryWithMatchingKey_IsSent()
+    {
+        var options = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile());
+        var first = new FakeLlmClient().EnqueueStream("Das Skript liest Get-PSDrive C.");
+        var key = (await Events(ServiceWith(first, options), Req("Was macht s1?", ScriptWorkflow)))
+            .OfType<ChatStreamEvent.DoneEvent>().Single().HistoryContextKey;
+
+        var second = new FakeLlmClient().EnqueueStream("ok");
+        var history = new[] { new AiChatTurnDto("user", "Was macht s1?"), new AiChatTurnDto("assistant", "Das Skript liest Get-PSDrive C.") };
+        var events = await Events(ServiceWith(second, options), Req("Und weiter?", ScriptWorkflow, history) with { HistoryContextKey = key });
+
+        key.Should().NotBeNullOrEmpty();
+        second.Calls.Single().Conversation!.Should().Contain(m => m.Content == "Das Skript liest Get-PSDrive C.");
+        events.OfType<ChatStreamEvent.DoneEvent>().Single().HistoryDropped.Should().BeFalse();
+    }
+
+    public static TheoryData<string, LlmOptions> ChangedContexts => new()
+    {
+        { "sharing switched off", LlmTestOptions.WithProfile(shareScriptsWithAssistant: false) },
+        { "other profile", LlmTestOptions.WithProfile(id: "cloud") },
+        { "same id, other endpoint", LlmTestOptions.WithProfile(baseUrl: "https://llm.example/v1") },
+    };
+
+    [Theory]
+    [MemberData(nameof(ChangedContexts))]
+    public async Task StreamChat_HistoryFromAnotherContext_IsDropped(string because, LlmOptions next)
+    {
+        var first = new FakeLlmClient().EnqueueStream("Das Skript liest Get-PSDrive C.");
+        var key = (await Events(ServiceWith(first, new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile())),
+                Req("Was macht s1?", ScriptWorkflow)))
+            .OfType<ChatStreamEvent.DoneEvent>().Single().HistoryContextKey;
+
+        var second = new FakeLlmClient().EnqueueStream("ok");
+        var history = new[] { new AiChatTurnDto("user", "Was macht s1?"), new AiChatTurnDto("assistant", "Das Skript liest Get-PSDrive C.") };
+        var events = await Events(ServiceWith(second, new StaticOptionsMonitor<LlmOptions>(next)),
+            Req("Und weiter?", ScriptWorkflow, history) with { HistoryContextKey = key });
+
+        second.Calls.Single().Conversation!.Should().ContainSingle(because);
+        second.Calls.Single().Conversation!.Single().Content.Should().NotContain("Das Skript liest Get-PSDrive C.", because);
+        var done = events.OfType<ChatStreamEvent.DoneEvent>().Single();
+        done.HistoryDropped.Should().BeTrue(because);
+        done.HistoryContextKey.Should().NotBe(key, because);
+    }
+
+    [Fact]
+    public async Task StreamChat_HistoryWithoutKey_IsDropped()
+    {
+        var fake = new FakeLlmClient().EnqueueStream("ok");
+        var history = new[] { new AiChatTurnDto("user", "q"), new AiChatTurnDto("assistant", "quoted script") };
+
+        var events = await Events(ServiceWith(fake, new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile())),
+            Req("Weiter.", ScriptWorkflow, history));
+
+        fake.Calls.Single().Conversation!.Should().ContainSingle();
+        events.OfType<ChatStreamEvent.DoneEvent>().Single().HistoryDropped.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task StreamChat_EmptyHistory_IsNotReportedAsDropped()
+    {
+        var fake = new FakeLlmClient().EnqueueStream("ok");
+
+        var events = await Events(ServiceWith(fake, new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile())),
+            Req("Erste Frage.", ScriptWorkflow));
+
+        events.OfType<ChatStreamEvent.DoneEvent>().Single().HistoryDropped.Should().BeFalse();
+    }
+
+    /// <summary>Returns the given values in order, then repeats the last one.</summary>
+    private sealed class SequencedOptionsMonitor<T>(params T[] values) : IOptionsMonitor<T>
+    {
+        private int _reads;
+        public T CurrentValue => values[Math.Min(_reads++, values.Length - 1)];
+        public T Get(string? name) => CurrentValue;
+        public IDisposable? OnChange(Action<T, string?> listener) => null;
+    }
+
     // ---- Empty-canvas design mode -------------------------------------------------
 
     [Fact]
@@ -337,7 +532,9 @@ public class WorkflowAssistantServiceTests
             new AiChatTurnDto("assistant", "Das ist der manuelle Trigger."),
         };
         var fake = new FakeLlmClient().EnqueueStream("ok");
-        await Run(NewService(fake), Req("Und s1?", history: history));
+        // History only goes out with the key of the context it came from (same profile here).
+        var key = WorkflowAssistantService.HistoryContextKey("default", LlmTestOptions.WithProfile().Profiles["default"]);
+        await Run(NewService(fake), Req("Und s1?", history: history) with { HistoryContextKey = key });
 
         var call = fake.Calls.Single();
         call.SystemPrompt.Should().Contain("Activity & definition reference");

@@ -308,6 +308,8 @@
     "enableToolCalling": "Tool-calling in AI chat",
     "enableToolCallingHint": "Lets the workflow chat assistant call read-only analysis tools. Requires a model with reliable function-calling.",
     "toolCallMaxDepth": "Max tool rounds",
+    "shareScriptsWithAssistant": "Share scripts, SQL and arguments with the AI chat",
+    "shareScriptsWithAssistantHint": "The workflow assistant reads scripts, SQL queries and program arguments in clear, so this provider sees them. Values with a recognised secret pattern stay masked. Recognition is a heuristic and does not find every embedded password. Turn this off if this provider must not see workflow code.",
     "baseUrl": "Base URL",
     "baseUrlHint": "e.g. https://api.openai.com/v1 — a URL ending in /responses uses the OpenAI Responses API; one ending in /chat/completions is used verbatim.",
     "profiles": "Profiles",

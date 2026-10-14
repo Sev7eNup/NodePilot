@@ -7,7 +7,7 @@ vi.mock('../../api/client', () => ({
   postEventStream: (...args: unknown[]) => postEventStreamMock(...args),
 }));
 
-import { chatStream, generateScriptStream, type WorkflowChatProposal } from '../../api/ai';
+import { chatStream, generateScriptStream, type ChatDoneMeta, type WorkflowChatProposal } from '../../api/ai';
 import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 /** Builds a Response backed by a chunked ReadableStream to exercise SSE boundary parsing. */
@@ -52,6 +52,21 @@ describe('chatStream SSE parser', () => {
     expect(building).toBe(1);
     expect(proposal).toEqual({ definitionJson: '{}', summary: '', nodeCount: 0, edgeCount: 0, baseDefinitionHash: 'x' });
     expect(done).toEqual({ model: 'm', durationMs: 1, promptTokens: 12, completionTokens: 7 });
+  });
+
+  it('passes the history binding of the done frame through', async () => {
+    postEventStreamMock.mockResolvedValue(sseResponse([
+      'event: done\ndata: {"model":"m","durationMs":1,"historyContextKey":"0a1b2c3d4e5f6a7b","historyDropped":true}\n\n',
+    ]));
+
+    let done: ChatDoneMeta | null = null;
+    await chatStream({ question: 'q', workflowJson: '{}', baseDefinitionHash: 'x', history: [], historyContextKey: 'old' }, {
+      onDelta: () => {},
+      onProposal: () => {},
+      onDone: (m) => { done = m; },
+    });
+
+    expect(done).toMatchObject({ historyContextKey: '0a1b2c3d4e5f6a7b', historyDropped: true });
   });
 
   it('parses tool_call + tool_result frames between deltas', async () => {

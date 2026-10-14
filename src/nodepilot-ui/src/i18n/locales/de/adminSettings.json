@@ -308,6 +308,8 @@
     "enableToolCalling": "Tool-Calling im KI-Chat",
     "enableToolCallingHint": "Lässt den Workflow-Chat-Assistenten read-only Analyse-Tools aufrufen. Erfordert ein Modell mit zuverlässigem Function-Calling.",
     "toolCallMaxDepth": "Max. Tool-Runden",
+    "shareScriptsWithAssistant": "Skripte, SQL und Argumente an den KI-Chat geben",
+    "shareScriptsWithAssistantHint": "Der Workflow-Assistent liest Skripte, SQL-Queries und Programm-Argumente im Klartext, damit sieht dieser Anbieter sie. Werte mit erkanntem Secret-Muster bleiben maskiert. Die Erkennung ist eine Heuristik und findet nicht jedes eingebettete Passwort. Ausschalten, wenn dieser Anbieter keinen Workflow-Code sehen darf.",
     "baseUrl": "Base URL",
     "baseUrlHint": "z. B. https://api.openai.com/v1 — endet die URL auf /responses, spricht NodePilot die OpenAI-Responses-API; auf /chat/completions wird sie unverändert verwendet.",
     "profiles": "Profile",

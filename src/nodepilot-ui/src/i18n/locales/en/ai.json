@@ -101,6 +101,7 @@
     "proposalExpired": "Proposal no longer applicable after reload — please ask again.",
     "emptyQuestion": "Please enter a question.",
     "regenerate": "Regenerate answer",
+    "historyDropped": "The earlier conversation was not sent because the AI profile or the script sharing setting changed.",
     "retry": "Try again",
     "scrollToBottom": "Scroll to bottom",
     "suggestion1": "Explain this workflow",
