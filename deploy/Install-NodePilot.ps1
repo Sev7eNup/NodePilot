@@ -134,6 +134,11 @@
     then empty on this installation; nothing else changes. An update preserves the choice,
     because the updater goes by what it finds on disk.
 
+.PARAMETER SuppressSecretOutput
+    Do not print the External-Trigger API key or the admin setup token at the end. For callers
+    that obtain both themselves and whose output is logged: the server setup passes it, because
+    its transcript records everything this script prints and its result file carries both values.
+
 .EXAMPLE
     # SQL Server (default)
     .\deploy\Install-NodePilot.ps1 `
@@ -200,7 +205,8 @@ param(
     [string[]]$KnownProxyIps = @(),
     [switch]$SkipSqlConnectivityCheck,
     [switch]$SkipGmsaCheck,
-    [switch]$OmitSourceSnapshot
+    [switch]$OmitSourceSnapshot,
+    [switch]$SuppressSecretOutput
 )
 
 $ErrorActionPreference = 'Stop'
@@ -230,7 +236,7 @@ if (-not (Test-Path -LiteralPath $ServiceControlScript -PathType Leaf)) {
 
 $artifactLock = $null
 $artifactStage = $null
-$installRollbackDir = $null
+$installRollback = $null
 $previousSettingsBytes = $null
 $previousService = $null
 $previousAclIdentity = 'NT AUTHORITY\SYSTEM'
@@ -967,6 +973,11 @@ if ($artifactRuntimeVerdict.Status -eq 'Fail') {
 }
 Write-Ok "  $($artifactRuntimeVerdict.Detail)"
 
+# Validate the location before creating anything in it or next to it: an unsuitable root (UNC,
+# FAT/exFAT, behind a junction) cannot be secured after the fact, and the rollback copy below
+# lands beside it.
+Assert-SafeInstallRoot -Path $InstallPath
+
 $previousService = Get-ServiceRollbackSnapshot -Name $ServiceName
 $previousAclIdentity = if ($previousService -and
     $previousService.StartName.Trim().ToLowerInvariant() -notin @('localsystem', '.\localsystem', 'system', 'nt authority\system')) {
@@ -985,14 +996,8 @@ if (Test-Path -LiteralPath $previousSettingsPath -PathType Leaf) {
 
 if ((Test-Path -LiteralPath $InstallPath -PathType Container) -and
     @(Get-ChildItem -LiteralPath $InstallPath -Force).Count -gt 0) {
-    $installRollbackDir = "$InstallPath.rollback.$(Get-Date -Format 'yyyyMMdd-HHmmssfff')-$([Guid]::NewGuid().ToString('N').Substring(0,8))"
-    New-Item -ItemType Directory -Path $installRollbackDir -ErrorAction Stop | Out-Null
-    Get-ChildItem -LiteralPath $InstallPath -Force |
-        Where-Object { $_.Name -ne 'appsettings.Production.json' } |
-        ForEach-Object {
-            Copy-Item -LiteralPath $_.FullName -Destination $installRollbackDir -Recurse -Force -ErrorAction Stop
-        }
-    Write-Info "  Existing binary-only install backed up to $installRollbackDir"
+    $installRollback = New-NodePilotBinaryBackup -InstallPath $InstallPath -Kind 'rollback'
+    Write-Info "  Existing binary-only install backed up to $($installRollback.Path)"
 }
 
 # Reinstalling Postgres may replace the trust anchor used by the currently installed service.
@@ -1015,9 +1020,6 @@ $installMutationStarted = $true
 Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath
 
 Write-Step "Preparing directories"
-# Validate the location before creating anything in it: an unsuitable root (UNC, FAT/exFAT,
-# behind a junction) cannot be secured after the fact.
-Assert-SafeInstallRoot -Path $InstallPath
 if (Test-Path $InstallPath) {
     # Empty the install path; leave DataPath untouched.
     Get-ChildItem $InstallPath -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
@@ -1382,8 +1384,12 @@ if ($SeedBackupPassphrase) {
     # credential the reference machine had, so it never reaches appsettings.Production.json. The
     # key is restricted BEFORE the value is written, not after.
     Set-ServiceRegistryAclForSecrets -Path $envRegPath
-    $seedPassphrasePlain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR(
-        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SeedBackupPassphrase))
+    $seedBstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SeedBackupPassphrase)
+    try {
+        $seedPassphrasePlain = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($seedBstr)
+    } finally {
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($seedBstr)
+    }
     $envValues += "Provisioning__SeedBackupPassphrase=$seedPassphrasePlain"
 }
 New-ItemProperty -Path $envRegPath -Name 'Environment' -PropertyType MultiString -Value $envValues -Force | Out-Null
@@ -1427,7 +1433,7 @@ Write-Ok "  /healthz/ready -> 200 OK"
 $tokenPath = Join-Path $DataPath 'admin-setup.token'
 $tokenContent = $null
 $tokenUnreadable = $false
-if (Test-Path $tokenPath) {
+if (-not $SuppressSecretOutput -and (Test-Path $tokenPath)) {
     # The service writes this file with an owner-only ACL (single ACE for the service
     # account), so the installing admin is EXPECTED to hit Access denied here whenever
     # the service identity differs from the installer identity (gMSA and LocalSystem
@@ -1584,11 +1590,18 @@ if ($cliPathState -eq 'on the machine PATH') {
 }
 Write-Host "  Install log : $reportPath"                             -ForegroundColor Gray
 Write-Host ""
-Write-Host "  External-Trigger API key (legacy; store it now, it won't be shown again):" -ForegroundColor Yellow
-Write-Host "    $ExternalTriggerApiKey" -ForegroundColor Yellow
+if ($SuppressSecretOutput) {
+    Write-Host "  External-Trigger API key (legacy): returned to the calling setup, not printed here." -ForegroundColor Yellow
+} else {
+    Write-Host "  External-Trigger API key (legacy; store it now, it won't be shown again):" -ForegroundColor Yellow
+    Write-Host "    $ExternalTriggerApiKey" -ForegroundColor Yellow
+}
 Write-Host "  Deny-all until workflow GUIDs are added to ExternalTrigger:AllowedWorkflowIds." -ForegroundColor Yellow
 Write-Host ""
-if ($tokenContent) {
+if ($SuppressSecretOutput) {
+    # The caller reads the token file itself, so neither the value nor the read instructions apply.
+    Write-Info "  Admin setup token: handled by the calling setup, not printed here."
+} elseif ($tokenContent) {
     Write-Host "  FIRST-LOGIN ADMIN BOOTSTRAP" -ForegroundColor Yellow
     Write-Host "  ---------------------------"
     Write-Host "  Go to:   $PublicUrl/"
@@ -1616,9 +1629,9 @@ if ($tokenContent) {
     Write-Info "  No admin-setup.token on disk (users already exist or bootstrap ran silently)."
 }
 
-if ($installRollbackDir -and (Test-Path -LiteralPath $installRollbackDir)) {
-    Remove-Item -LiteralPath $installRollbackDir -Recurse -Force -ErrorAction SilentlyContinue
-    $installRollbackDir = $null
+if ($installRollback -and (Test-Path -LiteralPath $installRollback.Path)) {
+    Remove-Item -LiteralPath $installRollback.Path -Recurse -Force -ErrorAction SilentlyContinue
+    $installRollback = $null
 }
 }
 catch {
@@ -1640,16 +1653,15 @@ catch {
                 Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath `
                     -FoundMessage "Removing the service '$ServiceName' that this run registered."
             }
-            if (-not (Test-Path -LiteralPath $InstallPath -PathType Container)) {
+            if ($installRollback) {
+                # Refuses a backup whose DACL or files changed since this run made it, before the
+                # install directory is wiped.
+                Restore-NodePilotBinaryBackup -Backup $installRollback -InstallPath $InstallPath
+            } elseif (-not (Test-Path -LiteralPath $InstallPath -PathType Container)) {
                 New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
             } else {
                 Get-ChildItem -LiteralPath $InstallPath -Force |
                     Remove-Item -Recurse -Force -ErrorAction Stop
-            }
-            if ($installRollbackDir -and (Test-Path -LiteralPath $installRollbackDir)) {
-                Get-ChildItem -LiteralPath $installRollbackDir -Force | ForEach-Object {
-                    Copy-Item -LiteralPath $_.FullName -Destination $InstallPath -Recurse -Force -ErrorAction Stop
-                }
             }
             if ($previousSettingsBytes) {
                 Write-NodePilotRestrictedFile `
@@ -1704,7 +1716,8 @@ catch {
             }
         }
         catch {
-            Write-Host "[install] ROLLBACK ALSO FAILED: $($_.Exception.Message). Binary backup: $installRollbackDir" -ForegroundColor Red
+            $rollbackPath = if ($installRollback) { $installRollback.Path } else { 'none' }
+            Write-Host "[install] ROLLBACK ALSO FAILED: $($_.Exception.Message). Binary backup: $rollbackPath" -ForegroundColor Red
         }
     }
     throw $installError

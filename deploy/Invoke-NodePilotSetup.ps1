@@ -675,10 +675,12 @@ function Invoke-SetupInstall {
     if ($answers.Contains('includeSourceSnapshot') -and -not [bool]$answers['includeSourceSnapshot']) {
         $splat['OmitSourceSnapshot'] = $true
     }
-    # Generated here, not by the installer: the installer prints the key once to a console that
-    # does not exist under a hidden Exec, and install-report.txt omits it. This is the only way
-    # the wizard can show it to the operator.
+    # Generated here, not by the installer: there is no console under a hidden Exec, and
+    # install-report.txt omits the key. The result file is the only way the wizard can show it.
     $splat['ExternalTriggerApiKey'] = New-NodePilotRandomBase64 -ByteCount 48
+    # The transcript records everything the installer prints. Key and setup token reach the
+    # operator through the result file below, so the installer must not print them.
+    $splat['SuppressSecretOutput'] = $true
 
     Write-NodePilotProgress -Step '0' -Text 'Installing NodePilot'
     # 6>&1 because every operator-visible line in the installer is Write-Host, i.e. the

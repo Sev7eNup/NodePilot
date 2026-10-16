@@ -358,11 +358,15 @@ function New-NodePilotRestrictedStagingDirectory {
       current user, applied in the create call rather than afterwards. The name prefix is
       configurable because the setup adapter also uses this for its answer file, so a leftover
       directory can be traced back to whatever created it.
+
+      -ExcludeCurrentUser leaves the current user out, for a directory that must be writable only
+      through SYSTEM or the Administrators group, like the install root.
     #>
     [CmdletBinding()]
     param(
         [string]$ParentPath = [IO.Path]::GetTempPath(),
-        [string]$Prefix = 'nodepilot-artifact-'
+        [string]$Prefix = 'nodepilot-artifact-',
+        [switch]$ExcludeCurrentUser
     )
 
     if (-not (Test-Path -LiteralPath $ParentPath -PathType Container)) {
@@ -372,11 +376,14 @@ function New-NodePilotRestrictedStagingDirectory {
     try {
         $acl = New-Object System.Security.AccessControl.DirectorySecurity
         $acl.SetAccessRuleProtection($true, $false)
-        $identities = @{}
-        foreach ($identity in @(
+        $grantees = @(
             [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18'),
-            [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'),
-            [System.Security.Principal.WindowsIdentity]::GetCurrent().User)) {
+            [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
+        if (-not $ExcludeCurrentUser) {
+            $grantees += [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+        }
+        $identities = @{}
+        foreach ($identity in $grantees) {
             $identities[$identity.Value] = $identity
         }
         foreach ($identity in $identities.Values) {
@@ -816,6 +823,107 @@ function Assert-NodePilotInstallRootHardenedOrRepair {
         -ReadOnlyForService -SkipServiceRule:$isLocalSystem
 
     Assert-NodePilotInstallRootHardened -Path $Path
+}
+
+function Get-NodePilotDirectoryFileHashes {
+    <#
+      Maps every file under RootPath, hidden ones included, to its length and SHA-256. A binary
+      backup keeps this map in memory, where nobody who can write to the backup directory can
+      change it.
+    #>
+    param([Parameter(Mandatory)][string]$RootPath)
+
+    $root = (Resolve-Path -LiteralPath $RootPath).Path.TrimEnd('\', '/')
+    $hashes = @{}
+    foreach ($file in @(Get-ChildItem -LiteralPath $root -File -Recurse -Force)) {
+        $relative = $file.FullName.Substring($root.Length + 1)
+        $hashes[$relative] = '{0}:{1}' -f $file.Length, (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+    }
+    return $hashes
+}
+
+function Assert-NodePilotDirectoryFileHashes {
+    <#
+      Throws unless RootPath holds exactly the files Get-NodePilotDirectoryFileHashes recorded:
+      no file changed, missing or added.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RootPath,
+        [Parameter(Mandatory)][hashtable]$Expected
+    )
+
+    $actual = Get-NodePilotDirectoryFileHashes -RootPath $RootPath
+    if ($actual.Count -ne $Expected.Count) {
+        throw "'$RootPath' holds $($actual.Count) files, but the backup recorded $($Expected.Count)."
+    }
+    foreach ($relative in $Expected.Keys) {
+        if (-not $actual.ContainsKey($relative) -or $actual[$relative] -ne $Expected[$relative]) {
+            throw "'$relative' under '$RootPath' does not match the backup taken by this run."
+        }
+    }
+}
+
+function New-NodePilotBinaryBackup {
+    <#
+      Copies the install directory, without its production configuration, to a sibling directory
+      that a rollback copies back as service binaries. A custom root such as D:\NodePilot would
+      pass BUILTIN\Users write access on to a plain sibling, so the directory is created with a
+      protected SYSTEM/Administrators DACL, handed to Administrators and checked before anything
+      is copied in. Returns the path and the file hashes for Restore-NodePilotBinaryBackup.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$InstallPath,
+        [Parameter(Mandatory)][ValidateSet('backup', 'rollback')][string]$Kind
+    )
+
+    $installRoot = $InstallPath.TrimEnd('\')
+    $prefix = '{0}.{1}.{2}-' -f (Split-Path -Leaf $installRoot), $Kind, (Get-Date -Format 'yyyyMMdd-HHmmssfff')
+    $path = New-NodePilotRestrictedStagingDirectory `
+        -ParentPath (Split-Path -Parent $installRoot) -Prefix $prefix -ExcludeCurrentUser
+    try {
+        # The creator owns a new directory; the hardening check wants a trusted owner.
+        Set-DirectoryAclForService -Path $path -ServiceAccount 'NT AUTHORITY\SYSTEM' -SkipServiceRule
+        Assert-NodePilotInstallRootHardened -Path $path -RequireProtectedRules
+        Get-ChildItem -LiteralPath $InstallPath -Force |
+            Where-Object { $_.Name -ne 'appsettings.Production.json' } |
+            ForEach-Object {
+                Copy-Item -LiteralPath $_.FullName -Destination $path -Recurse -Force -ErrorAction Stop
+            }
+        $files = Get-NodePilotDirectoryFileHashes -RootPath $path
+    }
+    catch {
+        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+    return [pscustomobject]@{ Path = $path; Files = $files }
+}
+
+function Restore-NodePilotBinaryBackup {
+    <#
+      Puts a backup made by New-NodePilotBinaryBackup back into the install directory. Nothing is
+      touched unless the backup still has its protected DACL and trusted owner and holds exactly
+      the files recorded when it was made. The restored files are checked against the same record.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Backup,
+        [Parameter(Mandatory)][string]$InstallPath
+    )
+
+    Assert-NodePilotInstallRootHardened -Path $Backup.Path -RequireProtectedRules
+    Assert-NodePilotDirectoryFileHashes -RootPath $Backup.Path -Expected $Backup.Files
+
+    if (Test-Path -LiteralPath $InstallPath -PathType Container) {
+        Get-ChildItem -LiteralPath $InstallPath -Force | Remove-Item -Recurse -Force -ErrorAction Stop
+    }
+    else {
+        New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
+    }
+    Get-ChildItem -LiteralPath $Backup.Path -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $InstallPath -Recurse -Force -ErrorAction Stop
+    }
+    Assert-NodePilotDirectoryFileHashes -RootPath $InstallPath -Expected $Backup.Files
 }
 
 function Assert-NodePilotCodeSigningCertificate {

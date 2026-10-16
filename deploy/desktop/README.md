@@ -291,6 +291,12 @@ Quit the installed shell first (tray → *Quit NodePilot*) before `npm start`: b
 `productName`, so the single-instance lock makes the second one focus the first and exit. Shell
 changes reach the *installed* app only through a new installer — `app.asar` is not patchable.
 
+`npm run package` also sets the Electron fuses (`src/nodepilot-desktop/scripts/harden-electron-fuses.mjs`):
+no Node mode, no `NODE_OPTIONS` or inspector flags, cookies encrypted at rest, and the app loads only
+from `app.asar` after an integrity check, so a modified archive refuses to start. Fuses change the
+executable, so signing comes after packaging. An Electron upgrade that adds a fuse fails packaging
+until the new fuse has a value there.
+
 ## Known gaps (deliberately not covered in v1)
 
 Honest inventory so nobody assumes more coverage than exists:

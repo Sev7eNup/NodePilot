@@ -411,7 +411,7 @@ The installer does everything else:
 8. Create the service via `Win32_Service.Create` — gMSA (empty password + `sc.exe managedaccount` + a "Log on as a service" grant) or `LocalSystem` (none of those three steps needed), recovery actions, `ASPNETCORE_ENVIRONMENT=Production`
 9. Start the service, poll `https://localhost/healthz/ready`
 10. Write the installation marker `HKLM\SOFTWARE\NodePilot\Server` (`InstallPath`, `DataPath`, `ServiceName`, `Version`, `DbProvider`, `HttpsPort`) — only on the success path, so a rolled-back run leaves no marker
-11. Print the admin bootstrap token + the legacy external-trigger API key to the console. The key is deny-all at first and only takes effect together with explicit workflow GUIDs under `ExternalTrigger:AllowedWorkflowIds`.
+11. Print the admin bootstrap token + the legacy external-trigger API key to the console. The key is deny-all at first and only takes effect together with explicit workflow GUIDs under `ExternalTrigger:AllowedWorkflowIds`. With `-SuppressSecretOutput` neither value is printed: the server setup passes that switch, because its transcript keeps everything the installer prints, and returns both values in its result file instead.
 
 Step 1 comes from [`Preflight.ps1`](Preflight.ps1) and is deliberately a separate file: the checks only
 collect (`Invoke-NodePilotPreflight`), and aborting is a second step (`Assert-NodePilotPreflight`). That
@@ -466,6 +466,7 @@ After a successful install the console shows:
 | `-BootstrapAdminUsername` | | Empty. When set, **only** this account may redeem the one-time setup token (`NodePilot:BootstrapAdminUsername`). For unattended rollouts that know the name in advance. |
 | `-SeedBackupPath` | | Empty. A `.npbackup` applied on **first start** into an empty instance — users, workflows, machines, credentials, settings. The file is copied to `<DataPath>\seed.npbackup` and deleted after being applied. |
 | `-SeedBackupPassphrase` | ✓ if `-SeedBackupPath` is set (SecureString) | Ends up in the `Environment` value of the service key, **never** in `appsettings.Production.json` |
+| `-SuppressSecretOutput` | | off. Prints neither the legacy external-trigger key nor the setup token, for callers that obtain both themselves and log the output (the server setup passes it) |
 
 > **Turnkey without typing a token.** `-BootstrapAdminUsername` and `-SeedBackupPath` are the two ways
 > to end an unattended installation in a usable state — otherwise someone would have to type the setup
@@ -524,8 +525,13 @@ $releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'
 
 Preserves `appsettings.Production.json`, the database (SQL Server or Postgres) and the service account.
 The backup under `C:\Program Files\NodePilot.backup.<timestamp>` contains binaries only and never the
-secret-bearing production configuration; automatic rollback on a health-check failure.
+secret-bearing production configuration; automatic rollback on a health-check failure. The backup is
+created with a SYSTEM/Administrators-only DACL before anything is copied into it, so a custom root such
+as `D:\NodePilot` does not pass the volume's `BUILTIN\Users` write access on to it. A rollback copies it
+back only after re-checking that DACL and the file hashes recorded when the backup was made; a backup
+changed in between is refused, and the updater reports the failed rollback instead of restoring it.
 
+- **No silent downgrade:** the updater compares the artifact version with `VERSION.txt` in the install directory and stops before changing anything when the artifact is older (only the numeric part counts, so `1.2.13-audit1` and `1.2.13` are the same version). `-AllowDowngrade` installs the older artifact anyway; the database schema stays at the newer version. If the installed version cannot be read, the updater warns and continues.
 - **`-HttpsPort` does not have to be repeated**: the health probe takes `Kestrel:Https:HttpsPort` from the installed configuration (an explicit `-HttpsPort` still wins). Without that derivation, updating an 8443 installation probed against 443 and rolled back a healthy upgrade.
 - **Process guard before the swap:** a stopped service is not enough — an orphaned worker keeps its DLLs image-mapped, and Windows reports that as a plain "Access denied" in the middle of the wipe. But the SCM reports `SERVICE_STOPPED` **before** the process has actually exited (host shutdown, log flush). After the stop it therefore waits up to 30 s, then terminates the remaining processes from the install directory — they are NodePilot binaries whose files are about to be replaced anyway. Only if that does not help either does the updater abort **before the first deletion**, naming the PID and process. Until 2026-08-03 the wait was missing and the run failed on exactly the process it had stopped itself.
 - During the swap, `appsettings.Production.json` deliberately goes **last**, so that an abort does not take the configuration down with it (by design it is not in the backup). If it is missing after all, the updater refuses — then run `Install-NodePilot.ps1`, which re-renders the configuration from its parameters (the database, DataPath and accounts are preserved; the newly generated legacy external-trigger key stays deny-all until GUIDs are permitted again).
@@ -544,6 +550,10 @@ secret-bearing production configuration; automatic rollback on a health-check fa
 The script additionally removes the installation marker `HKLM\SOFTWARE\NodePilot\Server` and — if
 `sc.exe delete` only marked the service key `DELETE_PENDING` because of an open SCM handle — its
 `Environment` value, which holds the Postgres connection string **including the password**.
+
+It also deletes the binary backups beside the install directory (`<InstallPath>.backup.*` from updates,
+`<InstallPath>.rollback.*` left by a failed re-install). Only directories named the way the scripts name
+them are touched, never a junction; a backup that cannot be deleted counts as a leftover (exit code 1).
 
 **The uninstaller waits before deleting the service.** The SCM reports `Stopped` as soon as the service
 acknowledges the control code; the process keeps running afterwards while ASP.NET Core drains (measured

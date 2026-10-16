@@ -426,7 +426,7 @@ Der Installer führt folgende Schritte aus:
 7. HTTPS-Firewallregel anlegen.
 8. Windows-Dienst mit Auto Start und Recovery Actions registrieren (bei einem gMSA zusätzlich abhängig von Netlogon, damit der Logon nicht vor dem DC-Kontakt scheitert). Der Dienst startet also ohne feste Verzögerung und wartet stattdessen selbst auf die Datenbank — Obergrenze `Database:StartupWaitSeconds`, Standard 300 Sekunden.
 9. Dienst starten und Readiness prüfen.
-10. Admin-Setup-Token und External-Trigger-API-Key ausgeben.
+10. Admin-Setup-Token und External-Trigger-API-Key ausgeben. Das Setup übergibt stattdessen `-SuppressSecretOutput` und zeigt beide Werte auf seiner Abschlussseite, damit sein Transkript unter `%TEMP%` sie nicht enthält.
 
 Der PostgreSQL-Connection-String wird nicht in die JSON-Datei geschrieben. Er liegt im ACL-geschützten Service-Environment.
 
@@ -554,6 +554,7 @@ $releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
 Der Updater:
 
 - prüft das neue Artefakt,
+- lehnt ein Artefakt, das älter ist als die installierte Version (aus `VERSION.txt` im Installationsverzeichnis), **vor jeder Änderung** ab; `-AllowDowngrade` installiert es trotzdem, das Datenbankschema bleibt dabei aber auf dem neueren Stand,
 - gleicht jedes Framework, das der neue Build nennt, gegen die Runtimes des Hosts ab und bricht **vor jeder Änderung** ab, wenn eines davon zu alt ist — Roll-Forward geht nie rückwärts, ein älterer Patch auf dem Host heißt also: der Dienst würde gar nicht erst starten,
 - sichert die vorhandenen Binaries,
 - wartet nach dem Dienststopp bis zu 30 Sekunden auf das Ende von Prozessen aus dem Installationsverzeichnis und beendet Verbliebene erzwungen; nur wenn das nicht greift, bricht der Updater mit Prozessname und PID **vor der ersten Dateilöschung** ab (ein gestoppter Dienst genügt nicht: verwaiste Worker halten ihre DLLs weiterhin gemappt),
@@ -657,7 +658,8 @@ Rückweg das Zurücksetzen des Thumbprints in derselben Zeile. Erst danach entfe
 .\deploy\Uninstall-NodePilot.ps1
 ```
 
-Entfernt werden Dienst, Dienst-Binaries, Firewall-Regeln, der Installations-Marker und der
+Entfernt werden Dienst, Dienst-Binaries samt der Binär-Sicherungen aus Updates und abgebrochenen
+Installationen (`<Installationspfad>.backup.*` / `.rollback.*`), Firewall-Regeln, der Installations-Marker und der
 Registry-Environment-Eintrag (in dem das Postgres-Passwort liegt). Logs und Konfiguration bleiben
 erhalten. Vollständige Entfernung der lokalen Betriebsdaten:
 

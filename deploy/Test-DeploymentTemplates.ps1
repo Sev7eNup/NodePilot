@@ -30,7 +30,8 @@ param(
     [string]$DesktopIssPath,
     [string]$DesktopProvisionScriptPath,
     [string[]]$PackageLockPaths,
-    [string[]]$ChecksumDocPaths
+    [string[]]$ChecksumDocPaths,
+    [string]$CiWorkflowPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -106,6 +107,9 @@ if ($null -eq $PackageLockPaths -or $PackageLockPaths.Count -eq 0) {
         (Join-Path $scriptDirectory '..\src\nodepilot-desktop\package-lock.json')
         (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\package-lock.json')
     )
+}
+if ([string]::IsNullOrWhiteSpace($CiWorkflowPath)) {
+    $CiWorkflowPath = Join-Path $scriptDirectory '..\.github\workflows\ci.yml'
 }
 if ($null -eq $ChecksumDocPaths -or $ChecksumDocPaths.Count -eq 0) {
     $ChecksumDocPaths = @(
@@ -500,6 +504,37 @@ foreach ($lockPath in $PackageLockPaths) {
     }
 }
 
+# CI runs `npm ci` with third-party install scripts. The workflow token is read-only by default,
+# and no checkout leaves it in .git/config where such a script could read it.
+if (-not (Test-Path -LiteralPath $CiWorkflowPath -PathType Leaf)) {
+    throw "Deployment template check failed: CI workflow not found at $CiWorkflowPath"
+}
+$ciWorkflow = Get-Content -LiteralPath $CiWorkflowPath -Raw
+Assert-TextMatches -Name 'ci.yml grants a read-only token workflow-wide' `
+    -Text $ciWorkflow -Pattern '(?m)^permissions:[ \t]*\r?\n[ \t]+contents:[ \t]*read[ \t]*\r?\n(?![ \t]+\S)'
+$ciLines = @($ciWorkflow -split "`r?`n")
+$ciCheckoutSteps = 0
+for ($i = 0; $i -lt $ciLines.Count; $i++) {
+    $stepMatch = [regex]::Match($ciLines[$i], '^(\s*)-\s+uses:\s+actions/checkout@')
+    if (-not $stepMatch.Success) { continue }
+    $ciCheckoutSteps++
+    $stepIndent = $stepMatch.Groups[1].Value.Length
+    $tokenPersisted = $true
+    for ($j = $i + 1; $j -lt $ciLines.Count; $j++) {
+        if ($ciLines[$j].Trim() -eq '') { continue }
+        if (($ciLines[$j].Length - $ciLines[$j].TrimStart().Length) -le $stepIndent) { break }
+        if ($ciLines[$j] -match '^\s*persist-credentials:\s*false\s*$') { $tokenPersisted = $false }
+    }
+    if ($tokenPersisted) {
+        throw "Deployment template check failed: ci.yml line $($i + 1) checks out without persist-credentials: false."
+    }
+}
+# Every checkout has to be written as `- uses:`, or the loop above would not see it.
+if ($ciCheckoutSteps -eq 0 -or $ciCheckoutSteps -ne ([regex]::Matches($ciWorkflow, 'actions/checkout@')).Count) {
+    throw 'Deployment template check failed: ci.yml has a checkout step the persist-credentials check cannot see.'
+}
+Write-Host "  OK  ci.yml uses a read-only token and none of its $ciCheckoutSteps checkouts persists it" -ForegroundColor DarkGray
+
 # The setup embeds the signed zip and verifies it at install time, so an unsigned development
 # artifact would produce an installer that refuses its own payload. Skip, do not attempt.
 Assert-TextMatches -Name 'the server setup is not built from an unsigned artifact' `
@@ -607,6 +642,50 @@ $diagnosticsIndex = $updateScript.IndexOf('Show-NodePilotServiceStartDiagnostics
 if ($diagnosticsIndex -lt 0 -or $diagnosticsIndex -gt $catchStart) {
     throw 'Deployment template check failed: the update diagnoses a failed start only after the rollback.'
 }
+
+# An older artifact needs -AllowDowngrade. The comparison runs on real version strings, and the
+# guard has to sit before the first change to the installation, the install-root ACL repair.
+Assert-TextMatches -Name 'the updater declares the -AllowDowngrade switch' `
+    -Text $updateScript -Pattern '\[switch\]\$AllowDowngrade\b'
+Assert-TextMatches -Name 'the updater reads the installed version from VERSION.txt' `
+    -Text $updateCode -Pattern "Join-Path \`$InstallPath 'VERSION\.txt'"
+Assert-TextMatches -Name 'an older artifact without -AllowDowngrade stops the update' `
+    -Text $updateCode -Pattern '(?s)\$artifactVersion -lt \$installedVersion\)\s*\{\s*if \(-not \$AllowDowngrade\)\s*\{\s*throw'
+$downgradeGuardIndex = $updateCode.IndexOf('if (-not $AllowDowngrade)')
+$firstInstallChangeIndex = $updateCode.IndexOf('Assert-NodePilotInstallRootHardenedOrRepair -Path $InstallPath')
+if ($downgradeGuardIndex -lt 0 -or $firstInstallChangeIndex -lt 0 -or $downgradeGuardIndex -gt $firstInstallChangeIndex) {
+    throw 'Deployment template check failed: the downgrade guard does not run before the update changes the installation.'
+}
+& {
+    $updateParseErrors = $null
+    $updateAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $updateScript, [ref]$null, [ref]$updateParseErrors)
+    if ($updateParseErrors.Count) { throw 'Deployment template check failed: Update-NodePilot.ps1 does not parse.' }
+    $versionFunction = $updateAst.Find({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'ConvertTo-NodePilotComparableVersion'
+    }, $false)
+    if (-not $versionFunction) {
+        throw 'Deployment template check failed: ConvertTo-NodePilotComparableVersion was not found in Update-NodePilot.ps1.'
+    }
+    . ([scriptblock]::Create($versionFunction.Extent.Text))
+    foreach ($pair in @(@('1.5.0', '1.5.1'), @('1.9.9', '1.10.0'), @('2026.04.23', '2026.10.1'), @('1.2.13-audit1', '1.3.0'))) {
+        if (-not ((ConvertTo-NodePilotComparableVersion -Text $pair[0]) -lt (ConvertTo-NodePilotComparableVersion -Text $pair[1]))) {
+            throw "Deployment template check failed: the updater does not treat $($pair[0]) as older than $($pair[1])."
+        }
+    }
+    foreach ($pair in @(@('1.5', '1.5.0'), @('1.2.13-audit1', '1.2.13'))) {
+        if ((ConvertTo-NodePilotComparableVersion -Text $pair[0]) -ne (ConvertTo-NodePilotComparableVersion -Text $pair[1])) {
+            throw "Deployment template check failed: the updater treats $($pair[0]) and $($pair[1]) as different versions."
+        }
+    }
+    foreach ($unreadable in @('', 'dev')) {
+        if ($null -ne (ConvertTo-NodePilotComparableVersion -Text $unreadable)) {
+            throw "Deployment template check failed: the updater reads a version out of '$unreadable'."
+        }
+    }
+}
+Write-Host '  OK  the updater refuses an older artifact without -AllowDowngrade, before it changes anything' -ForegroundColor DarkGray
 
 # --- pre-flight extraction contracts ----------------------------------------------------------
 # The readiness checks live in Preflight.ps1 so the setup wizard can run the same set behind a
@@ -785,10 +864,18 @@ Assert-TextMatches -Name 'the updater verifies the data directory before it extr
     -Pattern '(?s)Assert-ServiceDirectoryAclUsable -Path \$DataPath[\s\S]{0,6000}Write-Step ''Extracting artifact'''
 
 # The privileged service image directory must reject untrusted writes. Validate its location,
-# apply a protected DACL, and verify it after copying files.
-Assert-TextMatches -Name 'the installer validates the install root before creating it' `
-    -Text $installerScript `
-    -Pattern '(?s)Write-Step "Preparing directories"[\s\S]{0,400}Assert-SafeInstallRoot -Path \$InstallPath'
+# apply a protected DACL, and verify it after copying files. The rollback copy lands beside the
+# install root, so the location is validated before that copy as well as before the root itself.
+$installerCodeOnly = Remove-CommentLines -Text $installerScript
+$safeRootIndex = $installerCodeOnly.IndexOf('Assert-SafeInstallRoot -Path $InstallPath')
+$rollbackCopyIndex = $installerCodeOnly.IndexOf("New-NodePilotBinaryBackup -InstallPath `$InstallPath -Kind 'rollback'")
+$prepareIndex = $installerCodeOnly.IndexOf('Write-Step "Preparing directories"')
+if ($safeRootIndex -lt 0 -or $rollbackCopyIndex -lt 0 -or $prepareIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the install-root validation, the rollback copy or the directory preparation in the installer.'
+}
+if ($safeRootIndex -gt $rollbackCopyIndex -or $safeRootIndex -gt $prepareIndex) {
+    throw 'Deployment template check failed: the installer creates the rollback copy or the install root before validating the location.'
+}
 
 Assert-TextMatches -Name 'the install root rejects non-ACL file systems' `
     -Text $installerScript `
@@ -2356,6 +2443,81 @@ Assert-TextMatches -Name 'the service registry key is restricted before the pass
     -Text $installerScript `
     -Pattern '(?s)if \(\$SeedBackupPassphrase\) \{[\s\S]{0,400}Set-ServiceRegistryAclForSecrets[\s\S]{0,400}Provisioning__SeedBackupPassphrase'
 
+# Every BSTR copy of a SecureString is zeroed and freed in a finally block after the assignment;
+# PtrToStringBSTR straight over SecureStringToBSTR leaves the plaintext in unmanaged memory.
+$bstrConversionCount = 0
+foreach ($bstrScript in @(Get-ChildItem -LiteralPath $scriptDirectory -Filter '*.ps1' -File -Recurse |
+        Where-Object { $_.FullName -notmatch '\\(out|stage)\\' })) {
+    $bstrAst = [System.Management.Automation.Language.Parser]::ParseFile($bstrScript.FullName, [ref]$null, [ref]$null)
+    $conversions = @($bstrAst.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+        [string]$node.Member.Value -eq 'SecureStringToBSTR'
+    }, $true))
+    foreach ($conversion in $conversions) {
+        $bstrConversionCount++
+        $assignment = $conversion.Parent.Parent
+        $freed = $false
+        if ($assignment -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $assignment.Left -is [System.Management.Automation.Language.VariableExpressionAst]) {
+            $bstrVariable = [regex]::Escape($assignment.Left.VariablePath.UserPath)
+            $freed = @($assignment.Parent.FindAll({ param($node)
+                $node -is [System.Management.Automation.Language.TryStatementAst] -and
+                $null -ne $node.Finally -and
+                $node.Extent.StartOffset -gt $assignment.Extent.EndOffset -and
+                $node.Finally.Extent.Text -match "ZeroFreeBSTR\(\s*\`$$bstrVariable\s*\)"
+            }, $false)).Count -gt 0
+        }
+        if (-not $freed) {
+            throw ("Deployment template check failed: $($bstrScript.Name) line $($conversion.Extent.StartLineNumber) " +
+                   'converts a SecureString to a BSTR without assigning it and freeing it with ZeroFreeBSTR in a finally block.')
+        }
+    }
+}
+if ($bstrConversionCount -eq 0) {
+    throw 'Deployment template check failed: found no SecureStringToBSTR call under deploy\; the BSTR check measures nothing.'
+}
+Write-Host "  OK  every SecureStringToBSTR under deploy\ is freed with ZeroFreeBSTR in a finally block ($bstrConversionCount calls)" -ForegroundColor DarkGray
+
+# The setup transcript records everything the installer prints. Under the adapter the key and the
+# setup token reach the operator through the result file only, so every print of either value has
+# to sit outside the -SuppressSecretOutput branch of an if on that switch.
+Assert-TextMatches -Name 'the setup adapter asks the installer not to print secrets' `
+    -Text $setupAdapter -Pattern "\`$splat\['SuppressSecretOutput'\] = \`$true[\s\S]{0,1500}Install-NodePilot\.ps1'\) @splat"
+& {
+    $secretParseErrors = $null
+    $secretAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $installerScript, [ref]$null, [ref]$secretParseErrors)
+    if ($secretParseErrors.Count) { throw 'Installer contains PowerShell syntax errors.' }
+    $secretPrints = @($secretAst.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.CommandAst] -and
+        [string]$node.GetCommandName() -like 'Write-*' -and
+        @($node.FindAll({ param($inner)
+            $inner -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            $inner.VariablePath.UserPath -in @('ExternalTriggerApiKey', 'tokenContent')
+        }, $true)).Count -gt 0
+    }, $true))
+    if ($secretPrints.Count -lt 2) {
+        throw 'Deployment template check failed: could not locate the installer output of the trigger key and the setup token.'
+    }
+    foreach ($print in $secretPrints) {
+        $guarded = $false
+        for ($ancestor = $print.Parent; $null -ne $ancestor; $ancestor = $ancestor.Parent) {
+            if ($ancestor -is [System.Management.Automation.Language.IfStatementAst] -and
+                $ancestor.Clauses[0].Item1.Extent.Text -eq '$SuppressSecretOutput') {
+                $suppressedBody = $ancestor.Clauses[0].Item2.Extent
+                $guarded = $print.Extent.StartOffset -lt $suppressedBody.StartOffset -or
+                           $print.Extent.StartOffset -gt $suppressedBody.EndOffset
+                break
+            }
+        }
+        if (-not $guarded) {
+            throw ("Deployment template check failed: installer line $($print.Extent.StartLineNumber) prints a secret " +
+                   'without being guarded by -SuppressSecretOutput.')
+        }
+    }
+}
+Write-Host '  OK  the installer prints the trigger key and setup token only without -SuppressSecretOutput, which the adapter passes' -ForegroundColor DarkGray
+
 # Execute only the rollback helper with fake OS commands. In SQL Server deployments the
 # seed passphrase still needs protection even though no Postgres connection string exists.
 & {
@@ -2410,6 +2572,235 @@ Assert-TextMatches -Name 'the service registry key is restricted before the pass
         throw 'A failed rollback ACL restriction must prevent both environment writes and service restart.'
     }
     Write-Host '  OK  service rollback protects SQL Server seed secrets before writes and fails closed on ACL errors' -ForegroundColor DarkGray
+}
+
+# --- binary backups ------------------------------------------------------------------------------
+# Update and re-install copy the old binaries beside the install root and copy them back as service
+# binaries on failure. Beside a custom root such as D:\NodePilot a plain directory inherits
+# BUILTIN\Users write access, so a non-administrator could swap what the rollback restores.
+Assert-TextMatches -Name 'the updater backs up through the protected backup helper' `
+    -Text $updateCode -Pattern "New-NodePilotBinaryBackup -InstallPath \`$InstallPath -Kind 'backup'"
+Assert-TextMatches -Name 'the update rollback restores through the verifying helper' `
+    -Text $rollbackPath -Pattern 'Restore-NodePilotBinaryBackup -Backup \$backup -InstallPath \$InstallPath'
+Assert-TextMatches -Name 'the installer backs up through the protected backup helper' `
+    -Text $installerCodeOnly -Pattern "New-NodePilotBinaryBackup -InstallPath \`$InstallPath -Kind 'rollback'"
+Assert-TextMatches -Name 'the install rollback restores through the verifying helper' `
+    -Text $rollbackBlock -Pattern 'Restore-NodePilotBinaryBackup -Backup \$installRollback -InstallPath \$InstallPath'
+foreach ($backupWriter in @(
+        @{ Name = 'updater'; Text = $updateCode },
+        @{ Name = 'installer'; Text = $installerCodeOnly })) {
+    Assert-TextDoesNotMatch -Name "the $($backupWriter.Name) does not build a backup directory by hand" `
+        -Text $backupWriter.Text -Pattern '\.(backup|rollback)\.\$\(Get-Date'
+}
+Assert-TextMatches -Name 'the uninstaller removes the binary backups' `
+    -Text $uninstallScript -Pattern '(?s)Remove-NodePilotBinaryBackups -InstallPath \$InstallPath[\s\S]*\$backupsRemaining -or'
+
+function Reset-FixtureDirectoryAcl {
+    # A fixture backup grants only SYSTEM and Administrators. A non-elevated run owns it, so it may
+    # rewrite the DACL, but it cannot list or delete the directory before it has.
+    param([Parameter(Mandatory)][string]$Path)
+    $acl = New-Object System.Security.AccessControl.DirectorySecurity
+    $acl.SetAccessRuleProtection($true, $false)
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+        [System.Security.Principal.WindowsIdentity]::GetCurrent().User, 'FullControl',
+        'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+    if ([IO.Directory].GetMethod('SetAccessControl')) {
+        [IO.Directory]::SetAccessControl($Path, $acl)
+    } else {
+        [System.IO.FileSystemAclExtensions]::SetAccessControl([IO.DirectoryInfo]::new($Path), $acl)
+    }
+}
+
+$backupFixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('nodepilot-backup-test-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $backupFixtureRoot | Out-Null
+try {
+    # The real helper with only the elevated or file-copying steps stubbed: the directory it creates
+    # must already carry the protected DACL when the first file is copied in.
+    & {
+        . $ArtifactSecurityPath
+        $installRoot = Join-Path $backupFixtureRoot 'NodePilotFixture'
+        New-Item -ItemType Directory -Path (Join-Path $installRoot 'wwwroot') -Force | Out-Null
+        foreach ($name in @('NodePilot.Api.exe', 'appsettings.Production.json', 'wwwroot\index.html')) {
+            [IO.File]::WriteAllText((Join-Path $installRoot $name), $name)
+        }
+        $events = New-Object 'System.Collections.Generic.List[string]'
+        $trustedSids = @('S-1-5-18', 'S-1-5-32-544')
+        function Set-DirectoryAclForService {
+            param($Path, $ServiceAccount, [switch]$ReadOnlyForService, [switch]$SkipServiceRule)
+            $events.Add("owner:$SkipServiceRule")
+        }
+        function Assert-NodePilotInstallRootHardened {
+            param($Path, [switch]$RequireProtectedRules)
+            $events.Add("harden:$RequireProtectedRules")
+        }
+        function Copy-Item {
+            param($LiteralPath, $Destination, [switch]$Recurse, [switch]$Force, $ErrorAction)
+            $acl = Get-Acl -LiteralPath $Destination
+            $untrusted = @($acl.Access | Where-Object {
+                $trustedSids -notcontains $_.IdentityReference.Translate(
+                    [System.Security.Principal.SecurityIdentifier]).Value
+            })
+            $events.Add("copy:$(Split-Path -Leaf $LiteralPath):$($acl.AreAccessRulesProtected -and $untrusted.Count -eq 0)")
+        }
+        function Get-NodePilotDirectoryFileHashes {
+            param($RootPath)
+            $events.Add('hash')
+            return @{ 'NodePilot.Api.exe' = 'fixture' }
+        }
+
+        $backup = New-NodePilotBinaryBackup -InstallPath $installRoot -Kind 'backup'
+        $copies = @($events | Where-Object { $_ -like 'copy:*' } | Sort-Object)
+        if ($events.Count -lt 2 -or $events[0] -ne 'owner:True' -or $events[1] -ne 'harden:True') {
+            throw "A backup must get a trusted owner and pass the protected-DACL check before anything is copied in (events: $($events -join ', '))."
+        }
+        if (($copies -join ',') -ne 'copy:NodePilot.Api.exe:True,copy:wwwroot:True') {
+            throw "Every copy into a backup must land in a directory with a protected SYSTEM/Administrators DACL, and the production configuration stays out (copies: $($copies -join ', '))."
+        }
+        if ($events[$events.Count - 1] -ne 'hash' -or $backup.Files['NodePilot.Api.exe'] -ne 'fixture') {
+            throw 'A backup must record the hashes of what it copied.'
+        }
+        if ((Split-Path -Parent $backup.Path) -ne $backupFixtureRoot -or
+            (Split-Path -Leaf $backup.Path) -notmatch '^NodePilotFixture\.backup\.\d{8}-\d{9}-[0-9a-f]{32}$') {
+            throw "A backup must sit beside the install root under the name the uninstaller removes, not '$($backup.Path)'."
+        }
+
+        # A directory the hardening check refuses gets no content and is removed again.
+        $events.Clear()
+        $removed = New-Object 'System.Collections.Generic.List[string]'
+        function Assert-NodePilotInstallRootHardened {
+            param($Path, [switch]$RequireProtectedRules)
+            $events.Add('harden')
+            throw "fixture: '$Path' is not hardened"
+        }
+        function Remove-Item {
+            param($LiteralPath, [switch]$Recurse, [switch]$Force, $ErrorAction)
+            $events.Add('remove')
+            $removed.Add($LiteralPath)
+        }
+        $failure = $null
+        try { [void](New-NodePilotBinaryBackup -InstallPath $installRoot -Kind 'rollback') } catch { $failure = $_ }
+        if ($null -eq $failure -or ($events -join ',') -ne 'owner:True,harden,remove' -or
+            $removed.Count -ne 1 -or (Split-Path -Parent $removed[0]) -ne $backupFixtureRoot -or
+            (Split-Path -Leaf $removed[0]) -notmatch '^NodePilotFixture\.rollback\.') {
+            throw "A backup directory that fails the hardening check must be removed without any content copied in (events: $($events -join ', '))."
+        }
+        Write-Host '  OK  a binary backup is locked down before content is copied in and dropped when the check fails' -ForegroundColor DarkGray
+    }
+
+    # The real restore helper against real directories; only the ACL verdict is stubbed, because a
+    # non-elevated run cannot produce a protected directory it can still write to.
+    & {
+        . $ArtifactSecurityPath
+        $installRoot = Join-Path $backupFixtureRoot 'restore-install'
+        $backupRoot = Join-Path $backupFixtureRoot 'restore-backup'
+        New-Item -ItemType Directory -Path $installRoot, (Join-Path $backupRoot 'wwwroot') -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'NodePilot.Api.exe'), 'previous-binary')
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'wwwroot\index.html'), 'previous-spa')
+        [IO.File]::WriteAllText((Join-Path $installRoot 'NodePilot.Api.exe'), 'new-binary')
+        [IO.File]::WriteAllText((Join-Path $installRoot 'new-only.dll'), 'new-binary')
+        $backup = [pscustomobject]@{ Path = $backupRoot; Files = (Get-NodePilotDirectoryFileHashes -RootPath $backupRoot) }
+        $verdict = @{ Hardened = $false }
+        function Assert-NodePilotInstallRootHardened {
+            param($Path, [switch]$RequireProtectedRules)
+            if (-not $RequireProtectedRules) { throw 'fixture: a restore must require a protected DACL' }
+            if (-not $verdict.Hardened) { throw "fixture: '$Path' grants write access to BUILTIN\Users" }
+        }
+        function Assert-InstallUntouched {
+            param([Parameter(Mandatory)][string]$Because)
+            if ([IO.File]::ReadAllText((Join-Path $installRoot 'NodePilot.Api.exe')) -ne 'new-binary' -or
+                -not (Test-Path -LiteralPath (Join-Path $installRoot 'new-only.dll'))) {
+                throw "A refused restore must leave the install directory untouched: $Because"
+            }
+        }
+
+        $failure = $null
+        try { Restore-NodePilotBinaryBackup -Backup $backup -InstallPath $installRoot } catch { $failure = $_ }
+        if ($null -eq $failure -or $failure.Exception.Message -notmatch 'BUILTIN\\Users') {
+            throw 'A restore must refuse a backup that fails the hardening check.'
+        }
+        Assert-InstallUntouched -Because 'the backup failed the hardening check'
+
+        $verdict.Hardened = $true
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'NodePilot.Api.exe'), 'planted-binary')
+        $failure = $null
+        try { Restore-NodePilotBinaryBackup -Backup $backup -InstallPath $installRoot } catch { $failure = $_ }
+        if ($null -eq $failure) { throw 'A restore must refuse a backup whose files changed after it was made.' }
+        Assert-InstallUntouched -Because 'a backed-up file was changed'
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'NodePilot.Api.exe'), 'previous-binary')
+
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'version.dll'), 'planted-library')
+        $failure = $null
+        try { Restore-NodePilotBinaryBackup -Backup $backup -InstallPath $installRoot } catch { $failure = $_ }
+        if ($null -eq $failure) { throw 'A restore must refuse a backup that gained a file after it was made.' }
+        Assert-InstallUntouched -Because 'a file was added to the backup'
+        [IO.File]::Delete((Join-Path $backupRoot 'version.dll'))
+
+        Restore-NodePilotBinaryBackup -Backup $backup -InstallPath $installRoot
+        if ([IO.File]::ReadAllText((Join-Path $installRoot 'NodePilot.Api.exe')) -ne 'previous-binary' -or
+            [IO.File]::ReadAllText((Join-Path $installRoot 'wwwroot\index.html')) -ne 'previous-spa' -or
+            (Test-Path -LiteralPath (Join-Path $installRoot 'new-only.dll'))) {
+            throw 'An intact backup must replace the install directory contents exactly.'
+        }
+        Write-Host '  OK  a rollback refuses a backup that fails the hardening or hash check and restores an intact one exactly' -ForegroundColor DarkGray
+    }
+
+    # The uninstaller's helper against real directories: every backup named the way the scripts
+    # name them goes, nothing else does, and a junction is never followed.
+    & {
+        $uninstallErrors = $null
+        $uninstallAst = [System.Management.Automation.Language.Parser]::ParseFile(
+            $UninstallScriptPath, [ref]$null, [ref]$uninstallErrors)
+        if ($uninstallErrors.Count) { throw 'Uninstaller contains PowerShell syntax errors.' }
+        $removeFunction = $uninstallAst.Find({ param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'Remove-NodePilotBinaryBackups'
+        }, $false)
+        if (-not $removeFunction) { throw 'Uninstaller backup cleanup helper was not found.' }
+        . ([scriptblock]::Create($removeFunction.Extent.Text))
+        function Write-Info { param([string]$Text) }
+        function Write-Warn { param([string]$Text) }
+
+        $parent = Join-Path $backupFixtureRoot 'uninstall'
+        $junctionTarget = Join-Path $parent 'junction-target'
+        $junction = Join-Path $parent 'NodePilot.backup.20261016-101010128-0123abcd'
+        $expectedGone = @(
+            'NodePilot.backup.20261016-101010123-0123abcd',
+            ('NodePilot.backup.20261016-101010124-' + ('a' * 32)),
+            ('NodePilot.rollback.20261016-101010125-' + ('b' * 32)))
+        $expectedKept = @(
+            'NodePilot',
+            'NodePilot.backup.keep',
+            'NodePilotX.backup.20261016-101010126-0123abcd',
+            'OtherApp.backup.20261016-101010127-0123abcd')
+        foreach ($name in @($expectedGone + $expectedKept)) {
+            New-Item -ItemType Directory -Path (Join-Path $parent "$name\bin") -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $parent "$name\bin\NodePilot.Api.exe"), $name)
+        }
+        New-Item -ItemType Directory -Path $junctionTarget -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $junctionTarget 'keep.txt'), 'outside the backups')
+        New-Item -ItemType Junction -Path $junction -Target $junctionTarget | Out-Null
+
+        $failed = @(Remove-NodePilotBinaryBackups -InstallPath "$(Join-Path $parent 'NodePilot')\")
+        $gone = @($expectedGone | Where-Object { Test-Path -LiteralPath (Join-Path $parent $_) })
+        $kept = @($expectedKept | Where-Object { -not (Test-Path -LiteralPath (Join-Path $parent $_)) })
+        if ($failed.Count -ne 0 -or $gone.Count -ne 0) {
+            throw "The uninstaller must remove every binary backup (left: $($gone -join ', '); failed: $($failed -join ', '))."
+        }
+        if ($kept.Count -ne 0) {
+            throw "The uninstaller removed directories that are not its backups: $($kept -join ', ')."
+        }
+        if (-not (Test-Path -LiteralPath $junction) -or
+            -not (Test-Path -LiteralPath (Join-Path $junctionTarget 'keep.txt'))) {
+            throw 'The uninstaller must not touch a junction named like a backup, nor what it points at.'
+        }
+        Write-Host '  OK  uninstall removes the binary backups beside the install root and nothing else' -ForegroundColor DarkGray
+    }
+}
+finally {
+    foreach ($fixtureBackup in @(Get-ChildItem -LiteralPath $backupFixtureRoot -Directory -Filter 'NodePilotFixture.*' -Force)) {
+        Reset-FixtureDirectoryAcl -Path $fixtureBackup.FullName
+    }
+    Remove-Item -LiteralPath $backupFixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 # Copied in with the same restricted writer as the configuration; a plain Copy-Item would inherit
 # from DataPath.
@@ -2608,10 +2999,11 @@ foreach ($switcherConsumer in @(
         -Text $switcherConsumer.Text -Pattern 'Set-NodePilotSwitcherServerUrl'
 }
 # The update wipes and repopulates the install directory, so it has to carry the previous value
-# across - otherwise every upgrade silently reverts serverUrl to the shipped template.
+# across - otherwise every upgrade silently reverts serverUrl to the shipped template. Anchored on
+# the byte copy taken before the forward wipe and written back after it.
 Assert-TextMatches -Name 'the updater reads the previous server URL before wiping the directory' `
-    -Text $updateScript `
-    -Pattern '(?s)Get-NodePilotSwitcherServerUrl -ConfigPath.*?Remove-Item -Recurse -Force'
+    -Text $updateCode `
+    -Pattern '(?s)\$previousSwitcherConfigBytes = \[IO\.File\]::ReadAllBytes\(\$switcherConfigPath\).*?Remove-Item -Recurse -Force.*?WriteAllBytes\(\$switcherConfigPath, \$previousSwitcherConfigBytes\)'
 Assert-TextMatches -Name 'the switcher-config helper refuses to write a file that will not parse' `
     -Text $switcherConfigHelper -Pattern '(?s)\$updated \| ConvertFrom-Json.*?WriteAllText'
 Assert-TextMatches -Name 'the switcher-config helper writes without a BOM' `

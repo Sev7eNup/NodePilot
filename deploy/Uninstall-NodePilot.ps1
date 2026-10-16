@@ -5,7 +5,8 @@
     Uninstalls the NodePilot Windows Service and cleans up firewall rules and binaries.
 .DESCRIPTION
     Stops and deletes the service, removes firewall rules, removes the machine-wide
-    installation marker, and wipes the install directory. The data directory (logs, DPAPI-bound
+    installation marker, and wipes the install directory together with the binary backups that
+    updates and re-installs leave beside it. The data directory (logs, DPAPI-bound
     credentials on disk, DB artefacts, etc.) is preserved unless -PurgeData is specified. The
     SQL Server database is never touched.
 
@@ -16,7 +17,8 @@
 .PARAMETER ServiceName
     Windows Service name. Default: NodePilot.
 .PARAMETER InstallPath
-    Install directory to delete. Default: C:\Program Files\NodePilot.
+    Install directory to delete, together with its <InstallPath>.backup.* and
+    <InstallPath>.rollback.* siblings. Default: C:\Program Files\NodePilot.
 .PARAMETER DataPath
     Writable data directory (logs, JWT key, admin-setup.token). Preserved unless -PurgeData.
 .PARAMETER ProcessExitTimeoutSeconds
@@ -114,6 +116,35 @@ function Get-ProcessesUnderPath {
         try { $imagePath = $_.Path } catch { $imagePath = $null }
         $imagePath -and $imagePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
     }
+}
+
+function Remove-NodePilotBinaryBackups {
+    <#
+      Deletes the binary backups Update-NodePilot.ps1 and Install-NodePilot.ps1 leave beside the
+      install directory. Only directories named the way those scripts name them are touched, and
+      never a junction or symlink. Returns the paths that could not be deleted.
+    #>
+    param([Parameter(Mandatory)][string]$InstallPath)
+
+    $installRoot = $InstallPath.TrimEnd('\')
+    $parent = Split-Path -Parent $installRoot
+    if (-not $parent -or -not (Test-Path -LiteralPath $parent -PathType Container)) { return @() }
+    $leafPattern = [regex]::Escape((Split-Path -Leaf $installRoot))
+    $namePattern = "^$leafPattern\.(backup|rollback)\.\d{8}-\d{9}-[0-9a-f]{8,32}$"
+    $failed = @()
+    foreach ($backup in @(Get-ChildItem -LiteralPath $parent -Directory -Force -ErrorAction SilentlyContinue)) {
+        if ($backup.Name -notmatch $namePattern) { continue }
+        if ($backup.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+        try {
+            Remove-Item -LiteralPath $backup.FullName -Recurse -Force -ErrorAction Stop
+            Write-Info "  Deleted: $($backup.FullName)"
+        }
+        catch {
+            Write-Warn "  Could not delete $($backup.FullName): $($_.Exception.Message)"
+            $failed += $backup.FullName
+        }
+    }
+    return $failed
 }
 
 Write-Step "Stopping and removing service '$ServiceName'"
@@ -281,6 +312,10 @@ if (Test-Path $InstallPath) {
     Write-Info "  Install path not present."
 }
 
+Write-Step "Removing binary backups"
+# Copies of earlier service binaries; nothing uses them once the service is gone.
+$backupsRemaining = @(Remove-NodePilotBinaryBackups -InstallPath $InstallPath).Count -gt 0
+
 $dataPathRemaining = $false
 if ($PurgeData) {
     Write-Step "Purging data directory"
@@ -365,7 +400,7 @@ if ($installedThumbprint -and $isManagedAccount) {
 }
 
 Write-Host ""
-if ($installPathRemaining -or $dataPathRemaining) {
+if ($installPathRemaining -or $backupsRemaining -or $dataPathRemaining) {
     Write-Warn 'Uninstall finished with leftovers (see above).'
     exit 1
 }

@@ -29,6 +29,10 @@
     cannot be read. Pass explicitly to override.
 .PARAMETER KeepBackupCount
     Number of binary-only backups to retain. Default: 3.
+.PARAMETER AllowDowngrade
+    Install an artifact whose version is older than the installed one (VERSION.txt in the install
+    directory). Without this switch such an update stops before anything is changed. A downgrade
+    does not roll back the database schema; the older version runs against the newer schema.
 #>
 
 [CmdletBinding()]
@@ -39,7 +43,8 @@ param(
     [string]$InstallPath = 'C:\Program Files\NodePilot',
     [string]$DataPath = 'C:\ProgramData\NodePilot',
     [int]$HttpsPort = 443,
-    [int]$KeepBackupCount = 3
+    [int]$KeepBackupCount = 3,
+    [switch]$AllowDowngrade
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,6 +76,28 @@ function Write-Step { param([string]$Text) Write-Host "[update] $Text" -Foregrou
 function Write-Info { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Gray }
 function Write-Ok   { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Green }
 function Write-Warn { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Yellow }
+
+# Release versions are numeric with an optional suffix ('1.5.1', '2026.04.23', '1.2.13-audit1').
+# Only the numeric part is compared, so a suffix on the same number does not count as older.
+# Returns $null when the text holds no such version.
+function ConvertTo-NodePilotComparableVersion {
+    param([string]$Text)
+    $match = [regex]::Match([string]$Text, '^\s*v?(\d{1,9}(?:\.\d{1,9}){1,3})(?:[-+][0-9A-Za-z.+-]*)?\s*$')
+    if (-not $match.Success) { return $null }
+    $parts = @($match.Groups[1].Value.Split('.') | ForEach-Object { [int]$_ })
+    while ($parts.Count -lt 4) { $parts += 0 }
+    return New-Object System.Version -ArgumentList $parts[0], $parts[1], $parts[2], $parts[3]
+}
+
+# Every artifact ships VERSION.txt ("Version : <x>"), so the install directory names its own version.
+function Get-NodePilotInstalledVersionText {
+    param([Parameter(Mandatory)][string]$InstallPath)
+    $versionFile = Join-Path $InstallPath 'VERSION.txt'
+    if (-not (Test-Path -LiteralPath $versionFile -PathType Leaf)) { return $null }
+    $match = [regex]::Match((Get-Content -LiteralPath $versionFile -Raw), '(?m)^\s*Version\s*:\s*(\S+)\s*$')
+    if (-not $match.Success) { return $null }
+    return $match.Groups[1].Value
+}
 
 function Resolve-ServiceAclIdentity {
     param([Parameter(Mandatory)][string]$Name)
@@ -108,11 +135,9 @@ function Write-RestrictedSettings {
 function Copy-DirectoryContents {
     param(
         [Parameter(Mandatory)][string]$Source,
-        [Parameter(Mandatory)][string]$Destination,
-        [string]$ExcludedFileName
+        [Parameter(Mandatory)][string]$Destination
     )
     Get-ChildItem -LiteralPath $Source -Force |
-        Where-Object { -not $ExcludedFileName -or $_.Name -ne $ExcludedFileName } |
         ForEach-Object {
             Copy-Item -LiteralPath $_.FullName -Destination $Destination -Recurse -Force -ErrorAction Stop
         }
@@ -173,7 +198,7 @@ function Wait-NodePilotReady {
 $artifactLock = $null
 $artifactStage = $null
 $settingsBytes = $null
-$backupDir = $null
+$backup = $null
 $installTouched = $false
 $previousCertificatePolicy = $null
 $previousSecurityProtocol = $null
@@ -201,6 +226,23 @@ try {
     $settingsPath = Join-Path $InstallPath 'appsettings.Production.json'
     if (-not (Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
         throw "No appsettings.Production.json at $settingsPath. Refusing to upgrade a non-installer layout."
+    }
+
+    # Before anything is hardened, backed up or stopped: an older artifact needs an explicit
+    # -AllowDowngrade, because the database schema stays at the newer version.
+    $installedVersionText = Get-NodePilotInstalledVersionText -InstallPath $InstallPath
+    $installedVersion = ConvertTo-NodePilotComparableVersion -Text $installedVersionText
+    $artifactVersion = ConvertTo-NodePilotComparableVersion -Text $verifiedArtifact.Version
+    if ($null -eq $installedVersion -or $null -eq $artifactVersion) {
+        Write-Warn ("Could not compare the installed version ('$installedVersionText') with the artifact " +
+                    "version ('$($verifiedArtifact.Version)'); the downgrade check is skipped.")
+    } elseif ($artifactVersion -lt $installedVersion) {
+        if (-not $AllowDowngrade) {
+            throw ("Artifact version $($verifiedArtifact.Version) is older than the installed version " +
+                   "$installedVersionText. Nothing was changed. Re-run with -AllowDowngrade to install it " +
+                   'anyway; the database schema is not rolled back.')
+        }
+        Write-Warn "Downgrading from $installedVersionText to $($verifiedArtifact.Version) (-AllowDowngrade)."
     }
 
     # An operator who installed without the source snapshot must not get it back through an
@@ -294,15 +336,11 @@ try {
     Write-Ok "  $($runtimeVerdict.Detail)"
 
     # Installed binaries are immutable. Backing them up while the service still runs ensures a
-    # disk/ACL failure here cannot leave an otherwise healthy service stopped.
+    # disk/ACL failure here cannot leave an otherwise healthy service stopped. The backup is
+    # restored as service binaries, so it gets the install root's protection, not its parent's.
     Write-Step 'Backing up current install'
-    $backupDir = "$InstallPath.backup.$(Get-Date -Format 'yyyyMMdd-HHmmssfff')-$([Guid]::NewGuid().ToString('N').Substring(0,8))"
-    New-Item -ItemType Directory -Path $backupDir -ErrorAction Stop | Out-Null
-    Copy-DirectoryContents `
-        -Source $InstallPath `
-        -Destination $backupDir `
-        -ExcludedFileName 'appsettings.Production.json'
-    Write-Info "Binary-only backup: $backupDir"
+    $backup = New-NodePilotBinaryBackup -InstallPath $InstallPath -Kind 'backup'
+    Write-Info "Binary-only backup: $($backup.Path)"
     Write-Info ('The database is not part of this backup. The new version migrates the schema on its ' +
                 'first start and a rollback restores binaries only, so keep a database backup from before this update.')
 
@@ -499,7 +537,7 @@ try {
         Write-Host "[update] FAILED: $($updateError.Exception.Message)" -ForegroundColor Red
         try {
             if ($installTouched) {
-                Write-Host "[update] Rolling back from $backupDir" -ForegroundColor Yellow
+                Write-Host "[update] Rolling back from $($backup.Path)" -ForegroundColor Yellow
                 Stop-ServiceAndVerify -Name $ServiceName
                 # The SCM can report Stopped before the process releases mapped DLLs. Treat the
                 # rollback wipe like the forward update, or an access-denied error leaves a
@@ -509,11 +547,9 @@ try {
                     $names = ($rollbackLockers | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ', '
                     throw "Processes still hold files under ${InstallPath} during rollback: $names"
                 }
-                if (Test-Path -LiteralPath $InstallPath) {
-                    Get-ChildItem -LiteralPath $InstallPath -Force |
-                        Remove-Item -Recurse -Force -ErrorAction Stop
-                }
-                Copy-DirectoryContents -Source $backupDir -Destination $InstallPath
+                # Refuses a backup whose DACL or files changed since this run made it, before the
+                # install directory is wiped.
+                Restore-NodePilotBinaryBackup -Backup $backup -InstallPath $InstallPath
                 Write-RestrictedSettings -Path $settingsPath -Content $settingsBytes -ServiceAccount $svcAccount
             }
 
@@ -532,11 +568,11 @@ try {
                 }
             }
             if ($installTouched) {
-                Write-Host "[update] Rollback complete. Restored $backupDir" -ForegroundColor Yellow
+                Write-Host "[update] Rollback complete. Restored $($backup.Path)" -ForegroundColor Yellow
             }
         }
         catch {
-            Write-Host "[update] Rollback ALSO failed: $($_.Exception.Message). Manual intervention required; backup: $backupDir" -ForegroundColor Red
+            Write-Host "[update] Rollback ALSO failed: $($_.Exception.Message). Manual intervention required; backup: $($backup.Path)" -ForegroundColor Red
         }
         throw $updateError
     }

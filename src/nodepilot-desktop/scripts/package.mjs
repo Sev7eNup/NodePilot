@@ -6,6 +6,7 @@ import {
   assertElectronRuntimeVersion,
   readPinnedElectronVersion,
 } from './assert-electron-runtime-version.mjs';
+import { hardenElectronFuses } from './harden-electron-fuses.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const output = join(root, 'out');
@@ -40,4 +41,5 @@ if (packagePaths.length !== 1) {
 }
 await assertPackageBoundary(packagePaths[0]);
 await assertElectronRuntimeVersion(packagePaths[0], manifestPath);
+await hardenElectronFuses(join(packagePaths[0], 'NodePilot.exe'));
 console.log(`desktop-package: verified ${packagePaths[0]}`);

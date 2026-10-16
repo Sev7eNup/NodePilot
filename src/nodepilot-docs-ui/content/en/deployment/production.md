@@ -426,7 +426,7 @@ The installer performs the following steps:
 7. Create the HTTPS firewall rule.
 8. Register the Windows service with automatic start and recovery actions (with a gMSA, additionally dependent on Netlogon, so that the logon does not fail before contact with a DC). The service therefore starts without a fixed delay and instead waits for the database itself — with `Database:StartupWaitSeconds` as the upper bound, 300 seconds by default.
 9. Start the service and check readiness.
-10. Print the admin setup token and the external-trigger API key.
+10. Print the admin setup token and the external-trigger API key. The setup passes `-SuppressSecretOutput` instead and shows both values on its finish page, so its transcript under `%TEMP%` does not contain them.
 
 The PostgreSQL connection string is not written into the JSON file. It lives in the ACL-protected service environment.
 
@@ -553,6 +553,7 @@ $releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
 The updater:
 
 - verifies the new artifact,
+- refuses an artifact older than the installed version (read from `VERSION.txt` in the installation directory) **before anything is changed**; `-AllowDowngrade` installs it anyway, but the database schema stays at the newer version,
 - matches every framework the new build names against the runtimes the host reports and aborts **before anything is changed** when one of them is short — roll-forward never goes backwards, so an older patch on the host means the service would not start at all,
 - backs up the existing binaries,
 - waits up to 30 seconds after stopping the service for processes from the installation directory to exit and then terminates any that remain; only if that does not help does the updater abort with the process name and PID **before the first file deletion** (a stopped service is not enough: orphaned workers keep their DLLs mapped),
@@ -655,7 +656,8 @@ start, the way back is to put the previous thumbprint into that same line. Remov
 .\deploy\Uninstall-NodePilot.ps1
 ```
 
-This removes the service, the service binaries, the firewall rules, the installation marker and the
+This removes the service, the service binaries including the binary backups left by updates and
+interrupted installations (`<install path>.backup.*` / `.rollback.*`), the firewall rules, the installation marker and the
 registry environment entry (which holds the Postgres password). Logs and configuration are preserved.
 To remove the local operational data completely:
 
