@@ -712,9 +712,11 @@ public class TriggerOrchestrator : BackgroundService
                 if (wf is null)
                 {
                     _logger.LogWarning("Trigger fired for {Type} but workflow {Wf} no longer exists", triggerType, workflowId);
-                    if (StillOwnsLease(leaseEpoch))
-                        await AppendSuppressionAudit(db, workflowId, triggerType, "workflow_deleted");
+                    var deletedAudit = StillOwnsLease(leaseEpoch)
+                        ? await AppendSuppressionAudit(db, workflowId, triggerType, "workflow_deleted")
+                        : null;
                     await transaction.CommitAsync(_stoppingToken);
+                    ForwardCommittedAudit(deletedAudit);
                     return true;
                 }
 
@@ -736,11 +738,13 @@ public class TriggerOrchestrator : BackgroundService
                     receipt.Outcome = reason;
                     _logger.LogWarning("Trigger fired for {Type} but workflow {Wf} is missing or disabled", triggerType, workflowId);
                     fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "workflow missing or disabled");
-                    if (StillOwnsLease(leaseEpoch))
-                        await AppendSuppressionAudit(db, workflowId, triggerType, reason);
+                    var disabledAudit = StillOwnsLease(leaseEpoch)
+                        ? await AppendSuppressionAudit(db, workflowId, triggerType, reason)
+                        : null;
                     UpsertCheckpoint(db, workflowId, nodeId, triggerType, configurationHash, signal);
                     await db.SaveChangesAsync(_stoppingToken);
                     await transaction.CommitAsync(_stoppingToken);
+                    ForwardCommittedAudit(disabledAudit);
                     return true;
                 }
 
@@ -760,11 +764,13 @@ public class TriggerOrchestrator : BackgroundService
                         fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok, "maintenance window");
                         SchedulerMetrics.MaintenanceWindowBlocks.Add(1,
                             new KeyValuePair<string, object?>("trigger_type", triggerType));
-                        if (StillOwnsLease(leaseEpoch))
-                            await AppendMaintenanceBlockAudit(db, workflowId, triggerType, verdict);
+                        var maintenanceAudit = StillOwnsLease(leaseEpoch)
+                            ? await AppendMaintenanceBlockAudit(db, workflowId, triggerType, verdict)
+                            : null;
                         UpsertCheckpoint(db, workflowId, nodeId, triggerType, configurationHash, signal);
                         await db.SaveChangesAsync(_stoppingToken);
                         await transaction.CommitAsync(_stoppingToken);
+                        ForwardCommittedAudit(maintenanceAudit);
                         return true;
                     }
                 }
@@ -790,7 +796,9 @@ public class TriggerOrchestrator : BackgroundService
                         {
                             await using var auditScope = _scopeFactory.CreateAsyncScope();
                             var auditDb = auditScope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-                            await AppendSuppressionAudit(auditDb, workflowId, triggerType, suppression.Reason);
+                            // Own context without a transaction: the save above is the commit.
+                            ForwardCommittedAudit(
+                                await AppendSuppressionAudit(auditDb, workflowId, triggerType, suppression.Reason));
                         }),
                     _stoppingToken);
                 receipt.ExecutionId = execution.Id;
@@ -858,10 +866,11 @@ public class TriggerOrchestrator : BackgroundService
     /// orchestrator from moving to the next trigger.
     ///
     /// Routes through <see cref="IAuditStager"/> so the redaction + 4 KiB cap apply
-    /// uniformly. The previous string-interpolated JSON bypassed both — a malicious
-    /// trigger-type or reason string would have landed unescaped + unredacted.
+    /// uniformly. Returns the saved entry, or null when the write failed. It does not forward the
+    /// entry to SIEM: inside the admission transaction the save is not yet the commit, so the
+    /// caller forwards via <see cref="ForwardCommittedAudit"/> once its transaction committed.
     /// </summary>
-    private async Task AppendSuppressionAudit(NodePilotDbContext db, Guid workflowId, string triggerType, string reason)
+    private async Task<AuditLogEntry?> AppendSuppressionAudit(NodePilotDbContext db, Guid workflowId, string triggerType, string reason)
     {
         try
         {
@@ -877,11 +886,12 @@ public class TriggerOrchestrator : BackgroundService
                     ("reason", reason)));
             db.AuditLog.Add(auditEntry);
             await db.SaveChangesAsync();
-            AuditEventForwarder.ForwardCommitted(_logger, auditEntry);
+            return auditEntry;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to append TRIGGER_FIRE_SUPPRESSED audit entry for workflow {Wf}", workflowId);
+            return null;
         }
     }
 
@@ -890,8 +900,9 @@ public class TriggerOrchestrator : BackgroundService
     /// separate from <see cref="AppendSuppressionAudit"/> (distinct action code) so the audit
     /// timeline distinguishes "blocked by maintenance window" from "fired while disabled".
     /// System actor, best-effort — an audit-write failure must not block the orchestrator.
+    /// Like <see cref="AppendSuppressionAudit"/>, the caller forwards the entry after its commit.
     /// </summary>
-    private async Task AppendMaintenanceBlockAudit(
+    private async Task<AuditLogEntry?> AppendMaintenanceBlockAudit(
         NodePilotDbContext db, Guid workflowId, string triggerType, MaintenanceEvaluation verdict)
     {
         try
@@ -911,11 +922,18 @@ public class TriggerOrchestrator : BackgroundService
                     ("activeUntil", verdict.ActiveUntilUtc)));
             db.AuditLog.Add(auditEntry);
             await db.SaveChangesAsync();
-            AuditEventForwarder.ForwardCommitted(_logger, auditEntry);
+            return auditEntry;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to append EXECUTION_BLOCKED_MAINTENANCE_WINDOW audit entry for workflow {Wf}", workflowId);
+            return null;
         }
+    }
+
+    private void ForwardCommittedAudit(AuditLogEntry? entry)
+    {
+        if (entry is not null)
+            AuditEventForwarder.ForwardCommitted(_logger, entry);
     }
 }

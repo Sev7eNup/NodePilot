@@ -140,6 +140,13 @@ public static class WorkflowDefinitionStructuralValidator
 
         activityTypeByNodeId[id] = activityType;
 
+        if (string.Equals(activityType, "junction", StringComparison.OrdinalIgnoreCase))
+        {
+            var junctionError = ValidateJunctionConfig(data, path);
+            if (junctionError is not null)
+                return WorkflowDefinitionValidationResult.Invalid(junctionError, "invalid-junction-config", id);
+        }
+
         if (NodePilot.Core.Agents.AgentConfiguration.IsAgent(activityType)
             && data.TryGetProperty("config", out var agentConfig)
             && agentConfig.ValueKind == JsonValueKind.Object
@@ -217,6 +224,27 @@ public static class WorkflowDefinitionStructuralValidator
         }
 
         return WorkflowDefinitionValidationResult.Valid;
+    }
+
+    private static readonly HashSet<string> _junctionModes =
+        new(StringComparer.Ordinal) { "waitAll", "waitAny", "waitNofM" };
+
+    // The scheduler runs an unknown mode like waitAny and cancels the other branches, so a typo
+    // must fail here. requiredCount may exceed the current inputs while a draft is being wired.
+    private static string? ValidateJunctionConfig(JsonElement data, string path)
+    {
+        if (!data.TryGetProperty("config", out var config) || config.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (config.TryGetProperty("mode", out var mode) && mode.ValueKind != JsonValueKind.Null
+            && (mode.ValueKind != JsonValueKind.String || !_junctionModes.Contains(mode.GetString()!)))
+            return $"{path}.data.config.mode must be one of waitAll, waitAny, waitNofM";
+
+        if (config.TryGetProperty("requiredCount", out var count) && count.ValueKind != JsonValueKind.Null
+            && (count.ValueKind != JsonValueKind.Number || !count.TryGetInt32(out var n) || n < 1))
+            return $"{path}.data.config.requiredCount must be a whole number of at least 1";
+
+        return null;
     }
 
     private static bool TryGetRequiredString(JsonElement obj, string propertyName, out string value)

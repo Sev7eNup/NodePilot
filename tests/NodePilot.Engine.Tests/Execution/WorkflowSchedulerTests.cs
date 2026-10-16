@@ -102,8 +102,14 @@ public class WorkflowSchedulerTests
         };
     }
 
+    private static WorkflowScheduler.SuccessorDecision Decide(
+        WorkflowNode node, List<WorkflowEdge> edges, HashSet<string> completed, HashSet<string> skipped,
+        Dictionary<string, ActivityResult> results)
+        => WorkflowScheduler.EvaluateSuccessorDecision(
+            node, edges, completed, skipped, results, new Dictionary<string, string>(), null, null).Decision;
+
     [Fact]
-    public void EvaluateSuccessorReadiness_NonJunction_WaitsForAllIncomingSources()
+    public void EvaluateSuccessorDecision_NonJunction_WaitsForAllIncomingSources()
     {
         var node = Node("target");
         var edges = new List<WorkflowEdge>
@@ -118,17 +124,35 @@ public class WorkflowSchedulerTests
             ["a"] = new() { Success = true },
         };
 
-        WorkflowScheduler.EvaluateSuccessorReadiness(node, edges, completed, skipped, results)
-            .Ready.Should().BeFalse();
+        Decide(node, edges, completed, skipped, results).Should().Be(WorkflowScheduler.SuccessorDecision.Wait);
 
         skipped.Add("b");
 
-        WorkflowScheduler.EvaluateSuccessorReadiness(node, edges, completed, skipped, results)
-            .Ready.Should().BeTrue();
+        Decide(node, edges, completed, skipped, results).Should().Be(WorkflowScheduler.SuccessorDecision.Schedule);
     }
 
     [Fact]
-    public void EvaluateSuccessorReadiness_WaitNofM_RequiresConfiguredSuccessfulPredecessors()
+    public void EvaluateSuccessorDecision_WaitAllWithUnmatchedCondition_SkipsTarget()
+    {
+        var join = Node("join", "junction", """{"mode":"waitAll"}""");
+        var edges = new List<WorkflowEdge>
+        {
+            new() { Id = "e1", Source = "a", Target = "join", Condition = "a.failed" },
+            new() { Id = "e2", Source = "b", Target = "join" },
+        };
+        var completed = new HashSet<string> { "a", "b" };
+        var results = new Dictionary<string, ActivityResult>
+        {
+            ["a"] = new() { Success = true },
+            ["b"] = new() { Success = true },
+        };
+
+        Decide(join, edges, completed, [], results).Should().Be(WorkflowScheduler.SuccessorDecision.Skip,
+            "waitAll schedules only when every completed input's edge condition matches");
+    }
+
+    [Fact]
+    public void EvaluateSuccessorDecision_WaitNofM_RequiresConfiguredSuccessfulPredecessors()
     {
         var join = Node("join", "junction", """{"mode":"waitNofM","requiredCount":2}""");
         var edges = new List<WorkflowEdge>
@@ -145,14 +169,14 @@ public class WorkflowSchedulerTests
             ["b"] = new() { Success = false },
         };
 
-        var first = WorkflowScheduler.EvaluateSuccessorReadiness(join, edges, completed, skipped, results);
-        first.Ready.Should().BeFalse();
+        var first = WorkflowScheduler.EvaluateSuccessorDecision(
+            join, edges, completed, skipped, results, new Dictionary<string, string>(), null, null);
+        first.Decision.Should().Be(WorkflowScheduler.SuccessorDecision.Wait);
         first.JunctionMode.Should().Be("waitNofM");
 
         results["b"] = new ActivityResult { Success = true };
 
-        WorkflowScheduler.EvaluateSuccessorReadiness(join, edges, completed, skipped, results)
-            .Ready.Should().BeTrue();
+        Decide(join, edges, completed, skipped, results).Should().Be(WorkflowScheduler.SuccessorDecision.Schedule);
     }
 
     [Fact]

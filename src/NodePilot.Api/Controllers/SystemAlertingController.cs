@@ -219,10 +219,13 @@ public class SystemAlertingController : ControllerBase
 
         var ctx = BuildSampleContext(policy);
         var results = await AlertingRuleMapping.DeliverTestFireAsync(_db, _store, _sinks, policy, ctx, ct);
-        await _db.SaveChangesAsync(ct);
+        // The notifications are already out: ledger rows and audit must land even if the
+        // client disconnects now.
+        await _db.SaveChangesAsync(CancellationToken.None);
 
         await _audit.LogAsync(AuditActions.SystemAlertPolicyTestFired, "SystemAlertPolicy", policy.Id,
-            AuditDetails.Json(("name", policy.Name), ("routes", policy.Routes.Count), ("allSucceeded", results.All(r => r.Success))), ct);
+            AuditDetails.Json(("name", policy.Name), ("routes", policy.Routes.Count), ("allSucceeded", results.All(r => r.Success))),
+            CancellationToken.None);
 
         return Ok(new TestFireResponse(results.All(r => r.Success), results));
     }

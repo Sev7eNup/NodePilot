@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Enums;
 using Xunit;
@@ -152,4 +153,103 @@ public sealed class RoleMatrixSmokeTests
             "means a role gate was widened, narrowed or dropped. Violations:\n" +
             string.Join("\n", violations));
     }
+
+    /// <summary>
+    /// Sweeps every controller action whose combined [Authorize(Roles=...)] metadata admits only
+    /// Admin, and proves Operator and Viewer get 403 from the real pipeline. Catches an
+    /// admin-only gate that was dropped or widened on any administrative controller.
+    /// </summary>
+    [Fact]
+    public async Task AdminOnlyEndpoints_DenyOperatorAndViewer()
+    {
+        using var factory = new ApiPipelineFactory();
+
+        const string password = "RoleMatrix-Smoke-1!";
+        await factory.CreateUserAsync("sweep-operator", password, UserRole.Operator);
+        await factory.CreateUserAsync("sweep-viewer", password, UserRole.Viewer);
+        using var operatorClient = factory.CreateClient();
+        using var viewerClient = factory.CreateClient();
+        var sessions = new[]
+        {
+            new UserSession("Operator", operatorClient,
+                (await ApiPipelineFactory.LoginAsync(operatorClient, "sweep-operator", password)).CsrfToken),
+            new UserSession("Viewer", viewerClient,
+                (await ApiPipelineFactory.LoginAsync(viewerClient, "sweep-viewer", password)).CsrfToken),
+        };
+
+        var adminOnly = factory.Services
+            .GetRequiredService<Microsoft.AspNetCore.Mvc.Infrastructure.IActionDescriptorCollectionProvider>()
+            .ActionDescriptors.Items
+            .Where(action => action.AttributeRouteInfo?.Template is not null && IsAdminOnly(action))
+            .ToList();
+        adminOnly.Should().NotBeEmpty();
+
+        var violations = new List<string>();
+        foreach (var action in adminOnly)
+        {
+            var method = action.ActionConstraints?
+                .OfType<Microsoft.AspNetCore.Mvc.ActionConstraints.HttpMethodActionConstraint>()
+                .SelectMany(constraint => constraint.HttpMethods)
+                .FirstOrDefault() ?? "GET";
+            var url = ConcreteUrl(action.AttributeRouteInfo!.Template!);
+            // [Consumes] is a routing constraint: a mismatched content type answers 404 before
+            // the role gate runs, so send the content type the action declares.
+            var multipart = action.EndpointMetadata.OfType<Microsoft.AspNetCore.Http.Metadata.IAcceptsMetadata>()
+                .Any(accepts => accepts.ContentTypes.Contains("multipart/form-data"));
+
+            foreach (var session in sessions)
+            {
+                using var request = new HttpRequestMessage(new HttpMethod(method), url);
+                if (method != "GET")
+                {
+                    request.Headers.Add("X-CSRF-Token", session.CsrfToken);
+                    request.Content = multipart
+                        ? new MultipartFormDataContent { { new StringContent("x"), "probe" } }
+                        : new StringContent("{}", Encoding.UTF8, "application/json");
+                }
+
+                using var response = await session.Client.SendAsync(request);
+                var body = await response.Content.ReadAsStringAsync();
+                if (response.StatusCode != HttpStatusCode.Forbidden)
+                    violations.Add($"{method} {url} ({action.DisplayName}) — {session.Label} got {(int)response.StatusCode}, expected 403");
+                else if (body.Contains("csrf_mismatch", StringComparison.Ordinal))
+                    violations.Add($"{method} {url} — 403 came from the CSRF middleware, not the role gate");
+            }
+        }
+
+        violations.Should().BeEmpty(
+            "every admin-only action must refuse Operator and Viewer. Violations:\n" + string.Join("\n", violations));
+    }
+
+    /// <summary>True when the intersection of all role lists on the controller and action is
+    /// exactly Admin, and nothing allows anonymous access.</summary>
+    private static bool IsAdminOnly(Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor action)
+    {
+        if (action.EndpointMetadata.OfType<Microsoft.AspNetCore.Authorization.IAllowAnonymous>().Any())
+            return false;
+        var roleSets = action.EndpointMetadata.OfType<Microsoft.AspNetCore.Authorization.IAuthorizeData>()
+            .Select(data => data.Roles)
+            .OfType<string>()
+            .Where(roles => !string.IsNullOrWhiteSpace(roles))
+            .Select(roles => roles.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .ToHashSet(StringComparer.Ordinal))
+            .ToList();
+        if (roleSets.Count == 0) return false;
+        var allowed = roleSets.Aggregate((left, right) => left.Intersect(right, StringComparer.Ordinal).ToHashSet(StringComparer.Ordinal));
+        return allowed.SetEquals(["Admin"]);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex RouteParameter = new(
+        @"\{\*{0,2}(?<name>[^:}?=]+)(?::(?<constraint>[^}?=]+))?\??(?:=[^}]*)?\}",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Fills route parameters with values that satisfy their constraints.</summary>
+    private static string ConcreteUrl(string template)
+        => "/" + RouteParameter.Replace(template.TrimStart('~', '/'), match =>
+            match.Groups["constraint"].Value switch
+            {
+                "guid" => Guid.NewGuid().ToString(),
+                "int" or "long" => "1",
+                _ => "x",
+            });
 }

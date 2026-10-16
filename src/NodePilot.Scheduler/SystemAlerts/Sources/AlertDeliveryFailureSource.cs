@@ -6,8 +6,8 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Meta / self-monitoring source: how many alert deliveries have terminally failed in a trailing
-/// window
+/// Meta / self-monitoring source: how many alert deliveries have terminally failed (by last try)
+/// in a trailing window
 /// (parameter <c>windowMinutes</c>, default 15). This is the only way to notice that the alerting
 /// pipeline
 /// itself is silently failing to deliver (SMTP down, webhook 5xx) — the alarm about the broken
@@ -32,8 +32,14 @@ public sealed class AlertDeliveryFailureSource : ISystemAlertSource
     {
         var windowMinutes = Math.Max(1, query.GetInt("windowMinutes", DefaultWindowMinutes));
         var since = DateTime.UtcNow.AddMinutes(-windowMinutes);
+        // Counted by the last try, not by creation: retry backoff turns a delivery Failed long
+        // after the attempt row was created. The CreatedAt bound keeps the CreatedAt index usable;
+        // retries end within an hour of creation unless the dispatcher was down for a day.
+        var createdSince = since.AddDays(-1);
         var failures = await db.NotificationDeliveryAttempts.AsNoTracking()
-            .CountAsync(a => a.Status == NotificationDeliveryStatus.Failed && a.CreatedAt >= since, ct);
+            .CountAsync(a => a.Status == NotificationDeliveryStatus.Failed
+                             && a.CreatedAt >= createdSince
+                             && (a.SentAt ?? a.CreatedAt) >= since, ct);
 
         return
         [

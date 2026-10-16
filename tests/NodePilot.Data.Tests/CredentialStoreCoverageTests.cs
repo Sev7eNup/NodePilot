@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Models;
 using NodePilot.Data.Security;
@@ -124,24 +125,44 @@ public sealed class CredentialStoreCoverageTests
     [Fact]
     public async Task DecryptPassword_WithBrokenScopeFactory_SwallowsAuditFailure_AndStillReturnsPlaintext()
     {
-        // The background scope resolves a DbContext over a fresh, schema-less :memory: DB;
-        // its SaveChanges throws. That exception must be caught & swallowed on the background
-        // task and must never affect the (already-returned) decrypt result.
+        // The background scope resolves a DbContext over a fresh, schema-less :memory: DB, so
+        // the audit SaveChanges throws. The exception must be caught on the background task and
+        // logged, and must never affect the (already-returned) decrypt result.
         var services = new ServiceCollection();
         services.AddDbContext<NodePilotDbContext>(o => o.UseSqlite("DataSource=:memory:"));
         await using var provider = services.BuildServiceProvider();
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+        var logger = new CapturingLogger<CredentialStore>();
 
         await using var db = TestDbFactory.Create();
         var store = new CredentialStore(
-            db, new AesGcmSecretProtector(DeterministicKey()), NullLogger<CredentialStore>.Instance, scopeFactory);
+            db, new AesGcmSecretProtector(DeterministicKey()), logger, scopeFactory);
         var cred = await store.CreateAsync("svc", "user", "pw", null, null, CancellationToken.None);
 
         var plain = store.DecryptPassword(cred);
         plain.Should().Be("pw", "a failed audit append must never break the decrypt path");
 
-        // Give the fire-and-forget background task a chance to run its (failing) write.
-        await Task.Delay(300);
+        // Proves the audit write really failed and the failure was handled: the background task
+        // logs it instead of leaving an unobserved exception.
+        var swallowed = await WaitForAsync(
+            () => logger.Entries.Any(e => e.Level == LogLevel.Warning
+                                          && e.Exception is not null
+                                          && e.Message.Contains("decrypt-audit entry")),
+            TimeSpan.FromSeconds(60));
+        swallowed.Should().BeTrue("the failing audit write must be caught and logged as a warning");
+        logger.Entries.Should().NotContain(e => e.Message.Contains("CREDENTIAL_DECRYPTED"),
+            "a failed write must not be forwarded to SIEM as committed");
+    }
+
+    private static async Task<bool> WaitForAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition()) return true;
+            await Task.Delay(20);
+        }
+        return condition();
     }
 
     // ---- Legacy (no scope-factory) audit path failure ---------------------------------

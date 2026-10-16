@@ -304,6 +304,24 @@ public class AlertingControllerTests
         (await db.NotificationDeliveryAttempts.CountAsync(a => a.IsTest)).Should().Be(1);
     }
 
+    [Fact]
+    public async Task TestFire_RequestAbortedAfterDelivery_StillRecordsTheLedgerRow()
+    {
+        // The notification already went out, so its ledger row must not depend on the client
+        // staying connected.
+        await using var db = TestDbFactory.Create();
+        var h = Build(db);
+        var created = await Create(h.Ctrl, Req("rule",
+            routes: [new NotificationRouteDto(null, "Email", "ops@x", null, 0)]));
+        using var requestAborted = new CancellationTokenSource();
+        h.Email.BeforeSend = requestAborted.Cancel;
+
+        await h.Ctrl.TestFire(created.Id, requestAborted.Token);
+
+        h.Email.Sends.Should().ContainSingle();
+        (await db.NotificationDeliveryAttempts.CountAsync(a => a.IsTest)).Should().Be(1);
+    }
+
     [Theory]
     [InlineData("Prod", true)]
     [InlineData("Other", false)]

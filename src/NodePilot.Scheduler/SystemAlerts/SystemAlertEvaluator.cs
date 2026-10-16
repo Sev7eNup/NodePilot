@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
@@ -12,6 +13,18 @@ namespace NodePilot.Scheduler.SystemAlerts;
 
 /// <summary>One policy that should deliver for a given observation this pass.</summary>
 public sealed record SystemAlertFire(NotificationRule Policy, NotificationContext Context);
+
+/// <summary>
+/// Result of rebuilding a delivery context for a retry. Without a context, <see cref="Error"/>
+/// names the cause; <see cref="IsTransient"/> marks a failed source read that may succeed later,
+/// as opposed to a source, policy or instance that is gone.
+/// </summary>
+public sealed record ContextReconstruction(NotificationContext? Context, string? Error, bool IsTransient)
+{
+    public static ContextReconstruction Found(NotificationContext context) => new(context, null, false);
+    public static ContextReconstruction Gone(string reason) => new(null, reason, false);
+    public static ContextReconstruction Failed(string reason) => new(null, reason, true);
+}
 
 /// <summary>
 /// The system-alert policy evaluator — decides whether a built-in alert source's current reading
@@ -41,8 +54,16 @@ public sealed class SystemAlertEvaluator
     private static readonly IReadOnlyDictionary<string, ActivityResult> EmptyResults = new Dictionary<string, ActivityResult>();
 
     private readonly ISystemAlertCatalog _catalog;
+    private readonly ILogger _logger;
 
-    public SystemAlertEvaluator(ISystemAlertCatalog catalog) => _catalog = catalog;
+    // Consecutive read failures per source id. The dispatcher runs passes one at a time.
+    private readonly Dictionary<string, int> _consecutiveSourceFailures = new(StringComparer.Ordinal);
+
+    public SystemAlertEvaluator(ISystemAlertCatalog catalog, ILogger logger)
+    {
+        _catalog = catalog;
+        _logger = logger;
+    }
 
     /// <summary>
     /// Evaluate every enabled System policy against current observations, staging match-state
@@ -66,13 +87,22 @@ public sealed class SystemAlertEvaluator
             var source = _catalog.Find(group.Key.SourceId);
             if (source is null) continue; // misconfigured policy (source removed) — skip, no crash
 
-            if (!await source.IsAvailableAsync(db, ct)) continue; // unavailable -> no alert, no recovery
-
+            // A failing source sample is logged and skipped for this pass; it must not sink the
+            // other sources. Unavailable -> no alert, no recovery.
             var query = SystemAlertParameters.ToQuery(group.Key.ParamsKey);
             IReadOnlyList<SystemAlertObservation> observations;
-            try { observations = await source.ObserveAsync(db, query, ct); }
-            catch (OperationCanceledException) { throw; }
-            catch { continue; } // a flaky source sample must not sink the whole pass
+            try
+            {
+                if (!await source.IsAvailableAsync(db, ct)) continue;
+                observations = await source.ObserveAsync(db, query, ct);
+                _consecutiveSourceFailures.Remove(source.SourceId);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                ReportSourceFailure(source.SourceId, ex);
+                continue;
+            }
 
             foreach (var policy in group)
                 fires.AddRange(await EvaluatePolicyAsync(db, policy, source.SourceId, observations,
@@ -184,9 +214,11 @@ public sealed class SystemAlertEvaluator
 
     /// <summary>
     /// Rebuild an accepted delivery by source identity. Event sources recover retained rows
-    /// independently of their current sampling window.
+    /// independently of their current sampling window. Returns null when the key isn't ours. A
+    /// missing policy, source or instance is reported as gone; a failed source read as transient,
+    /// so the dispatcher can store the real cause.
     /// </summary>
-    public async Task<NotificationContext?> TryReconstructContextAsync(NodePilotDbContext db, string eventKey, CancellationToken ct)
+    public async Task<ContextReconstruction?> TryReconstructContextAsync(NodePilotDbContext db, string eventKey, CancellationToken ct)
     {
         if (!TryParseEventKey(eventKey, out var sourceId, out var instanceKey, out var episodeStart))
             return null;
@@ -195,22 +227,50 @@ public sealed class SystemAlertEvaluator
         var policy = await db.NotificationRules.AsNoTracking().SingleOrDefaultAsync(p =>
             p.Id == policyId && p.IsEnabled && p.Kind == NotificationRuleKind.System
             && p.SystemSourceId == sourceId, ct);
-        if (policy is null) return null;
+        if (policy is null)
+            return ContextReconstruction.Gone("system alert policy is no longer enabled for this source");
 
         var source = _catalog.Find(sourceId);
-        if (source is null || !await source.IsAvailableAsync(db, ct)) return null;
+        if (source is null)
+            return ContextReconstruction.Gone($"system alert source '{sourceId}' is no longer registered");
 
         SystemAlertObservation? obs;
-        try { obs = await source.FindDeliveryObservationAsync(db,
-            SystemAlertParameters.ToQuery(policy.SourceParametersJson), instanceKey, ct); }
-        catch (OperationCanceledException) { throw; }
-        catch { return null; }
+        try
+        {
+            if (!await source.IsAvailableAsync(db, ct))
+                return ContextReconstruction.Gone($"system alert source '{sourceId}' is unavailable");
+            obs = await source.FindDeliveryObservationAsync(db,
+                SystemAlertParameters.ToQuery(policy.SourceParametersJson), instanceKey, ct);
+            _consecutiveSourceFailures.Remove(sourceId);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            ReportSourceFailure(sourceId, ex);
+            // Capped well below the ledger's 2000-character Error column.
+            var message = ex.Message.Length > 500 ? ex.Message[..500] : ex.Message;
+            return ContextReconstruction.Failed($"system alert source '{sourceId}' failed: {message}");
+        }
 
-        if (obs is null) return null;
+        if (obs is null)
+            return ContextReconstruction.Gone(
+                $"system alert source '{sourceId}' no longer reports instance '{instanceKey}'");
 
         // Retry with the active owning policy's query and severity override, matching first delivery.
         var reconstructed = BuildContext(policy, obs, FieldMap(obs), episodeStart, DateTime.UtcNow);
-        return reconstructed with { EventKey = eventKey };
+        return ContextReconstruction.Found(reconstructed with { EventKey = eventKey });
+    }
+
+    // Logs the first failure of a source and then every 20th in a row, so a source that keeps
+    // failing stays visible without flooding the log every pass.
+    private void ReportSourceFailure(string sourceId, Exception ex)
+    {
+        var failures = _consecutiveSourceFailures.TryGetValue(sourceId, out var previous) ? previous + 1 : 1;
+        _consecutiveSourceFailures[sourceId] = failures;
+        if (failures == 1 || failures % 20 == 0)
+            _logger.LogWarning(ex,
+                "System alert source {SourceId} failed {Failures} time(s) in a row; it is skipped for this pass.",
+                sourceId, failures);
     }
 
     /// <summary>Delete transient state for policies that are no longer enabled System policies

@@ -167,6 +167,66 @@ public class WorkflowDefinitionMergeTests
         result.Notes.Should().ContainSingle().Which.Should().Contain("password");
     }
 
+    [Theory]
+    [InlineData("4711")]
+    [InlineData("""{ "value": "REAL-KEY", "rotation": 30 }""")]
+    [InlineData("""[ "REAL-KEY", 2 ]""")]
+    public void Merge_RedactedNonStringSecret_RoundTripRestoresOriginal(string rawSecret)
+    {
+        // The AI sees the shared redactor's output and hands it back unchanged.
+        var original = Parse($$"""
+            { "nodes": [ { "id": "n1", "type": "activity", "position": {"x":0,"y":0},
+                "data": { "activityType": "restApi", "config": { "token": {{rawSecret}}, "method": "GET" } } } ], "edges": [] }
+            """);
+        var redacted = NodePilot.Core.WorkflowDefinitions.WorkflowSecretRedactor.Redact(original);
+        redacted["nodes"]![0]!["data"]!["config"]!["token"]!.GetValue<string>().Should().Be("***");
+
+        var result = WorkflowDefinitionMerge.Merge(original, Parse(redacted.ToJsonString()));
+        var token = result.Definition["nodes"]![0]!["data"]!["config"]!["token"];
+
+        System.Text.Json.Nodes.JsonNode.DeepEquals(token, System.Text.Json.Nodes.JsonNode.Parse(rawSecret))
+            .Should().BeTrue("the merge must restore the exact original value, got {0}", token?.ToJsonString());
+        result.Notes.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("4711", "9999")]
+    [InlineData("""{ "value": "REAL-KEY" }""", """{ "value": "from-ai" }""")]
+    [InlineData("""[ "REAL-KEY" ]""", """[ "from-ai" ]""")]
+    public void Merge_AiDivergentNonStringSecret_RestoresOriginal_AndNotes(string rawOriginal, string rawProposed)
+    {
+        var original = Parse($$"""
+            { "nodes": [ { "id": "n1", "type": "activity", "position": {"x":0,"y":0},
+                "data": { "activityType": "restApi", "config": { "password": {{rawOriginal}} } } } ], "edges": [] }
+            """);
+        var proposed = Parse($$"""
+            { "nodes": [ { "id": "n1", "type": "activity", "position": {"x":0,"y":0},
+                "data": { "activityType": "restApi", "config": { "password": {{rawProposed}} } } } ], "edges": [] }
+            """);
+
+        var result = WorkflowDefinitionMerge.Merge(original, proposed);
+        var password = result.Definition["nodes"]![0]!["data"]!["config"]!["password"];
+
+        System.Text.Json.Nodes.JsonNode.DeepEquals(password, System.Text.Json.Nodes.JsonNode.Parse(rawOriginal))
+            .Should().BeTrue();
+        result.Notes.Should().ContainSingle().Which.Should().Contain("password");
+    }
+
+    [Fact]
+    public void Merge_AiInventedNonStringSecret_MaskedAndNoted()
+    {
+        var original = Parse("""{ "nodes": [], "edges": [] }""");
+        var proposed = Parse("""
+            { "nodes": [ { "id": "new", "type": "activity", "position": {"x":0,"y":0},
+                "data": { "activityType": "restApi", "config": { "apiKey": { "value": "invented" } } } } ], "edges": [] }
+            """);
+
+        var result = WorkflowDefinitionMerge.Merge(original, proposed);
+
+        result.Definition["nodes"]![0]!["data"]!["config"]!["apiKey"]!.GetValue<string>().Should().Be("***");
+        result.Notes.Should().ContainSingle().Which.Should().Contain("apiKey");
+    }
+
     [Fact]
     public void Merge_ContentMaskedHeadersString_RestoredFromOriginal_ByUniversalMaskRule()
     {
@@ -244,11 +304,93 @@ public class WorkflowDefinitionMergeTests
             }}] }
             """);
 
-        var merged = WorkflowDefinitionMerge.Merge(original, proposed).Definition;
+        var result = WorkflowDefinitionMerge.Merge(original, proposed);
+        var merged = result.Definition;
 
         merged["nodes"]![0]!["data"]!["config"]!["cases"]![0]!["conditionExpression"]!
             ["right"]!["value"]!.GetValue<string>().Should().Be("case-secret");
         merged["edges"]![0]!["data"]!["conditionExpression"]!["children"]![0]!
             ["left"]!["value"]!.GetValue<string>().Should().Be("left-secret");
+        result.Notes.Should().BeEmpty("arrays that differ only by their masks were not changed");
+    }
+
+    private const string DecisionWithMaskedCase = """
+        { "nodes": [{ "id": "decision-1", "type": "decision", "data": { "config": {
+            "cases": [{ "label": "prod", "conditionExpression": {
+                "type": "comparison", "left": { "kind": "variable", "value": "env" },
+                "op": "==", "right": { "kind": "literal", "value": "LITERAL" }
+            }}]
+        }}}], "edges": [] }
+        """;
+
+    [Fact]
+    public void Merge_AiAddsDecisionCase_KeepsOriginalCasesAndNotes()
+    {
+        var original = Parse(DecisionWithMaskedCase.Replace("LITERAL", "prod-secret"));
+        var proposed = Parse("""
+            { "nodes": [{ "id": "decision-1", "type": "decision", "data": { "config": {
+                "cases": [
+                  { "label": "prod", "conditionExpression": {
+                    "type": "comparison", "left": { "kind": "variable", "value": "env" },
+                    "op": "==", "right": { "kind": "literal", "value": "***" } } },
+                  { "label": "test", "conditionExpression": {
+                    "type": "comparison", "left": { "kind": "variable", "value": "env" },
+                    "op": "==", "right": { "kind": "literal", "value": "test" } } }
+                ]
+            }}}], "edges": [] }
+            """);
+
+        var result = WorkflowDefinitionMerge.Merge(original, proposed);
+
+        var cases = result.Definition["nodes"]![0]!["data"]!["config"]!["cases"]!.AsArray();
+        cases.Should().ContainSingle("the masked array is restored from the original");
+        cases[0]!["conditionExpression"]!["right"]!["value"]!.GetValue<string>().Should().Be("prod-secret");
+        result.Notes.Should().ContainSingle()
+            .Which.Should().Contain("'cases'").And.Contain("'decision-1'");
+    }
+
+    [Fact]
+    public void Merge_AiChangesOperatorInMaskedConditionGroup_KeepsOriginalAndNotes()
+    {
+        var original = Parse("""
+            { "nodes": [], "edges": [{ "id": "edge-1", "source": "a", "target": "b", "data": {
+                "conditionExpression": { "type": "group", "op": "AND", "children": [{
+                    "type": "comparison", "left": { "kind": "literal", "value": "left-secret" },
+                    "op": "==", "right": { "kind": "variable", "value": "y" } }] } } }] }
+            """);
+        var proposed = Parse("""
+            { "nodes": [], "edges": [{ "id": "edge-1", "source": "a", "target": "b", "data": {
+                "conditionExpression": { "type": "group", "op": "AND", "children": [{
+                    "type": "comparison", "left": { "kind": "literal", "value": "***" },
+                    "op": "!=", "right": { "kind": "variable", "value": "y" } }] } } }] }
+            """);
+
+        var result = WorkflowDefinitionMerge.Merge(original, proposed);
+
+        var child = result.Definition["edges"]![0]!["data"]!["conditionExpression"]!["children"]![0]!;
+        child["op"]!.GetValue<string>().Should().Be("==");
+        child["left"]!["value"]!.GetValue<string>().Should().Be("left-secret");
+        result.Notes.Should().ContainSingle()
+            .Which.Should().Contain("'children'").And.Contain("'edge-1'");
+    }
+
+    [Fact]
+    public void Merge_MaskedCaseWithOmittedKeys_AddsNoNote()
+    {
+        var original = Parse(DecisionWithMaskedCase.Replace("LITERAL", "prod-secret"));
+        // The AI left out the label; omitted keys mean "unchanged", as everywhere else in the merge.
+        var proposed = Parse("""
+            { "nodes": [{ "id": "decision-1", "type": "decision", "data": { "config": {
+                "cases": [{ "conditionExpression": {
+                    "type": "comparison", "left": { "kind": "variable", "value": "env" },
+                    "op": "==", "right": { "kind": "literal", "value": "***" } } }]
+            }}}], "edges": [] }
+            """);
+
+        var result = WorkflowDefinitionMerge.Merge(original, proposed);
+
+        result.Definition["nodes"]![0]!["data"]!["config"]!["cases"]![0]!["label"]!
+            .GetValue<string>().Should().Be("prod");
+        result.Notes.Should().BeEmpty();
     }
 }

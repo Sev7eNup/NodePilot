@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using NodePilot.Core.Interfaces;
-using NodePilot.Core.Models;
 using NodePilot.Engine.PowerShell;
 using NodePilot.Engine.Security;
 
@@ -99,18 +98,9 @@ try {{
 }}
 Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
 
-        // Hybrid resolution (matches RunScript): no target machine -> local; a machine with a
+        // Hybrid resolution (shared with RunScript): no target machine -> local; a machine with a
         // loopback host and no credential -> local; otherwise remote via WinRM.
-        var machine = context.ResolvedMachine;
-        Credential? credential = null;
-        if (machine is not null)
-        {
-            var credentialId = context.CredentialId ?? machine.DefaultCredentialId;
-            if (credentialId is not null)
-                credential = await _credentialStore.GetAsync(credentialId.Value, ct);
-        }
-        var isLocalhost = machine is null
-            || (credential is null && IsLoopbackHostname(machine.Hostname));
+        var runTarget = await ActivityTargetResolver.ResolveAsync(context, _db, _credentialStore, ct);
         // A "script" condition is user code and runs like a local runScript; the typed probes
         // are NodePilot's own expressions and stay in the in-process pool.
         var isUserScript = string.Equals(
@@ -133,7 +123,7 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         {
             attempts++;
             RemoteExecutionResult result;
-            if (isLocalhost)
+            if (runTarget.RunsLocally)
             {
                 IPowerShellExecutionEngine localEngine;
                 try
@@ -162,8 +152,7 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
             }
             else
             {
-                // machine is guaranteed non-null here — otherwise isLocalhost would be true.
-                await using var session = await _sessionFactory.CreateSessionAsync(machine!, credential, ct);
+                await using var session = await _sessionFactory.CreateSessionAsync(runTarget.Machine, runTarget.Credential, ct);
                 result = await session.ExecuteScriptAsync(wrapped, Math.Max(5, interval * 2), ct);
             }
             lastOutput = result.Output;
@@ -172,7 +161,7 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
             // Locally, a missing marker with an error means the condition cannot run at all
             // (parse error, missing engine), so waiting longer changes nothing. Remotely the same
             // shape can be a passing connection problem, so the loop keeps polling.
-            if (isLocalhost && !HasConditionMarker(result.Output) && !string.IsNullOrWhiteSpace(result.ErrorOutput))
+            if (runTarget.RunsLocally && !HasConditionMarker(result.Output) && !string.IsNullOrWhiteSpace(result.ErrorOutput))
             {
                 sw.Stop();
                 return new ActivityResult
@@ -223,7 +212,7 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         // loopback on the WinRM path. Without this, a probe pointed at the wrong port is
         // indistinguishable from a broken product.
         var probeContext = DescribeProbeTarget(config) is { } target
-            ? $" probing {target} [{(isLocalhost ? "local" : machine!.Hostname)}]"
+            ? $" probing {target} [{(runTarget.RunsLocally ? "local" : runTarget.Machine.Hostname)}]"
             : "";
         return new ActivityResult
         {

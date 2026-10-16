@@ -396,6 +396,42 @@ internal sealed class StepRunner
 
             return new ActivityResult { Success = false, ErrorOutput = message };
         }
+        catch (OperationCanceledException) when (executionCts.IsCancellationRequested)
+        {
+            // The whole execution was cancelled (user cancel, run timeout, host shutdown, fencing).
+            // The step was cancelled, it did not fail: no Failed row, no STEP_FAILED event. The
+            // rethrow stops the scheduler instead of letting it evaluate this step's successors.
+            const string message = "Step cancelled because the execution was cancelled.";
+            stepExecution.Status = ExecutionStatus.Cancelled;
+            stepExecution.ErrorOutput = message;
+            stepExecution.CompletedAt = DateTime.UtcNow;
+            try
+            {
+                await PersistStepStateDurablyAsync(
+                    stepDb, stepExecution, "step.cancelled", durabilityCancellation);
+            }
+            catch (Exception dbEx) when (dbEx is not OperationCanceledException)
+            {
+                // The terminal execution write sweeps orphaned Running steps to Cancelled anyway.
+                _logger.LogWarning(dbEx,
+                    "Failed to persist Cancelled status for step {StepId}; the execution is being cancelled.",
+                    node.Id);
+            }
+
+            stepActivity?.SetTag(TelemetryConstants.Attributes.StepStatus, "Cancelled");
+            stepActivity?.SetStatus(ActivityStatusCode.Ok);
+            finalStatus = "Cancelled";
+
+            LogStepDetail(execution, node,
+                new ActivityResult { Success = false, ErrorOutput = message },
+                stepStopwatch.Elapsed, resolvedTargetMachine);
+
+            await _notifier.StepCompletedAsync(execution.Id, execution.WorkflowId, node.Id, node.Data.Label,
+                ExecutionStatus.Cancelled, null, message, stepExecution.CompletedAt.Value,
+                stepType: node.Type, startedAt: stepExecution.StartedAt, outputVariable: node.Data.OutputVariable);
+
+            throw;
+        }
         catch (Exception ex)
         {
             // Describe, not ex.Message: wrapper exceptions carry the diagnosis one level down.

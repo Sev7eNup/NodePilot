@@ -4,7 +4,6 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Interfaces;
-using NodePilot.Core.Models;
 using NodePilot.Engine.PowerShell;
 
 namespace NodePilot.Engine.Activities;
@@ -38,24 +37,12 @@ public abstract class BaseRemoteActivity : IActivityExecutor
 
     public virtual async Task<ActivityResult> ExecuteAsync(StepExecutionContext context, JsonElement config, CancellationToken ct)
     {
-        // Prefer pre-resolved machine from engine (handles both registered and ad-hoc hostnames)
-        var machine = context.ResolvedMachine;
-
-        // Fall back to DB lookup by GUID if engine didn't pre-resolve
-        if (machine is null && context.TargetMachineId is not null)
-        {
-            machine = await _db.ManagedMachines.FindAsync([context.TargetMachineId.Value], ct);
-        }
-
-        if (machine is null)
+        // Credential is optional. If none applies, WinRM uses the NodePilot process identity.
+        var target = await ActivityTargetResolver.ResolveAsync(context, _db, _credentialStore, ct);
+        if (target.Machine is not { } machine)
             return new ActivityResult { Success = false, ErrorOutput = "No target machine specified" };
 
-        // Credential is optional. If none set, WinRM uses NodePilot process identity.
-        var credentialId = context.CredentialId ?? machine.DefaultCredentialId;
-        Credential? credential = null;
-        if (credentialId is not null)
-            credential = await _credentialStore.GetAsync(credentialId.Value, ct);
-
+        ValidateTarget(config, target);
         var script = BuildScript(config, context);
         var timeoutSeconds = TransportTimeoutSeconds(config);
 
@@ -71,9 +58,7 @@ public abstract class BaseRemoteActivity : IActivityExecutor
         // Detection covers every loopback address and hostname form, including DNS names that
         // resolve to loopback and IPv6 zone-ids, so a creatively named machine cannot bypass
         // this check and run over real WinRM with the service-account Kerberos ticket instead.
-        var isLocalhost = credential is null && IsLoopbackHostname(machine.Hostname);
-
-        if (isLocalhost)
+        if (target.RunsLocally)
         {
             // Cluster-mode warning: a localhost step runs in-process on whichever node is
             // leader at fire time, so after failover it can land on a different host with a
@@ -116,7 +101,7 @@ public abstract class BaseRemoteActivity : IActivityExecutor
 
         // Remote path via WinRM
         var sw = Stopwatch.StartNew();
-        await using var session = await _sessionFactory.CreateSessionAsync(machine, credential, ct);
+        await using var session = await _sessionFactory.CreateSessionAsync(machine, target.Credential, ct);
         var result = await session.ExecuteScriptAsync(script, timeoutSeconds, ct);
         sw.Stop();
 
@@ -130,6 +115,12 @@ public abstract class BaseRemoteActivity : IActivityExecutor
     }
 
     protected abstract string BuildScript(JsonElement config, StepExecutionContext context);
+
+    /// <summary>
+    /// Hook that sees the resolved target before the script is built; throws to refuse the step.
+    /// Default accepts every target.
+    /// </summary>
+    private protected virtual void ValidateTarget(JsonElement config, ActivityTarget target) { }
 
     /// <summary>
     /// Wall-clock budget for the whole script run, local or over WinRM. An activity whose script

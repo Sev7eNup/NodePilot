@@ -131,4 +131,68 @@ public class SystemAlertDispatcherTests
         }
         finally { conn.Dispose(); }
     }
+
+    [Fact]
+    public async Task RecoverPending_SourceReadKeepsFailing_CountsTriesAndFailsWithRealCause()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            SeedPolicy(db, SystemAlertConditions.Compare("depth", ">", "500"));
+            var source = new StubSource { Observations = () => [Backlog(600)] };
+            var sink = new RecordingSink { Behavior = () => NotificationSendResult.Fail("smtp down") };
+            var clock = new ManualClock(DateTimeOffset.UtcNow);
+            var dispatcher = Build(factory, source, sink);
+            dispatcher.Clock = clock;
+            await dispatcher.DispatchOnceAsync(CancellationToken.None);
+            source.Observations = () => throw new InvalidOperationException("db timeout");
+
+            for (var pass = 0; pass < 6; pass++)
+            {
+                clock.Advance(TimeSpan.FromHours(1));
+                await dispatcher.DispatchOnceAsync(CancellationToken.None);
+            }
+
+            sink.Sends.Should().ContainSingle("a failed source read never reaches the sink");
+            var attempt = await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync();
+            attempt.Status.Should().Be(NotificationDeliveryStatus.Failed,
+                "a read error counts as a try, so the attempt cannot stay Pending forever");
+            attempt.Attempt.Should().Be(5);
+            attempt.Error.Should().Contain("stub").And.Contain("db timeout");
+        }
+        finally { conn.Dispose(); }
+    }
+
+    [Fact]
+    public async Task RecoverPending_InstanceNoLongerReported_FailsWithReason()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            SeedPolicy(db, SystemAlertConditions.Compare("depth", ">", "500"));
+            var source = new StubSource { Observations = () => [Backlog(600)] };
+            var sink = new RecordingSink { Behavior = () => NotificationSendResult.Fail("smtp down") };
+            var clock = new ManualClock(DateTimeOffset.UtcNow);
+            var dispatcher = Build(factory, source, sink);
+            dispatcher.Clock = clock;
+            await dispatcher.DispatchOnceAsync(CancellationToken.None);
+            source.Observations = () => [];
+
+            clock.Advance(TimeSpan.FromMinutes(1));
+            await dispatcher.DispatchOnceAsync(CancellationToken.None);
+
+            var attempt = await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync();
+            attempt.Status.Should().Be(NotificationDeliveryStatus.Failed);
+            attempt.Attempt.Should().Be(1);
+            attempt.Error.Should().Contain("no longer reports instance 'backlog'");
+        }
+        finally { conn.Dispose(); }
+    }
+
+    private sealed class ManualClock(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset _now = utcNow;
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(TimeSpan by) => _now += by;
+    }
 }

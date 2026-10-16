@@ -188,12 +188,26 @@ public sealed class OidcIdentityMapper(
             await DirectoryMembershipReconciler.ApplyAsync(
                 db, user.Id, issuer!, groups, initialAuthorizationObservedAt,
                 StringComparer.Ordinal, ct);
+            // Same SaveChanges as the user, so the audit row exists exactly when the account does.
+            var jitAudit = (auditStager ?? new AuditStager()).Build(
+                AuditActions.UserOidcJitCreated,
+                new AuditActor(user.Id, user.Username, null),
+                "User",
+                user.Id,
+                AuditDetails.Json(
+                    ("source", "Oidc"),
+                    ("issuer", issuer),
+                    ("subject", subject),
+                    ("role", role.ToString()),
+                    ("groupCount", groups.Count)));
+            db.AuditLog.Add(jitAudit);
 
             try
             {
                 await db.SaveChangesAsync(ct);
                 if (userStateCache is not null)
                     UserSessionInvalidation.InvalidateUserStateCache(userStateCache, user.Id);
+                AuditEventForwarder.ForwardCommitted(logger, jitAudit);
                 return OidcMapResult.Success(user);
             }
             catch (DbUpdateException ex)
@@ -471,11 +485,7 @@ public sealed class OidcIdentityMapper(
             }
         }
         if (committedAudit is not null)
-        {
-            logger.LogInformation(
-                "OIDC authorization reconciliation committed for user {UserId} (audit {AuditId})",
-                committedUserId, committedAudit.Id);
-        }
+            AuditEventForwarder.ForwardCommitted(logger, committedAudit);
         return result;
     }
 

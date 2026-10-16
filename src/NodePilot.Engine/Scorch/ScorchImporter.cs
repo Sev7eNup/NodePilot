@@ -605,12 +605,31 @@ public sealed class ScorchImporter
                     ["disabled"] = false,
                 },
             });
-            warnings.Add(
-                $"'{runbookName}': inserted a waitAll junction before '{fanIn.TargetId}' because fan-in must be explicit.");
+            if (fanIn.Edges.Any(IsConditionalEdge))
+            {
+                var label = target["data"]?["label"] is JsonValue labelValue
+                            && labelValue.TryGetValue<string>(out var text) && !string.IsNullOrWhiteSpace(text)
+                    ? text
+                    : fanIn.TargetId;
+                warnings.Add(
+                    $"'{runbookName}': '{label}' had {fanIn.Edges.Count} conditional incoming links. SCOrch ran it once per link "
+                    + "that fired; the inserted waitAll junction runs it only when every completed input matches, so a handler "
+                    + "fed by several failure links does not run when an earlier step succeeded. Review the junction before enabling.");
+            }
+            else
+            {
+                warnings.Add(
+                    $"'{runbookName}': inserted a waitAll junction before '{fanIn.TargetId}' because fan-in must be explicit.");
+            }
         }
 
         return root.ToJsonString();
     }
+
+    private static bool IsConditionalEdge(JsonObject edge)
+        => (edge["data"]?["condition"] is JsonValue condition
+            && condition.TryGetValue<string>(out var text) && !string.IsNullOrWhiteSpace(text))
+           || edge["data"]?["conditionExpression"] is JsonObject;
 
     /// <summary>
     /// Replaces SCOrch's coordinates with a NodePilot layout.

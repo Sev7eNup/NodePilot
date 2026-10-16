@@ -33,7 +33,8 @@ public class SecretsControllerTests
         NodePilotDbContext db,
         out Mock<ICredentialStore> credMock,
         out Mock<IGlobalVariableStore> globalsMock,
-        WorkflowVersionDefinitionProtector? versionDefinitions = null)
+        WorkflowVersionDefinitionProtector? versionDefinitions = null,
+        NodePilot.Core.Audit.IAuditWriter? audit = null)
     {
         credMock = new Mock<ICredentialStore>();
         credMock.Setup(s => s.ReencryptAllCredentialsAsync(It.IsAny<CancellationToken>()))
@@ -43,7 +44,7 @@ public class SecretsControllerTests
             .ReturnsAsync(globalsResult);
         return new SecretsController(
             credMock.Object, globalsMock.Object, db,
-            versionDefinitions ?? VersionDefinitions(), NoopAuditWriter.Instance,
+            versionDefinitions ?? VersionDefinitions(), audit ?? NoopAuditWriter.Instance,
             new AesGcmSecretProtector(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray()),
             new RuntimeOverridesWriter(Path.Combine(Path.GetTempPath(), "nodepilot-rotation-" + Guid.NewGuid().ToString("N"), "runtime.json"),
                 NullLogger<RuntimeOverridesWriter>.Instance));
@@ -127,6 +128,35 @@ public class SecretsControllerTests
         body.GlobalSecretsRewritten.Should().Be(0);
         body.WorkflowVersionsRewritten.Should().Be(0);
         body.PartialSuccess.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Reencrypt_Audit_IsWrittenWithoutTheRequestToken()
+    {
+        // The rewrites are committed before the audit, so a client disconnect must not drop it.
+        using var db = TestDbFactory.Create();
+        var audit = new TokenRecordingAuditWriter();
+        var ctrl = Build(
+            new ReencryptionSummary(1, 0, Array.Empty<ReencryptionSkip>()),
+            new ReencryptionSummary(0, 0, Array.Empty<ReencryptionSkip>()),
+            db, out _, out _, audit: audit);
+        using var request = new CancellationTokenSource();
+
+        await ctrl.Reencrypt(request.Token);
+
+        audit.Tokens.Should().ContainSingle().Which.CanBeCanceled.Should().BeFalse();
+    }
+
+    private sealed class TokenRecordingAuditWriter : NodePilot.Core.Audit.IAuditWriter
+    {
+        public List<CancellationToken> Tokens { get; } = [];
+
+        public Task LogAsync(string action, string? resourceType = null, Guid? resourceId = null,
+            string? details = null, CancellationToken ct = default)
+        {
+            Tokens.Add(ct);
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]

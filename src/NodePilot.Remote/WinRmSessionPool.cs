@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 
@@ -44,6 +45,7 @@ namespace NodePilot.Remote;
 public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<WinRmSessionPool> _logger;
     private readonly TimeSpan _idleTtl;
     private readonly int _maxIdlePerKey;
     private readonly int _maxConcurrentPerMachine;
@@ -55,9 +57,11 @@ public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
 
     public WinRmSessionPool(
         IServiceScopeFactory scopeFactory,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILogger<WinRmSessionPool> logger)
     {
         _scopeFactory = scopeFactory;
+        _logger = logger;
         // Opt-out (default ON) — pooling is a pure optimization with no semantic change.
         // Deployments that need every step to run on a guaranteed-fresh session (e.g. because a
         // target app expects a new login per runspace) set Remote:Pool:Enabled=false. Note: this
@@ -108,7 +112,7 @@ public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
                         return new PooledWinRmSession(entry.Inner, this, key);
                     }
                     // Stale / dead — discard and keep looking.
-                    await SafeDisposeAsync(entry.Inner);
+                    CloseSession(entry.Inner);
                 }
             }
 
@@ -117,8 +121,8 @@ public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
         }
         catch
         {
-            // Open failed, or disposing a stale session threw — release the slot regardless,
-            // otherwise the quota counter stays permanently off and blocks later callers.
+            // Open failed — release the slot regardless, otherwise the quota counter stays
+            // permanently off and blocks later callers.
             gate.Release();
             throw;
         }
@@ -143,7 +147,7 @@ public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
         {
             if (Volatile.Read(ref _disposed) != 0 || !_enabled || !session.IsAlive)
             {
-                _ = SafeDisposeAsync(session);
+                CloseSession(session);
                 return;
             }
 
@@ -152,7 +156,7 @@ public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
             {
                 // Pool is full for this key — dispose for real instead of keeping it, otherwise
                 // the pool would grow without bound across many machines/credentials.
-                _ = SafeDisposeAsync(session);
+                CloseSession(session);
                 return;
             }
             queue.Enqueue(new PoolEntry(session, DateTime.UtcNow));
@@ -180,17 +184,29 @@ public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
             while (queue.TryPeek(out var head) && head.ReturnedAt < cutoff)
             {
                 if (queue.TryDequeue(out var evicted))
-                    _ = SafeDisposeAsync(evicted.Inner);
+                    CloseSession(evicted.Inner);
                 else
                     break;
             }
         }
     }
 
-    private static ValueTask SafeDisposeAsync(WinRmSession session)
+    /// <summary>
+    /// Closes the runspace synchronously on the calling thread. A failure is logged and not
+    /// rethrown: the callers are a lease return, the sweep timer and shutdown, none of which can
+    /// act on it, and the remote shell then lives until the server's idle timeout.
+    /// </summary>
+    private void CloseSession(WinRmSession session)
     {
-        try { return session.DisposeUnpooledAsync(); }
-        catch { return ValueTask.CompletedTask; }
+        try
+        {
+            session.DisposeUnpooled();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Closing a pooled WinRM session failed; the remote shell stays open until the server's idle timeout.");
+        }
     }
 
     private static PoolKey BuildKey(ManagedMachine machine, Credential? credential)
@@ -222,7 +238,7 @@ public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
         foreach (var (_, queue) in _idle)
         {
             while (queue.TryDequeue(out var entry))
-                await SafeDisposeAsync(entry.Inner);
+                CloseSession(entry.Inner);
         }
         _idle.Clear();
         foreach (var (_, gate) in _machineGates)

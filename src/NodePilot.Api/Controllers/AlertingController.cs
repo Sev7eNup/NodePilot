@@ -238,11 +238,13 @@ public class AlertingController : ControllerBase
         var user = this.GetCurrentUsername();
         var ctx = BuildSampleContext(rule.Name, user);
         var results = await AlertingRuleMapping.DeliverTestFireAsync(_db, _store, _sinks, rule, ctx, ct);
-        await _db.SaveChangesAsync(ct);
+        // The notifications are already out: ledger rows and audit must land even if the
+        // client disconnects now.
+        await _db.SaveChangesAsync(CancellationToken.None);
 
         await _audit.LogAsync(AuditActions.AlertRuleTestFired, "NotificationRule", rule.Id,
             AuditDetails.Json(("name", rule.Name), ("routes", rule.Routes.Count),
-                ("allSucceeded", results.All(r => r.Success))), ct);
+                ("allSucceeded", results.All(r => r.Success))), CancellationToken.None);
 
         return Ok(new TestFireResponse(results.All(r => r.Success), results));
     }

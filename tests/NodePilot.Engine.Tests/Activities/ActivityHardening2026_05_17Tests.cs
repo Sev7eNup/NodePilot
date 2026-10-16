@@ -397,6 +397,34 @@ public sealed class ActivityHardening2026_05_17Tests
     }
 
     [Fact]
+    public async Task C4_PowerManagement_RejectsLocalSelfShutdown_WhenOnlyTheMachineIdIsKnown()
+    {
+        // The guard must judge the same target the step runs on. With no pre-resolved machine the
+        // step still resolves the localhost machine by id and would run through the bypass.
+        using var db = TestDbContext.Create();
+        var machineId = Guid.NewGuid();
+        db.ManagedMachines.Add(new ManagedMachine { Id = machineId, Name = "local", Hostname = "localhost", WinRmPort = 5985, IsReachable = true });
+        db.SaveChanges();
+        // Mocked engines: should the guard ever regress, nothing real runs on this machine.
+        var engine = new Mock<IPowerShellExecutionEngine>();
+        engine.SetupGet(e => e.IsAvailable).Returns(true);
+        engine.Setup(e => e.ExecuteAsync(It.IsAny<PowerShellExecutionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PowerShellExecutionResult { Success = true });
+        var activity = new PowerManagementActivity(
+            new Mock<IRemoteSessionFactory>().Object,
+            new Mock<ICredentialStore>().Object,
+            db,
+            new PowerShellEngineFactory(engine.Object, engine.Object, engine.Object),
+            new ConfigurationBuilder().Build());
+        var ctx = new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "s", TargetMachineId = machineId, Variables = new() };
+
+        Func<Task> act = () => activity.ExecuteAsync(ctx, Cfg("{\"action\":\"shutdown\"}"), CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*local NodePilot host is blocked*");
+        engine.Verify(e => e.ExecuteAsync(It.IsAny<PowerShellExecutionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task C4_PowerManagement_AllowsRemoteShutdownEvenWithoutOptIn()
     {
         // Sanity check: the guard ONLY fires for local-self-shutdown. A remote target

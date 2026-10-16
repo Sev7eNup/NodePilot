@@ -276,7 +276,9 @@ public sealed partial class ScimProvisioningService(
         var identity = await FindIdentityByUserIdAsync(id, ct);
         if (identity is null) return ScimServiceResult<bool>.Ok(true);
         if (identity.User.IsTombstoned) return ScimServiceResult<bool>.Ok(true);
-        if (identity.User.Role == UserRole.Admin
+        // Only an active admin counts toward the last-admin lock; an already deactivated one can
+        // always be deprovisioned.
+        if (identity.User.IsActive && identity.User.Role == UserRole.Admin
             && await db.Users.CountAsync(x => x.IsActive && x.Role == UserRole.Admin, ct) <= 1)
         {
             return ScimServiceResult<bool>.Fail(409, "The last active administrator cannot be deactivated.");
@@ -543,7 +545,7 @@ public sealed partial class ScimProvisioningService(
         if (username != user.Username && await db.Users.AnyAsync(x => x.Username == username && x.Id != user.Id, ct))
             return "userName is already assigned to another identity.";
         var active = request.Active ?? user.IsActive;
-        if (!active && user.Role == UserRole.Admin
+        if (!active && user.IsActive && user.Role == UserRole.Admin
             && await db.Users.CountAsync(x => x.IsActive && x.Role == UserRole.Admin, ct) <= 1)
             return "The last active administrator cannot be deactivated.";
 

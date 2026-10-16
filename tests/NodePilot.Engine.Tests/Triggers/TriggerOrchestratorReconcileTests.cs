@@ -284,6 +284,69 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
         audits[0].Details.Should().Contain("workflow_deleted");
     }
 
+    // ---- SIEM forwarding happens only after the admission transaction commits ----
+
+    private sealed class FailingCommitInterceptor : Microsoft.EntityFrameworkCore.Diagnostics.DbTransactionInterceptor
+    {
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult> TransactionCommittingAsync(
+            System.Data.Common.DbTransaction transaction,
+            Microsoft.EntityFrameworkCore.Diagnostics.TransactionEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult result,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("simulated commit failure");
+    }
+
+    private (TriggerOrchestrator Orchestrator, NodePilot.TestCommons.CapturingLogger<TriggerOrchestrator> Logger, ServiceProvider Services)
+        CreateOrchestratorWithCapturingLogger(bool failCommit)
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<NodePilotDbContext>(opts =>
+        {
+            opts.UseSqlite(_connection);
+            if (failCommit) opts.AddInterceptors(new FailingCommitInterceptor());
+        });
+        services.AddSingleton<IWorkflowExecutionDispatcher, NoopWorkflowExecutionDispatcher>();
+        services.AddSingleton<NodePilot.Core.Audit.IAuditStager, NodePilot.Core.Audit.AuditStager>();
+        services.AddLogging();
+        var provider = services.BuildServiceProvider();
+        var logger = new NodePilot.TestCommons.CapturingLogger<TriggerOrchestrator>();
+        var orchestrator = new TriggerOrchestrator(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            provider,
+            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+            logger,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available,
+            new TriggerHealthRegistry());
+        return (orchestrator, logger, provider);
+    }
+
+    [Fact]
+    public async Task FireAsync_SuppressionAudit_IsNotForwarded_WhenTheCommitFails()
+    {
+        var wf = await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"), enabled: false);
+        var (orchestrator, logger, provider) = CreateOrchestratorWithCapturingLogger(failCommit: true);
+        await using var _ = provider;
+
+        await orchestrator.FireAsync(wf.Id, "scheduleTrigger", new Dictionary<string, string>());
+
+        logger.Messages.Should().NotContain(m => m.StartsWith("AUDIT TRIGGER_FIRE_SUPPRESSED"),
+            "SIEM must never see an audit event whose row was rolled back");
+        (await _db.AuditLog.AnyAsync(a => a.ResourceId == wf.Id)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task FireAsync_SuppressionAudit_IsForwardedOnce_AfterTheCommit()
+    {
+        var wf = await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"), enabled: false);
+        var (orchestrator, logger, provider) = CreateOrchestratorWithCapturingLogger(failCommit: false);
+        await using var _ = provider;
+
+        await orchestrator.FireAsync(wf.Id, "scheduleTrigger", new Dictionary<string, string>());
+
+        logger.Messages.Where(m => m.StartsWith("AUDIT TRIGGER_FIRE_SUPPRESSED")).Should().ContainSingle();
+        (await _db.AuditLog.CountAsync(a => a.ResourceId == wf.Id)).Should().Be(1);
+    }
+
     // ---- health eviction: a source that died after starting must be re-created ----
     //
     // Driven through the SourceFactory seam with a fake, because no real source can be made to

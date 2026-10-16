@@ -53,6 +53,9 @@ Headless (started by the MCP client) → environment first, falling back to the 
 | TLS pin | `NODEPILOT_MCP_TLS_THUMBPRINT` › `NODEPILOT_TLS_THUMBPRINT` › the CLI profile (`tlsThumbprint`) |
 | TLS bypass | `NODEPILOT_MCP_TLS_NO_VERIFY` › `NODEPILOT_TLS_NO_VERIFY` (`1`/`true`) — emergency only, never stored |
 
+Without `NODEPILOT_MCP_TOKEN` the server reads the `np auth login` session on every request, so
+logging in after the MCP server has started takes effect on the next tool call, without a restart.
+
 **TLS:** Successful certificate validation (chain and hostname) is accepted even when a pin
 is also configured. If TLS validation fails, a configured SHA-256 pin decides: a match accepts
 the certificate, including a hostname mismatch; a mismatch rejects it even with the bypass set.

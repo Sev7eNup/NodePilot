@@ -177,34 +177,41 @@ public sealed class AiKnowledgeController : ControllerBase
             }, ct);
         }
 
+        var completed = false;
+        var cancelled = false;
+        string? error = null;
         try
         {
             if (hasFirst) await Write(en.Current);
             while (await en.MoveNextAsync()) await Write(en.Current);
+            completed = true;
         }
         catch (LlmException ex)
         {
             RecordError(ex);
-            await sse.WriteAsync("error", new { code = LlmErrorCodes.For(ex), message = ex.Message }, CancellationToken.None);
-            return new EmptyResult();
+            error = LlmErrorCodes.For(ex);
+            await sse.WriteAsync("error", new { code = error, message = ex.Message }, CancellationToken.None);
         }
         catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
         {
             RecordResult("cancelled");
+            cancelled = true;
+        }
+        finally
+        {
+            // Audit every exit once streaming has started, so tool calls (admin SQL included)
+            // stay logged when the stream fails. The turn already ran, so the write ignores ct.
             await AuditAsync(model, durationMs, toolCalls, history.Count + 1, k, isPrivileged, isAdmin,
-                dbQueryFingerprints, cancelled: true);
-            return new EmptyResult();
+                dbQueryFingerprints, cancelled, error ?? (completed || cancelled ? null : "unexpected_error"));
         }
 
-        RecordSuccess(model, durationMs, promptTokens, completionTokens);
-        await AuditAsync(model, durationMs, toolCalls, history.Count + 1, k, isPrivileged, isAdmin,
-            dbQueryFingerprints, cancelled: false, ct);
+        if (completed) RecordSuccess(model, durationMs, promptTokens, completionTokens);
         return new EmptyResult();
     }
 
     private Task AuditAsync(string model, int durationMs, int toolCalls, int turnCount,
         AiKnowledgeOptions k, bool isPrivileged, bool isAdmin, IReadOnlyList<string> dbQueryFingerprints,
-        bool cancelled, CancellationToken ct = default) =>
+        bool cancelled, string? error) =>
         _audit.LogAsync(AuditActions.AiKnowledgeAsked, "AiKnowledge", null,
             AuditDetails.Json(
                 ("model", model),
@@ -212,6 +219,7 @@ public sealed class AiKnowledgeController : ControllerBase
                 ("toolCalls", toolCalls),
                 ("turnCount", turnCount),
                 ("cancelled", cancelled),
+                ("error", error),
                 ("docs", k.DocsEnabled),
                 ("operational", k.OperationalEnabled),
                 ("sourceCode", k.SourceCodeEnabled && isPrivileged),
@@ -220,7 +228,7 @@ public sealed class AiKnowledgeController : ControllerBase
                 // still let operators correlate repeated/problematic queries without leaking data.
                 ("dbQueryCount", dbQueryFingerprints.Count),
                 ("dbQueryFingerprints", string.Join(",", dbQueryFingerprints))),
-            ct);
+            CancellationToken.None);
 
     private static string? TryFingerprintSqlToolCall(string argumentsJson)
     {

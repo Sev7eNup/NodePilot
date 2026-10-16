@@ -280,17 +280,36 @@ public sealed class BackupControllerTests : IDisposable
         audit.Calls.Single().Details.Should().Contain("Rename");
     }
 
+    [Theory]
+    [InlineData("machines=NotAPolicy")]
+    [InlineData("machine=rename")]
+    [InlineData("nonsense")]
+    [InlineData("machines=1")]
+    [InlineData("=skip")]
+    public async Task Restore_InvalidPolicyOrSectionKey_Returns400WithoutRestoring(string policy)
+    {
+        // Restore is fail-closed: a typo must not silently turn into Skip.
+        var backup = await ExportBytesAsync();
+        var audit = new CapturingAuditWriter();
+
+        var result = await Controller(audit).Restore(
+            FileOf(backup), Passphrase, policy, TestContext.Current.CancellationToken);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+        audit.Calls.Should().BeEmpty();
+    }
+
     [Fact]
-    public async Task Restore_UnparsablePolicyToken_FallsBackToSkip()
+    public async Task Restore_SectionKeyInOtherCase_AndEmptyTokens_AreAccepted()
     {
         var backup = await ExportBytesAsync();
         var audit = new CapturingAuditWriter();
 
         var result = await Controller(audit).Restore(
-            FileOf(backup), Passphrase, policy: "Machines=NotAPolicy,,", TestContext.Current.CancellationToken);
+            FileOf(backup), Passphrase, policy: "Machines=rename,,", TestContext.Current.CancellationToken);
 
         result.Result.Should().BeOfType<OkObjectResult>();
-        audit.Calls.Single().Details.Should().Contain("Skip");
+        audit.Calls.Single().Details.Should().Contain("Rename");
     }
 
     // ---------------------------------------------------------------- helpers

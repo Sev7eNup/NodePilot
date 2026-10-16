@@ -195,6 +195,15 @@ public class ConditionEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_TriggerValueContainingStepTemplate_IsComparedLiterally()
+    {
+        // A trigger input is data: its "{{stepA.output}}" text must not pull in stepA's output.
+        var expr = Expr(@"{""type"":""comparison"",""left"":{""kind"":""literal"",""value"":""{{manual.who}}""},""op"":""=="",""right"":{""kind"":""literal"",""value"":""Hello World""}}");
+        var manual = new Dictionary<string, string>(StringComparer.Ordinal) { ["who"] = "{{stepA.output}}" };
+        ConditionEvaluator.Evaluate(expr, MakeResults(), null, null, manual).Should().BeFalse();
+    }
+
+    [Fact]
     public void Evaluate_StructuredVariableOperand_ResolvesManualSource()
     {
         var expr = Expr(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""source"":""manual"",""name"":""env""},""op"":""=="",""right"":{""kind"":""literal"",""value"":""staging""}}");

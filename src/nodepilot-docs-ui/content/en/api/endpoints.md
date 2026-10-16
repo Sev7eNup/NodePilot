@@ -158,7 +158,7 @@ activation visibly. Envelope type: `nodepilot-workflow-export/v1`. Secrets are r
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/executions` | The list (`?workflowId=&activeOnly=&terminalOnly=&includePayloads=`, 500 cap). `includePayloads` is the only one of these that does not filter but changes the response shape: it defaults to `true`, and `false` returns `returnData` and `inputParametersJson` as `null`. Purely narrowing parameters (`page`, `pageSize`, `status`, `search`) are deliberately left out of this table. |
+| `GET /api/executions` | The list (`?workflowId=&activeOnly=&terminalOnly=&includePayloads=`, 500 cap). `includePayloads` is the only one of these that does not filter but changes the response shape: it defaults to `true`, and `false` returns `returnData` and `inputParametersJson` as `null`. `sortBy` (`started`, `status`, `workflow`, `trigger`, `startedBy`, `steps`, `duration`) and `sortDir` (`asc`/`desc`, default `started`/`desc`) sort on the server across all pages; unknown values return 400. Purely narrowing parameters (`page`, `pageSize`, `status`, `search`) are deliberately left out of this table. |
 | `GET /api/executions/{id}` | A single execution |
 | `GET /api/executions/{id}/steps` | The steps of an execution |
 | `POST /api/executions/{id}/cancel` / `retry` / `resume` | A single run |

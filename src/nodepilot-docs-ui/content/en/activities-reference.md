@@ -84,7 +84,7 @@ and `llmQuery` behavior stay unchanged. Enable AI and an active LLM profile firs
 | **Engine-local** | The NodePilot API process |
 | **Hybrid** | Remote or engine-local depending on the configuration |
 
-Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayMs` and `maxDelayMs`. Permanent remote failures are exempt from it: a denied WinRM logon, a session blocked by the SSL policy and a credential that cannot be decrypted fail the step on the first attempt — repeating them cannot help, and repeated failed logons can lock a domain account out. `config.timeoutSeconds` bounds a single step. The execute request can additionally bound the whole execution.
+Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayMs` and `maxDelayMs`. `maxDelayMs` caps every retry delay; 0 or a missing value means 30000 ms, so a delay is never unbounded. Permanent remote failures are exempt from it: a denied WinRM logon, a session blocked by the SSL policy and a credential that cannot be decrypted fail the step on the first attempt — repeating them cannot help, and repeated failed logons can lock a domain account out. `config.timeoutSeconds` bounds a single step. The execute request can additionally bound the whole execution.
 
 ---
 
@@ -128,7 +128,7 @@ Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayM
 
 **Remote.**
 
-- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` take `binaryPath`/`displayName`/`description`/`startupType`; `delete` stops the service and removes it permanently via `sc.exe delete`). `sc.exe` reports its failures on stdout and leaves the error stream empty, so the exit code of the `sc.exe` calls behind `delete` and behind an `AutomaticDelayedStart` startup type is checked and a non-zero exit fails the step — a refused delete or startup-type change is never reported as success.
+- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` take `binaryPath`/`displayName`/`description`/`startupType`; `delete` stops the service and removes it permanently via `sc.exe delete`). `sc.exe` reports its failures on stdout and leaves the error stream empty, so the exit code of the `sc.exe` calls behind `delete` and behind an `AutomaticDelayedStart` startup type is checked and a non-zero exit fails the step — a refused delete or startup-type change is never reported as success. `serviceName` must follow the Windows service-name rules (at most 256 characters, no `/` or `\`); NodePilot also rejects double quotes and control characters, because the name reaches `sc.exe` as a native argument.
 - **Outputs:** `param.name`, `param.status`, `param.startType`
 
 ## `registryOperation`
@@ -298,7 +298,7 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 **Engine-local.** Calls an OpenAI-compatible endpoint (prompt → text) — chat completions or the Responses API, depending on the path of the base URL. By default it uses the active LLM profile (`Llm:ActiveProfileId` → `Llm:Profiles:<id>`); this can be overridden per node. **It requires `Llm:Enabled=true` and a resolvable active profile** (the central kill switch — which applies even with a node-specific endpoint). It shares the transport and the SSRF guard with the AI assistant (`LlmEndpointGuard` validates every `baseUrl`, and cloud-metadata endpoints are blocked).
 
-- **Config:** `prompt` (required; `{{templates}}` allowed), `systemPrompt` (optional; empty = passthrough), `jsonMode` (bool → `response_format:json_object`; the answer is **not** validated). Per-node overrides (empty → global): `baseUrl` (an absolute http/https URL), `model`, `apiKey` (a secret, auto-redacted), `maxTokens` (>0), `temperature` (0–2, per node only), `timeoutSeconds` (>0).
+- **Config:** `prompt` (required; `{{templates}}` allowed), `systemPrompt` (optional; empty = passthrough), `jsonMode` (bool → `response_format:json_object`; the answer is **not** validated). Per-node overrides (empty → global): `baseUrl` (an absolute http/https URL), `model`, `apiKey` (a secret, auto-redacted), `maxTokens` (>0), `temperature` (0–2, per node only), `timeoutSeconds` (>0). When `baseUrl` points at a different origin (scheme, host, port) than the active profile, the profile's API key is not sent there; only an `apiKey` set on the node is.
 - **Outputs:** `output` (the answer text), `param.model`, `param.promptTokens`, `param.completionTokens`, `param.totalTokens`, `param.finishReason` (the token keys are always set; `""` when the server returns no `usage`).
 
 ## `waitForCondition`

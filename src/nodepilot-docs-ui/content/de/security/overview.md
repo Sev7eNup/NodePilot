@@ -24,7 +24,7 @@ Rollen **Admin / Operator / Viewer**. Siehe [Authentifizierung & Rollen](../api/
 
 ## Output-Redaction
 
-`OutputRedactor` maskiert Secrets. **Immer aktiv.** Custom-Patterns via `Logging:Redaction:Patterns`.
+`OutputRedactor` maskiert Secrets. **Immer aktiv.** Custom-Patterns via `Logging:Redaction:Patterns`; ein Pattern, das kein gültiger regulärer Ausdruck ist, verhindert den Start des Dienstes, statt übersprungen zu werden.
 
 ## Localhost-Bypass
 

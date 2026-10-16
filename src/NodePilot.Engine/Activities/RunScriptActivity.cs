@@ -82,12 +82,9 @@ public class RunScriptActivity : IActivityExecutor
         if (transcriptEnabled)
             script = WrapWithTranscript(script);
 
-        var (machine, credential, targetError) = await ResolveTargetAsync(context, ct);
-        if (targetError is not null)
-            return new ActivityResult { Success = false, ErrorOutput = targetError };
-
-        if (machine is not null && (credential is not null || !BaseRemoteActivity.IsLoopbackHostname(machine.Hostname)))
-            return await ExecuteRemoteAsync(machine, credential, script, timeoutSeconds, successExitCodes, context, ct);
+        var target = await ActivityTargetResolver.ResolveAsync(context, _db, _credentialStore, ct);
+        if (!target.RunsLocally)
+            return await ExecuteRemoteAsync(target.Machine, target.Credential, script, timeoutSeconds, successExitCodes, context, ct);
 
         return await ExecuteLocalAsync(script, engineType, timeoutSeconds, isolated, isolationLimits, successExitCodes, context, ct);
     }
@@ -179,28 +176,6 @@ public class RunScriptActivity : IActivityExecutor
             OutputParameters = finalParams,
             TraceOutput = transcript,
         };
-    }
-
-    private async Task<(ManagedMachine? machine, Credential? credential, string? error)> ResolveTargetAsync(
-        StepExecutionContext context,
-        CancellationToken ct)
-    {
-        var machine = context.ResolvedMachine;
-        if (machine is null && context.TargetMachineId is not null && _db is not null)
-            machine = await _db.ManagedMachines.FindAsync([context.TargetMachineId.Value], ct);
-
-        if (machine is null)
-            return (null, null, null);
-
-        var credentialId = context.CredentialId ?? machine.DefaultCredentialId;
-        if (credentialId is null)
-            return (machine, null, null);
-
-        if (_credentialStore is null)
-            return (machine, null, "Credential store is unavailable for runScript remote execution");
-
-        var credential = await _credentialStore.GetAsync(credentialId.Value, ct);
-        return (machine, credential, null);
     }
 
     /// <summary>

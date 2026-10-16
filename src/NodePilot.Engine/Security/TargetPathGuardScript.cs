@@ -60,7 +60,8 @@ internal static class TargetPathGuardScript
 
                 if ([string]::IsNullOrWhiteSpace($Candidate)) { return }
 
-                if ($Candidate.StartsWith('\\') -or $Candidate.StartsWith('//')) {
+                # Any two leading separators, mixed ones included, make a UNC or device path.
+                if ($Candidate -match '^[\\/]{2}') {
                     throw "File System Operation: $Label '$Candidate' is a UNC or device path on target"
                 }
 
@@ -135,7 +136,7 @@ internal static class TargetPathGuardScript
 
                 $__npMatchedRoot = $null
                 foreach ($__npConfiguredRoot in $__npAllowedRoots) {
-                    if ($__npConfiguredRoot.StartsWith('\\') -or $__npConfiguredRoot.StartsWith('//')) {
+                    if ($__npConfiguredRoot -match '^[\\/]{2}') {
                         throw "File System Operation: configured AllowedRoot '$__npConfiguredRoot' must not be a UNC or device path on target"
                     }
                     try {

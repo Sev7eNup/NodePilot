@@ -1,4 +1,6 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -41,6 +43,86 @@ public class SystemAlertEvaluatorTests
         await reconstruct.Should().ThrowAsync<OperationCanceledException>();
     }
 
+    [Fact]
+    public async Task EvaluateAsync_SourceKeepsFailing_LogsFirstAndEveryTwentiethFailure()
+    {
+        await using var db = TestDbFactory.Create();
+        var logger = new CapturingLogger();
+        var source = new StubSource { Observations = () => throw new InvalidOperationException("sample broke") };
+        var evaluator = new SystemAlertEvaluator(new SystemAlertCatalog([source]), logger);
+        var policy = Policy(filter: DepthOver500);
+
+        for (var pass = 0; pass < 21; pass++)
+            (await Eval(evaluator, db, policy, DateTime.UtcNow)).Should().BeEmpty();
+
+        var warnings = logger.Entries.Where(e => e.Level == LogLevel.Warning).ToList();
+        warnings.Should().HaveCount(2, "the first failure and the 20th in a row are logged");
+        warnings.Should().OnlyContain(w => w.Message.Contains(SourceId) && w.Exception is InvalidOperationException);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_FailingSource_DoesNotStopOtherSources()
+    {
+        await using var db = TestDbFactory.Create();
+        var broken = new StubSource("broken") { Observations = () => throw new InvalidOperationException("sample broke") };
+        var healthy = new StubSource { Observations = () => [Obs(600)] };
+        var evaluator = new SystemAlertEvaluator(new SystemAlertCatalog([broken, healthy]), NullLogger.Instance);
+        var brokenPolicy = Policy(filter: DepthOver500);
+        brokenPolicy.SystemSourceId = "broken";
+
+        var fires = await evaluator.EvaluateAsync(db, [brokenPolicy, Policy(filter: DepthOver500)], DateTime.UtcNow, CancellationToken.None);
+
+        fires.Should().ContainSingle().Which.Context.SourceId.Should().Be(SourceId);
+    }
+
+    [Fact]
+    public async Task Reconstruct_SourceThrows_ReturnsTransientResultWithRealCause()
+    {
+        await using var db = TestDbFactory.Create();
+        var logger = new CapturingLogger();
+        var source = new StubSource { Observations = () => throw new InvalidOperationException("db timeout") };
+        var evaluator = new SystemAlertEvaluator(new SystemAlertCatalog([source]), logger);
+        var policy = Policy();
+        db.NotificationRules.Add(policy);
+        await db.SaveChangesAsync();
+
+        var result = await evaluator.TryReconstructContextAsync(
+            db, $"system:{policy.Id:N}:{SourceId}:x:{DateTime.UtcNow.Ticks}", CancellationToken.None);
+
+        result!.Context.Should().BeNull();
+        result.IsTransient.Should().BeTrue();
+        result.Error.Should().Contain(SourceId).And.Contain("db timeout");
+        logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task Reconstruct_InstanceNoLongerReported_ReturnsGoneWithReason()
+    {
+        await using var db = TestDbFactory.Create();
+        var (evaluator, source) = Build();
+        source.Observations = () => [Obs(600, instanceKey: "other")];
+        var policy = Policy();
+        db.NotificationRules.Add(policy);
+        await db.SaveChangesAsync();
+
+        var result = await evaluator.TryReconstructContextAsync(
+            db, $"system:{policy.Id:N}:{SourceId}:x:{DateTime.UtcNow.Ticks}", CancellationToken.None);
+
+        result!.Context.Should().BeNull();
+        result.IsTransient.Should().BeFalse();
+        result.Error.Should().Contain("no longer reports instance 'x'");
+    }
+
+    [Fact]
+    public async Task Reconstruct_NonSystemEventKey_ReturnsNull()
+    {
+        await using var db = TestDbFactory.Create();
+        var (evaluator, _) = Build();
+
+        (await evaluator.TryReconstructContextAsync(db, $"exec:{Guid.NewGuid():N}:ExecutionFailed", CancellationToken.None))
+            .Should().BeNull();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -70,7 +152,7 @@ public class SystemAlertEvaluatorTests
         var registry = new NodePilot.Scheduler.TriggerHealthRegistry();
         var source = new NodePilot.Scheduler.SystemAlerts.Sources.TriggerUnhealthySource(
             registry, new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider());
-        var evaluator = new SystemAlertEvaluator(new SystemAlertCatalog([source]));
+        var evaluator = new SystemAlertEvaluator(new SystemAlertCatalog([source]), NullLogger.Instance);
         var policy = Policy(filter: SystemAlertConditions.Compare("unhealthySeconds", ">", "60"));
         policy.SystemSourceId = source.SourceId;
         var workflowId = Guid.NewGuid();
@@ -106,7 +188,7 @@ public class SystemAlertEvaluatorTests
         });
         await db.SaveChangesAsync();
         var source = new NodePilot.Scheduler.SystemAlerts.Sources.CancelRateSource();
-        var evaluator = new SystemAlertEvaluator(new SystemAlertCatalog([source]));
+        var evaluator = new SystemAlertEvaluator(new SystemAlertCatalog([source]), NullLogger.Instance);
         var policy = Policy(filter: SystemAlertConditions.Compare("cancels", "==", "1"));
         policy.SystemSourceId = source.SourceId;
         policy.SourceParametersJson = parameters;
@@ -117,9 +199,9 @@ public class SystemAlertEvaluatorTests
         fires[0].Context.SignalValue.Should().Be(1);
     }
 
-    private sealed class StubSource : ISystemAlertSource
+    private sealed class StubSource(string sourceId = SystemAlertEvaluatorTests.SourceId) : ISystemAlertSource
     {
-        public string SourceId => SystemAlertEvaluatorTests.SourceId;
+        public string SourceId => sourceId;
         public bool Available { get; set; } = true;
         public Func<IReadOnlyList<SystemAlertObservation>> Observations { get; set; } = () => [];
         public SystemAlertSourceDescriptor Describe() => new(
@@ -133,7 +215,7 @@ public class SystemAlertEvaluatorTests
     private static (SystemAlertEvaluator ev, StubSource src) Build()
     {
         var src = new StubSource();
-        return (new SystemAlertEvaluator(new SystemAlertCatalog([src])), src);
+        return (new SystemAlertEvaluator(new SystemAlertCatalog([src]), NullLogger.Instance), src);
     }
 
     private static NotificationRule Policy(
@@ -393,7 +475,7 @@ public class SystemAlertEvaluatorTests
     public async Task MissingSource_DoesNotThrow()
     {
         await using var db = TestDbFactory.Create();
-        var ev = new SystemAlertEvaluator(new SystemAlertCatalog([]));
+        var ev = new SystemAlertEvaluator(new SystemAlertCatalog([]), NullLogger.Instance);
         var p = Policy(filter: DepthOver500); // references "stub", which isn't registered
 
         var fires = await ev.EvaluateAsync(db, [p], DateTime.UtcNow, CancellationToken.None);

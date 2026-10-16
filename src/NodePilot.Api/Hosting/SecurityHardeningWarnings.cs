@@ -31,7 +31,8 @@ public static class SecurityHardeningWarnings
             Log.Warning("SECURITY: Trigger:Database:RequireConnectionRef is false. DatabaseTrigger sources can use raw connection " +
                         "strings. Same risk as SqlActivity (plaintext password at rest in Workflows.DefinitionJson).");
 
-        if (!configuration.GetValue<bool>("StartProgram:DisallowShellExecute"))
+        if (!NodePilot.Core.Configuration.HardeningFlags.IsOn(
+                configuration[NodePilot.Core.Configuration.HardeningFlags.DisallowShellExecuteKey]))
             Log.Warning("SECURITY: StartProgram:DisallowShellExecute is false. Workflows can set useShellExecute=true and bypass " +
                         "stdout/stderr capture (audit-trail loss). Consider flipping to true.");
 

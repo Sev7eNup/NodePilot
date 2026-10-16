@@ -152,6 +152,49 @@ public sealed class ServiceManagementActivityTests : IDisposable
         _capturedScript.Should().NotContain("O'Brian Service'");
     }
 
+    // ---- Security: sc.exe native-argument injection defense ----
+
+    [Theory]
+    [InlineData("setStartType", "Agent\" start= auto binPath= \"C:\\evil.exe")]
+    [InlineData("delete", "Agent\" obj= \"LocalSystem")]
+    [InlineData("start", "a/b")]
+    [InlineData("start", "a\\b")]
+    [InlineData("start", "Agent\nStop-Computer")]
+    public async Task ServiceNameOutsideWindowsRules_IsRejectedBeforeAnyScriptRuns(string action, string serviceName)
+    {
+        var config = JsonSerializer.SerializeToElement(new
+        {
+            action, serviceName, startupType = "AutomaticDelayedStart",
+        });
+        _capturedScript = null;
+
+        Func<Task> act = () => CreateActivity().ExecuteAsync(Ctx(), config, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not a valid Windows service name*");
+        _capturedScript.Should().BeNull("nothing may reach the target when the name is rejected");
+    }
+
+    [Fact]
+    public async Task ServiceNameLongerThan256Characters_IsRejected()
+    {
+        var config = JsonSerializer.SerializeToElement(new { action = "status", serviceName = new string('a', 257) });
+
+        Func<Task> act = () => CreateActivity().ExecuteAsync(Ctx(), config, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not a valid Windows service name*");
+    }
+
+    [Fact]
+    public async Task ServiceNameWithSpacesAndDollar_IsAccepted()
+    {
+        // Real service names such as "Bonjour Service" or "MSSQL$SQLEXPRESS" stay valid.
+        var config = JsonSerializer.SerializeToElement(new { action = "delete", serviceName = "MSSQL$SQL EXPRESS" });
+
+        await CreateActivity().ExecuteAsync(Ctx(), config, CancellationToken.None);
+
+        _capturedScript.Should().Contain("sc.exe delete 'MSSQL$SQL EXPRESS'");
+    }
+
     // ---- sc.exe failures must fail the step ----
 
     [Theory]

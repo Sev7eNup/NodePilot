@@ -159,7 +159,7 @@ Workflowdefinition verhindert die Aktivierung weiterhin sichtbar. Envelope-Typ:
 
 | Endpoint | Zweck |
 |---|---|
-| `GET /api/executions` | Liste (`?workflowId=&activeOnly=&terminalOnly=&includePayloads=`, 500-Cap). `includePayloads` ist als einziger dieser Parameter keine Filterung, sondern ändert die Antwortform: default `true`, mit `false` kommen `returnData` und `inputParametersJson` als `null` zurück. Rein verengende Parameter (`page`, `pageSize`, `status`, `search`) stehen bewusst nicht in dieser Tabelle. |
+| `GET /api/executions` | Liste (`?workflowId=&activeOnly=&terminalOnly=&includePayloads=`, 500-Cap). `includePayloads` ist als einziger dieser Parameter keine Filterung, sondern ändert die Antwortform: default `true`, mit `false` kommen `returnData` und `inputParametersJson` als `null` zurück. `sortBy` (`started`, `status`, `workflow`, `trigger`, `startedBy`, `steps`, `duration`) und `sortDir` (`asc`/`desc`, Default `started`/`desc`) sortieren serverseitig über alle Seiten; unbekannte Werte ergeben 400. Rein verengende Parameter (`page`, `pageSize`, `status`, `search`) stehen bewusst nicht in dieser Tabelle. |
 | `GET /api/executions/{id}` | Einzelne Execution |
 | `GET /api/executions/{id}/steps` | Steps einer Execution |
 | `POST /api/executions/{id}/cancel` / `retry` / `resume` | Einzelner Lauf |

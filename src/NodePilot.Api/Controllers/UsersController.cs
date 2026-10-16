@@ -146,32 +146,50 @@ public class UsersController : ControllerBase
         await using var localGate = await AdminAccountMutationGate.EnterLocalAsync(ct);
         var strategy = _db.Database.CreateExecutionStrategy();
         IReadOnlyList<Guid> committedExecutionIds = [];
+        IReadOnlyList<PendingAudit> committedAudits = [];
         var result = await strategy.ExecuteAsync(async () =>
         {
             _db.ChangeTracker.Clear();
             var attemptExecutionIds = new List<Guid>();
+            var attemptAudits = new List<PendingAudit>();
             await using var transaction = await _db.Database.BeginTransactionAsync(
                 IsolationLevel.Serializable, ct);
             await AdminAccountMutationGate.AcquireTransactionLockAsync(_db, ct);
-            var result = await UpdateCore(id, request, attemptExecutionIds, ct);
+            var result = await UpdateCore(id, request, attemptExecutionIds, attemptAudits, ct);
             if (result is NoContentResult)
             {
                 await transaction.CommitAsync(ct);
                 committedExecutionIds = attemptExecutionIds;
+                committedAudits = attemptAudits;
             }
             else
                 await transaction.RollbackAsync(ct);
             return result;
         });
+        await WriteCommittedAuditsAsync(committedAudits);
         await SignalCommittedExecutionCancellationsAsync(
             committedExecutionIds, "admin-authorization-change");
         return result;
+    }
+
+    /// <summary>
+    /// An audit write held back until its transaction has committed, so a rolled-back or
+    /// retried attempt never reaches the audit log or the SIEM forwarder. The mutation is
+    /// already durable when it runs, so it writes with CancellationToken.None.
+    /// </summary>
+    private delegate Task PendingAudit();
+
+    private static async Task WriteCommittedAuditsAsync(IReadOnlyList<PendingAudit> audits)
+    {
+        foreach (var audit in audits)
+            await audit();
     }
 
     private async Task<IActionResult> UpdateCore(
         Guid id,
         UpdateUserRequest request,
         ICollection<Guid> executionIdsToSignal,
+        ICollection<PendingAudit> auditsAfterCommit,
         CancellationToken ct)
     {
         var user = await _db.Users.FindAsync([id], ct);
@@ -292,33 +310,38 @@ public class UsersController : ControllerBase
         // USER_UPDATED) lets SIEM rules alert on password resets and role escalations
         // independently, and lets a compliance review filter for "every role change in Q3"
         // without parsing a details blob.
+        var userId = user.Id;
+        var username = user.Username;
         if (newRole is not null)
         {
-            await _audit.LogAsync(AuditActions.UserRoleChanged, "User", user.Id,
-                AuditDetails.Json(
-                    ("username", user.Username),
-                    ("oldRole", oldRole!.Value.ToString()),
-                    ("newRole", newRole!.Value.ToString())), ct);
+            var details = AuditDetails.Json(
+                ("username", username),
+                ("oldRole", oldRole!.Value.ToString()),
+                ("newRole", newRole!.Value.ToString()));
+            auditsAfterCommit.Add(() => _audit.LogAsync(AuditActions.UserRoleChanged, "User", userId,
+                details, CancellationToken.None));
         }
         if (newActive is not null)
         {
-            await _audit.LogAsync(
+            var details = AuditDetails.Json(("username", username));
+            auditsAfterCommit.Add(() => _audit.LogAsync(
                 newActive.Value ? AuditActions.UserActivated : AuditActions.UserDeactivated,
-                "User", user.Id,
-                AuditDetails.Json(("username", user.Username)), ct);
+                "User", userId, details, CancellationToken.None));
         }
         if (passwordReset)
         {
-            await _audit.LogAsync(AuditActions.UserPasswordReset, "User", user.Id,
-                AuditDetails.Json(("username", user.Username)), ct);
+            var details = AuditDetails.Json(("username", username));
+            auditsAfterCommit.Add(() => _audit.LogAsync(AuditActions.UserPasswordReset, "User", userId,
+                details, CancellationToken.None));
         }
         if (oldBreakGlass is not null)
         {
-            await _audit.LogAsync(AuditActions.UserBreakGlassChanged, "User", user.Id,
-                AuditDetails.Json(
-                    ("username", user.Username),
-                    ("oldValue", oldBreakGlass.Value),
-                    ("newValue", user.IsBreakGlass)), ct);
+            var details = AuditDetails.Json(
+                ("username", username),
+                ("oldValue", oldBreakGlass.Value),
+                ("newValue", user.IsBreakGlass));
+            auditsAfterCommit.Add(() => _audit.LogAsync(AuditActions.UserBreakGlassChanged, "User", userId,
+                details, CancellationToken.None));
         }
 
         return NoContent();
@@ -330,23 +353,27 @@ public class UsersController : ControllerBase
         await using var localGate = await AdminAccountMutationGate.EnterLocalAsync(ct);
         var strategy = _db.Database.CreateExecutionStrategy();
         IReadOnlyList<Guid> committedExecutionIds = [];
+        IReadOnlyList<PendingAudit> committedAudits = [];
         var result = await strategy.ExecuteAsync(async () =>
         {
             _db.ChangeTracker.Clear();
             var attemptExecutionIds = new List<Guid>();
+            var attemptAudits = new List<PendingAudit>();
             await using var transaction = await _db.Database.BeginTransactionAsync(
                 IsolationLevel.Serializable, ct);
             await AdminAccountMutationGate.AcquireTransactionLockAsync(_db, ct);
-            var result = await DeleteCore(id, attemptExecutionIds, ct);
+            var result = await DeleteCore(id, attemptExecutionIds, attemptAudits, ct);
             if (result is NoContentResult)
             {
                 await transaction.CommitAsync(ct);
                 committedExecutionIds = attemptExecutionIds;
+                committedAudits = attemptAudits;
             }
             else
                 await transaction.RollbackAsync(ct);
             return result;
         });
+        await WriteCommittedAuditsAsync(committedAudits);
         await SignalCommittedExecutionCancellationsAsync(
             committedExecutionIds, "admin-user-deleted");
         return result;
@@ -355,6 +382,7 @@ public class UsersController : ControllerBase
     private async Task<IActionResult> DeleteCore(
         Guid id,
         ICollection<Guid> executionIdsToSignal,
+        ICollection<PendingAudit> auditsAfterCommit,
         CancellationToken ct)
     {
         var user = await _db.Users.FindAsync([id], ct);
@@ -406,8 +434,9 @@ public class UsersController : ControllerBase
         await _db.SaveChangesAsync(ct);
         UserSessionInvalidation.InvalidateUserStateCache(_userStateCache, id);
 
-        await _audit.LogAsync(AuditActions.UserDeleted, "User", id,
-            AuditDetails.Json(("username", snapshotUsername), ("role", snapshotRole)), ct);
+        var details = AuditDetails.Json(("username", snapshotUsername), ("role", snapshotRole));
+        auditsAfterCommit.Add(() => _audit.LogAsync(AuditActions.UserDeleted, "User", id,
+            details, CancellationToken.None));
 
         return NoContent();
     }
@@ -466,10 +495,12 @@ public class UsersController : ControllerBase
         await using var localGate = await AdminAccountMutationGate.EnterLocalAsync(ct);
         var strategy = _db.Database.CreateExecutionStrategy();
         IReadOnlyList<Guid> committedExecutionIds = [];
+        PendingAudit? committedAudit = null;
         var result = await strategy.ExecuteAsync(async () =>
         {
             _db.ChangeTracker.Clear();
             committedExecutionIds = [];
+            committedAudit = null;
             await using var transaction = await _db.Database.BeginTransactionAsync(
                 IsolationLevel.Serializable, ct);
             await AdminAccountMutationGate.AcquireTransactionLockAsync(_db, ct);
@@ -503,18 +534,22 @@ public class UsersController : ControllerBase
                 id, "admin-external-reactivation-revalidation", ct);
 
             await _db.SaveChangesAsync(ct);
-            await _audit.LogAsync(AuditActions.UserActivated, "User", id,
-                AuditDetails.Json(
-                    ("username", user.Username),
-                    ("reactivatedFromTombstone", true),
-                    ("externalRevalidationRequired", true)), ct);
+            var details = AuditDetails.Json(
+                ("username", user.Username),
+                ("reactivatedFromTombstone", true),
+                ("externalRevalidationRequired", true));
+            PendingAudit audit = () => _audit.LogAsync(AuditActions.UserActivated, "User", id,
+                details, CancellationToken.None);
             await transaction.CommitAsync(ct);
             committedExecutionIds = executionIds;
+            committedAudit = audit;
             return NoContent();
         });
 
         if (result is NoContentResult)
             UserSessionInvalidation.InvalidateUserStateCache(_userStateCache, id);
+        if (committedAudit is not null)
+            await WriteCommittedAuditsAsync([committedAudit]);
         await SignalCommittedExecutionCancellationsAsync(
             committedExecutionIds, "admin-external-reactivation-revalidation");
         return result;

@@ -16,7 +16,9 @@ NodePilot integriert einen LLM für drei No-Code-Helfer:
    Lint-Panel) gehen als Datenblock mit jeder Frage mit (`diagnostics`, serverseitig auf
    100 einzeilige Meldungen zu Nodes/Edges des gesendeten Workflows begrenzt, nicht im
    Verfeinern-Modus); Vorschläge werden per Node-ID aufs Original zurückgemergt
-   (Layout/Secrets/Felder bleiben erhalten). Die Proposal-Karte zeigt ein strukturiertes
+   (Layout/Secrets/Felder bleiben erhalten). Änderungen an Decision-Cases oder Condition-Gruppen
+   mit maskierten Literalen werden nicht übernommen; ein Hinweis im Vorschlag nennt die Stelle
+   zum manuellen Anpassen. Die Proposal-Karte zeigt ein strukturiertes
    Changelog, selektives Übernehmen, Verfeinern und Rückgängig/Tidy. Chat-UX: benannte
    Threads je Workflow, reload-persistenter Verlauf, Markdown-Export und AI-Aktivitäts-
    Ansicht (`GET /api/ai/chat/activity/{workflowId}`, Admin/Op, Folder-RBAC). Panel und
@@ -370,7 +372,8 @@ beim Startup eine Hardening-Warnung in den Logs aus.
 - **Rate-Limit**: 20 Anfragen/Min pro IP — schützt gegen Cost-Runaway bei Cloud-Modellen
   und gegen versehentliche Spam-Loops im UI.
 - **SSRF-Block**: Beim Startup wird die `BaseUrl` **jedes** Profils gegen Cloud-Metadata-IPs
-  (`169.254.169.254`, `metadata.google.internal`, `metadata.azure.com`) geprüft — nicht nur die des
+  (`169.254.0.0/16`, `fe80::/10`, `fd00:ec2::254`, `fd20:ce::254`, auch IPv4-mapped, sowie
+  `metadata.google.internal`, `metadata.azure.com`) geprüft — nicht nur die des
   aktiven. Grund: Profilwechsel ist ein Settings-Save ohne Neustart, ein „geparktes" Profil mit
   Metadata-URL wäre sonst eine Waffe, die erst beim Umschalten zündet. Treffer → Service startet
   nicht, und derselbe Check lehnt schon den Save mit 400 ab.

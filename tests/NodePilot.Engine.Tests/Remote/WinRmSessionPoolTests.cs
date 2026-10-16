@@ -76,7 +76,8 @@ public class WinRmSessionPoolTests
         }
     }
 
-    private static (WinRmSessionPool pool, StubFactory factory) BuildPool(IConfiguration? config = null)
+    private static (WinRmSessionPool pool, StubFactory factory) BuildPool(
+        IConfiguration? config = null, Microsoft.Extensions.Logging.ILogger<WinRmSessionPool>? logger = null)
     {
         var factory = new StubFactory();
         var services = new ServiceCollection();
@@ -84,7 +85,8 @@ public class WinRmSessionPoolTests
         var sp = services.BuildServiceProvider();
         var pool = new WinRmSessionPool(
             sp.GetRequiredService<IServiceScopeFactory>(),
-            config ?? new ConfigurationBuilder().AddInMemoryCollection().Build());
+            config ?? new ConfigurationBuilder().AddInMemoryCollection().Build(),
+            logger ?? NullLogger<WinRmSessionPool>.Instance);
         return (pool, factory);
     }
 
@@ -171,7 +173,8 @@ public class WinRmSessionPoolTests
         {
             ["Remote:Pool:MaxConcurrentPerMachine"] = "1",
         }).Build();
-        await using var pool = new WinRmSessionPool(sp.GetRequiredService<IServiceScopeFactory>(), config);
+        await using var pool = new WinRmSessionPool(
+            sp.GetRequiredService<IServiceScopeFactory>(), config, NullLogger<WinRmSessionPool>.Instance);
 
         var machine = Machine();
 
@@ -336,7 +339,7 @@ public class WinRmSessionPoolTests
         var machine = Machine();
         var key = KeyFor(machine);
         var dead = LiveSession(machine.Hostname!);
-        await dead.DisposeUnpooledAsync();
+        dead.DisposeUnpooled();
         dead.IsAlive.Should().BeFalse();
 
         pool.Return(key, dead); // not-alive short-circuit: dispose it, don't enqueue it, don't throw
@@ -345,6 +348,28 @@ public class WinRmSessionPoolTests
         var next = await pool.CreateSessionAsync(machine, null, CancellationToken.None);
         factory.CreateCount.Should().Be(1);
         await next.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Return_CloseFails_IsLoggedInsteadOfSwallowed()
+    {
+        // The close runs synchronously inside Return; a failure must surface in the log, since
+        // the remote shell then stays open until the server's idle timeout.
+        var logger = new NodePilot.TestCommons.CapturingLogger<WinRmSessionPool>();
+        var (pool, _) = BuildPool(logger: logger);
+        var machine = Machine();
+        var broken = LiveSession(machine.Hostname!);
+        var runspace = (Runspace)typeof(WinRmSession)
+            .GetField("_runspace", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(broken)!;
+        typeof(WinRmSession).GetField("_runspace", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(broken, null); // makes the close throw
+        await pool.DisposeAsync(); // a disposed pool closes every returned session
+
+        pool.Return(KeyFor(machine), broken);
+
+        logger.Entries.Should().ContainSingle(e =>
+            e.Level == Microsoft.Extensions.Logging.LogLevel.Warning && e.Exception != null);
+        runspace.Dispose();
     }
 
     [Fact]

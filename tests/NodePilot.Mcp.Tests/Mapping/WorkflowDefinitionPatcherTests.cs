@@ -223,6 +223,37 @@ public sealed class WorkflowDefinitionPatcherTests
         ((JsonArray)result.Definition["nodes"]!).Should().HaveCount(2);
     }
 
+    [Theory]
+    [InlineData("\"agent-secret\"")]
+    [InlineData("4242")]
+    [InlineData("{\"token\":\"agent\"}")]
+    public void MergeFull_NonStringSecretChangedByAgent_KeepsOriginalWithNote(string proposedValue)
+    {
+        var original = E("""
+        {"nodes":[{"id":"n1","data":{"config":{"password":{"user":"svc","pin":1234}}}}],"edges":[]}
+        """);
+        var proposed = E("{\"nodes\":[{\"id\":\"n1\",\"data\":{\"config\":{\"password\":" + proposedValue + "}}}],\"edges\":[]}");
+
+        var result = WorkflowDefinitionPatcher.MergeFull(original, proposed);
+        var cfg = result.Definition["nodes"]!.AsArray()[0]!["data"]!["config"]!;
+
+        cfg["password"]!.ToJsonString().Should().Be("""{"user":"svc","pin":1234}""");
+        result.Notes.Should().Contain(n => n.Contains("Secret 'password' not changed"));
+    }
+
+    [Fact]
+    public void MergeFull_NonStringSecretInventedByAgent_IsMaskedWithNote()
+    {
+        var original = E("""{"nodes":[{"id":"n1","data":{"config":{}}}],"edges":[]}""");
+        var proposed = E("""{"nodes":[{"id":"n1","data":{"config":{"password":4242}}}],"edges":[]}""");
+
+        var result = WorkflowDefinitionPatcher.MergeFull(original, proposed);
+        var cfg = result.Definition["nodes"]!.AsArray()[0]!["data"]!["config"]!;
+
+        cfg["password"]!.GetValue<string>().Should().Be("***");
+        result.Notes.Should().Contain(n => n.Contains("Secret 'password' must be set manually"));
+    }
+
     [Fact]
     public void MergeFull_ContentMaskedHeadersString_RestoredByUniversalMaskRule()
     {

@@ -479,4 +479,48 @@ public class WorkflowDefinitionStructuralValidatorTests
         result.IsValid.Should().BeTrue();
         result.Error.Should().BeNull();
     }
+
+    // ---------- junction config ----------
+
+    private static string JunctionDefinition(string config) => $$"""
+        { "nodes": [ { "id": "j1", "type": "activity", "data": { "activityType": "junction", "config": {{config}} } } ] }
+        """;
+
+    [Theory]
+    [InlineData("""{ "mode": "waitAll" }""")]
+    [InlineData("""{ "mode": "waitAny" }""")]
+    [InlineData("""{ "mode": "waitNofM", "requiredCount": 2 }""")]
+    [InlineData("""{ "mode": "waitNofM", "requiredCount": 5 }""")]
+    [InlineData("""{}""")]
+    public void Validate_JunctionWithKnownModeOrDraftCount_IsValid(string config)
+    {
+        Validate(JunctionDefinition(config)).IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("""{ "mode": "waitany" }""")]
+    [InlineData("""{ "mode": "firstWins" }""")]
+    [InlineData("""{ "mode": 1 }""")]
+    public void Validate_JunctionWithUnknownMode_IsInvalidWithJunctionCode(string config)
+    {
+        var result = Validate(JunctionDefinition(config));
+
+        result.IsValid.Should().BeFalse();
+        result.Code.Should().Be("invalid-junction-config");
+        result.NodeId.Should().Be("j1");
+        result.Error.Should().Contain("data.config.mode");
+    }
+
+    [Theory]
+    [InlineData("""{ "mode": "waitNofM", "requiredCount": 0 }""")]
+    [InlineData("""{ "mode": "waitNofM", "requiredCount": "2" }""")]
+    [InlineData("""{ "mode": "waitNofM", "requiredCount": 1.5 }""")]
+    public void Validate_JunctionWithInvalidRequiredCount_IsInvalidWithJunctionCode(string config)
+    {
+        var result = Validate(JunctionDefinition(config));
+
+        result.IsValid.Should().BeFalse();
+        result.Code.Should().Be("invalid-junction-config");
+        result.Error.Should().Contain("data.config.requiredCount");
+    }
 }

@@ -113,6 +113,27 @@ public sealed class WaitForConditionActivityTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_OnlyMachineIdKnown_PollsTheRegisteredRemoteMachine()
+    {
+        // Same resolution as every other remote activity: a target given only by id is looked up,
+        // not silently replaced by a local run on the NodePilot host.
+        _session
+            .Setup(s => s.ExecuteScriptAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new RemoteExecutionResult { Success = true, Output = "###NODEPILOT_COND:True###" });
+        var context = new StepExecutionContext
+        {
+            WorkflowExecutionId = Guid.NewGuid(), StepId = "wait-step", TargetMachineId = _machine.Id,
+        };
+
+        var result = await CreateActivity().ExecuteAsync(context,
+            ParseConfig("{\"script\":\"$true\",\"intervalSeconds\":1,\"timeoutSeconds\":10}"), CancellationToken.None);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        _sessionFactory.Verify(f => f.CreateSessionAsync(
+            It.Is<ManagedMachine>(m => m.Id == _machine.Id), It.IsAny<Credential?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_FirstPollReturnsTrue_SucceedsAfterOneAttempt()
     {
         _session

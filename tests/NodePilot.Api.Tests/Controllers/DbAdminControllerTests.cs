@@ -25,9 +25,10 @@ public class DbAdminControllerTests
     private static (DbAdminController controller, NodePilotDbContext db) NewController(
         Guid? callerId = null, UserRole callerRole = UserRole.Admin,
         DbAdminOptions? options = null,
-        string? confirmWriteHeader = null)
+        string? confirmWriteHeader = null,
+        NodePilotDbContext? existingDb = null)
     {
-        var db = TestDbFactory.Create();
+        var db = existingDb ?? TestDbFactory.Create();
         // DbAdminMetadataService takes an IServiceScopeFactory and resolves the DbContext
         // once while building the schema map. We build a minimal ServiceProvider that just
         // hands back this same db — that keeps the reflection-based walk over the EF model
@@ -797,6 +798,44 @@ public class DbAdminControllerTests
         resp.Rows.Should().HaveCount(2);
         resp.Truncated.Should().BeFalse();
         resp.RowsAffected.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteQuery_ResultAudit_IsSavedWithoutTheRequestToken()
+    {
+        // The statement has already run when its result is audited, so a client disconnect must
+        // not drop that audit row.
+        var (connection, schema) = TestDbFactory.CreateWithConnection();
+        await using var _ = connection;
+        await schema.DisposeAsync();
+        var recorder = new AuditSaveTokenRecorder(AuditActions.DbAdminSqlExecuted);
+        await using var db = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection).AddInterceptors(recorder).Options);
+        var (ctrl, _) = NewController(existingDb: db);
+        using var request = new CancellationTokenSource();
+
+        var result = await ctrl.ExecuteQuery(new DbAdminQueryRequest("SELECT 1 AS one", null), request.Token);
+
+        result.Should().BeOfType<OkObjectResult>();
+        recorder.SaveTokens.Should().ContainSingle()
+            .Which.CanBeCanceled.Should().BeFalse("the result audit is saved with CancellationToken.None");
+    }
+
+    private sealed class AuditSaveTokenRecorder(string action)
+        : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public List<CancellationToken> SaveTokens { get; } = [];
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<AuditLogEntry>()
+                .Any(e => e.State == EntityState.Added && e.Entity.Action == action))
+                SaveTokens.Add(cancellationToken);
+            return ValueTask.FromResult(result);
+        }
     }
 
     // ── Secret-column containment (mirrors SqlKnowledgeReader; keeps the MCP run_readonly_sql

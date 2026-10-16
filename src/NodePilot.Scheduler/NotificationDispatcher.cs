@@ -16,7 +16,7 @@ namespace NodePilot.Scheduler;
 
 /// <summary>
 /// Leader-gated alerting dispatcher. Each pass: (1) re-sends any Pending delivery attempts left
-/// over from a crashed pass, then (2) runs the execution-family <see
+/// over from a crashed pass or due for a backoff retry, then (2) runs the execution-family <see
 /// cref="INotificationCollector"/>s
 /// (terminal executions since the persisted watermark, long-running, queued-long) for CUSTOM rules,
 /// AND the <see cref="NodePilot.Scheduler.SystemAlerts.SystemAlertEvaluator"/> for SYSTEM policies
@@ -42,6 +42,16 @@ public class NotificationDispatcher : BackgroundService
 {
     private const int RecoverBatchSize = 100;
     private const int MaxAttempts = 5;
+
+    // Wait after try n before try n+1, measured from the last try (SentAt). One entry per retry,
+    // so MaxAttempts - 1 entries; the last try lands roughly 42 minutes after the first.
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromMinutes(2),
+        TimeSpan.FromMinutes(10),
+        TimeSpan.FromMinutes(30),
+    ];
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IClusterStateProvider _cluster;
@@ -80,6 +90,9 @@ public class NotificationDispatcher : BackgroundService
         set => _queuedLongCollector.Threshold = value;
     }
 
+    // Test seam for the retry backoff. Production never assigns it.
+    internal TimeProvider Clock { get; set; } = TimeProvider.System;
+
     private readonly IDatabaseAvailability _availability;
 
     public NotificationDispatcher(
@@ -93,7 +106,7 @@ public class NotificationDispatcher : BackgroundService
     {
         _scopeFactory = scopeFactory;
         _cluster = cluster;
-        _systemEvaluator = new SystemAlertEvaluator(systemAlertCatalog);
+        _systemEvaluator = new SystemAlertEvaluator(systemAlertCatalog, logger);
         // Last-registered-wins per channel (so a deployment can override a sink).
         var map = new Dictionary<NotificationChannel, INotificationSink>();
         foreach (var s in sinks) map[s.Channel] = s;
@@ -167,7 +180,7 @@ public class NotificationDispatcher : BackgroundService
         var rules = await store.GetEnabledAsync(ct);
         foreach (var collector in _collectors)
         {
-            var now = DateTime.UtcNow;
+            var now = UtcNow();
             var collection = await collector.CollectAsync(db, rules, now, ct);
             if (collection is null) continue;
 
@@ -197,7 +210,7 @@ public class NotificationDispatcher : BackgroundService
         var systemPolicies = rules.Where(r => r.Kind == NotificationRuleKind.System).ToList();
         await _systemEvaluator.PruneOrphanedStateAsync(db, systemPolicies.Select(p => p.Id).ToList(), ct);
 
-        var now = DateTime.UtcNow;
+        var now = UtcNow();
         var fires = await _systemEvaluator.EvaluateAsync(db, systemPolicies, now, ct);
 
         var toSend = new List<(NotificationDeliveryAttempt attempt, NotificationRoute route, NotificationContext ctx)>();
@@ -305,23 +318,35 @@ public class NotificationDispatcher : BackgroundService
         return sent;
     }
 
-    // Re-send Pending attempts orphaned by a crash between persist and send. Context is re-derived
-    // by the collector that owns the attempt's EventKey shape; if the source row is gone
-    // (retention), the attempt is failed out so it doesn't loop forever.
+    // Re-send Pending attempts: those orphaned by a crash between persist and send, and failed
+    // tries whose backoff has elapsed. Context is re-derived by the collector that owns the
+    // attempt's EventKey shape; if the source is gone the attempt is failed out with the reason.
     private async Task<int> RecoverPendingAsync(
         NodePilotDbContext db,
         INotificationRuleStore store,
         long leaseEpoch,
         CancellationToken ct)
     {
+        var now = UtcNow();
+        // A never-tried attempt (crash before send) is due at once; a failed one only after the
+        // delay for its try count has passed since the last try. Cutoffs are parameters, so the
+        // predicate translates on every provider.
+        var due1 = now - RetryDelays[0];
+        var due2 = now - RetryDelays[1];
+        var due3 = now - RetryDelays[2];
+        var due4 = now - RetryDelays[3];
         var pending = await db.NotificationDeliveryAttempts
             .Where(a => a.Status == NotificationDeliveryStatus.Pending && !a.IsTest && a.Attempt < MaxAttempts)
+            .Where(a => a.Attempt == 0
+                || (a.Attempt == 1 && (a.SentAt ?? a.CreatedAt) <= due1)
+                || (a.Attempt == 2 && (a.SentAt ?? a.CreatedAt) <= due2)
+                || (a.Attempt == 3 && (a.SentAt ?? a.CreatedAt) <= due3)
+                || (a.Attempt == 4 && (a.SentAt ?? a.CreatedAt) <= due4))
             .OrderBy(a => a.CreatedAt)
             .Take(RecoverBatchSize)
             .ToListAsync(ct);
         if (pending.Count == 0) return 0;
 
-        var now = DateTime.UtcNow;
         var routeIds = pending.Select(a => a.NotificationRouteId).Distinct().ToList();
         var routes = await db.NotificationRoutes.AsNoTracking().Include(r => r.Rule)
             .Where(r => routeIds.Contains(r.Id))
@@ -343,11 +368,24 @@ public class NotificationDispatcher : BackgroundService
                 attempt.Error = "notification rule was disabled before retry";
                 continue;
             }
-            var ctx = await ReconstructContextAsync(db, attempt.EventKey, ct);
-            if (ctx is null)
+            var reconstruction = await ReconstructContextAsync(db, attempt.EventKey, ct);
+            if (reconstruction.Context is not { } ctx)
             {
-                attempt.Status = NotificationDeliveryStatus.Failed;
-                attempt.Error = "source execution no longer available";
+                attempt.Error = reconstruction.Error;
+                if (reconstruction.IsTransient)
+                {
+                    // A failed source read counts as a try, so it backs off and ends after
+                    // MaxAttempts instead of staying Pending forever.
+                    attempt.Attempt++;
+                    attempt.SentAt = now;
+                    attempt.Status = attempt.Attempt >= MaxAttempts
+                        ? NotificationDeliveryStatus.Failed
+                        : NotificationDeliveryStatus.Pending;
+                }
+                else
+                {
+                    attempt.Status = NotificationDeliveryStatus.Failed;
+                }
                 continue;
             }
             await SendOneAsync(db, store, attempt, route, ctx, now, leaseEpoch, ct);
@@ -357,16 +395,17 @@ public class NotificationDispatcher : BackgroundService
         return sent;
     }
 
-    private async Task<NotificationContext?> ReconstructContextAsync(NodePilotDbContext db, string eventKey, CancellationToken ct)
+    private async Task<ContextReconstruction> ReconstructContextAsync(NodePilotDbContext db, string eventKey, CancellationToken ct)
     {
         // EventKey prefixes are disjoint per collector; first non-null answer wins.
         foreach (var collector in _collectors)
         {
             if (await collector.TryReconstructContextAsync(db, eventKey, ct) is { } ctx)
-                return ctx;
+                return ContextReconstruction.Found(ctx);
         }
         // System-alert episodes use the disjoint "system:" prefix.
-        return await _systemEvaluator.TryReconstructContextAsync(db, eventKey, ct);
+        return await _systemEvaluator.TryReconstructContextAsync(db, eventKey, ct)
+               ?? ContextReconstruction.Gone("source execution no longer available");
     }
 
     private async Task SendOneAsync(
@@ -421,12 +460,8 @@ public class NotificationDispatcher : BackgroundService
         }
 
         attempt.Error = result.Error;
-        // Keep the attempt re-queueable (Pending) on failure until MaxAttempts so a transient sink
-        // /
-        // endpoint outage is retried by RecoverPendingAsync on later passes; only then give up
-        // (Failed).
-        // This makes the bounded-retry machinery live and honours at-least-once for sink-reported
-        // failures, not only for crashes between persist and send.
+        // Keep the attempt Pending on failure until MaxAttempts so RecoverPendingAsync retries a
+        // transient sink or endpoint outage after the RetryDelays backoff; only then give up.
         attempt.Status = result.Success
             ? NotificationDeliveryStatus.Sent
             : attempt.Attempt >= MaxAttempts ? NotificationDeliveryStatus.Failed : NotificationDeliveryStatus.Pending;
@@ -435,6 +470,8 @@ public class NotificationDispatcher : BackgroundService
 
     private bool StillOwnsLease(long leaseEpoch)
         => _cluster.IsLeader && _cluster.LeaseEpoch == leaseEpoch;
+
+    private DateTime UtcNow() => Clock.GetUtcNow().UtcDateTime;
 
     private async Task<NotificationSuppressionState> GetSuppressionAsync(
         NodePilotDbContext db, Dictionary<(Guid, string), NotificationSuppressionState> cache,

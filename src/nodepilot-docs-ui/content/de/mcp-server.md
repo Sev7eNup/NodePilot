@@ -54,6 +54,9 @@ Headless (vom MCP-Client gestartet) → env-first, mit Fallback auf die CLI-Conf
 | TLS-Pin | `NODEPILOT_MCP_TLS_THUMBPRINT` › `NODEPILOT_TLS_THUMBPRINT` › CLI-Profil (`tlsThumbprint`) |
 | TLS-Bypass | `NODEPILOT_MCP_TLS_NO_VERIFY` › `NODEPILOT_TLS_NO_VERIFY` (`1`/`true`) — Notnagel, nie gespeichert |
 
+Ohne `NODEPILOT_MCP_TOKEN` liest der Server die Session aus `np auth login` bei jeder Anfrage neu.
+Ein Login nach dem Start des MCP-Servers wirkt deshalb ab dem nächsten Tool-Aufruf, ohne Neustart.
+
 **TLS:** Eine fehlerfreie Zertifikatsprüfung (Kette und Hostname) wird akzeptiert, auch wenn
 zusätzlich ein Pin konfiguriert ist. Bei einem TLS-Prüffehler entscheidet ein gesetzter
 SHA-256-Pin: passt er, wird das Zertifikat akzeptiert — ausdrücklich auch bei einem

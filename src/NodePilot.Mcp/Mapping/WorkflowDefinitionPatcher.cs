@@ -158,6 +158,23 @@ public static class WorkflowDefinitionPatcher
             var targetVal = target[key];
             var sourceChild = source?[key];
 
+            // Universal redaction round-trip: a proposed "***" means "unchanged / was redacted" for
+            // ANY key, so the original is restored whatever its JSON kind. Covers inline secrets
+            // masked by CONTENT (a restApi headers string, body, or script) whose config key is not
+            // itself in SecretConfigKeys.
+            if (IsMask(targetVal))
+            {
+                if (sourceChild is not null && !IsMask(sourceChild))
+                    target[key] = sourceChild.DeepClone();
+                continue;
+            }
+
+            if (WorkflowSecretKeys.SecretConfigKeys.Contains(key))
+            {
+                ReconcileNamedSecret(target, key, targetVal, sourceChild, notes);
+                continue;
+            }
+
             if (targetVal is JsonObject targetObj)
             {
                 MergeObject(targetObj, sourceChild as JsonObject, notes);
@@ -165,44 +182,37 @@ public static class WorkflowDefinitionPatcher
             }
 
             if (targetVal is JsonArray targetArray)
-            {
                 MergeNestedArray(targetArray, sourceChild as JsonArray, notes);
-                continue;
-            }
-
-            var original = sourceChild is JsonValue sv && sv.TryGetValue(out string? o) && !string.IsNullOrEmpty(o) && o != SecretMask ? o : null;
-
-            // Universal redaction round-trip: a proposed "***" means "unchanged / was redacted" for
-            // ANY key — restore the original. Covers inline secrets masked by CONTENT (a restApi
-            // headers string, body, or script) whose config key is not itself in SecretConfigKeys.
-            var proposedIsMask = targetVal is JsonValue mv && mv.TryGetValue(out string? mm) && mm == SecretMask;
-            if (proposedIsMask)
-            {
-                var originalIsMask = sourceChild is JsonValue originalValue
-                    && originalValue.TryGetValue(out string? originalString)
-                    && originalString == SecretMask;
-                if (sourceChild is not null && !originalIsMask)
-                    target[key] = sourceChild.DeepClone();
-                continue;
-            }
-
-            if (!WorkflowSecretKeys.SecretConfigKeys.Contains(key)) continue;
-
-            var proposed = targetVal is JsonValue tv && tv.TryGetValue(out string? p) && !string.IsNullOrEmpty(p) ? p : null;
-
-            if (original is not null)
-            {
-                target[key] = JsonValue.Create(original);
-                if (proposed is not null && proposed != original)
-                    notes.Add($"Secret '{key}' not changed — kept the original value (set secrets manually on the node).");
-            }
-            else if (proposed is not null)
-            {
-                target[key] = JsonValue.Create(SecretMask);
-                notes.Add($"Secret '{key}' must be set manually — the agent may not assign secret values.");
-            }
         }
     }
+
+    // Named secrets keep the existing real value of any JSON kind; a new or differing value from
+    // the agent is rejected and noted.
+    private static void ReconcileNamedSecret(
+        JsonObject target, string key, JsonNode? proposed, JsonNode? original, List<string> notes)
+    {
+        var originalReal = HasValue(original) && !IsMask(original) ? original : null;
+        var proposedReal = HasValue(proposed) ? proposed : null;
+
+        if (originalReal is not null)
+        {
+            target[key] = originalReal.DeepClone();
+            if (proposedReal is not null && !JsonNode.DeepEquals(proposedReal, originalReal))
+                notes.Add($"Secret '{key}' not changed — kept the original value (set secrets manually on the node).");
+        }
+        else if (proposedReal is not null)
+        {
+            target[key] = JsonValue.Create(SecretMask);
+            notes.Add($"Secret '{key}' must be set manually — the agent may not assign secret values.");
+        }
+    }
+
+    // Null and the empty string count as "no secret set".
+    private static bool HasValue(JsonNode? node)
+        => node is not null && !(node is JsonValue value && value.TryGetValue(out string? text) && string.IsNullOrEmpty(text));
+
+    private static bool IsMask(JsonNode? node)
+        => node is JsonValue value && value.TryGetValue(out string? text) && text == SecretMask;
 
     // Nested condition/case arrays have no stable item identity. If a redacted array still
     // contains a mask, retain the whole original array so a reorder cannot attach a secret to the

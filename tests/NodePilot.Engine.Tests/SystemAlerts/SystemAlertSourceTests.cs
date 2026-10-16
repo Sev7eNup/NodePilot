@@ -239,6 +239,20 @@ public class SystemAlertSourceTests
     }
 
     [Fact]
+    public async Task AlertDeliveryFailureSource_RetriedAttemptFailedRecently_CountsByLastTry()
+    {
+        // Backoff retries turn a delivery Failed long after its row was created.
+        await using var db = TestDbFactory.Create();
+        db.NotificationDeliveryAttempts.Add(new NotificationDeliveryAttempt { Id = Guid.NewGuid(), NotificationRuleId = Guid.NewGuid(), NotificationRouteId = Guid.NewGuid(), EventKey = "retried", DedupKey = "k", Status = NotificationDeliveryStatus.Failed, Attempt = 5, CreatedAt = DateTime.UtcNow.AddMinutes(-45), SentAt = DateTime.UtcNow.AddMinutes(-1) });
+        db.NotificationDeliveryAttempts.Add(new NotificationDeliveryAttempt { Id = Guid.NewGuid(), NotificationRuleId = Guid.NewGuid(), NotificationRouteId = Guid.NewGuid(), EventKey = "stale", DedupKey = "k", Status = NotificationDeliveryStatus.Failed, Attempt = 5, CreatedAt = DateTime.UtcNow.AddHours(-3), SentAt = DateTime.UtcNow.AddHours(-2) });
+        await db.SaveChangesAsync();
+
+        var obs = await new AlertDeliveryFailureSource().ObserveAsync(db, SystemAlertQuery.Empty, CancellationToken.None);
+
+        obs.Should().ContainSingle().Which.Fields["failures"].Should().Be(1);
+    }
+
+    [Fact]
     public async Task ScheduleMissedSource_NoScheduledWorkflows_IsUnavailableAndEmpty()
     {
         await using var db = TestDbFactory.Create();

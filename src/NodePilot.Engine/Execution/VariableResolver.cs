@@ -36,6 +36,58 @@ internal static class VariableResolver
     internal static readonly Regex ManualPattern = new(@"\{\{manual\.([A-Za-z0-9_\-]+)\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
     internal static readonly Regex StepPattern = new(@"\{\{([\w-]+)\.(output|error|success|param\.([\w-]+))\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
+    // The three patterns above as one alternation, in their precedence order.
+    private static readonly Regex AnyTemplatePattern = new(
+        @"\{\{(?:globals\.(?<global>[A-Za-z0-9_\-]+)|manual\.(?<manual>[A-Za-z0-9_\-]+)|(?<step>[\w-]+)\.(?<tail>output|error|success|param\.(?<param>[\w-]+)))\}\}",
+        RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// Replaces every template in a single pass, so a substituted value is never scanned again:
+    /// a trigger input that contains <c>{{step.output}}</c> stays literal instead of pulling in
+    /// step data. Each resolver returns null to leave its template verbatim.
+    /// <paramref name="resolveStep"/> receives the step name, the tail and the param name.
+    /// </summary>
+    internal static string ReplaceTemplatesOnce(
+        string text,
+        Func<string, string?> resolveGlobal,
+        Func<string, string?> resolveManual,
+        Func<string, string, string?, string?> resolveStep)
+        => AnyTemplatePattern.Replace(text, match =>
+        {
+            if (match.Groups["global"].Success && resolveGlobal(match.Groups["global"].Value) is { } global)
+                return global;
+            if (match.Groups["manual"].Success && resolveManual(match.Groups["manual"].Value) is { } manual)
+                return manual;
+
+            if (match.Groups["step"].Success)
+            {
+                var param = match.Groups["param"].Success ? match.Groups["param"].Value : null;
+                return resolveStep(match.Groups["step"].Value, match.Groups["tail"].Value, param) ?? match.Value;
+            }
+
+            // An unknown {{globals.output}} or {{manual.output}} is also a reference to a step
+            // named "globals" or "manual", which is how the step pattern reads it.
+            var stepMatch = StepPattern.Match(match.Value);
+            if (!stepMatch.Success || stepMatch.Length != match.Length) return match.Value;
+            var stepParam = stepMatch.Groups[3].Success ? stepMatch.Groups[3].Value : null;
+            return resolveStep(stepMatch.Groups[1].Value, stepMatch.Groups[2].Value, stepParam) ?? match.Value;
+        });
+
+    /// <summary>Reads a step result value for a template tail; null when the tail cannot resolve.</summary>
+    private static string? ReadStepValue(ActivityResult result, string tail, string? param)
+    {
+        if (param is not null)
+            return result.OutputParameters.TryGetValue(param, out var paramValue) ? paramValue : null;
+
+        return tail.ToLowerInvariant() switch
+        {
+            "output" => result.Output ?? "",
+            "error" => result.ErrorOutput ?? "",
+            "success" => result.Success ? "true" : "false",
+            _ => null,
+        };
+    }
+
     /// <summary>
     /// Output-parameter short-names that are never aliased into the variables dict
     /// unqualified. Prevents an upstream output from shadowing auth-bearing templates.
@@ -250,66 +302,16 @@ internal static class VariableResolver
 
         var variableMap = BuildVariableMap(results, outputVariableToStepId);
 
-        // First pass: {{globals.NAME}} — admin-managed shared constants. Runs before the
-        // step-output pass so a global can be referenced in a literal that downstream
-        // expansion consumes without a name-collision risk.
-        if (globalVariables is not null && globalVariables.Count > 0)
-        {
-            configJson = GlobalsPattern.Replace(configJson, match =>
-            {
-                var name = match.Groups[1].Value;
-                if (!globalVariables.TryGetValue(name, out var val)) return match.Value;
-                // JSON-string-escape: the placeholder lives inside a JSON string literal.
-                return JsonEscape(val);
-            });
-        }
-
-        // {{manual.NAME}} — the run's trigger inputs. Same shape as the globals pass: a flat
-        // name lookup, JSON-escaped for the string context it sits in. An unknown name is left
-        // verbatim so the unresolved-template check can fail the step with a real diagnostic
-        // instead of the value silently rendering as its own placeholder.
-        if (manualParameters is not null && manualParameters.Count > 0)
-        {
-            configJson = ManualPattern.Replace(configJson, match =>
-            {
-                var name = match.Groups[1].Value;
-                if (!manualParameters.TryGetValue(name, out var val)) return match.Value;
-                return JsonEscape(val);
-            });
-        }
-
-        // Replace {{name.output}}, {{name.error}}, and {{name.param.paramName}} patterns.
-        // [\w-]+ supports step IDs with hyphens like "step-1776111023799".
-        var resolved = StepPattern.Replace(configJson, match =>
-        {
-            var varName = match.Groups[1].Value;
-            var property = match.Groups[2].Value;
-
-            if (!variableMap.TryGetValue(varName, out var result))
-                return match.Value; // Leave unresolved
-
-            // Handle {{varName.param.paramName}} — access individual output parameters
-            if (property.StartsWith("param.") && match.Groups[3].Success)
-            {
-                var paramName = match.Groups[3].Value;
-                if (result.OutputParameters.TryGetValue(paramName, out var paramValue))
-                {
-                    return JsonEscape(paramValue);
-                }
-                return match.Value; // Leave unresolved if param not found
-            }
-
-            var value = property.ToLowerInvariant() switch
-            {
-                "output" => result.Output ?? "",
-                "error" => result.ErrorOutput ?? "",
-                "success" => result.Success ? "true" : "false",
-                _ => match.Value
-            };
-
-            // Escape for JSON string context (the placeholder is inside a JSON string value)
-            return JsonEscape(value);
-        });
+        // Every value is JSON-escaped because the placeholder sits inside a JSON string literal.
+        // Unknown names stay verbatim so the unresolved-template check can report them.
+        var resolved = ReplaceTemplatesOnce(configJson,
+            name => globalVariables is not null && globalVariables.TryGetValue(name, out var global)
+                ? JsonEscape(global) : null,
+            name => manualParameters is not null && manualParameters.TryGetValue(name, out var manual)
+                ? JsonEscape(manual) : null,
+            (step, tail, param) => variableMap.TryGetValue(step, out var result)
+                && ReadStepValue(result, tail, param) is { } value
+                    ? JsonEscape(value) : null);
 
         // Dispose the JsonDocument so its pooled buffers return to the ArrayPool. Returning
         // RootElement directly would leak the buffer; Clone() detaches the element from the
@@ -360,45 +362,14 @@ internal static class VariableResolver
         if (string.IsNullOrWhiteSpace(raw) || !raw.Contains("{{"))
             return raw;
 
-        // First pass: globals. Plain substitution — no JSON escaping because this path
-        // feeds simple fields (target machine id, credential id).
-        if (globalVariables is not null && globalVariables.Count > 0)
-        {
-            raw = GlobalsPattern.Replace(raw, m =>
-                globalVariables.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
-        }
-
-        if (manualParameters is not null && manualParameters.Count > 0)
-        {
-            raw = ManualPattern.Replace(raw!, m =>
-                manualParameters.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
-        }
-
         var variableMap = BuildVariableMap(results, outputVariableToStepId);
 
-        return StepPattern.Replace(raw!, match =>
-        {
-            var varName = match.Groups[1].Value;
-            var property = match.Groups[2].Value;
-
-            if (!variableMap.TryGetValue(varName, out var result))
-                return match.Value;
-
-            if (property.StartsWith("param.") && match.Groups[3].Success)
-            {
-                // No Trim: keeps the value byte-identical to ResolveVariables' JSON-config
-                // pass, so the same template resolves the same way in restApi.url (string-path)
-                // and restApi.body (JSON-path).
-                return result.OutputParameters.TryGetValue(match.Groups[3].Value, out var pv) ? pv : match.Value;
-            }
-
-            return property.ToLowerInvariant() switch
-            {
-                "output" => result.Output ?? "",
-                "error" => result.ErrorOutput ?? "",
-                "success" => result.Success ? "true" : "false",
-                _ => match.Value
-            };
-        });
+        // Plain substitution, no JSON escaping: this path feeds simple fields (target machine
+        // id, credential id). Values are not trimmed, so a template resolves byte-identically
+        // here and in the JSON-config path.
+        return ReplaceTemplatesOnce(raw,
+            name => globalVariables is not null && globalVariables.TryGetValue(name, out var global) ? global : null,
+            name => manualParameters is not null && manualParameters.TryGetValue(name, out var manual) ? manual : null,
+            (step, tail, param) => variableMap.TryGetValue(step, out var result) ? ReadStepValue(result, tail, param) : null);
     }
 }

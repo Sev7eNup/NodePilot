@@ -60,12 +60,13 @@ public class ExecutionsControllerTests
         NodePilotDbContext db,
         IWorkflowEngine engine,
         ExecutionDispatchSignal? dispatchSignal = null,
-        IAuditWriter? audit = null)
+        IAuditWriter? audit = null,
+        IResourceAuthorizationService? authz = null)
     {
         var controller = new ExecutionsController(
             db, engine, CreateDispatchService(db, engine, dispatchSignal), new OutputRedactor(null),
             audit ?? NoopAuditWriter.Instance,
-            new AlwaysAllowAuthorizationService(),
+            authz ?? new AlwaysAllowAuthorizationService(),
             NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll);
         var principal = new System.Security.Claims.ClaimsPrincipal(
             new System.Security.Claims.ClaimsIdentity(
@@ -195,6 +196,84 @@ public class ExecutionsControllerTests
             .BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject;
         extremePage.Items.Should().BeEmpty("large page numbers must not overflow Skip into a negative value");
         extremePage.Total.Should().Be(205);
+    }
+
+    private static async Task<(NodePilotDbContext Db, ExecutionsController Controller, Guid Short, Guid Medium, Guid Long)>
+        SeedDurationsAsync()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Sorted", DefinitionJson = "{}", IsEnabled = true };
+        db.Workflows.Add(workflow);
+        var now = DateTime.UtcNow;
+        WorkflowExecution Run(int startedMinutesAgo, int durationSeconds) => new()
+        {
+            Id = Guid.NewGuid(),
+            WorkflowId = workflow.Id,
+            Status = ExecutionStatus.Succeeded,
+            StartedAt = now.AddMinutes(-startedMinutesAgo),
+            CompletedAt = now.AddMinutes(-startedMinutesAgo).AddSeconds(durationSeconds),
+        };
+        // The newest run is neither the shortest nor the longest, so page 1 of the default
+        // order cannot accidentally satisfy a duration sort.
+        var medium = Run(1, 30);
+        var shortRun = Run(2, 5);
+        var longRun = Run(3, 120);
+        db.WorkflowExecutions.AddRange(medium, shortRun, longRun);
+        await db.SaveChangesAsync();
+        return (db, NewController(db, Mock.Of<IWorkflowEngine>()), shortRun.Id, medium.Id, longRun.Id);
+    }
+
+    private static PagedResponse<ExecutionResponse> Page(ActionResult<PagedResponse<ExecutionResponse>> result)
+        => result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject;
+
+    [Fact]
+    public async Task GetAll_SortByDuration_OrdersAcrossAllPages()
+    {
+        var (db, controller, shortId, _, longId) = await SeedDurationsAsync();
+        await using var ownedDb = db;
+
+        var ascending = Page(await controller.GetAll(null, ct: CancellationToken.None, page: 1, pageSize: 1,
+            sortBy: "duration", sortDir: "asc"));
+        var descending = Page(await controller.GetAll(null, ct: CancellationToken.None, page: 1, pageSize: 1,
+            sortBy: "duration", sortDir: "desc"));
+
+        ascending.Items.Single().Id.Should().Be(shortId, "the shortest run overall comes first, not the shortest on page 1");
+        descending.Items.Single().Id.Should().Be(longId);
+        ascending.Total.Should().Be(3);
+    }
+
+    [Theory]
+    [InlineData("started")]
+    [InlineData("status")]
+    [InlineData("workflow")]
+    [InlineData("trigger")]
+    [InlineData("startedBy")]
+    [InlineData("steps")]
+    [InlineData("duration")]
+    public async Task GetAll_EveryAllowedSort_TranslatesAndReturnsAllRows(string sortBy)
+    {
+        var (db, controller, _, _, _) = await SeedDurationsAsync();
+        await using var ownedDb = db;
+
+        foreach (var direction in new[] { "asc", "desc" })
+        {
+            var page = Page(await controller.GetAll(null, ct: CancellationToken.None, sortBy: sortBy, sortDir: direction));
+            page.Items.Should().HaveCount(3);
+        }
+    }
+
+    [Theory]
+    [InlineData("name", "asc")]
+    [InlineData("started", "up")]
+    public async Task GetAll_UnknownSortValue_ReturnsBadRequest(string sortBy, string sortDir)
+    {
+        var (db, controller, _, _, _) = await SeedDurationsAsync();
+        await using var ownedDb = db;
+
+        var result = await controller.GetAll(null, ct: CancellationToken.None, sortBy: sortBy, sortDir: sortDir);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     // The page is chosen on the sort keys alone and its rows are loaded afterwards, so the order
@@ -508,6 +587,91 @@ public class ExecutionsControllerTests
         result.Result.Should().BeOfType<BadRequestObjectResult>();
         queue.EnqueueCount.Should().Be(0);
         (await db.WorkflowExecutions.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Retry_RunningExecutionInInaccessibleFolder_Returns404BeforeStatusCheck()
+    {
+        // The RBAC gate runs before the status check, so a caller without folder access gets
+        // the same masked 404 for a running execution as for a terminal one.
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        var running = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Running,
+            StartedAt = DateTime.UtcNow,
+        };
+        db.AddRange(workflow, running);
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db, Mock.Of<IWorkflowEngine>(),
+                authz: new RestrictedAuthorizationService(AccessibleFolderSet.None))
+            .Retry(running.Id, CancellationToken.None);
+
+        result.Result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task Cancel_RequestAbortedAfterEngineCall_StillCancelsZombieAndItsSteps()
+    {
+        // Lifecycle writes use CancellationToken.None: a client disconnect between the
+        // execution UPDATE and the step sweep must not leave the steps Running.
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        var zombie = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Running, TriggeredBy = "manual",
+        };
+        var step = new StepExecution
+        {
+            Id = Guid.NewGuid(), WorkflowExecutionId = zombie.Id, StepId = "s1", StepType = "runScript",
+            Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow,
+        };
+        db.AddRange(workflow, zombie, step);
+        await db.SaveChangesAsync();
+
+        using var requestAborted = new CancellationTokenSource();
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(e => e.CancelAsync(zombie.Id, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback(() => requestAborted.Cancel())
+            .ReturnsAsync(false);
+
+        var result = await NewController(db, engine.Object).Cancel(zombie.Id, requestAborted.Token);
+
+        result.Should().BeOfType<NoContentResult>();
+        db.ChangeTracker.Clear();
+        (await db.WorkflowExecutions.SingleAsync(e => e.Id == zombie.Id)).Status.Should().Be(ExecutionStatus.Cancelled);
+        (await db.StepExecutions.SingleAsync(s => s.Id == step.Id)).Status.Should().Be(ExecutionStatus.Cancelled);
+    }
+
+    [Fact]
+    public async Task CancelAllForWorkflow_RequestAbortedDuringLoop_StillCancelsEveryZombie()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        var first = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Running, TriggeredBy = "manual",
+        };
+        var second = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Pending, TriggeredBy = "manual",
+        };
+        db.AddRange(workflow, first, second);
+        await db.SaveChangesAsync();
+
+        using var requestAborted = new CancellationTokenSource();
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(e => e.CancelAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback(() => requestAborted.Cancel())
+            .ReturnsAsync(false);
+
+        var result = await NewController(db, engine.Object).CancelAllForWorkflow(workflow.Id, requestAborted.Token);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        db.ChangeTracker.Clear();
+        (await db.WorkflowExecutions.Where(e => e.WorkflowId == workflow.Id).Select(e => e.Status).ToListAsync())
+            .Should().AllBeEquivalentTo(ExecutionStatus.Cancelled);
     }
 
     [Fact]

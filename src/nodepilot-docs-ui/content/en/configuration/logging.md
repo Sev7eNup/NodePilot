@@ -28,7 +28,7 @@ Which file helps with which failure mode is covered under [Logs & diagnostics](.
 
 ## Output redaction
 
-`OutputRedactor` masks secrets. **Always active.** Custom patterns via `Logging:Redaction:Patterns`.
+`OutputRedactor` masks secrets. **Always active.** Custom patterns via `Logging:Redaction:Patterns`; a pattern that is not a valid regular expression stops the service at startup instead of being skipped.
 
 ## Support log & SupportEvents
 

@@ -68,6 +68,8 @@ public class ServiceManagementActivity : BaseRemoteActivity
         if (!KnownActions.Contains(action))
             throw new InvalidOperationException($"Unknown service action: {action}");
 
+        ValidateServiceName(serviceName);
+
         // Always route through PowerShellQuoter — serviceName may originate from an upstream
         // step's output (via {{step.param.X}} resolution), i.e. data from another machine that
         // is not trusted to be apostrophe-free.
@@ -84,6 +86,23 @@ public class ServiceManagementActivity : BaseRemoteActivity
             "setstarttype" => BuildSetStartTypeScript(config, q),
             _ => throw new InvalidOperationException($"Unknown service action: {action}")
         };
+    }
+
+    /// <summary>
+    /// Applies the Windows service-name rules (at most 256 characters, no slash or backslash) and
+    /// also rejects double quotes and control characters. The name reaches sc.exe as a native
+    /// argument, and Windows PowerShell 5.1 does not escape embedded double quotes there, so a
+    /// quote in the name could inject further sc.exe arguments.
+    /// </summary>
+    private static void ValidateServiceName(string serviceName)
+    {
+        if (serviceName.Length > 256
+            || serviceName.Any(c => c is '/' or '\\' or '"' || char.IsControl(c)))
+        {
+            throw new InvalidOperationException(
+                "Service Management: 'serviceName' is not a valid Windows service name " +
+                "(at most 256 characters; no '/', '\\', '\"' or control characters).");
+        }
     }
 
     private static string BuildCreateScript(JsonElement config, string qServiceName)

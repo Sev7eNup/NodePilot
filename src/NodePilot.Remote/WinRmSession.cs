@@ -37,7 +37,13 @@ public class WinRmSession : IRemoteSession
     /// disposal goes through <see cref="PooledWinRmSession"/>, which returns the session
     /// to the pool instead of closing it.
     /// </summary>
-    internal ValueTask DisposeUnpooledAsync() => DisposeAsync();
+    internal void DisposeUnpooled()
+    {
+        if (_runspace.RunspaceStateInfo.State == RunspaceState.Opened)
+            _runspace.Close();
+        _runspace.Dispose();
+        RemoteMetrics.SessionsActive.Add(-1);
+    }
 
     // Error text cannot prove that an invocation had no side effects. Retry belongs to the
     // caller's explicit policy, including when PowerShell reports a module-loading failure.
@@ -181,12 +187,10 @@ public class WinRmSession : IRemoteSession
         }
     }
 
+    // Closing a runspace is synchronous; the ValueTask only satisfies IAsyncDisposable.
     public ValueTask DisposeAsync()
     {
-        if (_runspace.RunspaceStateInfo.State == RunspaceState.Opened)
-            _runspace.Close();
-        _runspace.Dispose();
-        RemoteMetrics.SessionsActive.Add(-1);
+        DisposeUnpooled();
         return ValueTask.CompletedTask;
     }
 }

@@ -166,12 +166,6 @@ public static class ConditionEvaluator
     private static string? GetString(JsonElement obj, string property)
         => obj.TryGetProperty(property, out var el) && el.ValueKind == JsonValueKind.String ? el.GetString() : null;
 
-    // Step-output and globals templates reuse VariableResolver's compiled patterns — this
-    // evaluator already depends on Engine.Execution (see EvaluateEdge below), so keeping a
-    // second copy of the same two patterns only risked them drifting apart. `manual.` has no
-    // counterpart there and runs as its own pre-pass; like globals it carries no step-shaped tail.
-    private static readonly Regex ManualTemplateRegex = new(@"\{\{manual\.([A-Za-z0-9_\-]+)\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
-
     /// <summary>
     /// Resolves an operand to its string value. <c>Resolved</c> is false when a variable operand
     /// has no value in this run; literals always resolve.
@@ -350,45 +344,29 @@ public static class ConditionEvaluator
     {
         if (string.IsNullOrEmpty(raw) || !raw.Contains("{{")) return raw;
 
-        // First pass: {{globals.X}} — admin-managed shared constants. Runs BEFORE the
-        // step-pattern pass so a global referenced from a literal operand can't be
-        // mis-classified as an unresolved step (and silently return "").
-        if (ctx.GlobalVariables is not null && ctx.GlobalVariables.Count > 0)
-        {
-            raw = VariableResolver.GlobalsPattern.Replace(raw, m =>
-                ctx.GlobalVariables.TryGetValue(m.Groups[1].Value, out var gv) ? gv : m.Value);
-        }
-
-        // Second pass: {{manual.X}} — input parameters from the triggering call (manualTrigger
-        // params, webhook payload keys, external-trigger inputs).
-        if (ctx.InputParameters is not null && ctx.InputParameters.Count > 0)
-        {
-            raw = ManualTemplateRegex.Replace(raw, m =>
-                ctx.InputParameters.TryGetValue(m.Groups[1].Value, out var mv) ? mv : m.Value);
-        }
-
-        // The substitution body stays local: it resolves against ctx.Results with that dict's
-        // own comparer (ordinal for the engine's result map), whereas VariableResolver merges
-        // results + aliases into an OrdinalIgnoreCase map. Routing through it would change how
-        // differently-cased step ids resolve in conditions.
-        return VariableResolver.StepPattern.Replace(raw, m =>
-        {
-            var name = m.Groups[1].Value;
-            if (!ctx.Results.ContainsKey(name) && ctx.OutputVariableToStepId is not null
-                && ctx.OutputVariableToStepId.TryGetValue(name, out var mapped))
-                name = mapped;
-            if (!ctx.Results.TryGetValue(name, out var result)) return m.Value;
-            var prop = m.Groups[2].Value;
-            if (prop.StartsWith("param.") && m.Groups[3].Success)
-                return result.OutputParameters.TryGetValue(m.Groups[3].Value, out var p) ? p : m.Value;
-            return prop switch
+        // Single pass over globals, trigger inputs and step results, so a trigger input that
+        // contains a step template stays literal. The step lookup stays local: it resolves
+        // against ctx.Results with that dict's own comparer (ordinal for the engine's result
+        // map), whereas VariableResolver merges results + aliases into an OrdinalIgnoreCase map.
+        return VariableResolver.ReplaceTemplatesOnce(raw,
+            name => ctx.GlobalVariables is not null && ctx.GlobalVariables.TryGetValue(name, out var gv) ? gv : null,
+            name => ctx.InputParameters is not null && ctx.InputParameters.TryGetValue(name, out var mv) ? mv : null,
+            (step, tail, param) =>
             {
-                "output" => result.Output ?? "",
-                "error" => result.ErrorOutput ?? "",
-                "success" => result.Success ? "true" : "false",
-                _ => m.Value,
-            };
-        });
+                if (!ctx.Results.ContainsKey(step) && ctx.OutputVariableToStepId is not null
+                    && ctx.OutputVariableToStepId.TryGetValue(step, out var mapped))
+                    step = mapped;
+                if (!ctx.Results.TryGetValue(step, out var result)) return null;
+                if (param is not null)
+                    return result.OutputParameters.TryGetValue(param, out var p) ? p : null;
+                return tail switch
+                {
+                    "output" => result.Output ?? "",
+                    "error" => result.ErrorOutput ?? "",
+                    "success" => result.Success ? "true" : "false",
+                    _ => null,
+                };
+            });
     }
 
     private static bool IsTruthy(string v)

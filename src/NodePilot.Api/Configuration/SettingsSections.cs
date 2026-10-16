@@ -203,10 +203,11 @@ public static class SettingsSectionAdapters
 
             new DelegateSettingsSectionAdapter<StartProgramSettingsDto>(
                 Descriptor("StartProgram"),
-                ["StartProgram:DisallowShellExecute"],
+                [NodePilot.Core.Configuration.HardeningFlags.DisallowShellExecuteKey],
                 () => new StartProgramSettingsDto
                 {
-                    DisallowShellExecute = BoolDefaultTrue(configRoot["StartProgram:DisallowShellExecute"]),
+                    DisallowShellExecute = NodePilot.Core.Configuration.HardeningFlags.IsOn(
+                        configRoot[NodePilot.Core.Configuration.HardeningFlags.DisallowShellExecuteKey]),
                 },
                 BuildStartProgramDtoFromJson,
                 (dto, _) => new JsonObject { ["DisallowShellExecute"] = dto.DisallowShellExecute }),
@@ -1190,7 +1191,7 @@ public static class SettingsSectionAdapters
         section ??= new JsonObject();
         return new StartProgramSettingsDto
         {
-            DisallowShellExecute = section["DisallowShellExecute"]?.GetValue<bool>() ?? true,
+            DisallowShellExecute = NodePilot.Core.Configuration.HardeningFlags.IsOn(section["DisallowShellExecute"]?.ToString()),
         };
     }
 

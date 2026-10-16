@@ -672,24 +672,9 @@ public class WorkflowsController : WorkflowsControllerBase
         {
             return await EnableLockedResultAsync(workflow, ct);
         }
-        if (NodePilot.Api.Security.WebhookHmacSecurity.ValidateDefinition(workflow.DefinitionJson) is { } hmacError)
-        {
-            return BadRequest(new
-            {
-                code = "weak_webhook_hmac_secret",
-                message = hmacError,
-            });
-        }
-        // Enable is the last author-facing gate before the orchestrator registers the trigger, and
-        // a cron Quartz rejects would otherwise fail there silently and retry forever.
-        if (NodePilot.Api.Security.ScheduleCronValidation.ValidateDefinition(workflow.DefinitionJson) is { } cronError)
-        {
-            return BadRequest(new
-            {
-                code = "invalid_cron_expression",
-                message = cronError,
-            });
-        }
+        // Same activation checks as publish, applied to the stored definition.
+        if (NodePilot.Api.Security.WorkflowActivationValidation.Validate(workflow.DefinitionJson) is { } activationError)
+            return BadRequest(new { code = activationError.Code, message = activationError.Message });
         return await SetEnabled(workflow, true, requireUnlocked: true, ct);
     }
 
@@ -763,8 +748,6 @@ public class WorkflowsController : WorkflowsControllerBase
 
     private async Task<IActionResult> SetEnabled(Workflow workflow, bool enabled, bool requireUnlocked, CancellationToken ct)
     {
-        if (enabled && NodePilot.Core.WorkflowDefinitions.WorkflowResourceReferences.UnresolvedError(workflow.DefinitionJson) is { } dependencyError)
-            return BadRequest(new { code = "unresolved_workflow_dependency", message = dependencyError });
         if (workflow.IsEnabled == enabled)
             return NoContent(); // already in desired state; don't audit a no-op
 

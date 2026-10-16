@@ -69,7 +69,7 @@ public static class LlmEndpointGuard
         {
             throw new LlmException(LlmErrorKind.Unreachable,
                 $"SECURITY: LLM baseUrl ('{trimmed}') points at a cloud-metadata endpoint and is blocked "
-                + "(169.254.0.0/16, metadata.google.internal, metadata.azure.com).");
+                + "(169.254.0.0/16, fe80::/10, fd00:ec2::254, fd20:ce::254, metadata.google.internal, metadata.azure.com).");
         }
 
         // Local model servers such as Ollama commonly expose HTTP on loopback. That mode stays
@@ -108,11 +108,11 @@ public static class LlmEndpointGuard
     }
 
     /// <summary>
-    /// Detects the common cloud-provider metadata endpoints at the BaseUrl level: AWS and Azure
-    /// IMDS via 169.254.169.254, GCP via metadata.google.internal, and Azure also under
-    /// metadata.azure.com. Literal match only, so the startup path does not resolve DNS for
-    /// ordinary hosts such as <c>api.openai.com</c>. A hostname that resolves to a metadata IP
-    /// only at connect time is covered separately by <c>LlmConnectGuard</c>.
+    /// Detects the common cloud-provider metadata endpoints at the BaseUrl level: a literal
+    /// address rejected by <see cref="IsBlockedAddress"/>, GCP via metadata.google.internal, and
+    /// Azure also under metadata.azure.com. Literal match only, so the startup path does not
+    /// resolve DNS for ordinary hosts such as <c>api.openai.com</c>. A hostname that resolves to a
+    /// metadata IP only at connect time is covered separately by <c>LlmConnectGuard</c>.
     /// </summary>
     public static bool IsCloudMetadataEndpoint(string baseUrl)
     {
@@ -124,16 +124,38 @@ public static class LlmEndpointGuard
             || host.Equals("metadata.azure.com", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        if (IPAddress.TryParse(host, out var ip))
+        return IPAddress.TryParse(host.Trim('[', ']'), out var ip) && IsBlockedAddress(ip);
+    }
+
+    /// <summary>
+    /// True for an address no LLM request may reach, checked both on the configured literal and
+    /// on every address resolved at connect time: IPv4 link-local 169.254/16 (AWS, Azure and GCP
+    /// metadata), IPv6 link-local fe80::/10, and the IPv6 metadata endpoints of AWS
+    /// (<c>fd00:ec2::254</c>) and GCP (<c>fd20:ce::254</c>). IPv4-mapped IPv6 addresses are
+    /// judged by their IPv4 address.
+    /// </summary>
+    public static bool IsBlockedAddress(IPAddress ip)
+    {
+        ArgumentNullException.ThrowIfNull(ip);
+
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+        if (ip.AddressFamily == AddressFamily.InterNetwork)
         {
-            if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
-            if (ip.AddressFamily == AddressFamily.InterNetwork)
-            {
-                var bytes = ip.GetAddressBytes();
-                return bytes[0] == 169 && bytes[1] == 254; // 169.254/16, includes cloud metadata
-            }
+            var bytes = ip.GetAddressBytes();
+            return bytes[0] == 169 && bytes[1] == 254;
         }
 
-        return false;
+        if (ip.AddressFamily != AddressFamily.InterNetworkV6)
+            return false;
+
+        if (ip.IsIPv6LinkLocal)
+            return true;
+
+        // Compare without the scope id, which IPAddress.Equals takes into account.
+        var withoutScope = new IPAddress(ip.GetAddressBytes());
+        return withoutScope.Equals(AwsMetadataIPv6) || withoutScope.Equals(GcpMetadataIPv6);
     }
+
+    private static readonly IPAddress AwsMetadataIPv6 = IPAddress.Parse("fd00:ec2::254");
+    private static readonly IPAddress GcpMetadataIPv6 = IPAddress.Parse("fd20:ce::254");
 }

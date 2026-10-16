@@ -366,9 +366,54 @@ public sealed class OidcIdentityMapperTests : IDisposable
         (await _db.AuditLog.CountAsync()).Should().Be(auditCount);
     }
 
+    [Fact]
+    public async Task MapAsync_JitCreation_WritesAndForwardsOidcJitAudit()
+    {
+        var logger = new CapturingLogger<OidcIdentityMapper>();
+
+        var result = await Mapper(logger: logger).MapAsync(
+            Principal("subject-jit", "jit@example.test", AllowedGroup, "nodepilot-admins"), default);
+
+        result.Succeeded.Should().BeTrue();
+        var audit = await _db.AuditLog.AsNoTracking().SingleAsync(entry => entry.ResourceId == result.User!.Id);
+        audit.Action.Should().Be(AuditActions.UserOidcJitCreated);
+        audit.UserId.Should().Be(result.User!.Id);
+        audit.Details.Should().Contain("Oidc").And.Contain("Admin");
+        logger.Messages.Should().Contain(message => message.Contains(AuditActions.UserOidcJitCreated),
+            "the committed JIT audit is forwarded to the SIEM stream");
+    }
+
+    [Fact]
+    public async Task MapAsync_JitAuditCannotBeStaged_CreatesNoUser()
+    {
+        var act = () => Mapper(auditStager: new ThrowingAuditStager(() => new InjectedReconciliationException()))
+            .MapAsync(Principal("subject-jit", "jit@example.test", AllowedGroup), default);
+
+        await act.Should().ThrowAsync<InjectedReconciliationException>();
+        (await _db.Users.AsNoTracking().AnyAsync(u => u.Provider == AuthProvider.Oidc))
+            .Should().BeFalse("the account and its audit row are written together or not at all");
+    }
+
+    [Fact]
+    public async Task MapAsync_ReconciliationAudit_IsForwardedAfterCommit()
+    {
+        var first = await Mapper().MapAsync(
+            Principal("subject-sync", "sync@example.test", AllowedGroup), default);
+        var logger = new CapturingLogger<OidcIdentityMapper>();
+
+        await Mapper(logger: logger).MapAsync(
+            Principal("subject-sync", "sync@example.test", AllowedGroup, "nodepilot-admins"), default);
+
+        (await _db.AuditLog.AsNoTracking().CountAsync(entry =>
+                entry.ResourceId == first.User!.Id && entry.Action == AuditActions.UserDirectorySynced))
+            .Should().Be(1);
+        logger.Messages.Should().Contain(message => message.Contains(AuditActions.UserDirectorySynced));
+    }
+
     private OidcIdentityMapper Mapper(
         IWorkflowEngine? workflowEngine = null,
-        IAuditStager? auditStager = null) => new(
+        IAuditStager? auditStager = null,
+        Microsoft.Extensions.Logging.ILogger<OidcIdentityMapper>? logger = null) => new(
         _db,
         Options.Create(new EnterpriseOidcOptions
         {
@@ -382,7 +427,7 @@ public sealed class OidcIdentityMapperTests : IDisposable
                 new OidcRoleMapping { GroupId = "nodepilot-admins", Role = UserRole.Admin },
             ],
         }),
-        NullLogger<OidcIdentityMapper>.Instance,
+        logger ?? NullLogger<OidcIdentityMapper>.Instance,
         workflowEngine: workflowEngine,
         auditStager: auditStager);
 

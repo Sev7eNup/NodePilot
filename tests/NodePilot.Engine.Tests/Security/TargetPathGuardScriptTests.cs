@@ -123,6 +123,30 @@ public sealed class TargetPathGuardScriptTests
         }
     }
 
+    [Theory]
+    [InlineData("/\\attacker.example\\share\\payload.txt")]
+    [InlineData("\\/attacker.example/share/payload.txt")]
+    public async Task GeneratedGuard_RejectsMixedSeparatorUncCandidate(string candidate)
+    {
+        var guard = TargetPathGuardScript.Build(new ConfigurationBuilder().Build(), ("$candidate", "path"));
+
+        var result = await Engine.ExecuteAsync(
+            new PowerShellExecutionRequest
+            {
+                ScriptText = $$"""
+                    $candidate = {{PowerShellOperation.Literal(candidate)}}
+                    {{guard}}
+                    Write-Output 'guard-bypassed'
+                    """,
+                Timeout = TimeSpan.FromSeconds(30),
+            },
+            CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("is a UNC or device path on target");
+        result.Output.Should().NotContain("guard-bypassed");
+    }
+
     [WindowsFact]
     public async Task GeneratedGuard_AllowsReparseFreeCandidateInsideExistingRoot()
     {

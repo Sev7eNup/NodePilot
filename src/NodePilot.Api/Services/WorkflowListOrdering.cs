@@ -32,14 +32,18 @@ internal static class WorkflowListOrdering
         }
     }
 
-    private static IQueryable<Workflow> OrderByStatistics(NodePilotDbContext db,
-        IQueryable<Workflow> query, string sort, bool ascending)
-    {
-        var duration = db.Database.IsNpgsql()
+    /// <summary>Provider-specific SQL for an execution row's duration in milliseconds (null while running).</summary>
+    internal static string DurationMillisecondsSql(NodePilotDbContext db)
+        => db.Database.IsNpgsql()
             ? "EXTRACT(EPOCH FROM (\"CompletedAt\" - \"StartedAt\")) * 1000.0"
             : db.Database.IsSqlServer()
                 ? "DATEDIFF_BIG(microsecond, \"StartedAt\", \"CompletedAt\") / 1000.0"
                 : "ROUND((julianday(\"CompletedAt\") - julianday(\"StartedAt\")) * 86400000.0)";
+
+    private static IQueryable<Workflow> OrderByStatistics(NodePilotDbContext db,
+        IQueryable<Workflow> query, string sort, bool ascending)
+    {
+        var duration = DurationMillisecondsSql(db);
         var floating = db.Database.IsNpgsql() ? "double precision" : "float";
         var sql = $$"""
             SELECT "WorkflowId", MAX("StartedAt") AS "LastRun",

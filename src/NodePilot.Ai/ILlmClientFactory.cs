@@ -19,7 +19,9 @@ public interface ILlmClientFactory
 {
     /// <summary>
     /// Builds a client for the effective connection: the active profile, with any non-null
-    /// <paramref name="overrides"/> field taking precedence. The implementation follows the wire
+    /// <paramref name="overrides"/> field taking precedence. Exception: when the override BaseUrl
+    /// names a different origin than the profile, the profile's ApiKey is not sent; only an
+    /// override ApiKey is. The implementation follows the wire
     /// dialect <see cref="LlmEndpointGuard.ResolveEndpoint"/> derives from the effective BaseUrl:
     /// chat completions by default, the OpenAI Responses API for a <c>/responses</c> endpoint.
     /// </summary>
@@ -62,9 +64,13 @@ public sealed class LlmClientFactory : ILlmClientFactory
         // central override entry point and cannot assume callers have pre-checked it.
         var endpoint = LlmEndpointGuard.ResolveEndpoint(overrides?.BaseUrl ?? profile.BaseUrl);
 
+        // The profile key belongs to the profile's origin. A per-node baseUrl on another origin
+        // gets only a key the node supplies itself, never the profile's.
+        var profileKeyApplies = overrides?.BaseUrl is null || IsSameOrigin(endpoint.PostUrl, profile.BaseUrl);
+
         var config = new LlmClientConfig(
             Endpoint: endpoint,
-            ApiKey: overrides?.ApiKey ?? profile.ApiKey,
+            ApiKey: overrides?.ApiKey ?? (profileKeyApplies ? profile.ApiKey : null),
             Model: overrides?.Model ?? profile.Model,
             MaxTokens: overrides?.MaxTokens ?? profile.MaxTokens,
             Temperature: overrides?.Temperature, // per-call only; no profile default
@@ -78,4 +84,11 @@ public sealed class LlmClientFactory : ILlmClientFactory
                 _httpClientFactory, config, _loggerFactory.CreateLogger<OpenAiCompatibleLlmClient>()),
         };
     }
+
+    // Origin = scheme, host and effective port. An unparsable profile URL never matches.
+    private static bool IsSameOrigin(string effectiveUrl, string? profileBaseUrl)
+        => Uri.TryCreate(effectiveUrl, UriKind.Absolute, out var effective)
+           && Uri.TryCreate(profileBaseUrl?.Trim(), UriKind.Absolute, out var profile)
+           && Uri.Compare(effective, profile, UriComponents.SchemeAndServer,
+               UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0;
 }

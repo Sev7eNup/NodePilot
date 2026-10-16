@@ -68,9 +68,7 @@ public sealed class CustomActivityExecutor : IActivityExecutor
 
         // 3. Honor RunsRemote explicitly (routing is otherwise data-driven and would silently run
         // local).
-        var machine = def.RunsRemote ? context.ResolvedMachine : null;
-        if (def.RunsRemote && machine is null && context.TargetMachineId is { } tid && _db is not null)
-            machine = await _db.ManagedMachines.FindAsync([tid], ct);
+        var machine = def.RunsRemote ? await ActivityTargetResolver.ResolveMachineAsync(context, _db, ct) : null;
         if (def.RunsRemote && machine is null)
             return Fail($"Custom activity '{def.Name}' requires a target machine but none was provided.");
 
@@ -107,17 +105,12 @@ public sealed class CustomActivityExecutor : IActivityExecutor
         var provenance = CustomActivityHashing.ProvenanceOf(def);
 
         // 7. Dispatch. Localhost target with no credential falls through to in-process (bypass).
-        var credentialId = context.CredentialId ?? machine?.DefaultCredentialId;
-        Credential? credential = null;
-        if (credentialId is { } cid && _credentialStore is not null)
-            credential = await _credentialStore.GetAsync(cid, ct);
+        var target = new ActivityTarget(
+            machine, await ActivityTargetResolver.ResolveCredentialAsync(context, machine, _credentialStore, ct));
 
-        var goRemote = machine is not null
-            && (credential is not null || !BaseRemoteActivity.IsLoopbackHostname(machine.Hostname));
-
-        var result = goRemote
-            ? await ExecuteRemoteAsync(machine!, credential, script, variables, timeoutSeconds, allowlist, successExitCodes, context.StepId, ct)
-            : await ExecuteLocalAsync(script, variables, def, timeoutSeconds, allowlist, successExitCodes, context.StepId, ct);
+        var result = target.RunsLocally
+            ? await ExecuteLocalAsync(script, variables, def, timeoutSeconds, allowlist, successExitCodes, context.StepId, ct)
+            : await ExecuteRemoteAsync(target.Machine, target.Credential, script, variables, timeoutSeconds, allowlist, successExitCodes, context.StepId, ct);
 
         result.CustomActivity = provenance;
         return result;

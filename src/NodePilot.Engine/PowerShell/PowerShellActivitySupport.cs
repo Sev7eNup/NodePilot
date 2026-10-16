@@ -580,33 +580,15 @@ internal static class PowerShellActivitySupport
     {
         if (!text.Contains("{{")) return text;
 
-        text = VariableResolver.GlobalsPattern.Replace(text, m =>
-        {
-            var key = $"globals.{m.Groups[1].Value}";
-            return variables.TryGetValue(key, out var v) ? v : m.Value;
-        });
-
-        text = VariableResolver.ManualPattern.Replace(text, m =>
-        {
-            var key = $"manual.{m.Groups[1].Value}";
-            return variables.TryGetValue(key, out var v) ? v : m.Value;
-        });
-
-        return VariableResolver.StepPattern.Replace(text, match =>
-        {
-            var varName = match.Groups[1].Value;
-            var property = match.Groups[2].Value;
-            string? value = null;
-            if (property.StartsWith("param.") && match.Groups[3].Success)
-            {
-                var pn = match.Groups[3].Value;
-                value = variables.GetValueOrDefault($"{varName}.param.{pn}");
-            }
-            else if (property == "output") value = variables.GetValueOrDefault($"{varName}.output");
-            else if (property == "error") value = variables.GetValueOrDefault($"{varName}.error");
-            else if (property == "success") value = variables.GetValueOrDefault($"{varName}.success");
-            return value ?? match.Value;
-        });
+        // Single pass, so a substituted value is never expanded a second time.
+        return VariableResolver.ReplaceTemplatesOnce(text,
+            name => variables.GetValueOrDefault($"globals.{name}"),
+            name => variables.GetValueOrDefault($"manual.{name}"),
+            (step, tail, param) => param is not null
+                ? variables.GetValueOrDefault($"{step}.param.{param}")
+                : tail is "output" or "error" or "success"
+                    ? variables.GetValueOrDefault($"{step}.{tail}")
+                    : null);
     }
 
     /// <summary>

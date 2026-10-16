@@ -49,6 +49,30 @@ public sealed class WorkflowSecretRedactorTests
         cfg["url"]!.GetValue<string>().Should().Be("https://example.com");
     }
 
+    [Theory]
+    [InlineData("12345")]
+    [InlineData("true")]
+    [InlineData("""{ "value": "sk-live-123" }""")]
+    [InlineData("""[ 4711, "sk-live-123" ]""")]
+    public void Redact_SecretKeyWithNonStringValue_MasksWholeValue(string rawValue)
+    {
+        var def = Parse($$"""
+        { "nodes": [ { "id": "n1", "data": { "config": { "password": {{rawValue}}, "port": 5432 } } } ], "edges": [] }
+        """);
+
+        var cfg = WorkflowSecretRedactor.Redact(def)["nodes"]![0]!["data"]!["config"]!.AsObject();
+
+        cfg["password"]!.GetValue<string>().Should().Be("***");
+        cfg["port"]!.GetValue<int>().Should().Be(5432, "non-secret numbers stay visible");
+    }
+
+    [Fact]
+    public void Redact_SecretKeyWithNull_StaysNull()
+    {
+        var def = Parse("""{ "config": { "apiKey": null } }""");
+        WorkflowSecretRedactor.Redact(def).AsObject()["config"]!.AsObject()["apiKey"].Should().BeNull();
+    }
+
     [Fact]
     public void Redact_EmptySecret_LeftEmptyNotMasked()
     {

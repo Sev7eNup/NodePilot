@@ -28,7 +28,7 @@ Welche Datei bei welchem Störungsbild weiterhilft, steht unter [Logs & Diagnose
 
 ## Output-Redaction
 
-`OutputRedactor` maskiert Secrets. **Immer aktiv.** Custom-Patterns via `Logging:Redaction:Patterns`.
+`OutputRedactor` maskiert Secrets. **Immer aktiv.** Custom-Patterns via `Logging:Redaction:Patterns`; ein Pattern, das kein gültiger regulärer Ausdruck ist, verhindert den Start des Dienstes, statt übersprungen zu werden.
 
 ## Support-Log & SupportEvents
 

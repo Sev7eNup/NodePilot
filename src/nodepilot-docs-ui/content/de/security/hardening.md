@@ -12,7 +12,7 @@ Zwei Ausnahmen sind Relaxations und defaulten auf `false`: `PrometheusScrapeAllo
 | `WaitForCondition:AllowedHosts` | `["localhost"]` | Eigene Liste für die PowerShell-Probes `portOpen`/`httpOk`; leere Liste lehnt jede Probe ab. Getrennt von `RestApi:AllowedHosts`, damit eine erlaubte Probe nicht zugleich `restApi` zu Loopback öffnet — und umgekehrt allein ausschlaggebend: `RestApi:*` wird für Proben nicht mitgeprüft |
 | `FileSystemOperation:RejectTraversal` | `true` | Rejects `..` in Filesystem-Op-Paths (Dev: `false`) |
 | `SqlActivity:RequireConnectionRef` | `true` | Nur named `connectionRef` statt inline `connectionString` (Dev: `false`) |
-| `StartProgram:DisallowShellExecute` | `true` | Verwirft `useShellExecute=true` (Dev: `false`) |
+| `StartProgram:DisallowShellExecute` | `true` | Verwirft `useShellExecute=true` (Dev: `false`). Nur ein explizites `false` schaltet ab; ein Wert, der kein Boolean ist, lässt die Sperre an |
 | `Trigger:Database:RequireConnectionRef` | `true` | Nur named `connectionRef` für `databaseTrigger` (Dev: `false`) |
 | `Security:StrictAllowedHosts` | `true` | Boot-Abbruch bei unsafe `AllowedHosts` (z. B. `*`) (Dev: `false`). Die Installer schreiben `localhost` immer mit in `AllowedHosts` — ihre eigene Health-Probe geht an `https://localhost:<port>/healthz/ready`, die der Host-Filter sonst mit 400 abweist |
 | `Webhook:RequireSecret` | `true` | `webhookTrigger` erzwingt ein konfiguriertes Secret — verifiziert je nach `signatureMode` als `X-Webhook-Secret`-Header oder HMAC-Signatur (Dev: `false`) |

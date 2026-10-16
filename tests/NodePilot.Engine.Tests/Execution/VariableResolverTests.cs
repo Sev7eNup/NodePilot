@@ -23,6 +23,76 @@ public class VariableResolverTests
     private static JsonElement Cfg(object obj)
         => JsonDocument.Parse(JsonSerializer.Serialize(obj)).RootElement;
 
+    private static readonly IReadOnlyDictionary<string, ActivityResult> PrevResult =
+        new Dictionary<string, ActivityResult>
+        {
+            ["prev"] = new ActivityResult { Success = true, Output = "secret-step-output" },
+        };
+
+    [Fact]
+    public void ResolveVariables_TriggerValueContainingStepTemplate_IsNotExpandedAgain()
+    {
+        var config = Cfg(new { message = "input={{manual.subject}} prev={{prev.output}}" });
+        var manual = new Dictionary<string, string> { ["subject"] = "{{prev.output}}" };
+
+        var resolved = VariableResolver.ResolveVariables(config, PrevResult, NoAliases, null, manual);
+
+        resolved.GetProperty("message").GetString()
+            .Should().Be("input={{prev.output}} prev=secret-step-output",
+                "a substituted trigger value is data, never a template");
+    }
+
+    [Fact]
+    public void ResolveVariables_GlobalValueContainingTriggerTemplate_IsNotExpandedAgain()
+    {
+        var config = Cfg(new { message = "{{globals.banner}}" });
+        var globals = new Dictionary<string, string> { ["banner"] = "{{manual.subject}}" };
+        var manual = new Dictionary<string, string> { ["subject"] = "injected" };
+
+        var resolved = VariableResolver.ResolveVariables(config, NoPreviousResults, NoAliases, globals, manual);
+
+        resolved.GetProperty("message").GetString().Should().Be("{{manual.subject}}");
+    }
+
+    [Fact]
+    public void ResolveStringValue_TriggerValueContainingStepTemplate_IsNotExpandedAgain()
+    {
+        var manual = new Dictionary<string, string> { ["host"] = "{{prev.output}}" };
+
+        var resolved = VariableResolver.ResolveStringValue("{{manual.host}}", PrevResult, NoAliases, null, manual);
+
+        resolved.Should().Be("{{prev.output}}");
+    }
+
+    [Fact]
+    public void ResolveStringValue_UnknownGlobalWithStepTail_StillResolvesStepNamedGlobals()
+    {
+        var results = new Dictionary<string, ActivityResult>
+        {
+            ["globals"] = new ActivityResult { Success = true, Output = "from-step" },
+        };
+
+        VariableResolver.ResolveStringValue("{{globals.output}}", results, NoAliases,
+                new Dictionary<string, string>(), null)
+            .Should().Be("from-step", "an unknown global keeps the step reading of the same text");
+        VariableResolver.ResolveStringValue("{{globals.output}}", results, NoAliases,
+                new Dictionary<string, string> { ["output"] = "from-global" }, null)
+            .Should().Be("from-global", "a known global still takes precedence");
+    }
+
+    [Fact]
+    public void ResolveTemplateRaw_TriggerValueContainingStepTemplate_IsNotExpandedAgain()
+    {
+        var variables = new Dictionary<string, string>
+        {
+            ["manual.subject"] = "{{prev.output}}",
+            ["prev.output"] = "secret-step-output",
+        };
+
+        NodePilot.Engine.PowerShell.PowerShellActivitySupport.ResolveTemplateRaw("{{manual.subject}}", variables)
+            .Should().Be("{{prev.output}}");
+    }
+
     [Fact]
     public void ResolveVariablesExcept_ProtectsNamedField_LeavesGlobalTemplateLiteral()
     {

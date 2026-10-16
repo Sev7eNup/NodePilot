@@ -156,6 +156,7 @@ public static class AuditActions
     public const string UserWindowsRefusedBootstrap = "USER_WINDOWS_REFUSED_BOOTSTRAP";
     public const string UserWindowsRefusedCollision = "USER_WINDOWS_REFUSED_COLLISION";
     public const string UserWindowsRefusedLastAdmin = "USER_WINDOWS_REFUSED_LAST_ADMIN";
+    public const string UserOidcJitCreated = "USER_OIDC_JIT_CREATED";
     public const string UserDirectoryAccessRefused = "USER_DIRECTORY_ACCESS_REFUSED";
     public const string UserDirectorySynced = "USER_DIRECTORY_SYNCED";
     public const string UserDirectoryDeprovisioned = "USER_DIRECTORY_DEPROVISIONED";

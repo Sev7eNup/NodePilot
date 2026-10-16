@@ -252,11 +252,24 @@ public sealed class EndpointClientCoverageTests
         IsCovered(NormalizeRoute(endpoint), routes).Should().Be(expected);
     }
 
+    /// <summary>The Agents controllers declare their routes inside combined attribute lists;
+    /// the scan must still see them.</summary>
+    [Fact]
+    public void EndpointDiscovery_SeesRoutesDeclaredInCombinedAttributeLists()
+    {
+        var endpoints = DiscoverEndpointRoutes();
+
+        endpoints.Should().Contain("api/agents/runs");
+        endpoints.Should().Contain("api/agents/mcp-servers/*");
+    }
+
     // ---- endpoint discovery -------------------------------------------------------------
 
-    private static readonly Regex ClassRoutePattern = new(@"^\s*\[Route\(""([^""]+)""\)\]", RegexOptions.Compiled);
+    // Both patterns accept the attribute anywhere in a combined list such as
+    // [ApiController, Route("api/agents"), Authorize] or [HttpPut("x/{id:guid}"), Authorize(Roles = "Admin")].
+    private static readonly Regex ClassRoutePattern = new(@"^\s*\[(?:[^\]""]*,\s*)?Route\(""([^""]+)""\)\s*[,\]]", RegexOptions.Compiled);
     private static readonly Regex ClassDeclPattern = new(@"\bclass\s+(\w+?)Controller\b", RegexOptions.Compiled);
-    private static readonly Regex HttpVerbPattern = new(@"^\s*\[Http(Get|Post|Put|Delete|Patch|Head)(?:\(""([^""]+)""\))?\]", RegexOptions.Compiled);
+    private static readonly Regex HttpVerbPattern = new(@"^\s*\[(?:[^\]""]*,\s*)?Http(Get|Post|Put|Delete|Patch|Head)(?:\(""([^""]+)""[^)]*\))?\s*[,\]]", RegexOptions.Compiled);
 
     private static HashSet<string> DiscoverEndpointRoutes()
     {

@@ -107,7 +107,8 @@ public class SecretsController : ControllerBase
                 ("runtimeSettingsFilesRewritten", runtime.Rewritten),
                 ("runtimeSettingsFilesSkipped", runtime.Skipped),
                 ("partialSuccess", partial)),
-            ct);
+            // The rewrites are committed; their audit must land even if the client disconnects.
+            CancellationToken.None);
 
         if (partial)
         {

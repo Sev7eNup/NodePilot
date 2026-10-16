@@ -6,6 +6,7 @@ using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.ExecutionDispatch;
 using NodePilot.Api.Security;
+using NodePilot.Api.Services;
 using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Clients;
 using NodePilot.Core.Enums;
@@ -102,8 +103,15 @@ public class ExecutionsController : ControllerBase
         // rows can carry megabytes the caller never looks at. The designer's history panel does
         // read both (as tooltips and a badge count); the executions page does not, and asks to
         // have them left out.
-        [FromQuery] bool includePayloads = true)
+        [FromQuery] bool includePayloads = true,
+        [FromQuery] string sortBy = "started",
+        [FromQuery] string sortDir = "desc")
     {
+        if (!ExecutionListOrdering.Sorts.Contains(sortBy))
+            return BadRequest(new { message = $"Unknown sortBy '{sortBy}'. Allowed: {string.Join(", ", ExecutionListOrdering.Sorts)}." });
+        if (sortDir is not ("asc" or "desc"))
+            return BadRequest(new { message = $"Unknown sortDir '{sortDir}'. Allowed: asc, desc." });
+
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
         var query = _db.WorkflowExecutions.AsNoTracking().AsQueryable();
@@ -158,9 +166,7 @@ public class ExecutionsController : ControllerBase
         // Two steps: sort and page on the narrow key columns only, then load the full rows of that
         // page by primary key. Sorting the wide rows (ReturnData and InputParametersJson are up to
         // 32 KiB each) made the database read most of the table for every call.
-        var pageIds = await query
-            .OrderByDescending(e => e.StartedAt)
-            .ThenByDescending(e => e.Id)
+        var pageIds = await ExecutionListOrdering.Apply(_db, query, sortBy, sortDir == "asc")
             .Skip(skip)
             .Take(pageSize)
             .Select(e => e.Id)
@@ -514,6 +520,8 @@ public class ExecutionsController : ControllerBase
             var message = execution.ErrorMessage ?? (wasPending
                 ? "Queued execution was cancelled before dispatch."
                 : "Force-cancelled: no active in-memory execution (orphaned from a previous API process).");
+            // Lifecycle writes use CancellationToken.None: once the execution row is cancelled,
+            // its steps and the audit row must follow even if the client disconnects.
             var transitioned = await ExecutionStateLifecycle.TrySetTerminalAsync(
                 _db.WorkflowExecutions.Where(candidate => candidate.Id == id
                     && (candidate.Status == ExecutionStatus.Running
@@ -522,18 +530,19 @@ public class ExecutionsController : ControllerBase
                 DateTime.UtcNow,
                 message,
                 "user",
-                ct);
+                CancellationToken.None);
 
             if (transitioned == 1)
             {
                 await ExecutionStateLifecycle.CancelOrphanedStepsAsync(
                     _db.StepExecutions, id, DateTime.UtcNow,
-                    "Step force-cancelled (parent execution was orphaned).", ct);
+                    "Step force-cancelled (parent execution was orphaned).", CancellationToken.None);
             }
         }
 
         await _audit.LogAsync(AuditActions.ExecutionCancelled, "Execution", id,
-            AuditDetails.Json(("workflowId", execution.WorkflowId), ("signalledInMemory", signalled)), ct);
+            AuditDetails.Json(("workflowId", execution.WorkflowId), ("signalledInMemory", signalled)),
+            CancellationToken.None);
 
         return NoContent();
     }
@@ -560,10 +569,13 @@ public class ExecutionsController : ControllerBase
             .Select(e => e.Id)
             .ToListAsync(ct);
 
+        // From here on every write uses CancellationToken.None: a client disconnect must not
+        // leave a half-cancelled set of executions, steps without their parent's state, or a
+        // missing audit row.
         int signalledCount = 0;
         foreach (var execId in running)
         {
-            if (await _engine.CancelAsync(execId, "cancelAll", ct)) signalledCount++;
+            if (await _engine.CancelAsync(execId, "cancelAll", CancellationToken.None)) signalledCount++;
             else
             {
                 // Zombie row left over from a previous process — reconcile in DB so it
@@ -577,18 +589,19 @@ public class ExecutionsController : ControllerBase
                         .SetProperty(e => e.CancelledBy, "cancelAll")
                         .SetProperty(e => e.CompletedAt, now)
                         .SetProperty(e => e.ErrorMessage, e => e.ErrorMessage ?? "Force-cancelled via /cancel-all (orphaned from a previous API process).")
-                    , ct);
+                    , CancellationToken.None);
                 if (transitioned == 1)
                 {
                     await ExecutionStateLifecycle.CancelOrphanedStepsAsync(
                         _db.StepExecutions, execId, now,
-                        "Step force-cancelled via /cancel-all (parent execution was orphaned).", ct);
+                        "Step force-cancelled via /cancel-all (parent execution was orphaned).", CancellationToken.None);
                 }
             }
         }
 
         await _audit.LogAsync(AuditActions.WorkflowCancelAll, "Workflow", workflowId,
-            AuditDetails.Json(("runningFound", running.Count), ("signalledInMemory", signalledCount)), ct);
+            AuditDetails.Json(("runningFound", running.Count), ("signalledInMemory", signalledCount)),
+            CancellationToken.None);
 
         return Ok(new { total = running.Count, signalled = signalledCount });
     }
@@ -608,6 +621,12 @@ public class ExecutionsController : ControllerBase
         var original = await _db.WorkflowExecutions.FindAsync([id], ct);
         if (original is null) return NotFound();
 
+        // RBAC gate before any status answer, so a caller without folder access learns nothing
+        // about the execution.
+        var workflow = await _db.Workflows.FindAsync([original.WorkflowId], ct);
+        if (workflow is null) return NotFound(new { message = "Parent workflow no longer exists." });
+        if (await this.RequireWorkflowAccessAsync(_authz, workflow, NodePilot.Core.Interfaces.ResourceOp.Run, ct) is { } d) return d;
+
         // Only allow retry on terminal states. A Running/Pending retry would race the
         // original and produce confusing duplicate audit + log output.
         if (original.Status != Core.Enums.ExecutionStatus.Succeeded
@@ -617,9 +636,6 @@ public class ExecutionsController : ControllerBase
             return BadRequest(new { message = $"Cannot retry an execution in state '{original.Status}' — wait until it reaches a terminal status." });
         }
 
-        var workflow = await _db.Workflows.FindAsync([original.WorkflowId], ct);
-        if (workflow is null) return NotFound(new { message = "Parent workflow no longer exists." });
-        if (await this.RequireWorkflowAccessAsync(_authz, workflow, NodePilot.Core.Interfaces.ResourceOp.Run, ct) is { } d) return d;
         if (!workflow.IsEnabled) return BadRequest(new { message = $"Workflow '{workflow.Name}' is disabled." });
 
         // Deserialize snapshot. Missing / malformed JSON -> fresh empty params (still audits

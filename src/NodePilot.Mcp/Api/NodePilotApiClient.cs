@@ -45,11 +45,27 @@ public sealed partial class NodePilotApiClient
         set => _http.BaseAddress = value;
     }
 
+    /// <summary>Looks the server up again while none is configured, e.g. after a later
+    /// <c>np auth login</c>. Null when the server was known at startup.</summary>
+    public Func<Uri?>? ResolveServer { get; init; }
+
+    private readonly Lock _baseAddressLock = new();
+
     private void EnsureReady()
     {
         // Fail closed: a pin that cannot be used is a configuration error, not a reason to
         // connect without one.
         if (Session?.TlsConfigurationError is { } tlsError) throw new NotConfiguredException(tlsError);
+        if (_http.BaseAddress is null && ResolveServer is not null)
+        {
+            // HttpClient allows setting BaseAddress only before its first request; no request
+            // runs while it is null, and the lock keeps concurrent tool calls from racing.
+            lock (_baseAddressLock)
+            {
+                if (_http.BaseAddress is null && ResolveServer() is { } server)
+                    _http.BaseAddress = server;
+            }
+        }
         if (_http.BaseAddress is null)
             throw new NotConfiguredException(
                 "No NodePilot server is configured. Set NODEPILOT_MCP_SERVER (or a CLI profile via `np config set server <URL>`).");

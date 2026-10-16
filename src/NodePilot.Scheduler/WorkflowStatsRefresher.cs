@@ -38,6 +38,12 @@ public class WorkflowStatsRefresher : BackgroundService
     /// </summary>
     private const int DefaultDurationSampleCap = 1000;
 
+    private const int DefaultRefreshIntervalMinutes = 5;
+
+    // Same upper bound as the settings DTO. It also keeps Task.Delay within its supported range
+    // when the value is edited in appsettings directly.
+    private const int MaxRefreshIntervalMinutes = 1440;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConfiguration _config;
     private readonly NodePilot.Core.Interfaces.IClusterStateProvider _cluster;
@@ -84,30 +90,48 @@ public class WorkflowStatsRefresher : BackgroundService
                 continue;
             }
 
-            // Hot-reload: re-read config every pass so a live edit of Stats:* takes effect
-            // without a restart.
-            var intervalMinutes = Math.Max(1, _config.GetValue("Stats:RefreshIntervalMinutes", 5));
-            var windowDays = Math.Max(1, _config.GetValue("Stats:WindowDays", 7));
-            var interval = TimeSpan.FromMinutes(intervalMinutes);
-
-            try
-            {
-                var refreshed = await RefreshOnceAsync(windowDays, stoppingToken);
-                using var scope = _scopeFactory.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-                await SystemHealthWriter.BeatAsync(db, "WorkflowStatsRefresher",
-                    expectedIntervalSeconds: intervalMinutes * 60,
-                    status: $"ok: {refreshed} workflows refreshed", ct: stoppingToken);
-            }
+            TimeSpan interval;
+            try { interval = await RunPassAsync(stoppingToken); }
             catch (OperationCanceledException) { break; }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Stats refresh failed — will retry on next interval.");
-            }
 
             try { await Task.Delay(interval, stoppingToken); }
             catch (OperationCanceledException) { break; }
         }
+    }
+
+    /// <summary>
+    /// One leader pass: reads the Stats:* config, refreshes and writes the heartbeat. Everything,
+    /// the config read included, sits inside the catch: the host stops on an exception escaping
+    /// ExecuteAsync, so a malformed value must only fail this pass. Returns the delay until the
+    /// next pass; cancellation propagates.
+    /// </summary>
+    internal async Task<TimeSpan> RunPassAsync(CancellationToken stoppingToken)
+    {
+        var interval = TimeSpan.FromMinutes(DefaultRefreshIntervalMinutes);
+        try
+        {
+            // Hot-reload: re-read config every pass so a live edit of Stats:* takes effect
+            // without a restart.
+            var intervalMinutes = Math.Clamp(
+                _config.GetValue("Stats:RefreshIntervalMinutes", DefaultRefreshIntervalMinutes),
+                1, MaxRefreshIntervalMinutes);
+            interval = TimeSpan.FromMinutes(intervalMinutes);
+            var windowDays = Math.Max(1, _config.GetValue("Stats:WindowDays", 7));
+
+            var refreshed = await RefreshOnceAsync(windowDays, stoppingToken);
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+            await SystemHealthWriter.BeatAsync(db, "WorkflowStatsRefresher",
+                expectedIntervalSeconds: intervalMinutes * 60,
+                status: $"ok: {refreshed} workflows refreshed", ct: stoppingToken);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Stats refresh failed — will retry on next interval.");
+        }
+
+        return interval;
     }
 
     /// <summary>

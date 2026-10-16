@@ -584,7 +584,8 @@ public class DbAdminController : ControllerBase
                 "DbAdmin query failed mode={Mode} correlationId={CorrelationId} sql={SqlPreview}",
                 mode, correlationId, Preview(req.Sql));
 
-            // Audit failures too — failed write attempts are interesting.
+            // Audit failures too — failed write attempts are interesting. The statement already
+            // ran, so its outcome is recorded even if the client disconnects.
             await WriteQueryAuditAsync(
                 mode == "write" ? AuditActions.DbAdminSqlWrite : AuditActions.DbAdminSqlExecuted,
                 mode,
@@ -592,7 +593,7 @@ public class DbAdminController : ControllerBase
                 success: false,
                 rowsAffected: null,
                 reason: "execution_failed",
-                ct);
+                CancellationToken.None);
 
             var message = mode == "write"
                 ? "Statement rejected by the database."
@@ -607,7 +608,7 @@ public class DbAdminController : ControllerBase
             success: true,
             rowsAffected: result.RowsAffected,
             reason: null,
-            ct);
+            CancellationToken.None);
 
         // Second layer: a wildcard select names no protected identifier but still returns one.
         _secretColumns.MaskRows(result.Columns.Select(c => c.Name).ToList(), result.Rows);

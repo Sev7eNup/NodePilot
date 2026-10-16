@@ -68,6 +68,22 @@ public class SecurityHardeningWarningsTests
     }
 
     [Fact]
+    public void LogSecurityHardeningWarnings_UnparseableDisallowShellExecute_DoesNotThrow()
+    {
+        // Read through the shared default-on parser, like the activity that enforces it, so a
+        // non-boolean value keeps the flag on instead of aborting boot.
+        var env = new StubEnvironment();
+        var cfg = BuildConfig(new Dictionary<string, string?>
+        {
+            ["AllowedHosts"] = "nodepilot.example.com",
+            ["StartProgram:DisallowShellExecute"] = "yes",
+        });
+
+        var act = () => SecurityHardeningWarnings.LogSecurityHardeningWarnings(cfg, env);
+        act.Should().NotThrow();
+    }
+
+    [Fact]
     public void LogSecurityHardeningWarnings_NoStrictMode_StarAllowedHosts_DoesNotThrow()
     {
         // Default path: without strict mode, this only logs (at Error level) and does not

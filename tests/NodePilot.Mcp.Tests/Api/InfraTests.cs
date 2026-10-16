@@ -250,6 +250,72 @@ public sealed class InfraTests
     }
 
     [Fact]
+    public async Task ApiClientFactory_NoSessionAtStartup_UsesALaterLogin()
+    {
+        // A server started before `np auth login` must pick up the stored session without a
+        // restart, because the DPAPI store is read per request.
+        var dir = Temp();
+        try
+        {
+            var transport = new RecordingTransport();
+            await WithEnvAsync(new() { ["NODEPILOT_MCP_SERVER"] = "https://np.example/" }, async () =>
+            {
+                var tokens = new TokenStore(dir);
+                var client = new ApiClientFactory(
+                    new McpServerConfig(new ClientConfigStore(dir), tokens), tokens, _ => transport).Create();
+
+                tokens.Save("default", StoredSessionFor("https://np.example/", "fresh-login-token"));
+                await client.MeAsync(CancellationToken.None);
+            });
+
+            transport.Authorizations.Should().ContainSingle().Which.Should().Be("Bearer fresh-login-token");
+        }
+        finally { TryDelete(dir); }
+    }
+
+    [Fact]
+    public async Task ApiClientFactory_NoServerAtStartup_UsesTheServerOfALaterLogin()
+    {
+        var dir = Temp();
+        try
+        {
+            var transport = new RecordingTransport();
+            await WithEnvAsync(new(), async () =>
+            {
+                var tokens = new TokenStore(dir);
+                var client = new ApiClientFactory(
+                    new McpServerConfig(new ClientConfigStore(dir), tokens), tokens, _ => transport).Create();
+
+                tokens.Save("default", StoredSessionFor("https://np.example/", "fresh-login-token"));
+                await client.MeAsync(CancellationToken.None);
+            });
+
+            transport.Requests.Should().ContainSingle().Which.Should().Be("https://np.example/api/auth/me");
+            transport.Authorizations.Should().ContainSingle().Which.Should().Be("Bearer fresh-login-token");
+        }
+        finally { TryDelete(dir); }
+    }
+
+    /// <summary>Answers every request with a fixed /api/auth/me body and records what was sent.</summary>
+    private sealed class RecordingTransport : HttpMessageHandler
+    {
+        public List<string> Requests { get; } = [];
+        public List<string?> Authorizations { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request.RequestUri!.AbsoluteUri);
+            Authorizations.Add(request.Headers.Authorization?.ToString());
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"id":"{{Guid.NewGuid()}}","username":"admin","role":"Admin"}""",
+                    System.Text.Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+    [Fact]
     public void ApiClientFactory_RejectsInsecureServerUrl()
     {
         WithEnv(new() { ["NODEPILOT_MCP_SERVER"] = "http://np.local", ["NODEPILOT_MCP_TOKEN"] = "tok" }, () =>
@@ -703,6 +769,22 @@ public sealed class InfraTests
             foreach (var v in ConfigEnvVars) Environment.SetEnvironmentVariable(v, null);
             foreach (var (k, val) in vars) Environment.SetEnvironmentVariable(k, val);
             body();
+        }
+        finally
+        {
+            foreach (var (k, val) in prev) Environment.SetEnvironmentVariable(k, val);
+        }
+    }
+
+    private static async Task WithEnvAsync(Dictionary<string, string?> vars, Func<Task> body)
+    {
+        var toTouch = ConfigEnvVars.Concat(vars.Keys).Distinct().ToArray();
+        var prev = toTouch.ToDictionary(v => v, Environment.GetEnvironmentVariable);
+        try
+        {
+            foreach (var v in ConfigEnvVars) Environment.SetEnvironmentVariable(v, null);
+            foreach (var (k, val) in vars) Environment.SetEnvironmentVariable(k, val);
+            await body();
         }
         finally
         {

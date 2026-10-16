@@ -251,7 +251,7 @@ public class WorkflowEditingController : WorkflowsControllerBase
                 },
                 ct);
         }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true)
+        catch (DbUpdateException ex) when (DbErrorClassifier.IsUniqueConstraintViolation(ex))
         {
             return await VersionUniqueConflictAsync(id, rollbackConflictMessage, ct);
         }
@@ -461,26 +461,8 @@ public class WorkflowEditingController : WorkflowsControllerBase
 
         var sizeError = ValidateDefinitionJson(request.DefinitionJson);
         if (sizeError is not null) return sizeError;
-        if (NodePilot.Core.WorkflowDefinitions.WorkflowResourceReferences.UnresolvedError(request.DefinitionJson) is { } dependencyError)
-            return BadRequest(new { code = "unresolved_workflow_dependency", message = dependencyError });
-        if (NodePilot.Api.Security.AgentPublishValidation.ValidateDefinition(request.DefinitionJson) is { } agentError)
-            return BadRequest(new { code = "invalid_agent_configuration", message = agentError });
-        if (NodePilot.Api.Security.WebhookHmacSecurity.ValidateDefinition(request.DefinitionJson) is { } hmacError)
-        {
-            return BadRequest(new
-            {
-                code = "weak_webhook_hmac_secret",
-                message = hmacError,
-            });
-        }
-        if (NodePilot.Api.Security.ScheduleCronValidation.ValidateDefinition(request.DefinitionJson) is { } cronError)
-        {
-            return BadRequest(new
-            {
-                code = "invalid_cron_expression",
-                message = cronError,
-            });
-        }
+        if (NodePilot.Api.Security.WorkflowActivationValidation.Validate(request.DefinitionJson) is { } activationError)
+            return BadRequest(new { code = activationError.Code, message = activationError.Message });
         LintAndLogWarnings(request.DefinitionJson);
 
         // Pre-publish values captured for the history snapshot (the live row is untracked).
@@ -530,7 +512,7 @@ public class WorkflowEditingController : WorkflowsControllerBase
                 },
                 ct);
         }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true)
+        catch (DbUpdateException ex) when (DbErrorClassifier.IsUniqueConstraintViolation(ex))
         {
             return await VersionUniqueConflictAsync(id, publishConflictMessage, ct);
         }

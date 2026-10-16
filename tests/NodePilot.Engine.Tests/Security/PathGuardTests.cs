@@ -58,6 +58,8 @@ public class PathGuardTests
     [InlineData("\\\\attacker.com\\share\\payload.exe")]
     [InlineData("\\\\10.0.0.5\\admin$\\hosts")]
     [InlineData("//attacker.com/share/payload")]
+    [InlineData("/\\attacker.com\\share\\payload")]
+    [InlineData("\\/attacker.com/share/payload")]
     [InlineData("\\\\?\\UNC\\attacker\\c$\\Windows")]
     [InlineData("\\\\.\\PIPE\\nodepilot")]
     public void UncPath_AlwaysRejected_RegardlessOfFlag(string path)

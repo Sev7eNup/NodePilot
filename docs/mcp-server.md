@@ -69,7 +69,9 @@ repairable configuration error on tool calls (`np config set tls-thumbprint <SHA
 to clear it). The generic `NODEPILOT_TLS_*` variables are shared by CLI and MCP server.
 
 The server starts even when unconfigured/unauthenticated; tools then return an actionable error
-(`run np auth login`, or set `NODEPILOT_MCP_SERVER`).
+(`run np auth login`, or set `NODEPILOT_MCP_SERVER`). Without `NODEPILOT_MCP_TOKEN` the DPAPI
+session is read on every request, so a later `np auth login` (including its server, if none was
+configured at startup) takes effect on the next tool call without restarting the server.
 
 > **Windows-only.** Like the rest of NodePilot, the MCP server is `net10.0-windows` and uses DPAPI
 > for the session store. `NODEPILOT_MCP_TOKEN` exists for Windows CI/headless runs without a DPAPI

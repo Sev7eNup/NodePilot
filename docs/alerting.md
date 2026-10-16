@@ -52,10 +52,13 @@ and matches this optional `Filter`, deliver via these `Routes` — unless suppre
 `NodePilot.Scheduler.NotificationDispatcher` — a **leader-gated** `BackgroundService` (~30 s cadence),
 so in an HA cluster only the leader dispatches. Each pass:
 
-1. **Recover** Pending delivery attempts orphaned by a crash — each collector reconstructs the
-   contexts of its own `EventKey` form via `TryReconstructContextAsync` (if the referenced
-   execution is gone, the attempt is failed out). System execution/audit sources recover a
-   retained event by identity, independently of the sampling lookback, while the policy is active.
+1. **Recover** Pending delivery attempts that are due: those orphaned by a crash (never tried) and
+   failed tries whose backoff has elapsed (see [Delivery ledger & retention](#delivery-ledger--retention)).
+   Each collector reconstructs the contexts of its own `EventKey` form via `TryReconstructContextAsync`.
+   System execution/audit sources recover a retained event by identity, independently of the
+   sampling lookback, while the policy is active. If the referenced execution, policy or instance is
+   gone, the attempt is failed out with that reason; a system-alert source that throws while
+   re-reading counts as a failed try and is logged (first failure, then every 20th in a row).
 2. **Collect** terminal executions since the persisted watermark. On the very first run the watermark
    is **seeded to "now"** so existing history is never back-alerted; thereafter it advances by
    `(CompletedAt, Id)`.
@@ -361,8 +364,11 @@ into a **workflow** is a committed roadmap item, not a follow-up.
 ## Delivery ledger & retention
 
 Every occurrence writes the at-least-once ledger row described under [Matching + dispatch](#matching--dispatch).
-A **bounded retry** keeps a failed attempt `Pending` and retries it on later dispatcher passes until
-`MaxAttempts` (5), then marks it `Failed`. The ledger is read via `GET /api/alerting/deliveries`
+A **bounded retry with backoff** keeps a failed attempt `Pending` and retries it once the delay for its
+try count has passed since the last try (`SentAt`): 30 s, 2 min, 10 min, 30 min. After `MaxAttempts` (5)
+it is marked `Failed`, so the last try lands about 42 minutes (plus up to one 30 s pass per step) after
+the first — a receiver that is down for less than that still gets the alert. The `alert-delivery-failed`
+source counts failures by that last try. The ledger is read via `GET /api/alerting/deliveries`
 (UI **Deliveries** modal, `np alerting deliveries`, MCP `list_alerting_deliveries`). To keep the table
 from growing unbounded, `NotificationRetentionService` (leader-gated, config `Retention:Notifications:*`,
 default 90 days / every 6 h, opt-out via `Enabled:false`) deletes terminal attempts past the cutoff and

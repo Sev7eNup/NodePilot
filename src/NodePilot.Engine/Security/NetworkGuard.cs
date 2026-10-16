@@ -7,7 +7,7 @@ namespace NodePilot.Engine.Security;
 /// <summary>
 /// SSRF guard for <c>RestApiActivity</c>. Always rejects non-http(s) schemes and always
 /// blocks link-local IPv4 (169.254.0.0/16 — including the cloud metadata endpoint at
-/// 169.254.169.254) and IPv6 link-local. Loopback and private-network blocking (RFC1918,
+/// 169.254.169.254), IPv6 link-local and the IPv6 metadata endpoints. Loopback and private-network blocking (RFC1918,
 /// CGNAT, ULA) is on by default since the Phase-3 hardening; flip
 /// <c>RestApi:BlockPrivateNetworks=false</c> in dev/test to call internal/CMDB APIs on
 /// loopback or RFC1918 addresses. An explicit allow-list of hosts can be configured via
@@ -118,9 +118,9 @@ public static class NetworkGuard
         foreach (var original in addresses)
         {
             var ip = NormalizeAddress(original);
-            if (IsLinkLocal(ip))
+            if (IsLinkLocalOrMetadata(ip))
             {
-                lastReason = $"link-local {ip} (169.254/16 incl. cloud metadata is always blocked)";
+                lastReason = $"link-local or cloud metadata {ip} (always blocked)";
                 continue;
             }
             if (blockPrivate && (IPAddress.IsLoopback(ip) || IsPrivateNetwork(ip)))
@@ -216,10 +216,10 @@ public static class NetworkGuard
 
         foreach (var ip in TryResolve(host))
         {
-            if (IsLinkLocal(ip))
+            if (IsLinkLocalOrMetadata(ip))
                 throw new InvalidOperationException(
-                    $"{operation}: host '{host}' resolves to a link-local address ({NormalizeAddress(ip)}); this range " +
-                    "(including the cloud metadata endpoint 169.254.169.254) is always blocked and cannot be enabled " +
+                    $"{operation}: host '{host}' resolves to a link-local or cloud metadata address ({NormalizeAddress(ip)}); " +
+                    "these addresses (including 169.254.169.254 and fd00:ec2::254) are always blocked and cannot be enabled " +
                     "through WaitForCondition:AllowedHosts.");
         }
     }
@@ -262,14 +262,19 @@ public static class NetworkGuard
     private static string? DescribeBlock(IPAddress ip, string host, bool blockPrivate)
     {
         ip = NormalizeAddress(ip);
-        if (IsLinkLocal(ip))
-            return $"REST API: host '{host}' resolves to a link-local address ({ip}); this range (including the cloud metadata endpoint 169.254.169.254) is always blocked by the SSRF guard and cannot be enabled through RestApi:AllowedHosts.";
+        if (IsLinkLocalOrMetadata(ip))
+            return $"REST API: host '{host}' resolves to a link-local or cloud metadata address ({ip}); these addresses (including 169.254.169.254 and fd00:ec2::254) are always blocked by the SSRF guard and cannot be enabled through RestApi:AllowedHosts.";
         if (blockPrivate && (IPAddress.IsLoopback(ip) || IsPrivateNetwork(ip)))
             return $"REST API: host '{host}' resolves to loopback/private address {ip} (blocked by RestApi:BlockPrivateNetworks)";
         return null;
     }
 
-    private static bool IsLinkLocal(IPAddress ip)
+    // IPv6 cloud metadata endpoints (AWS, GCP). They sit inside fc00::/7, which
+    // RestApi:BlockPrivateNetworks can switch off, so they are listed here to stay always blocked.
+    private static readonly IPAddress AwsMetadataIPv6 = IPAddress.Parse("fd00:ec2::254");
+    private static readonly IPAddress GcpMetadataIPv6 = IPAddress.Parse("fd20:ce::254");
+
+    private static bool IsLinkLocalOrMetadata(IPAddress ip)
     {
         ip = NormalizeAddress(ip);
         if (ip.AddressFamily == AddressFamily.InterNetwork)
@@ -278,12 +283,7 @@ public static class NetworkGuard
             return bytes[0] == 169 && bytes[1] == 254; // 169.254/16 incl. cloud metadata
         }
         if (ip.AddressFamily == AddressFamily.InterNetworkV6)
-        {
-            if (ip.IsIPv6LinkLocal) return true;
-            if (ip.IsIPv4MappedToIPv6)
-                return IsLinkLocal(ip.MapToIPv4());
-            return false;
-        }
+            return ip.IsIPv6LinkLocal || ip.Equals(AwsMetadataIPv6) || ip.Equals(GcpMetadataIPv6);
         return false;
     }
 

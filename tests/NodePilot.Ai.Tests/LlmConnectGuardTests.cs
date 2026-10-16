@@ -1,5 +1,4 @@
 using System.Net;
-using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using WireMock.RequestBuilders;
@@ -15,20 +14,15 @@ namespace NodePilot.Ai.Tests;
 /// DNS-rebinding window by rejecting any link-local destination IP (169.254/16, which includes
 /// cloud metadata services, and IPv6 fe80::/10) at TCP-connect time — loopback/private IPs stay
 /// DELIBERATELY allowed (needed for local Ollama/LM Studio). Tested on two levels: (1) the
-/// classification matrix of <c>IsLinkLocal</c> (private static, reached via reflection), and
-/// (2) the real end-to-end behavior through the <c>ConnectCallback</c> itself.
+/// classification matrix of <see cref="LlmEndpointGuard.IsBlockedAddress"/>, which the callback
+/// applies to each resolved IP, and (2) the real end-to-end behavior through the
+/// <c>ConnectCallback</c> itself.
 /// </summary>
 public sealed class LlmConnectGuardTests
 {
-    // ---- IsLinkLocal classification matrix (private static -> Reflection) --------------
+    // ---- Blocked-address classification matrix -----------------------------------------
 
-    private static bool IsLinkLocal(string ip)
-    {
-        var method = typeof(LlmConnectGuard).GetMethod(
-            "IsLinkLocal", BindingFlags.NonPublic | BindingFlags.Static);
-        method.Should().NotBeNull("the guard classifies each resolved IP via IsLinkLocal");
-        return (bool)method!.Invoke(null, new object[] { IPAddress.Parse(ip) })!;
-    }
+    private static bool IsLinkLocal(string ip) => LlmEndpointGuard.IsBlockedAddress(IPAddress.Parse(ip));
 
     [Theory]
     [InlineData("169.254.169.254")]        // AWS/Azure/GCP IMDS
@@ -37,6 +31,9 @@ public sealed class LlmConnectGuardTests
     [InlineData("fe80::1")]                // IPv6 link-local
     [InlineData("fe80::abcd:1234")]        // IPv6 link-local
     [InlineData("::ffff:169.254.169.254")] // IPv4-mapped IPv6 pointing at IMDS
+    [InlineData("fd00:ec2::254")]          // AWS IMDS over IPv6
+    [InlineData("fd20:ce::254")]           // GCP metadata server over IPv6
+    [InlineData("fd00:ec2::254%3")]        // scope id does not change the address
     public void IsLinkLocal_LinkLocalAddresses_ReturnTrue(string ip)
     {
         IsLinkLocal(ip).Should().BeTrue();
@@ -52,6 +49,8 @@ public sealed class LlmConnectGuardTests
     [InlineData("::1")]                    // IPv6 loopback
     [InlineData("2001:4860:4860::8888")]   // public IPv6
     [InlineData("::ffff:10.0.0.5")]        // IPv4-mapped private
+    [InlineData("fd00:ec2::253")]          // ULA neighbour of the AWS endpoint — private, allowed
+    [InlineData("fd12:3456::1")]           // ordinary ULA — local LLM hosts may live there
     public void IsLinkLocal_NonLinkLocalAddresses_ReturnFalse(string ip)
     {
         IsLinkLocal(ip).Should().BeFalse();
@@ -95,6 +94,8 @@ public sealed class LlmConnectGuardTests
     [Theory]
     [InlineData("http://169.254.169.254:8080/latest/meta-data/")] // AWS IMDS via literal IP
     [InlineData("http://[fe80::1]:8080/")]                        // IPv6 link-local via literal IP
+    [InlineData("http://[fd00:ec2::254]:8080/latest/meta-data/")] // AWS IMDS over IPv6
+    [InlineData("http://[::ffff:169.254.169.254]:8080/")]         // IPv4-mapped IMDS
     public async Task ConnectAsync_LinkLocalEndpoint_IsRejected(string url)
     {
         using var client = NewGuardedClient();

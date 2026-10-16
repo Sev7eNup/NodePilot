@@ -199,6 +199,25 @@ public class StartProgramActivityTests
         script.Should().Contain("$__useShell = $true");
     }
 
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("1")]
+    [InlineData("off")]
+    [InlineData(" ")]
+    public void BuildScript_UseShellExecuteTrue_UnparseableFlagValue_StaysBlocked(string raw)
+    {
+        // Default-on hardening flag: only an explicit "false" permits shell launches.
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["StartProgram:DisallowShellExecute"] = raw })
+            .Build();
+        var act = () => new Accessor(config).CallBuildScript(Cfg(new
+        {
+            filePath = @"C:\data\report.xlsx",
+            useShellExecute = true,
+        }), Ctx());
+        act.Should().Throw<InvalidOperationException>().WithMessage("*useShellExecute*");
+    }
+
     [Fact]
     public void BuildScript_UseShellExecuteTrue_Blocked_WhenOptedIn()
     {

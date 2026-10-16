@@ -41,6 +41,25 @@ public class PowerManagementActivity : BaseRemoteActivity
         IConfiguration configuration)
         : base(sessionFactory, credentialStore, db, engineFactory, configuration) { }
 
+    /// <summary>
+    /// Refuses to shut down, restart or hibernate the NodePilot host itself unless an admin opts
+    /// in: the localhost bypass would otherwise let a careless workflow take the engine offline
+    /// with every in-flight execution. Judged on the same resolved target the step runs on.
+    /// </summary>
+    private protected override void ValidateTarget(JsonElement config, ActivityTarget target)
+    {
+        var action = config.GetStringOrNull("action");
+        if (action is not null
+            && DestructiveSelfActions.Contains(action)
+            && target.RunsLocally
+            && !AllowsLocalSelfShutdown())
+        {
+            throw new InvalidOperationException(
+                "Power Management: " + action.ToLowerInvariant() + " against the local NodePilot host is blocked by default. " +
+                "Set PowerManagement:AllowLocalSelfShutdown=true to permit, or target a remote machine.");
+        }
+    }
+
     protected override string BuildScript(JsonElement config, StepExecutionContext context)
     {
         // Do not default `action` server-side. PowerManagement only has destructive
@@ -53,24 +72,6 @@ public class PowerManagementActivity : BaseRemoteActivity
         if (string.IsNullOrWhiteSpace(action))
             throw new InvalidOperationException(
                 "Power Management: 'action' is required (shutdown/restart/logoff/abort/hibernate)");
-
-        // Refuse to shut down / restart / hibernate the NodePilot host itself unless an
-        // admin explicitly opts in. The localhost bypass otherwise lets a careless
-        // workflow take the entire engine offline, along with any in-flight executions.
-        // Conditions: target resolves to localhost and no explicit remote credential is set.
-        var machine = context.ResolvedMachine;
-        var hasExplicitCredential = context.CredentialId is not null
-            || (machine?.DefaultCredentialId is not null);
-        if (DestructiveSelfActions.Contains(action!)
-            && !hasExplicitCredential
-            && machine is not null
-            && IsLoopbackHostname(machine.Hostname)
-            && !AllowsLocalSelfShutdown())
-        {
-            throw new InvalidOperationException(
-                "Power Management: " + action + " against the local NodePilot host is blocked by default. " +
-                "Set PowerManagement:AllowLocalSelfShutdown=true to permit, or target a remote machine.");
-        }
 
         var delay = config.TryGetProperty("delaySeconds", out var d) && d.TryGetInt32(out var ds)
             ? Math.Max(0, ds)

@@ -300,6 +300,25 @@ public class AiKnowledgeControllerTests
     }
 
     [Fact]
+    public async Task Ask_MidStreamLlmError_StillAuditsTheDbToolCall()
+    {
+        // Admin SQL that already ran must be audited even when a later model round fails.
+        var (controller, audit, llm, body) = Build(role: "Admin", enableToolCalling: true, db: true);
+        llm.EnqueueToolCallStreamWithFinish(
+            new[] { new LlmToolCall("sql-1", "execute_readonly_sql", """{"sql":"SELECT COUNT(*) FROM Workflows"}""") },
+            "tool_calls");
+        llm.EnqueueStreamException(new LlmException(LlmErrorKind.Timeout, "slow"));
+
+        var result = await controller.Ask(new KnowledgeAskRequest("Wie viele Workflows?", null), CancellationToken.None);
+
+        result.Should().BeOfType<EmptyResult>();
+        ParseSse(body).Should().Contain(e => e.ev == "error");
+        var call = audit.Calls.Should().ContainSingle(c => c.Action == "AI_KNOWLEDGE_ASKED").Subject;
+        call.Details.Should().Contain("\"dbQueryCount\":1");
+        call.Details.Should().Contain("\"error\":");
+    }
+
+    [Fact]
     public async Task Ask_PreStreamLlmError_MappedToHttp_NoAudit()
     {
         var (controller, audit, llm, _) = Build();

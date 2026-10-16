@@ -18,7 +18,7 @@ namespace NodePilot.Engine.Execution;
 ///   "maxAttempts":   3,             // int, inclusive of first attempt; 1 = no retry
 ///   "backoff":       "exponential", // "fixed" | "linear" | "exponential"
 ///   "initialDelayMs": 1000,         // int, delay before attempt 2 (and base for grow)
-///   "maxDelayMs":     30000         // int, cap for linear/exponential
+///   "maxDelayMs":     30000         // int, cap for every delay; 0 or missing = 30000
 /// }
 /// </code>
 /// </summary>
@@ -29,6 +29,10 @@ public readonly record struct RetryPolicy(
     int MaxDelayMs)
 {
     public static readonly RetryPolicy Disabled = new(1, RetryBackoff.Fixed, 0, 0);
+
+    /// <summary>Delay cap when <c>maxDelayMs</c> is missing or not positive. A retry delay holds a
+    /// step slot, so it is never unbounded.</summary>
+    public const int DefaultMaxDelayMs = 30_000;
 
     public bool IsEnabled => MaxAttempts > 1;
 
@@ -48,7 +52,8 @@ public readonly record struct RetryPolicy(
             RetryBackoff.Exponential => (long)InitialDelayMs << Math.Min(zeroBased, 20), // cap shift at 20 to avoid overflow
             _                        => InitialDelayMs,
         };
-        if (MaxDelayMs > 0 && ms > MaxDelayMs) ms = MaxDelayMs;
+        var cap = MaxDelayMs > 0 ? MaxDelayMs : DefaultMaxDelayMs;
+        if (ms > cap) ms = cap;
         return TimeSpan.FromMilliseconds(Math.Max(0, ms));
     }
 
@@ -71,8 +76,8 @@ public readonly record struct RetryPolicy(
         int initialDelayMs = GetInt(r, "initialDelayMs", 1000);
         if (initialDelayMs < 0) initialDelayMs = 0;
 
-        int maxDelayMs = GetInt(r, "maxDelayMs", 30_000);
-        if (maxDelayMs < 0) maxDelayMs = 0;
+        int maxDelayMs = GetInt(r, "maxDelayMs", DefaultMaxDelayMs);
+        if (maxDelayMs <= 0) maxDelayMs = DefaultMaxDelayMs;
 
         var backoffStr = r.TryGetProperty("backoff", out var b) && b.ValueKind == JsonValueKind.String
             ? b.GetString() : null;

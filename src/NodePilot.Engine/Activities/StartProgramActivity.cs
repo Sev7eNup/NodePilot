@@ -76,14 +76,11 @@ public class StartProgramActivity : BaseRemoteActivity
 
         // UseShellExecute=true spawns via the OS shell (document associations, UI apps).
         // The shell parser introduces a second injection surface beyond PowerShell quoting,
-        // so a missing config key is treated as "DisallowShellExecute=true" by default.
-        // Dev/test deployments that need shell-mediated launches set
-        // StartProgram:DisallowShellExecute=false explicitly.
+        // so only an explicit StartProgram:DisallowShellExecute=false permits it.
         if (useShell)
         {
-            var raw = _configuration["StartProgram:DisallowShellExecute"];
-            var disallow = string.IsNullOrWhiteSpace(raw)
-                || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
+            var disallow = NodePilot.Core.Configuration.HardeningFlags.IsOn(
+                _configuration[NodePilot.Core.Configuration.HardeningFlags.DisallowShellExecuteKey]);
             if (disallow)
                 throw new InvalidOperationException(
                     "StartProgram: useShellExecute=true is blocked by configuration. " +

@@ -455,6 +455,52 @@ public class UsersControllerTests
     }
 
     [Fact]
+    public async Task UpdateAndDelete_WriteAuditOnlyAfterTheTransactionCommitted()
+    {
+        // The audit writer forwards each row to the SIEM as committed, so it must not run
+        // inside a transaction that can still roll back or be retried.
+        var db = TestDbFactory.Create();
+        var adminId = Guid.NewGuid();
+        var operatorId = Guid.NewGuid();
+        db.Users.AddRange(AdminUser(adminId), OperatorUser(operatorId));
+        await db.SaveChangesAsync();
+        var audit = new TransactionObservingAuditWriter(db);
+        var controller = new UsersController(db, audit, new MemoryCache(new MemoryCacheOptions()))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        [new Claim(ClaimTypes.Role, "Admin"), new Claim(ClaimTypes.NameIdentifier, adminId.ToString())],
+                        "TestAuth")),
+                },
+            },
+        };
+
+        await controller.Update(operatorId, new UpdateUserRequest("Viewer", null, null), CancellationToken.None);
+        await controller.Delete(operatorId, CancellationToken.None);
+
+        audit.Actions.Should().Equal("USER_ROLE_CHANGED", "USER_DELETED");
+        audit.InsideTransaction.Should().AllBeEquivalentTo(false);
+    }
+
+    private sealed class TransactionObservingAuditWriter(NodePilot.Data.NodePilotDbContext db)
+        : NodePilot.Core.Audit.IAuditWriter
+    {
+        public List<string> Actions { get; } = [];
+        public List<bool> InsideTransaction { get; } = [];
+
+        public Task LogAsync(string action, string? resourceType = null, Guid? resourceId = null,
+            string? details = null, CancellationToken ct = default)
+        {
+            Actions.Add(action);
+            InsideTransaction.Add(db.Database.CurrentTransaction is not null);
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
     public async Task Update_PasswordReset_EmitsPasswordResetAudit()
     {
         var db = TestDbFactory.Create();

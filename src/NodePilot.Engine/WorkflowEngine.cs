@@ -456,7 +456,8 @@ public class WorkflowEngine : IWorkflowEngine
                 claimCandidates = ApplyExecutionWriteFence(
                     _db, claimCandidates, expectedOwnerNodeId, expectedLeaseEpoch);
                 var claimed = await ExecutionStateLifecycle.TryClaimPendingAsync(claimCandidates, ct);
-                await _db.Entry(existingExecution).ReloadAsync(ct);
+                // The claim is committed; importing it must not depend on the caller's token.
+                await _db.Entry(existingExecution).ReloadAsync(CancellationToken.None);
                 if (claimed == 0)
                     return existingExecution;
             }
@@ -495,9 +496,6 @@ public class WorkflowEngine : IWorkflowEngine
         var workflowNameTag = new KeyValuePair<string, object?>("workflow_name", workflow.Name);
         var triggerTag = new KeyValuePair<string, object?>("trigger_type", triggeredBy);
 
-        EngineMetrics.ExecutionsStarted.Add(1, workflowIdTag, workflowNameTag, triggerTag);
-        EngineMetrics.ExecutionsActive.Add(1, workflowIdTag, workflowNameTag);
-
         // A declared parameter's default is part of the run's inputs, not just of the trigger
         // node's outputs. Applied here, before the execution row is written, so the recorded
         // InputParametersJson is what the run actually saw and a retry replays the same values.
@@ -508,36 +506,41 @@ public class WorkflowEngine : IWorkflowEngine
         var run = new ExecutionRun(workflow, execution, activity, executionStopwatch,
             workflowIdTag, workflowNameTag, callDepth, expectedOwnerNodeId, expectedLeaseEpoch, _hostStopping);
 
-        // Interactive runs need the Pending to Running transition to land in the DB immediately
-        // so dashboard/list views don't show "queued" while the engine is already executing.
-        var persistExecutionStart = existingExecution is null || debugEnabled || interactiveRun;
-        if (persistExecutionStart)
-            await _db.SaveChangesMeasuredAsync("execution.start", ct);
-
-        // Support log: one line per run start. Only for top-level runs (callDepth==0) —
-        // sub-workflows are already covered by their parent and would otherwise double up
-        // in the file. The format is human-readable; exec=<8-hex> lets you visually group
-        // the start and terminal lines for the same run.
-        if (callDepth == 0)
-            LogExecutionStartedAsSupport(execution, workflow, triggeredBy);
-
-        // Resolve global variables ONCE per run — one DB hit for all steps. The plaintext
-        // values flow into every step's Variables dict as `globals.NAME`; OutputRedactor
-        // still masks them before Output/ErrorOutput leaves the activity. See
-        // ResolveGlobalVariablesAsync for the optimisation that skips the DB + DPAPI work
-        // when the workflow contains neither global references nor custom activities.
-        var (globalsResult, globalsLoadError) = await ResolveGlobalVariablesAsync(workflow.DefinitionJson, execution.Id, ct);
-
-        if (await FailIfUnresolvableGlobalsAsync(run, globalsResult.Unresolvable, globalsLoadError))
-            return execution;
-
-        var debug = CreateDebugHandle(debugEnabled, timeoutSeconds);
-
-        // H-4: Reserve capacity before registering runtime state. The following try/finally
-        // is then the single cleanup path for capacity slots, running executions and debug handles.
+        // From here on the try/finally below is the single cleanup path: it balances the active
+        // gauge, releases capacity slots, running executions and debug handles, and gives every
+        // failure or cancellation a terminal execution state.
+        EngineMetrics.ExecutionsStarted.Add(1, workflowIdTag, workflowNameTag, triggerTag);
+        EngineMetrics.ExecutionsActive.Add(1, workflowIdTag, workflowNameTag);
         var capacityReserved = false;
         try
         {
+            // Interactive runs need the Pending to Running transition to land in the DB immediately
+            // so dashboard/list views don't show "queued" while the engine is already executing.
+            // A lifecycle write: a cancel after the commit must not leave the row Added.
+            var persistExecutionStart = existingExecution is null || debugEnabled || interactiveRun;
+            if (persistExecutionStart)
+                await _db.SaveChangesMeasuredAsync("execution.start", CancellationToken.None);
+
+            // Support log: one line per run start. Only for top-level runs (callDepth==0) —
+            // sub-workflows are already covered by their parent and would otherwise double up
+            // in the file. The format is human-readable; exec=<8-hex> lets you visually group
+            // the start and terminal lines for the same run.
+            if (callDepth == 0)
+                LogExecutionStartedAsSupport(execution, workflow, triggeredBy);
+
+            // Resolve global variables ONCE per run — one DB hit for all steps. The plaintext
+            // values flow into every step's Variables dict as `globals.NAME`; OutputRedactor
+            // still masks them before Output/ErrorOutput leaves the activity. See
+            // ResolveGlobalVariablesAsync for the optimisation that skips the DB + DPAPI work
+            // when the workflow contains neither global references nor custom activities.
+            var (globalsResult, globalsLoadError) = await ResolveGlobalVariablesAsync(workflow.DefinitionJson, execution.Id, ct);
+
+            if (await FailIfUnresolvableGlobalsAsync(run, globalsResult.Unresolvable, globalsLoadError))
+                return execution;
+
+            var debug = CreateDebugHandle(debugEnabled, timeoutSeconds);
+
+            // H-4: Reserve capacity before registering runtime state.
             perUserCounted = CheckCapacityCaps(startedByUserId, callDepth, interactiveRun);
             capacityReserved = true;
             _runningExecutions[execution.Id] = cts;
@@ -643,9 +646,6 @@ public class WorkflowEngine : IWorkflowEngine
             brokenRefError,
             cancelledBy: null,
             "execution.fail.unresolvable-globals");
-        EngineMetrics.ExecutionsActive.Add(-1, run.WorkflowIdTag, run.WorkflowNameTag);
-        EngineMetrics.ExecutionsCompleted.Add(1, run.WorkflowIdTag, run.WorkflowNameTag,
-            new KeyValuePair<string, object?>("status", execution.Status.ToString()));
         return true;
     }
 

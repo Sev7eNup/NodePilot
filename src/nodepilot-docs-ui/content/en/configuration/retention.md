@@ -35,7 +35,7 @@ The dashboard and the workflow lists read a **precomputed** `WorkflowStats` aggr
 
 | Key | Default | Effect |
 |---|---|---|
-| `Stats:RefreshIntervalMinutes` | `5` | The aggregate refresh interval |
+| `Stats:RefreshIntervalMinutes` | `5` | The aggregate refresh interval (1–1440; an unreadable value fails only that pass, and the next one follows after 5 minutes) |
 | `Stats:WindowDays` | `7` | The time window of the aggregated KPIs |
 | `Stats:Rollup:Enabled` | `true` | Precomputed hourly buckets for the dashboard history. Turned off, the dashboard recomputes every window from the raw rows — correct, but markedly slower on large histories |
 

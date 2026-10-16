@@ -77,6 +77,31 @@ public class RetryPolicyTests
         p.DelayFor(9).TotalMilliseconds.Should().Be(500);   // still capped
     }
 
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("\"0\"")]
+    public void Parse_NonPositiveMaxDelay_FallsBackToDefaultCap(string raw)
+    {
+        RetryPolicy.Parse(Json("{\"retry\":{\"maxAttempts\":3,\"maxDelayMs\":" + raw + "}}"))
+            .MaxDelayMs.Should().Be(RetryPolicy.DefaultMaxDelayMs);
+    }
+
+    [Fact]
+    public void DelayFor_ExponentialWithZeroMaxDelay_IsCappedAtDefault()
+    {
+        // Without the cap the exponential delay keeps growing while it holds the step slot.
+        var p = RetryPolicy.Parse(Json("""{"retry":{"maxAttempts":20,"backoff":"exponential","initialDelayMs":1000,"maxDelayMs":0}}"""));
+        p.DelayFor(20).TotalMilliseconds.Should().Be(RetryPolicy.DefaultMaxDelayMs);
+    }
+
+    [Fact]
+    public void DelayFor_ConstructedWithoutCap_StillUsesDefaultCap()
+    {
+        var p = new RetryPolicy(20, RetryBackoff.Linear, 60_000, 0);
+        p.DelayFor(10).TotalMilliseconds.Should().Be(RetryPolicy.DefaultMaxDelayMs);
+    }
+
     [Fact]
     public void Disabled_DelayFor_AnyAttempt_IsZero()
     {

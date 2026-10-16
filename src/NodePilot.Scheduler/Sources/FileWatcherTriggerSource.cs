@@ -50,6 +50,9 @@ public class FileWatcherTriggerSource : ITriggerSource
     private readonly SemaphoreSlim _deliveryGate = new(1, 1);
     private Dictionary<string, FileStamp> _snapshot = new(StringComparer.OrdinalIgnoreCase);
     private TriggerCheckpoint? _checkpoint;
+    // True when _snapshot holds non-firing events the durable checkpoint does not have yet.
+    // Read and written only under _deliveryGate.
+    private bool _snapshotDirty;
 
     // null == healthy. Written by OnWatcherError and ProbeLoopAsync; read by the orchestrator's
     // sync pass on a different thread, hence volatile.
@@ -418,9 +421,9 @@ public class FileWatcherTriggerSource : ITriggerSource
                 _logger, ActivityType, _ctx!.WorkflowId, _ctx.NodeId);
         }
 
-        // Track every raw event in the durable snapshot, even if the user selected only one event
-        // kind. Otherwise an ignored create followed by a selected delete (or vice versa) leaves
-        // the baseline stale and makes restart/overflow reconciliation invent or miss changes.
+        // Track every raw event in the snapshot, even if the user selected only one event kind.
+        // Otherwise an ignored create followed by a selected delete (or vice versa) leaves the
+        // baseline stale and makes overflow reconciliation invent or miss changes.
         watcher.Created += (_, e) => HandleEvent("created", e.FullPath);
         watcher.Changed += (_, e) => HandleEvent("changed", e.FullPath);
         watcher.Deleted += (_, e) => HandleEvent("deleted", e.FullPath);
@@ -459,35 +462,32 @@ public class FileWatcherTriggerSource : ITriggerSource
             // replaced or the allowed roots changed. Recheck at the side-effect boundary.
             FileWatcherPathGuard.Validate(_config, path);
             if (oldPath is not null) FileWatcherPathGuard.Validate(_config, oldPath);
-            var next = new Dictionary<string, FileStamp>(_snapshot, StringComparer.OrdinalIgnoreCase);
-            if (!string.IsNullOrWhiteSpace(oldPath))
-            {
-                next.Remove(oldPath);
-                parameters["fileOldPath"] = oldPath;
-            }
-            if (action == "deleted")
-                next.Remove(path);
-            else if (TryReadStamp(path, out var stamp))
-                next[path] = stamp;
 
+            // An event that does not fire only updates the in-memory baseline. The durable copy
+            // is read only at restart, so it is written with the next fire or reconcile pass
+            // instead of once per raw event.
+            if (!shouldFire)
+            {
+                if (ApplyEvent(_snapshot, action, path, oldPath)) _snapshotDirty = true;
+                return;
+            }
+
+            var next = new Dictionary<string, FileStamp>(_snapshot, StringComparer.OrdinalIgnoreCase);
+            ApplyEvent(next, action, path, oldPath);
+            if (!string.IsNullOrWhiteSpace(oldPath)) parameters["fileOldPath"] = oldPath;
+
+            // The admit transaction stores the signal position as the checkpoint, so this also
+            // persists every earlier non-firing change.
             var position = JsonSerializer.Serialize(next);
-            var checkpoint = new TriggerCheckpoint(position, eventKey);
-            if (shouldFire)
-            {
-                var signal = new TriggerSignal(eventKey, position, parameters);
-                while (!ct.IsCancellationRequested && !await _ctx!.DeliverAsync(signal))
-                    await Task.Delay(TimeSpan.FromSeconds(5), ct);
-            }
-            else
-            {
-                while (!ct.IsCancellationRequested && !await _ctx!.SaveCheckpointAsync(checkpoint))
-                    await Task.Delay(TimeSpan.FromSeconds(5), ct);
-            }
+            var signal = new TriggerSignal(eventKey, position, parameters);
+            while (!ct.IsCancellationRequested && !await _ctx!.DeliverAsync(signal))
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
 
             if (!ct.IsCancellationRequested)
             {
                 _snapshot = next;
-                _checkpoint = checkpoint;
+                _checkpoint = new TriggerCheckpoint(position, eventKey);
+                _snapshotDirty = false;
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
@@ -571,9 +571,12 @@ public class FileWatcherTriggerSource : ITriggerSource
                 if (!await _ctx!.DeliverAsync(signal)) return;
                 _snapshot = next;
                 _checkpoint = new TriggerCheckpoint(signal.Position, signal.EventKey);
+                _snapshotDirty = false;
             }
 
-            if (_snapshot.Count != current.Count
+            // Also the throttled write of non-firing changes: once per probe interval at most.
+            if (_snapshotDirty
+                || _snapshot.Count != current.Count
                 || _snapshot.Any(item => !current.TryGetValue(item.Key, out var stamp) || stamp != item.Value))
             {
                 var position = JsonSerializer.Serialize(current);
@@ -586,6 +589,7 @@ public class FileWatcherTriggerSource : ITriggerSource
                 {
                     _snapshot = current;
                     _checkpoint = baseline;
+                    _snapshotDirty = false;
                 }
             }
         }
@@ -616,11 +620,29 @@ public class FileWatcherTriggerSource : ITriggerSource
 
     private bool Watches(string action) => _watchType == "any" || _watchType == action;
 
+    // Applies one raw event to a snapshot. Returns true when the snapshot changed.
+    private static bool ApplyEvent(
+        Dictionary<string, FileStamp> snapshot, string action, string path, string? oldPath)
+    {
+        var changed = !string.IsNullOrWhiteSpace(oldPath) && snapshot.Remove(oldPath);
+        if (action == "deleted") return snapshot.Remove(path) || changed;
+        if (!TryReadStamp(path, out var stamp)) return changed;
+        if (snapshot.TryGetValue(path, out var previous) && previous == stamp) return changed;
+        snapshot[path] = stamp;
+        return true;
+    }
+
     /// <summary>
     /// Paths in the baseline the source is currently holding. Tests only — exposes just the keys
-    /// so the stamp type stays internal to this class.
+    /// so the stamp type stays internal to this class. Takes the delivery gate because events
+    /// update the baseline in place.
     /// </summary>
-    internal IReadOnlyCollection<string> SnapshotPathsForTests() => _snapshot.Keys;
+    internal IReadOnlyCollection<string> SnapshotPathsForTests()
+    {
+        _deliveryGate.Wait();
+        try { return _snapshot.Keys.ToArray(); }
+        finally { _deliveryGate.Release(); }
+    }
 
     /// <summary>
     /// How far the stored baseline and a fresh snapshot differ, counted the way

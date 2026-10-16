@@ -99,6 +99,8 @@ public sealed class ApiDtoParityTests
         var clientRecords = DiscoverRecords($"src/NodePilot.{client}/Api/Dtos");
 
         api.Should().HaveCountGreaterThan(100, "the API DTO folder holds the full contract surface");
+        api.Should().ContainKey("SaveAgentMcpServerRequest", "class DTOs are part of the compared surface");
+        api["SaveAgentMcpServerRequest"].Should().Contain(["Name", "Transport", "Secrets"]);
         var shared = api.Keys.Intersect(clientRecords.Keys, StringComparer.Ordinal).Count();
         shared.Should().BeGreaterThan(50,
             $"the {client} client mirrors a large part of the API contract; " +
@@ -158,6 +160,21 @@ public sealed class ApiDtoParityTests
                 if (open < 0) continue;
                 var fields = ParseRecordFields(content, open);
                 if (fields is not null) result[name] = fields;
+            }
+
+            // Class DTOs (request bodies such as SaveAgentMcpServerRequest) carry their contract
+            // in settable properties.
+            foreach (Match declaration in Regex.Matches(content, @"\bclass\s+(?<name>\w+)\b[^{;]*\{"))
+            {
+                var name = declaration.Groups["name"].Value;
+                if (result.ContainsKey(name)) continue;
+
+                var body = TryExtractBalanced(content, declaration.Index + declaration.Length - 1, '{', '}');
+                if (body is null) continue;
+                result[name] = Regex
+                    .Matches(body, @"public\s+[\w\?\<\>\[\],\.\s]+?\s+(?<name>\w+)\s*\{\s*get;\s*(?:set|init);")
+                    .Select(m => m.Groups["name"].Value)
+                    .ToList();
             }
         }
 

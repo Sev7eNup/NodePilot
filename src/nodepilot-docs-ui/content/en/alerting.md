@@ -136,7 +136,7 @@ The **Deliveries** action opens the history of delivery attempts. It shows:
 - The attempt number
 - The error message
 
-Failed deliveries are retried and marked as failed after five unsuccessful attempts. The retention period follows the notification retention; by default, completed entries are kept for 90 days.
+Failed deliveries are retried with growing pauses (30 seconds, 2, 10 and 30 minutes) and marked as failed after five unsuccessful attempts. The last attempt therefore comes about 45 minutes after the first, so a receiver that is unavailable for a shorter time still gets the alert. The retention period follows the notification retention; by default, completed entries are kept for 90 days.
 
 ## Permissions and security
 

@@ -191,6 +191,26 @@ public class NetworkGuardTests
         act.Should().Throw<InvalidOperationException>().WithMessage("*link-local*");
     }
 
+    [Theory]
+    [InlineData("fd00:ec2::254")]
+    [InlineData("fd20:ce::254")]
+    public void Ipv6MetadataEndpoint_BlockedEvenWithPrivateNetworksAllowed(string address)
+    {
+        // Both lie in fc00::/7, which RestApi:BlockPrivateNetworks=false would otherwise open.
+        var act = () => NetworkGuard.AssertAddressesUsable(
+            "metadata.corp", new[] { Ip(address) }, blockPrivate: false, requireAll: false);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*cloud metadata*");
+    }
+
+    [Fact]
+    public void Ipv6MetadataLiteral_BlockedEvenWithPrivateNetworksAllowed()
+    {
+        Action act = () => NetworkGuard.ValidateUrl(Cfg("false"), "http://[fd00:ec2::254]/latest/meta-data/", requireAllAddresses: false);
+
+        act.Should().Throw<InvalidOperationException>();
+    }
+
     [Fact]
     public void MixedRecords_PrivateStillBlockedWhenPolicySaysSo()
     {

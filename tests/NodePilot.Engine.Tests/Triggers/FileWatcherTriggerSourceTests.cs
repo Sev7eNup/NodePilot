@@ -1206,4 +1206,114 @@ public class FileWatcherTriggerSourceTests
             await src.DisposeAsync();
         }
     }
+
+    // ------------------------------------- non-firing events stay in memory until a fire/reconcile
+
+    [Fact]
+    public async Task NonFiringEvents_DoNotSaveCheckpointPerEvent_NextFirePersistsThem()
+    {
+        using var tempDir = new TempDirectory();
+        var dataPath = Path.Combine(tempDir.Path, "data.txt");
+        await File.WriteAllTextAsync(dataPath, "start");
+        var saves = 0;
+        var sentinel = new TaskCompletionSource<TriggerSignal>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = Cfg($$"""{"directory":"{{Esc(tempDir.Path)}}","filter":"*.txt","watchType":"created"}"""),
+            OnFire = _ => Task.CompletedTask,
+            OnDurableFire = signal =>
+            {
+                if (signal.Parameters.GetValueOrDefault("filePath", "").EndsWith("sentinel.txt", StringComparison.OrdinalIgnoreCase))
+                    sentinel.TrySetResult(signal);
+                return Task.FromResult(true);
+            },
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(null),
+            InitializeCheckpoint = _ => Task.FromResult(true),
+            SaveCheckpoint = _ => { Interlocked.Increment(ref saves); return Task.FromResult(true); },
+        };
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            ConfigWith(("Trigger:FileWatcher:HealthProbeSeconds", "0")));
+
+        try
+        {
+            await src.StartAsync(ctx, CancellationToken.None);
+            for (var i = 0; i < 40; i++) await File.AppendAllTextAsync(dataPath, "x");
+            var finalLength = new FileInfo(dataPath).Length;
+            // Deliveries run one at a time in event order, so the sentinel's fire comes after
+            // every Changed event above.
+            await File.WriteAllTextAsync(Path.Combine(tempDir.Path, "sentinel.txt"), "s");
+
+            var signal = await sentinel.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Volatile.Read(ref saves).Should().Be(0,
+                "Changed events do not fire for watchType=created and must not each write the checkpoint");
+            StampLength(signal.Position, "data.txt").Should().Be(finalLength,
+                "the fire's position carries the in-memory baseline including the earlier changes");
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Reconcile_WithUnsavedNonFiringChange_SavesBaselineOnce()
+    {
+        using var tempDir = new TempDirectory();
+        var dataPath = Path.Combine(tempDir.Path, "data.txt");
+        await File.WriteAllTextAsync(dataPath, "start");
+        var saved = new System.Collections.Concurrent.ConcurrentQueue<TriggerCheckpoint>();
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = Cfg($$"""{"directory":"{{Esc(tempDir.Path)}}","filter":"*.txt","watchType":"created"}"""),
+            OnFire = _ => Task.CompletedTask,
+            OnDurableFire = _ => Task.FromResult(true),
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(null),
+            InitializeCheckpoint = _ => Task.FromResult(true),
+            SaveCheckpoint = cp => { saved.Enqueue(cp); return Task.FromResult(true); },
+        };
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            ConfigWith(("Trigger:FileWatcher:HealthProbeSeconds", "0")));
+
+        try
+        {
+            await src.StartAsync(ctx, CancellationToken.None);
+            await File.AppendAllTextAsync(dataPath, "changed");
+            var finalLength = new FileInfo(dataPath).Length;
+            // Apply the change the way a raw Changed event does. Afterwards the baseline matches
+            // the disk, so only the pending-change flag can make the reconcile pass write.
+            await InvokePrivateAsync(src, "DeliverObservedAsync",
+                "changed", dataPath, null, false, "test-change", new Dictionary<string, string>());
+            saved.Should().BeEmpty("a non-firing event only updates the in-memory baseline");
+
+            await InvokePrivateAsync(src, "ReconcileAsync", CancellationToken.None);
+            await InvokePrivateAsync(src, "ReconcileAsync", CancellationToken.None);
+
+            saved.Should().ContainSingle("the first pass writes the pending change, the second has nothing to write");
+            StampLength(saved.Single().Position, "data.txt").Should().Be(finalLength);
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    private static Task InvokePrivateAsync(FileWatcherTriggerSource source, string method, params object?[] args)
+        => (Task)typeof(FileWatcherTriggerSource)
+            .GetMethod(method, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .Invoke(source, args)!;
+
+    private static long StampLength(string position, string fileName)
+    {
+        using var doc = JsonDocument.Parse(position);
+        return doc.RootElement.EnumerateObject()
+            .Single(entry => entry.Name.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
+            .Value.GetProperty("Length").GetInt64();
+    }
 }

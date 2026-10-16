@@ -117,6 +117,27 @@ public class WorkflowEngineTests
         steps.Single(s => s.StepId == "step-1").Status.Should().Be(ExecutionStatus.Succeeded);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_CallerTokenCancelledBeforeStart_EndsCancelledThroughCleanupPath()
+    {
+        // The run start sits under the same try/finally as the graph run: a cancellation that is
+        // already present must yield a terminal row and drop the runtime registration, not
+        // escape before the execution row exists.
+        var workflow = CreateWorkflow(BuildSingleNodeWorkflow());
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "test-user", cancelled.Token);
+
+        execution.Status.Should().Be(ExecutionStatus.Cancelled);
+        var persisted = await _db.WorkflowExecutions.AsNoTracking().SingleAsync(e => e.Id == execution.Id);
+        persisted.Status.Should().Be(ExecutionStatus.Cancelled);
+        persisted.CompletedAt.Should().NotBeNull();
+        (await _engine.CancelAsync(execution.Id)).Should().BeFalse("the cleanup path must unregister the run");
+    }
+
     /// <summary>
     /// The "test step with context" feature relies on this: when a step produces OutputParameters,
     /// the
@@ -815,6 +836,36 @@ public class WorkflowEngineTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ExecutionCancelledDuringStep_RecordsStepCancelledAndStartsNoSuccessor()
+    {
+        var executed = new List<string>();
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<StepExecutionContext, JsonElement, CancellationToken>((ctx, _, _) =>
+            {
+                executed.Add(ctx.StepId);
+                _engine.CancelAsync(ctx.WorkflowExecutionId, "user").GetAwaiter().GetResult();
+            })
+            .ThrowsAsync(new OperationCanceledException());
+
+        var workflow = CreateWorkflow(BuildLinearWorkflow());
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "test-user", CancellationToken.None);
+
+        execution.Status.Should().Be(ExecutionStatus.Cancelled);
+        executed.Should().Equal(new[] { "step-1" }, "a cancelled execution must not start the next step");
+        var steps = _db.StepExecutions.AsNoTracking()
+            .Where(s => s.WorkflowExecutionId == execution.Id).ToList();
+        steps.Single(s => s.StepId == "step-1").Status.Should().Be(ExecutionStatus.Cancelled);
+        steps.Should().NotContain(s => s.Status == ExecutionStatus.Failed,
+            "an execution-level cancel is not a step failure");
+    }
+
+    [Fact]
     public async Task CancelAsync_UnknownExecution_ReturnsFalse()
     {
         var randomId = Guid.NewGuid();
@@ -1056,7 +1107,17 @@ public class WorkflowEngineTests
                     "branchSlow" => 2000,
                     _ => 5,
                 };
-                await Task.Delay(ms, ct);
+                try
+                {
+                    await Task.Delay(ms, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    // The fixture shares one SQLite connection; let the join and final steps
+                    // write before the loser's stand-down write.
+                    await Task.Delay(100, CancellationToken.None);
+                    throw;
+                }
                 return new ActivityResult { Success = true, Output = ctx.StepId };
             });
 
@@ -1069,21 +1130,23 @@ public class WorkflowEngineTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ActivityResult { Success = true, Output = "merged" });
 
-        var registry = new ActivityRegistry(new[] { _mockExecutor.Object, mockJunction.Object });
+        var registry = new ActivityRegistry(
+            new[] { _mockExecutor.Object, _manualTriggerExecutor.Object, mockJunction.Object });
         var sp = TestDbContext.BuildScopeProviderOnSameConnection(_connection, registry);
         var notifier = new Mock<IExecutionNotifier>();
         var engine = new WorkflowEngine(_db, NullLogger<WorkflowEngine>.Instance,
             sp, notifier.Object);
 
-        var def = """
-        {
-          "nodes":[
-            {"id":"branchFast","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"runScript","config":{}}},
+        // Rooted at a trigger (ADR 0006): without it no step runs and the timing proves nothing.
+        var def = "{\"nodes\":[" + TriggerNodeJson + """
+            ,{"id":"branchFast","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"runScript","config":{}}},
             {"id":"branchSlow","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"runScript","config":{}}},
             {"id":"join","type":"junction","position":{"x":0,"y":0},"data":{"activityType":"junction","config":{"mode":"waitAny"}}},
             {"id":"final","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"runScript","config":{}}}
           ],
           "edges":[
+            {"id":"t1","source":"trigger-1","target":"branchFast"},
+            {"id":"t2","source":"trigger-1","target":"branchSlow"},
             {"id":"e1","source":"branchFast","target":"join"},
             {"id":"e2","source":"branchSlow","target":"join"},
             {"id":"e3","source":"join","target":"final"}
@@ -1095,9 +1158,15 @@ public class WorkflowEngineTests
         await _db.SaveChangesAsync();
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        await engine.ExecuteAsync(workflow, "test-user", CancellationToken.None);
+        var execution = await engine.ExecuteAsync(workflow, "test-user", CancellationToken.None);
         sw.Stop();
 
+        execution.Status.Should().Be(ExecutionStatus.Succeeded, execution.ErrorMessage);
+        var steps = _db.StepExecutions.Where(s => s.WorkflowExecutionId == execution.Id).ToList();
+        steps.Single(s => s.StepId == "branchFast").Status.Should().Be(ExecutionStatus.Succeeded);
+        steps.Single(s => s.StepId == "join").Status.Should().Be(ExecutionStatus.Succeeded);
+        steps.Single(s => s.StepId == "final").Status.Should().Be(ExecutionStatus.Succeeded,
+            "the junction must have fired and released the downstream step");
         // Must complete in significantly less than branchSlow's 2000ms — proves we didn't wait.
         sw.ElapsedMilliseconds.Should().BeLessThan(1500,
             "waitAny must fire after the fast branch (≈10ms), not after the slow branch (2000ms)");

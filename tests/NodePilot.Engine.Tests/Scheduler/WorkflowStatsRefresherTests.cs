@@ -71,6 +71,54 @@ public class WorkflowStatsRefresherTests
 
 
     [Fact]
+    public async Task RunPassAsync_UnconvertibleInterval_DoesNotThrow_AndUsesDefaultInterval()
+    {
+        // BackgroundServiceExceptionBehavior is StopHost: a config read that throws outside the
+        // pass's catch would stop the whole host.
+        var (_, factory, conn) = CreateEnv();
+        try
+        {
+            var service = CreateService(factory, ConfigWith(("Stats:RefreshIntervalMinutes", "abc")));
+
+            var interval = await service.RunPassAsync(CancellationToken.None);
+
+            interval.Should().Be(TimeSpan.FromMinutes(5));
+        }
+        finally { conn.Dispose(); }
+    }
+
+    [Fact]
+    public async Task RunPassAsync_UnconvertibleWindow_DoesNotThrow_AndKeepsConfiguredInterval()
+    {
+        var (_, factory, conn) = CreateEnv();
+        try
+        {
+            var service = CreateService(factory, ConfigWith(
+                ("Stats:RefreshIntervalMinutes", "7"), ("Stats:WindowDays", "seven")));
+
+            var interval = await service.RunPassAsync(CancellationToken.None);
+
+            interval.Should().Be(TimeSpan.FromMinutes(7));
+        }
+        finally { conn.Dispose(); }
+    }
+
+    [Fact]
+    public async Task RunPassAsync_IntervalAboveSettingsRange_IsClampedSoTheDelayStaysValid()
+    {
+        var (_, factory, conn) = CreateEnv();
+        try
+        {
+            var service = CreateService(factory, ConfigWith(("Stats:RefreshIntervalMinutes", "100000")));
+
+            var interval = await service.RunPassAsync(CancellationToken.None);
+
+            interval.Should().Be(TimeSpan.FromMinutes(1440));
+        }
+        finally { conn.Dispose(); }
+    }
+
+    [Fact]
     public async Task RefreshOnceAsync_NoExecutions_WritesZeroedStatsRow()
     {
         var (db, factory, conn) = CreateEnv();

@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Activities;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Activities;
 using NodePilot.Engine.PowerShell;
@@ -243,6 +244,30 @@ public class CustomActivityExecutorBranchTests
 
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("requires a target machine");
+    }
+
+    [Fact]
+    public async Task ConfiguredCredentialWithoutCredentialStore_IsNotSilentlyDropped()
+    {
+        // Ignoring the credential would turn a credentialed localhost target into a
+        // localhost-bypass run under the service identity.
+        await using var db = TestDbFactory.Create();
+        var store = new CustomActivityDefinitionStore(db);
+        var def = await store.CreateAsync(new CustomActivityDefinitionInput
+        { Key = "remote_op", Name = "R", ScriptTemplate = "Write-Output 1", RunsRemote = true }, "u", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, def.ConcurrencyToken, "admin", CancellationToken.None);
+        var context = new StepExecutionContext
+        {
+            StepId = "step-1",
+            Variables = new Dictionary<string, string>(),
+            ResolvedMachine = new ManagedMachine { Id = Guid.NewGuid(), Name = "local", Hostname = "localhost", WinRmPort = 5985 },
+            CredentialId = Guid.NewGuid(),
+        };
+
+        var act = () => NewExecutor(db).ExecuteAsync(
+            context, Config(new { __customDefinitionId = def.Id.ToString(), __customKey = "remote_op" }), CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*credential store*");
     }
 
     [Fact]

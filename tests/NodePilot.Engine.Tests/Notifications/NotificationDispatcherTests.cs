@@ -161,9 +161,11 @@ public class NotificationDispatcherTests
             });
             await db.SaveChangesAsync();
             var sink = new RecordingSink(NotificationChannel.Email) { Behavior = () => NotificationSendResult.Fail("temporary outage") };
+            var clock = new ManualClock(DateTimeOffset.UtcNow);
             NotificationDispatcher Dispatcher() => new(factory, new SingleNodeClusterStateProvider(), [sink],
                 new SystemAlertCatalog([source]), new ConfigurationBuilder().Build(),
-                NullLogger<NotificationDispatcher>.Instance, TestDatabaseAvailability.Available);
+                NullLogger<NotificationDispatcher>.Instance, TestDatabaseAvailability.Available)
+            { Clock = clock };
             await Dispatcher().DispatchOnceAsync(TestContext.Current.CancellationToken);
             var pending = await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync();
             pending.Status.Should().Be(NotificationDeliveryStatus.Pending);
@@ -183,6 +185,7 @@ public class NotificationDispatcherTests
             (await source.ObserveAsync(db, SystemAlertQuery.Empty, TestContext.Current.CancellationToken)).Should().BeEmpty(
                 "normal sampling must retain its lookback limit");
             sink.Behavior = () => NotificationSendResult.Ok;
+            clock.Advance(TimeSpan.FromSeconds(31)); // past the first retry backoff
 
             await Dispatcher().DispatchOnceAsync(TestContext.Current.CancellationToken);
 
@@ -222,14 +225,17 @@ public class NotificationDispatcherTests
             db.NotificationRules.Add(rule);
             await db.SaveChangesAsync();
             var sink = new RecordingSink(NotificationChannel.Email) { Behavior = () => NotificationSendResult.Fail("temporary transport error") };
+            var clock = new ManualClock(DateTimeOffset.UtcNow);
             var dispatcher = new NotificationDispatcher(factory, new SingleNodeClusterStateProvider(), [sink],
                 new SystemAlertCatalog([new ExecutionResultSource()]), new ConfigurationBuilder().Build(),
-                NullLogger<NotificationDispatcher>.Instance, TestDatabaseAvailability.Available);
+                NullLogger<NotificationDispatcher>.Instance, TestDatabaseAvailability.Available)
+            { Clock = clock };
 
             await dispatcher.DispatchOnceAsync(TestContext.Current.CancellationToken);
             sink.Sends.Should().ContainSingle();
             (await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync()).Status.Should().Be(NotificationDeliveryStatus.Pending);
             sink.Behavior = () => NotificationSendResult.Ok;
+            clock.Advance(TimeSpan.FromSeconds(31));
 
             await dispatcher.DispatchOnceAsync(TestContext.Current.CancellationToken);
 
@@ -254,15 +260,21 @@ public class NotificationDispatcherTests
             {
                 Behavior = () => NotificationSendResult.Fail("transport unavailable"),
             };
+            var clock = new ManualClock(DateTimeOffset.UtcNow);
             var dispatcher = Build(factory, sink);
+            dispatcher.Clock = clock;
             await dispatcher.DispatchOnceAsync(CancellationToken.None);
             sink.Sends.Should().ContainSingle();
             await db.NotificationRules.Where(r => r.Id == ruleId)
                 .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsEnabled, false));
+            clock.Advance(TimeSpan.FromMinutes(1));
 
             await dispatcher.DispatchOnceAsync(CancellationToken.None);
 
             sink.Sends.Should().ContainSingle("the rule master switch also prevents external retry sends");
+            var attempt = await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync();
+            attempt.Status.Should().Be(NotificationDeliveryStatus.Failed);
+            attempt.Error.Should().Be("notification rule was disabled before retry");
         }
         finally { await db.DisposeAsync(); await conn.DisposeAsync(); }
     }
@@ -599,7 +611,7 @@ public class NotificationDispatcherTests
     }
 
     [Fact]
-    public async Task TransientFailure_RetriedOnNextPass_ThenSucceeds()
+    public async Task TransientFailure_RetriedOnFirstDuePass_ThenSucceeds()
     {
         var (db, factory, conn) = CreateEnv();
         try
@@ -613,11 +625,14 @@ public class NotificationDispatcherTests
             {
                 Behavior = () => ++calls == 1 ? NotificationSendResult.Fail("smtp down") : NotificationSendResult.Ok,
             };
+            var clock = new ManualClock(DateTimeOffset.UtcNow);
             var dispatcher = Build(factory, email);
+            dispatcher.Clock = clock;
 
             await dispatcher.DispatchOnceAsync(CancellationToken.None); // first send fails -> stays Pending
             (await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync()).Status
                 .Should().Be(NotificationDeliveryStatus.Pending, "a transient failure must remain retryable, not be marked Failed");
+            clock.Advance(TimeSpan.FromSeconds(31));
 
             await dispatcher.DispatchOnceAsync(CancellationToken.None); // recovery retries -> succeeds
 
@@ -675,12 +690,58 @@ public class NotificationDispatcherTests
             SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
             SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow);
             var email = new RecordingSink(NotificationChannel.Email) { Behavior = () => NotificationSendResult.Fail("down") };
+            var clock = new ManualClock(DateTimeOffset.UtcNow);
             var dispatcher = Build(factory, email);
+            dispatcher.Clock = clock;
 
-            for (var i = 0; i < 8; i++) await dispatcher.DispatchOnceAsync(CancellationToken.None);
+            for (var i = 0; i < 8; i++)
+            {
+                await dispatcher.DispatchOnceAsync(CancellationToken.None);
+                clock.Advance(TimeSpan.FromHours(1)); // past every backoff step
+            }
 
             email.Sends.Should().HaveCount(5, "bounded retry caps at MaxAttempts=5 then stops re-queuing");
             (await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync()).Status.Should().Be(NotificationDeliveryStatus.Failed);
+        }
+        finally { conn.Dispose(); }
+    }
+
+    [Fact]
+    public async Task RecoverPending_BeforeBackoffElapsed_DoesNotRetry_ThenRetriesWhenDue()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var wf = SeedWorkflow(db);
+            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
+            SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow);
+            var email = new RecordingSink(NotificationChannel.Email) { Behavior = () => NotificationSendResult.Fail("receiver down") };
+            var clock = new ManualClock(DateTimeOffset.UtcNow);
+            var dispatcher = Build(factory, email);
+            dispatcher.Clock = clock;
+
+            await dispatcher.DispatchOnceAsync(CancellationToken.None);
+            email.Sends.Should().ContainSingle();
+
+            clock.Advance(TimeSpan.FromSeconds(20));
+            await dispatcher.DispatchOnceAsync(CancellationToken.None);
+            email.Sends.Should().ContainSingle("the 30-second backoff after the first try has not elapsed");
+
+            clock.Advance(TimeSpan.FromSeconds(11));
+            await dispatcher.DispatchOnceAsync(CancellationToken.None);
+            email.Sends.Should().HaveCount(2, "the first backoff has elapsed");
+
+            clock.Advance(TimeSpan.FromSeconds(90));
+            await dispatcher.DispatchOnceAsync(CancellationToken.None);
+            email.Sends.Should().HaveCount(2, "the second backoff is two minutes");
+
+            clock.Advance(TimeSpan.FromSeconds(31));
+            await dispatcher.DispatchOnceAsync(CancellationToken.None);
+            email.Sends.Should().HaveCount(3);
+            var attempt = await db.NotificationDeliveryAttempts.AsNoTracking().SingleAsync();
+            attempt.Status.Should().Be(NotificationDeliveryStatus.Pending);
+            attempt.Attempt.Should().Be(3);
         }
         finally { conn.Dispose(); }
     }
@@ -900,6 +961,13 @@ public class NotificationDispatcherTests
             email.Sends.Should().ContainSingle();
         }
         finally { conn.Dispose(); }
+    }
+
+    private sealed class ManualClock(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset _now = utcNow;
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(TimeSpan by) => _now += by;
     }
 
     private sealed class MutableClusterState : IClusterStateProvider

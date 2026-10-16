@@ -136,7 +136,7 @@ Die Aktion **Zustellungen** öffnet den Verlauf der Versandversuche. Angezeigt w
 - Nummer des Versandversuchs
 - Fehlermeldung
 
-Fehlgeschlagene Zustellungen werden erneut versucht und nach fünf erfolglosen Versuchen als fehlgeschlagen markiert. Die Aufbewahrungsdauer richtet sich nach der Notification-Retention; standardmäßig werden abgeschlossene Einträge 90 Tage gespeichert.
+Fehlgeschlagene Zustellungen werden mit wachsenden Pausen erneut versucht (30 Sekunden, 2, 10 und 30 Minuten) und nach fünf erfolglosen Versuchen als fehlgeschlagen markiert. Der letzte Versuch liegt damit etwa 45 Minuten nach dem ersten; ein Empfänger, der kürzer nicht erreichbar ist, bekommt die Meldung trotzdem. Die Aufbewahrungsdauer richtet sich nach der Notification-Retention; standardmäßig werden abgeschlossene Einträge 90 Tage gespeichert.
 
 ## Berechtigungen und Sicherheit
 

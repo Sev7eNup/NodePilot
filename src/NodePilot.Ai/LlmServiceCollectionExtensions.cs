@@ -14,8 +14,8 @@ namespace NodePilot.Ai;
 /// <summary>
 /// SSRF guard applied at TCP-connect time. The literal-host check in
 /// <see cref="LlmEndpointGuard.IsCloudMetadataEndpoint"/> only catches a configured
-/// <c>Llm:BaseUrl</c> that already names a metadata endpoint, not a hostname that resolves to
-/// <c>169.254.169.254</c> at connect time. Loopback and private IPs stay allowed here, unlike in
+/// <c>Llm:BaseUrl</c> that already names a metadata endpoint, not a hostname that resolves to one
+/// at connect time; both apply <see cref="LlmEndpointGuard.IsBlockedAddress"/>. Loopback and private IPs stay allowed here, unlike in
 /// the RestApi guard, because local LLM endpoints are the common case for this feature.
 /// </summary>
 internal static class LlmConnectGuard
@@ -98,15 +98,15 @@ internal static class LlmConnectGuard
         var allowed = new List<IPAddress>(resolved.Length);
         foreach (var ip in resolved)
         {
-            if (IsLinkLocal(ip))
-                continue; // 169.254/16 (cloud metadata) and IPv6 link-local — never allowed.
+            if (LlmEndpointGuard.IsBlockedAddress(ip))
+                continue; // Link-local and cloud-metadata addresses are never allowed.
             allowed.Add(ip);
         }
 
         if (allowed.Count == 0)
             throw new IOException(
-                $"LLM SSRF guard rejected every resolved address for host '{host}': link-local addresses " +
-                "(169.254/16 incl. cloud-metadata, IPv6 fe80::/10) are not allowed for the LLM endpoint.");
+                $"LLM SSRF guard rejected every resolved address for host '{host}': link-local and cloud-metadata " +
+                "addresses (169.254/16, fe80::/10, fd00:ec2::254, fd20:ce::254) are not allowed for the LLM endpoint.");
 
         // Logging the resolved set separates a stale AAAA record from a name that resolves
         // elsewhere under the service account's DNS suffixes; both look identical from outside.
@@ -144,21 +144,6 @@ internal static class LlmConnectGuard
             socket.Dispose();
             throw;
         }
-    }
-
-    private static bool IsLinkLocal(IPAddress ip)
-    {
-        if (ip.AddressFamily == AddressFamily.InterNetwork)
-        {
-            var bytes = ip.GetAddressBytes();
-            return bytes[0] == 169 && bytes[1] == 254;
-        }
-        if (ip.AddressFamily == AddressFamily.InterNetworkV6)
-        {
-            if (ip.IsIPv6LinkLocal) return true;
-            if (ip.IsIPv4MappedToIPv6) return IsLinkLocal(ip.MapToIPv4());
-        }
-        return false;
     }
 }
 

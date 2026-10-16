@@ -92,9 +92,23 @@ public class RestApiActivityTests
         }
     }
 
+    private sealed class HangingHttpMessageHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            throw new InvalidOperationException("The request can only end through cancellation.");
+        }
+    }
+
     private static (RestApiActivity activity, MockHttpMessageHandler handler) CreateActivity(HttpResponseMessage response)
     {
         var handler = new MockHttpMessageHandler(response);
+        return (CreateActivity(handler), handler);
+    }
+
+    private static RestApiActivity CreateActivity(HttpMessageHandler handler)
+    {
         var client = new HttpClient(handler);
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(f => f.CreateClient("NodePilot")).Returns(client);
@@ -107,7 +121,31 @@ public class RestApiActivityTests
             })
             .Build();
         var provider = new RestApiHttpClientProvider(factory.Object, cfg);
-        return (new RestApiActivity(provider, cfg), handler);
+        return new RestApiActivity(provider, cfg);
+    }
+
+    [Fact]
+    public async Task RestApi_OwnTimeoutElapses_ReturnsFailedResultInsteadOfCancelling()
+    {
+        var activity = CreateActivity(new HangingHttpMessageHandler());
+        var config = ParseConfig("{\"url\": \"https://192.0.2.10/slow\", \"method\": \"GET\", \"timeoutSeconds\": 1}");
+
+        var result = await activity.ExecuteAsync(CreateContext(), config, CancellationToken.None);
+
+        result.Success.Should().BeFalse("a failed result lets the step's retry policy apply");
+        result.ErrorOutput.Should().Contain("timed out after 1s");
+    }
+
+    [Fact]
+    public async Task RestApi_CallerCancels_PropagatesCancellation()
+    {
+        var activity = CreateActivity(new HangingHttpMessageHandler());
+        var config = ParseConfig("{\"url\": \"https://192.0.2.10/slow\", \"method\": \"GET\", \"timeoutSeconds\": 30}");
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        var act = () => activity.ExecuteAsync(CreateContext(), config, cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
     [Fact]

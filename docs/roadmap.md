@@ -362,7 +362,7 @@ erst mit dem dokumentierten 500-Parallel-Test verifizieren, dann committen. Das 
 | Controller ausdünnen (`WorkflowsController` ~970 LOC, `ExecutionsController` ~660 LOC) | Controller dürfen dick sein, solange die Logik testbar ist — sie ist es. **Wiederaufnahme nur**, wenn neue Endpunkte ohne Service-Schicht hässlich werden. |
 | `BackupRestoreService` zerlegen (~1650 LOC) | Aus dem Audit 2026-09-05. Der Restore ist korrekt und getestet. **Wiederaufnahme**, wenn ein neuer Backup-Bereich nicht mehr sauber hineinpasst — dann entlang eines Restore-Planers schneiden. |
 | `Install-NodePilot.ps1` zerlegen (~1700 LOC: ACLs, Zertifikatrechte, SCM-Anlage, Rollback) | Aus dem Audit 2026-09-05. Durch `Test-SetupAdapter.ps1` und `Test-DeploymentTemplates.ps1` abgesichert. **Wiederaufnahme**, wenn eine Installer-Änderung an der Größe scheitert; die Schnittgrenze ist der vorhandene `SetupContract`. |
-| `WorkflowEditorPage` Overlays-Host (B5) | 10 Overlays mit gemischter Inline-Logik hätten 30+ Props oder einen Konvertierungs-Layer gebraucht — keine Klarheitsverbesserung. **Wiederaufnahme**, wenn die Page über ~1700 LOC wächst. |
+| ~~`WorkflowEditorPage` Overlays-Host (B5)~~ **Erledigt (2026-10-16)** | Der Auslöser (über ~1700 LOC) war mit rund 2060 Zeilen eingetreten. Die Overlay-Zustände liegen in `useEditorOverlays`, Lock/Save/Publish in einem einmal berechneten `EditorLifecycle` (`useEditorLifecycle`); Edge-Detach, Tidy und Export sind eigene Hooks, New-Workflow-Pill und Simulations-Banner eigene Komponenten. `EditorOverlays` und `EditorHeader` bekommen gruppierte Objekte statt rund 90 bzw. 46 Einzel-Props. Die Page liegt bei rund 1490 Zeilen. |
 
 ### Extern blockiert
 

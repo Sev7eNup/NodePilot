@@ -209,6 +209,38 @@ public class OutputRedactorTests
     }
 
     [Fact]
+    public void Constructor_InvalidCustomPattern_ThrowsNamingTheEntry()
+    {
+        var cfg = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Logging:Redaction:Patterns:0"] = @"(CUSTOM_SENSITIVE_\w+\s*=\s*)(\w+)",
+                ["Logging:Redaction:Patterns:1"] = "(unclosed",
+            })
+            .Build();
+
+        var act = () => new OutputRedactor(cfg);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*Logging:Redaction:Patterns:1*", "a dropped pattern would silently stop masking");
+    }
+
+    [Fact]
+    public void FindInvalidCustomPatterns_ReturnsOnlyBrokenEntries()
+    {
+        var cfg = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Logging:Redaction:Patterns:0"] = @"token=\S+",
+                ["Logging:Redaction:Patterns:1"] = "[broken",
+            })
+            .Build();
+
+        OutputRedactor.FindInvalidCustomPatterns(cfg)
+            .Should().ContainSingle(entry => entry.Key == "Logging:Redaction:Patterns:1");
+    }
+
+    [Fact]
     public void Placeholder_IsThreeStars()
     {
         OutputRedactor.Placeholder.Should().Be("***");

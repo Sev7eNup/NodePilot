@@ -124,6 +124,77 @@ public sealed class LlmClientFactoryTests
         factory.Create(new LlmConnection(BaseUrl: "http://localhost:1234/v1")).Should().NotBeNull();
     }
 
+    // ---- Profile API key vs. per-node baseUrl ------------------------------------------
+
+    private sealed class CapturingHandler : HttpMessageHandler
+    {
+        public string? Authorization;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Authorization = request.Headers.Authorization?.ToString();
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError));
+        }
+    }
+
+    private static async Task<string?> AuthorizationSentAsync(LlmConnection overrides)
+    {
+        var options = OptionsWith(baseUrl: "https://api.openai.com/v1");
+        options.Profiles["default"].ApiKey = "sk-profile";
+        var handler = new CapturingHandler();
+        var factory = new LlmClientFactory(
+            new StubHttpClientFactory(handler), new StaticOptionsMonitor<LlmOptions>(options), NullLoggerFactory.Instance);
+
+        var client = factory.Create(overrides);
+        var act = () => client.CompleteAsync(new LlmRequest("system", "prompt"), TestContext.Current.CancellationToken);
+        await act.Should().ThrowAsync<LlmException>();
+        return handler.Authorization;
+    }
+
+    [Fact]
+    public async Task Create_OverrideBaseUrlOnForeignOrigin_DoesNotSendProfileKey()
+    {
+        var sent = await AuthorizationSentAsync(new LlmConnection(BaseUrl: "https://llm.example.net/v1"));
+
+        sent.Should().BeNull("the profile key must never travel to a host the profile does not name");
+    }
+
+    [Fact]
+    public async Task Create_OverrideBaseUrlOnForeignOrigin_SendsNodeKey()
+    {
+        var sent = await AuthorizationSentAsync(
+            new LlmConnection(BaseUrl: "https://llm.example.net/v1", ApiKey: "sk-node"));
+
+        sent.Should().Be("Bearer sk-node");
+    }
+
+    [Theory]
+    [InlineData("https://api.openai.com/v1/responses")]
+    [InlineData("https://API.openai.com:443/v1")]
+    public async Task Create_OverrideBaseUrlOnProfileOrigin_KeepsProfileKey(string baseUrl)
+    {
+        var sent = await AuthorizationSentAsync(new LlmConnection(BaseUrl: baseUrl));
+
+        sent.Should().Be("Bearer sk-profile");
+    }
+
+    [Fact]
+    public async Task Create_OverrideBaseUrlOnOtherPort_DoesNotSendProfileKey()
+    {
+        // Same host is not enough: a different port is a different service.
+        var sent = await AuthorizationSentAsync(new LlmConnection(BaseUrl: "https://api.openai.com:8443/v1"));
+
+        sent.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Create_NoOverride_SendsProfileKey()
+    {
+        var sent = await AuthorizationSentAsync(new LlmConnection(Model: "gpt-4o"));
+
+        sent.Should().Be("Bearer sk-profile");
+    }
+
     [Fact]
     public void Create_SwitchingActiveProfile_TakesEffectWithoutRestart()
     {

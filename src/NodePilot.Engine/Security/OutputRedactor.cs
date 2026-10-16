@@ -126,17 +126,39 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
         _enabled = !isTesting
             || (configuration?.GetValue("Logging:Redaction:Enabled", true) ?? true);
 
-        var custom = configuration?.GetSection("Logging:Redaction:Patterns").GetChildren()
-            .Select(c => c.Value)
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Cast<string>()
-            .Select(p => { try { return new Regex(p, RxOpts, RegexTimeout); } catch { return null!; } })
-            .Where(r => r is not null)
-            .ToArray() ?? [];
+        // An invalid operator pattern fails loudly: dropping it would silently stop masking
+        // exactly the secrets the operator asked for. The boot validator reports it first.
+        var custom = new List<Regex>();
+        foreach (var entry in CustomPatternEntries(configuration))
+        {
+            try { custom.Add(new Regex(entry.Value!, RxOpts, RegexTimeout)); }
+            catch (ArgumentException ex)
+            {
+                throw new InvalidOperationException(
+                    $"{entry.Path} is not a valid regular expression: {ex.Message}", ex);
+            }
+        }
 
-        _hasCustomPatterns = custom.Length > 0;
+        _hasCustomPatterns = custom.Count > 0;
         _passes = [.. DefaultPasses, .. custom];
     }
+
+    /// <summary>Returns one message per configured custom pattern that does not compile.</summary>
+    public static IReadOnlyList<(string Key, string Message)> FindInvalidCustomPatterns(IConfiguration configuration)
+    {
+        var invalid = new List<(string Key, string Message)>();
+        foreach (var entry in CustomPatternEntries(configuration))
+        {
+            try { _ = new Regex(entry.Value!, RxOpts, RegexTimeout); }
+            catch (ArgumentException ex) { invalid.Add((entry.Path, ex.Message)); }
+        }
+        return invalid;
+    }
+
+    private static IEnumerable<IConfigurationSection> CustomPatternEntries(IConfiguration? configuration)
+        => configuration?.GetSection("Logging:Redaction:Patterns").GetChildren()
+               .Where(entry => !string.IsNullOrWhiteSpace(entry.Value))
+           ?? [];
 
     /// <summary>
     /// Apply all patterns to the input. Returns null/empty unchanged. Matches with no capture

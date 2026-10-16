@@ -24,7 +24,7 @@ Roles **Admin / Operator / Viewer**. See [Authentication & roles](../api/authent
 
 ## Output redaction
 
-`OutputRedactor` masks secrets. **Always active.** Custom patterns via `Logging:Redaction:Patterns`.
+`OutputRedactor` masks secrets. **Always active.** Custom patterns via `Logging:Redaction:Patterns`; a pattern that is not a valid regular expression stops the service at startup instead of being skipped.
 
 ## Localhost bypass
 

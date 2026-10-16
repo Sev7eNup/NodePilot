@@ -124,8 +124,10 @@ public sealed class BackupController : ControllerBase
         if (file is null || file.Length == 0) return BadRequest(new { error = "Backup file is required." });
         if (string.IsNullOrEmpty(passphrase)) return BadRequest(new { error = "Passphrase is required for restore." });
 
+        if (ParsePolicies(policy, out var policyError) is not { } policies)
+            return BadRequest(new { error = policyError });
+
         var bytes = await ReadAllAsync(file, ct);
-        var policies = ParsePolicies(policy);
         BackupRestoreResult result;
         try
         {
@@ -179,10 +181,12 @@ public sealed class BackupController : ControllerBase
 
     /// <summary>
     /// Parses the policy string: comma-separated <c>section=policy</c> pairs, plus an optional bare
-    /// token (e.g. <c>overwrite</c>) that sets the default for every section. Unknown maps to Skip.
+    /// token (e.g. <c>overwrite</c>) that sets the default for every section. An unknown policy or
+    /// section key returns null with an error, because restore is fail-closed (ADR 0001).
     /// </summary>
-    private static Dictionary<string, RestoreConflictPolicy> ParsePolicies(string? policy)
+    private static Dictionary<string, RestoreConflictPolicy>? ParsePolicies(string? policy, out string? error)
     {
+        error = null;
         var result = new Dictionary<string, RestoreConflictPolicy>(StringComparer.Ordinal);
         if (string.IsNullOrWhiteSpace(policy)) return result;
 
@@ -192,15 +196,30 @@ public sealed class BackupController : ControllerBase
         foreach (var token in policy.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var eq = token.IndexOf('=');
+            var value = eq < 0 ? token : token[(eq + 1)..].Trim();
+            var name = Enum.GetNames<RestoreConflictPolicy>()
+                .FirstOrDefault(candidate => string.Equals(candidate, value, StringComparison.OrdinalIgnoreCase));
+            if (name is null)
+            {
+                error = $"Unknown restore policy '{value}'. Allowed: skip, rename, overwrite.";
+                return null;
+            }
+            var parsed = Enum.Parse<RestoreConflictPolicy>(name);
+
             if (eq < 0)
             {
-                if (Enum.TryParse<RestoreConflictPolicy>(token, ignoreCase: true, out var global))
-                    foreach (var s in allSections) result[s] = global;
+                foreach (var s in allSections) result[s] = parsed;
                 continue;
             }
             var key = token[..eq].Trim();
-            if (Enum.TryParse<RestoreConflictPolicy>(token[(eq + 1)..].Trim(), ignoreCase: true, out var p))
-                result[key] = p;
+            var section = allSections.FirstOrDefault(
+                candidate => string.Equals(candidate, key, StringComparison.OrdinalIgnoreCase));
+            if (section is null)
+            {
+                error = $"Unknown backup section '{key}'. Allowed: {string.Join(", ", allSections)}.";
+                return null;
+            }
+            result[section] = parsed;
         }
         return result;
     }

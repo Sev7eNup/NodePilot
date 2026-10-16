@@ -147,7 +147,7 @@ Further fields and outputs are in the [`llmQuery` reference](activities-referenc
 - Workflow proposals may only be applied with edit permission and an active edit lock.
 - Source-code knowledge in the global chat is limited to Admin and Operator; database knowledge with raw SQL is available to global admins only. Folder permissions do not elevate an operator into that capability. Workflow definitions and static workflow analyses remain reserved for Admin and Operator with folder RBAC; a viewer receives only the scheduled execution times from the operational source.
 - Folder RBAC limits access to workflow data.
-- Secrets are redacted before model requests.
+- Secrets are redacted before model requests. Literal values in decision cases and condition groups are redacted too, so the assistant cannot change a case list or condition group that contains one: the proposal keeps the original and a note names the node or edge to adjust by hand.
 - Generated scripts and workflow changes always require a domain review.
 - AI actions and applied proposals are recorded in the audit log.
 

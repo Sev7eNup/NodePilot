@@ -147,7 +147,7 @@ Weitere Felder und Ausgaben enthält die [`llmQuery`-Referenz](activities-refere
 - Workflow-Vorschläge dürfen nur mit Bearbeitungsrecht und aktivem Bearbeitungs-Lock übernommen werden.
 - Quellcodewissen im globalen Chat ist auf Admin und Operator beschränkt; Datenbankwissen mit Raw-SQL steht ausschließlich globalen Admins zur Verfügung. Folder-Rechte erhöhen einen Operator nicht in diese Capability. Workflow-Definitionen und statische Workflow-Analysen bleiben Admin und Operator mit Folder-RBAC vorbehalten; ein Viewer erhält aus der Betriebsquelle nur die geplanten Ausführungszeitpunkte.
 - Folder-RBAC begrenzt den Zugriff auf Workflow-Daten.
-- Secrets werden vor Modellanfragen redigiert.
+- Secrets werden vor Modellanfragen redigiert. Auch Literalwerte in Decision-Cases und Condition-Gruppen werden redigiert, deshalb kann der Assistent eine Case-Liste oder Condition-Gruppe mit einem solchen Wert nicht ändern: der Vorschlag behält das Original, und ein Hinweis nennt den Node oder die Kante zum manuellen Anpassen.
 - Generierte Scripts und Workflow-Änderungen erfordern immer eine fachliche Prüfung.
 - AI-Aktionen und übernommene Vorschläge werden im Audit-Log erfasst.
 

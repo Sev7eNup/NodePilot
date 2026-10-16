@@ -97,6 +97,7 @@ public static class WorkflowSecretRedactor
                         : OpaqueDefinitionKeys.Contains(name)
                           || IsOpaqueActivityConfigValue(parentName, localActivityType, name, value)
                           || (isLiteralOperand && string.Equals(name, "value", StringComparison.OrdinalIgnoreCase))
+                          || IsNonStringSecretValue(name, value)
                             ? JsonValue.Create(Mask)
                             : Walk(value, name, isHeadersObject, localActivityType);
                 return result;
@@ -117,6 +118,12 @@ public static class WorkflowSecretRedactor
                 return node.DeepClone();
         }
     }
+
+    // A secret key whose value is a number, boolean, object or array is masked whole: the
+    // string check in Walk never sees those values, and nested keys carry no secret name.
+    private static bool IsNonStringSecretValue(string key, JsonNode value)
+        => WorkflowSecretKeys.SecretConfigKeys.Contains(key)
+           && !(value is JsonValue jsonValue && jsonValue.TryGetValue(out string? _));
 
     private static bool IsOpaqueActivityConfigValue(
         string? parentName,

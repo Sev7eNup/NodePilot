@@ -48,6 +48,97 @@ public class ScorchImporterTests
         result.Errors.Should().ContainMatch("Failed to parse XML*");
     }
 
+    // ---- XML hardening (M-14): DTDs and entities are refused, the encoding comes from the bytes ----
+
+    [Fact]
+    public void Parse_ExternalEntityDtd_IsRejectedWithoutResolvingIt()
+    {
+        var marker = Path.Combine(Path.GetTempPath(), $"np-xxe-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(marker, "SECRET-FROM-DISK");
+        try
+        {
+            var xml = $$"""
+                <?xml version="1.0" encoding="utf-8"?>
+                <!DOCTYPE ExportData [ <!ENTITY xxe SYSTEM "{{new Uri(marker).AbsoluteUri}}"> ]>
+                <ExportData><Policies><Folder><Name>&xxe;</Name></Folder></Policies></ExportData>
+                """;
+
+            var result = Importer.Parse(xml);
+
+            result.Errors.Should().ContainSingle().Which.Should().StartWith("Failed to parse XML").And.Contain("DTD");
+            result.Workflows.Should().BeEmpty();
+            string.Join("\n", result.Errors.Concat(result.Warnings)).Should().NotContain("SECRET-FROM-DISK");
+        }
+        finally
+        {
+            File.Delete(marker);
+        }
+    }
+
+    [Fact]
+    public void Parse_BillionLaughs_IsRejectedBeforeAnyExpansion()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <!DOCTYPE lolz [
+              <!ENTITY lol "lol">
+              <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+              <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+              <!ENTITY lol4 "&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;">
+              <!ENTITY lol5 "&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;">
+              <!ENTITY lol6 "&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;">
+            ]>
+            <ExportData>&lol6;</ExportData>
+            """;
+
+        var result = Importer.Parse(xml);
+
+        result.Errors.Should().ContainSingle().Which.Should().StartWith("Failed to parse XML").And.Contain("DTD");
+        result.Workflows.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Parse_DtdOnStreamOverload_IsRejectedToo()
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(
+            "<?xml version=\"1.0\"?><!DOCTYPE ExportData [ <!ENTITY e \"x\"> ]><ExportData>&e;</ExportData>");
+        using var stream = new MemoryStream(bytes);
+
+        var result = Importer.Parse(stream);
+
+        result.Errors.Should().ContainSingle().Which.Should().Contain("DTD");
+    }
+
+    [Theory]
+    [InlineData("utf-16", true)]
+    [InlineData("utf-8", true)]
+    [InlineData("utf-8", false)]
+    public void Parse_StreamOverload_DecodesFromBomAndDeclaration(string encodingName, bool withBom)
+    {
+        // The stream overload lets the BOM and the XML declaration pick the encoding, so a
+        // UTF-16 export (what SCOrch writes) keeps its non-ASCII characters.
+        var id = Guid.NewGuid();
+        var xml = BuildExport(PolicyWith("Prüfung Größe",
+            objects: new[] { ActivityXml(id, name: "Dienst prüfen", typeName: "Run .Net Script",
+                props: new[] { ("ScriptType", "PowerShell"), ("ScriptBody", "Write-Output 'Grüße'") }) }))
+            .Replace("encoding=\"utf-8\"", $"encoding=\"{encodingName}\"");
+        System.Text.Encoding encoding = encodingName == "utf-16"
+            ? new System.Text.UnicodeEncoding(bigEndian: false, byteOrderMark: withBom)
+            : new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: withBom);
+        var bytes = encoding.GetPreamble().Concat(encoding.GetBytes(xml)).ToArray();
+        using var stream = new MemoryStream(bytes);
+
+        var result = Importer.Parse(stream);
+
+        result.Errors.Should().BeEmpty();
+        result.Workflows.Should().ContainSingle().Which.Name.Should().Be("Prüfung Größe");
+        var def = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
+        var node = ActivityNodes(def).Single();
+        node.GetProperty("data").GetProperty("label").GetString().Should().Be("Dienst prüfen");
+        node.GetProperty("data").GetProperty("config").GetProperty("script").GetString()
+            .Should().Be("Write-Output 'Grüße'");
+    }
+
     [Fact]
     public void Parse_RunScriptObject_MapsScriptBody()
     {
@@ -138,6 +229,31 @@ public class ScorchImporterTests
             .GetProperty("source").GetString().Should().Be(junctionId);
         edges.Count(e => e.GetProperty("target").GetString() == junctionId).Should().Be(2);
         result.Warnings.Should().Contain(w => w.Contains("Fan in") && w.Contains("junction"));
+        result.Warnings.Should().NotContain(w => w.Contains("conditional incoming links"),
+            "unconditional fan-in keeps its SCOrch meaning under waitAll");
+    }
+
+    [Fact]
+    public void Parse_ConditionalFanIn_WarnsThatTheErrorHandlerSemanticsChange()
+    {
+        var sourceA = Guid.NewGuid();
+        var sourceB = Guid.NewGuid();
+        var handler = Guid.NewGuid();
+        var xml = BuildExport(PolicyWith("Error handling", objects: new[]
+        {
+            ActivityXml(sourceA, "A", "Run .Net Script", props: new[] { ("ScriptBody", "a") }),
+            ActivityXml(sourceB, "B", "Run .Net Script", props: new[] { ("ScriptBody", "b") }),
+            ActivityXml(handler, "Notify on failure", "Run .Net Script", props: new[] { ("ScriptBody", "n") }),
+            LinkXml(Guid.NewGuid(), sourceA, handler,
+                triggerData: "{" + sourceA + "}", triggerCondition: "", triggerValue: "failed"),
+            LinkXml(Guid.NewGuid(), sourceB, handler,
+                triggerData: "{" + sourceB + "}", triggerCondition: "", triggerValue: "failed"),
+        }));
+
+        var result = Importer.Parse(xml);
+
+        result.Warnings.Should().ContainSingle(w =>
+            w.Contains("'Notify on failure' had 2 conditional incoming links") && w.Contains("Review the junction"));
     }
 
     [Fact]

@@ -190,6 +190,9 @@ public static class WorkflowScheduler
 
         while (queue.Count > 0 || inFlight.Count > 0)
         {
+            // A cancelled execution starts no further steps; the caller abandons the in-flight ones.
+            ct.ThrowIfCancellationRequested();
+
             while (queue.Count > 0)
             {
                 var n = queue.Dequeue();
@@ -339,60 +342,19 @@ public static class WorkflowScheduler
         }
     }
 
-    /// <summary>
-    /// Computes whether a successor node is ready to be scheduled. Non-junction nodes require
-    /// every incoming edge source to be completed-or-skipped. Junction nodes apply their mode:
-    /// waitAll mirrors the non-junction rule, waitAny needs one success, and waitNofM needs
-    /// requiredCount successes.
-    /// </summary>
-    internal static (bool Ready, string JunctionMode) EvaluateSuccessorReadiness(
-        WorkflowNode successorNode,
-        IReadOnlyList<WorkflowEdge> incomingEdges,
-        HashSet<string> completed,
-        HashSet<string> skipped,
-        IReadOnlyDictionary<string, ActivityResult> results)
-    {
-        if (!string.Equals(successorNode.Type, "junction", StringComparison.OrdinalIgnoreCase))
-        {
-            var ready = incomingEdges.All(e => completed.Contains(e.Source) || skipped.Contains(e.Source));
-            return (ready, "waitAll");
-        }
-
-        var cfg = successorNode.Data.Config;
-        var junctionMode = cfg.ValueKind == JsonValueKind.Object && cfg.TryGetProperty("mode", out var mEl)
-            ? mEl.GetString() ?? "waitAll"
-            : "waitAll";
-
-        var total = incomingEdges.Count;
-        var completedSuccessPreds = incomingEdges.Count(e =>
-            completed.Contains(e.Source) && results.TryGetValue(e.Source, out var r) && r.Success);
-        var completedOrSkippedPreds = incomingEdges.Count(e =>
-            completed.Contains(e.Source) || skipped.Contains(e.Source));
-
-        var requiredCount = junctionMode switch
-        {
-            "waitAny" => 1,
-            "waitNofM" => cfg.ValueKind == JsonValueKind.Object && cfg.TryGetProperty("requiredCount", out var rc)
-                ? rc.GetInt32()
-                : 1,
-            _ => total,
-        };
-
-        var isReady = junctionMode == "waitAll"
-            ? completedOrSkippedPreds >= total
-            : completedSuccessPreds >= requiredCount;
-
-        return (isReady, junctionMode);
-    }
-
-    private enum SuccessorDecision
+    internal enum SuccessorDecision
     {
         Wait,
         Schedule,
         Skip,
     }
 
-    private static (SuccessorDecision Decision, string JunctionMode) EvaluateSuccessorDecision(
+    /// <summary>
+    /// Decides whether a successor is scheduled, skipped or keeps waiting. Non-junction nodes and
+    /// waitAll junctions need every input resolved and every completed input's edge to match;
+    /// waitAny and waitNofM need one or requiredCount successful matching inputs.
+    /// </summary>
+    internal static (SuccessorDecision Decision, string JunctionMode) EvaluateSuccessorDecision(
         WorkflowNode successorNode,
         IReadOnlyList<WorkflowEdge> incomingEdges,
         HashSet<string> completed,

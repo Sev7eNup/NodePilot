@@ -81,10 +81,11 @@ internal static class WorkflowDefinitionMerge
                 continue;
 
             JsonObject? source = null;
-            if (proposedObj["id"] is JsonValue idVal && idVal.TryGetValue(out string? id) && id is not null)
+            string? id = null;
+            if (proposedObj["id"] is JsonValue idVal && idVal.TryGetValue(out id) && id is not null)
                 originalById.TryGetValue(id, out source);
 
-            MergeObject(proposedObj, source, notes);
+            MergeObject(proposedObj, source, notes, id);
             result.Add(proposedObj);
         }
         return result;
@@ -95,7 +96,7 @@ internal static class WorkflowDefinitionMerge
     /// proposal are carried over; (2) object-valued children are merged recursively and every
     /// secret key is reconciled.
     /// </summary>
-    private static void MergeObject(JsonObject target, JsonObject? source, List<string> notes)
+    private static void MergeObject(JsonObject target, JsonObject? source, List<string> notes, string? itemId)
     {
         // (1) Backfill: carry over from the original whatever the proposal didn't set.
         if (source is not null)
@@ -107,80 +108,85 @@ internal static class WorkflowDefinitionMerge
             }
         }
 
-        // (2) Merge object-valued children recursively, reconcile secret scalar values.
+        // (2) Merge object-valued children recursively, reconcile secret values.
         foreach (var key in target.Select(kv => kv.Key).ToList())
         {
             var targetVal = target[key];
             var sourceChild = source?[key];
 
-            if (targetVal is JsonObject targetObj)
-            {
-                MergeObject(targetObj, sourceChild as JsonObject, notes);
-                continue;
-            }
-
-            if (targetVal is JsonArray targetArray)
-            {
-                MergeNestedArray(targetArray, sourceChild as JsonArray, notes);
-                continue;
-            }
-
-            var hasOriginal = sourceChild is JsonValue sv
-                && sv.TryGetValue(out string? orig)
-                && !string.IsNullOrEmpty(orig)
-                && orig != SecretMask
-                    ? orig : null;
-
             // A proposed "***" means the value was redacted and stays unchanged, for any key, so
-            // the original is restored. This covers secrets masked by content (a restApi headers
-            // string, body, or script) whose config key is not itself in SecretConfigKeys.
-            var proposedIsMask = targetVal is JsonValue mv
-                && mv.TryGetValue(out string? mm) && mm == SecretMask;
-            if (proposedIsMask)
+            // the original is restored whatever its JSON kind. This covers secrets masked by
+            // content (a restApi headers string, body, or script) whose config key is not itself
+            // in SecretConfigKeys.
+            if (IsMask(targetVal))
             {
-                var originalIsMask = sourceChild is JsonValue originalValue
-                    && originalValue.TryGetValue(out string? originalString)
-                    && originalString == SecretMask;
-                if (sourceChild is not null && !originalIsMask)
+                if (sourceChild is not null && !IsMask(sourceChild))
                     target[key] = sourceChild.DeepClone();
                 continue;
             }
 
-            if (!WorkflowSecretKeys.SecretConfigKeys.Contains(key))
+            if (WorkflowSecretKeys.SecretConfigKeys.Contains(key))
+            {
+                ReconcileNamedSecret(target, key, targetVal, sourceChild, notes);
                 continue;
-
-            var proposedReal = targetVal is JsonValue tv
-                && tv.TryGetValue(out string? prop)
-                && !string.IsNullOrEmpty(prop)
-                    ? prop : null;
-
-            // Named secrets always take the existing real value from the original; a new or
-            // differing value proposed by the AI is rejected and noted.
-            if (hasOriginal is not null)
-            {
-                target[key] = JsonValue.Create(hasOriginal);
-                if (proposedReal is not null && proposedReal != hasOriginal)
-                    notes.Add($"Secret '{key}' wurde nicht von der KI geändert — Originalwert beibehalten; bei Bedarf manuell am Node setzen.");
             }
-            else if (proposedReal is not null)
+
+            if (targetVal is JsonObject targetObj)
             {
-                // The AI set a secret value that did not exist in the original, so discard it.
-                target[key] = JsonValue.Create(SecretMask);
-                notes.Add($"Secret '{key}' bitte manuell am Node setzen — die KI darf keine Secrets vergeben.");
+                MergeObject(targetObj, sourceChild as JsonObject, notes, itemId);
+                continue;
             }
+
+            if (targetVal is JsonArray targetArray)
+                MergeNestedArray(targetArray, sourceChild as JsonArray, notes, itemId, key);
         }
     }
 
     /// <summary>
+    /// Named secrets always take the existing real value from the original, of any JSON kind; a
+    /// new or differing value proposed by the AI is rejected and noted.
+    /// </summary>
+    private static void ReconcileNamedSecret(
+        JsonObject target, string key, JsonNode? proposed, JsonNode? original, List<string> notes)
+    {
+        var originalReal = HasValue(original) && !IsMask(original) ? original : null;
+        var proposedReal = HasValue(proposed) ? proposed : null;
+
+        if (originalReal is not null)
+        {
+            target[key] = originalReal.DeepClone();
+            if (proposedReal is not null && !JsonNode.DeepEquals(proposedReal, originalReal))
+                notes.Add($"Secret '{key}' wurde nicht von der KI geändert — Originalwert beibehalten; bei Bedarf manuell am Node setzen.");
+        }
+        else if (proposedReal is not null)
+        {
+            // The AI set a secret value that did not exist in the original, so discard it.
+            target[key] = JsonValue.Create(SecretMask);
+            notes.Add($"Secret '{key}' bitte manuell am Node setzen — die KI darf keine Secrets vergeben.");
+        }
+    }
+
+    // Null and the empty string count as "no secret set".
+    private static bool HasValue(JsonNode? node)
+        => node is not null && !(node is JsonValue value && value.TryGetValue(out string? text) && string.IsNullOrEmpty(text));
+
+    private static bool IsMask(JsonNode? node)
+        => node is JsonValue value && value.TryGetValue(out string? text) && text == SecretMask;
+
+    /// <summary>
     /// Reconciles nested arrays used by grouped conditions and decision cases. Array items have no
     /// stable identity, so a mask anywhere in the proposal restores the whole original array rather
-    /// than risking a secret paired with the wrong item after a reorder. Mask-free arrays are
-    /// traversed by index, so named-secret protection still applies to newly proposed objects.
+    /// than risking a secret paired with the wrong item after a reorder. If the proposal changed
+    /// the array, that change is lost, so a note asks the user to edit the node by hand. Mask-free
+    /// arrays are traversed by index, so named-secret protection still applies to new objects.
     /// </summary>
-    private static void MergeNestedArray(JsonArray target, JsonArray? source, List<string> notes)
+    private static void MergeNestedArray(
+        JsonArray target, JsonArray? source, List<string> notes, string? itemId, string key)
     {
         if (source is not null && ContainsMask(target))
         {
+            if (ChangesOriginal(target, source))
+                notes.Add($"Änderung an '{key}' von '{itemId ?? "?"}' nicht übernommen, weil der Inhalt maskierte Werte enthält — bitte manuell im Designer anpassen.");
             target.Clear();
             foreach (var item in source)
                 target.Add(item?.DeepClone());
@@ -194,10 +200,10 @@ internal static class WorkflowDefinitionMerge
             switch (targetItem)
             {
                 case JsonObject targetObject:
-                    MergeObject(targetObject, sourceItem as JsonObject, notes);
+                    MergeObject(targetObject, sourceItem as JsonObject, notes, itemId);
                     break;
                 case JsonArray targetArray:
-                    MergeNestedArray(targetArray, sourceItem as JsonArray, notes);
+                    MergeNestedArray(targetArray, sourceItem as JsonArray, notes, itemId, key);
                     break;
                 case JsonValue targetValue when targetValue.TryGetValue(out string? value)
                                                && value == SecretMask
@@ -206,6 +212,25 @@ internal static class WorkflowDefinitionMerge
                     break;
             }
         }
+    }
+
+    // True when the proposal differs from the original beyond its masks: a mask matches any
+    // original value, and keys the proposal omits count as unchanged (they would be backfilled).
+    private static bool ChangesOriginal(JsonNode? proposed, JsonNode? original)
+    {
+        if (proposed is JsonValue maskValue && maskValue.TryGetValue(out string? text) && text == SecretMask)
+            return false;
+        return proposed switch
+        {
+            JsonObject proposedObject => original is not JsonObject originalObject
+                || proposedObject.Any(property =>
+                    !originalObject.TryGetPropertyValue(property.Key, out var originalValue)
+                    || ChangesOriginal(property.Value, originalValue)),
+            JsonArray proposedArray => original is not JsonArray originalArray
+                || proposedArray.Count != originalArray.Count
+                || proposedArray.Where((item, index) => ChangesOriginal(item, originalArray[index])).Any(),
+            _ => !JsonNode.DeepEquals(proposed, original),
+        };
     }
 
     private static bool ContainsMask(JsonNode node)

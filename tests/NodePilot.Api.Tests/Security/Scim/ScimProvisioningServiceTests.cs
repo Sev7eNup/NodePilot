@@ -246,6 +246,76 @@ public sealed class ScimProvisioningServiceTests : IDisposable
         engine.Verify(x => x.CancelAsync(execution.Id, "scim-authorization-change", It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task DeleteUser_DeactivatedAdminWithActiveBreakGlass_Succeeds()
+    {
+        var userId = await SeedScimAdminAsync("former-admin", isActive: false);
+
+        var result = await Service().DeleteUserAsync(userId, TestContext.Current.CancellationToken);
+
+        result.Succeeded.Should().BeTrue("an already deactivated admin is not one of the active admins the lock protects");
+        _db.ChangeTracker.Clear();
+        (await _db.Users.SingleAsync(u => u.Id == userId, TestContext.Current.CancellationToken))
+            .IsTombstoned.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task PatchUser_RepeatedDeactivationOfInactiveAdmin_Succeeds()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var userId = await SeedScimAdminAsync("former-admin", isActive: false);
+        var deactivate = new ScimPatchRequest
+        {
+            Schemas = [ScimSchemas.Patch],
+            Operations =
+            [
+                new ScimPatchOperation
+                {
+                    Op = "replace", Path = "active",
+                    Value = System.Text.Json.JsonDocument.Parse("false").RootElement.Clone(),
+                },
+            ],
+        };
+
+        var first = await Service().PatchUserAsync(userId, deactivate, "https://nodepilot/scim/v2", ct);
+        var second = await Service().PatchUserAsync(userId, deactivate, "https://nodepilot/scim/v2", ct);
+
+        first.Succeeded.Should().BeTrue();
+        second.Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task DeleteUser_LastActiveAdmin_Returns409()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var userId = await SeedScimAdminAsync("only-admin", isActive: true);
+        var breakGlass = await _db.Users.SingleAsync(u => u.Username == "recovery-admin", ct);
+        breakGlass.IsActive = false;
+        await _db.SaveChangesAsync(ct);
+        _db.ChangeTracker.Clear();
+
+        var result = await Service().DeleteUserAsync(userId, ct);
+
+        result.StatusCode.Should().Be(409);
+        _db.ChangeTracker.Clear();
+        (await _db.Users.SingleAsync(u => u.Id == userId, ct)).IsActive.Should().BeTrue();
+    }
+
+    private async Task<Guid> SeedScimAdminAsync(string subject, bool isActive)
+    {
+        var created = await Service().CreateUserAsync(new ScimUserWriteRequest
+        {
+            ExternalId = subject, UserName = $"{subject}@example.test", Active = true,
+        }, "https://nodepilot/scim/v2", TestContext.Current.CancellationToken);
+        var userId = Guid.Parse(created.Value!.Id);
+        var user = await _db.Users.SingleAsync(u => u.Id == userId, TestContext.Current.CancellationToken);
+        user.Role = UserRole.Admin;
+        user.IsActive = isActive;
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        _db.ChangeTracker.Clear();
+        return userId;
+    }
+
     private ScimProvisioningService Service(
         IAuditStager? auditStager = null,
         IWorkflowEngine? workflowEngine = null) => new(

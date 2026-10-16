@@ -237,6 +237,25 @@ public class WorkflowsEditLockTests
         workflow.IsEnabled.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Enable_InvalidAgentConfiguration_IsRejectedLikePublish()
+    {
+        var db = CreateContext();
+        var workflow = NewWorkflow(enabled: false);
+        workflow.DefinitionJson = """
+        {"nodes":[{"id":"agent","type":"activity","data":{"activityType":"aiAgent","config":{}}}],"edges":[]}
+        """;
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewHarness(db).Workflows.Enable(workflow.Id, CancellationToken.None);
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        badRequest.Value!.ToString().Should().Contain("invalid_agent_configuration");
+        await db.Entry(workflow).ReloadAsync();
+        workflow.IsEnabled.Should().BeFalse();
+    }
+
     // --- Enable establishes the runtime principal ---------------------------------------------
 
     private const string ManualTriggerDefinition =
@@ -570,6 +589,47 @@ public class WorkflowsEditLockTests
         await db.Entry(w).ReloadAsync();
         w.CheckedOutByUserId.Should().Be(OwnerId);
         w.Version.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Publish_UniqueViolationWithNonEnglishProviderMessage_Returns409()
+    {
+        // The unique-violation check reads the provider error code, not the message text, so a
+        // database server running in another locale still maps the racing insert to 409.
+        var (connection, seed) = NodePilot.TestCommons.TestDbFactory.CreateWithConnection();
+        await using var _ = connection;
+        await SeedUserAsync(seed, OwnerId, "alice");
+        var w = NewWorkflow(enabled: false, lockedBy: OwnerId);
+        seed.Workflows.Add(w);
+        await seed.SaveChangesAsync();
+        await seed.DisposeAsync();
+
+        await using var db = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection)
+            .AddInterceptors(new LocalizedUniqueViolationOnVersionInsert())
+            .Options);
+
+        var result = await NewHarness(db).Editing.Publish(
+            w.Id, new PublishWorkflowRequest("Renamed", null, "{}"), CancellationToken.None);
+
+        result.Result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    private sealed class LocalizedUniqueViolationOnVersionInsert
+        : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<WorkflowVersion>().Any(e => e.State == EntityState.Added))
+            {
+                throw new DbUpdateException("save failed", new Npgsql.PostgresException(
+                    "повторяющееся значение ключа нарушает ограничение уникальности", "ОШИБКА", "ERROR", "23505"));
+            }
+            return ValueTask.FromResult(result);
+        }
     }
 
     [Fact]

@@ -35,7 +35,7 @@ Dashboard und Workflow-Listen lesen ein **precomputed** `WorkflowStats`-Aggregat
 
 | Key | Default | Effect |
 |---|---|---|
-| `Stats:RefreshIntervalMinutes` | `5` | Aggregate-Refresh-Interval |
+| `Stats:RefreshIntervalMinutes` | `5` | Aggregate-Refresh-Interval (1–1440; ein nicht lesbarer Wert lässt nur den Durchlauf scheitern, der nächste folgt nach 5 Minuten) |
 | `Stats:WindowDays` | `7` | Zeitfenster der aggregierten KPIs |
 | `Stats:Rollup:Enabled` | `true` | Vorberechnete Stunden-Buckets für die Dashboard-Historie. Aus geschaltet rechnet das Dashboard jedes Fenster wieder aus den Rohzeilen — korrekt, aber auf großen Beständen deutlich langsamer |
 

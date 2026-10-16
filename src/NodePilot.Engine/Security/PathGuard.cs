@@ -78,6 +78,12 @@ public static class PathGuard
             throw new InvalidOperationException($"File System Operation: path '{path}' is not a valid absolute path: {ex.Message}");
         }
 
+        // Second line of defence: whatever the input spelling, the normalized path must not be
+        // UNC before anything below touches the filesystem.
+        if (IsUncPath(fullPath))
+            throw new InvalidOperationException(
+                $"File System Operation: path '{path}' resolves to a UNC or device path, which is not allowed.");
+
         // Reject existing reparse points even when no containment allow-list is configured.
         // A syntactically-local path can otherwise be a junction to an attacker-controlled UNC
         // share and make the process authenticate over SMB before any allow-root decision runs.
@@ -311,19 +317,14 @@ public static class PathGuard
         => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     /// <summary>
-    /// Detects UNC paths in either Windows backslash form (<c>\\server\share\…</c>) or
-    /// forward-slash form (<c>//server/share/…</c>, which the .NET path APIs accept on Windows
-    /// and which an attacker could use to slip through a naive backslash-only check).
-    /// Local extended-length paths (<c>\\?\C:\…</c>, <c>\\.\PIPE\…</c>) and network
+    /// Detects UNC paths: any two leading separators, because Windows normalizes
+    /// <c>\\server</c>, <c>//server</c> and mixed forms such as <c>/\server</c> alike into a UNC
+    /// path. Local extended-length paths (<c>\\?\C:\…</c>, <c>\\.\PIPE\…</c>) and network
     /// extended-length paths (<c>\\?\UNC\server\share\…</c>) are also flagged: the device-
     /// namespace prefix is not a path component our workflows have any reason to express.
     /// </summary>
     internal static bool IsUncPath(string path)
-    {
-        if (path.Length < 2) return false;
-        var c0 = path[0];
-        var c1 = path[1];
-        return (c0 == '\\' && c1 == '\\')
-            || (c0 == '/' && c1 == '/');
-    }
+        => path.Length >= 2 && IsSeparator(path[0]) && IsSeparator(path[1]);
+
+    private static bool IsSeparator(char c) => c is '\\' or '/';
 }

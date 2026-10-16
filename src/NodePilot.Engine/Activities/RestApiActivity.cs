@@ -55,10 +55,20 @@ public class RestApiActivity : IActivityExecutor
             if (timeoutSeconds is { } secs)
                 cts.CancelAfter(TimeSpan.FromSeconds(secs));
 
-            var response = await SendWithManualRedirectsAsync(
-                client, config, initialUrl, new HttpMethod(method), body, headers, cts.Token);
+            try
+            {
+                var response = await SendWithManualRedirectsAsync(
+                    client, config, initialUrl, new HttpMethod(method), body, headers, cts.Token);
 
-            return await BuildResultAsync(response, cts.Token);
+                return await BuildResultAsync(response, cts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Own timeout (timeoutSeconds or HttpClient.Timeout), not a caller cancel. A failed
+                // result lets the step's retry policy apply; only a real cancel propagates.
+                var limit = timeoutSeconds is { } s ? $" after {s}s" : string.Empty;
+                return new ActivityResult { Success = false, ErrorOutput = $"REST API: request timed out{limit}" };
+            }
         });
 
     private static string? ReadBody(JsonElement config)

@@ -89,7 +89,7 @@ Die Veröffentlichung autorisiert die konfigurierten autonomen Aktionen. Chat-Fr
 | **Engine-local** | NodePilot-API-Prozess |
 | **Hybrid** | Abhängig von der Konfiguration remote oder engine-local |
 
-Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs` und `maxDelayMs`. Dauerhafte Remote-Fehler sind davon ausgenommen: ein abgelehnter WinRM-Logon, eine per SSL-Policy geblockte Session und ein nicht entschlüsselbares Credential lassen den Step beim ersten Versuch scheitern — Wiederholen hilft dort nicht, und wiederholte Fehl-Logons können ein Domänenkonto sperren. `config.timeoutSeconds` begrenzt einen Step. Der Execute-Request kann zusätzlich die gesamte Execution begrenzen.
+Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs` und `maxDelayMs`. `maxDelayMs` deckelt jede Wartezeit vor einem neuen Versuch; 0 oder ein fehlender Wert bedeutet 30000 ms, eine Wartezeit ist also nie unbegrenzt. Dauerhafte Remote-Fehler sind davon ausgenommen: ein abgelehnter WinRM-Logon, eine per SSL-Policy geblockte Session und ein nicht entschlüsselbares Credential lassen den Step beim ersten Versuch scheitern — Wiederholen hilft dort nicht, und wiederholte Fehl-Logons können ein Domänenkonto sperren. `config.timeoutSeconds` begrenzt einen Step. Der Execute-Request kann zusätzlich die gesamte Execution begrenzen.
 
 ---
 
@@ -133,7 +133,7 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 
 **Remote.**
 
-- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` nehmen `binaryPath`/`displayName`/`description`/`startupType`; `delete` stoppt den Dienst und entfernt ihn dauerhaft via `sc.exe delete`). `sc.exe` meldet Fehler auf stdout und lässt den Error-Stream leer, deshalb wird der Exit-Code der `sc.exe`-Aufrufe hinter `delete` und hinter einem `AutomaticDelayedStart`-Startup-Type geprüft und ein Non-Zero-Exit lässt den Step scheitern — ein abgelehnter Delete oder Startup-Type-Wechsel wird nie als Erfolg gemeldet.
+- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` nehmen `binaryPath`/`displayName`/`description`/`startupType`; `delete` stoppt den Dienst und entfernt ihn dauerhaft via `sc.exe delete`). `sc.exe` meldet Fehler auf stdout und lässt den Error-Stream leer, deshalb wird der Exit-Code der `sc.exe`-Aufrufe hinter `delete` und hinter einem `AutomaticDelayedStart`-Startup-Type geprüft und ein Non-Zero-Exit lässt den Step scheitern — ein abgelehnter Delete oder Startup-Type-Wechsel wird nie als Erfolg gemeldet. `serviceName` muss den Windows-Regeln für Dienstnamen folgen (höchstens 256 Zeichen, kein `/` oder `\`); NodePilot lehnt zusätzlich doppelte Anführungszeichen und Steuerzeichen ab, weil der Name als natives Argument an `sc.exe` geht.
 - **Outputs:** `param.name`, `param.status`, `param.startType`
 
 ## `registryOperation`
@@ -303,7 +303,7 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 **Engine-local.** Ruft einen OpenAI-kompatiblen Endpunkt auf (Prompt → Text) — Chat Completions oder die Responses-API, je nach Pfad der Base-URL. Nutzt per Default das aktive LLM-Profil (`Llm:ActiveProfileId` → `Llm:Profiles:<id>`); per-Node überschreibbar. **Braucht `Llm:Enabled=true` und ein auflösbares aktives Profil** (zentraler Kill-Switch — gilt auch bei Node-eigenem Endpunkt). Teilt Transport + SSRF-Guard mit dem KI-Assistenten (`LlmEndpointGuard` validiert jede `baseUrl`, Cloud-Metadata-Endpoints sind blockiert).
 
-- **Config:** `prompt` (required; `{{templates}}` erlaubt), `systemPrompt` (optional; leer = Passthrough), `jsonMode` (bool → `response_format:json_object`, Antwort wird **nicht** validiert). Per-Node-Overrides (leer → global): `baseUrl` (absolute http/https), `model`, `apiKey` (Secret, auto-redigiert), `maxTokens` (>0), `temperature` (0–2, per-Node-only), `timeoutSeconds` (>0).
+- **Config:** `prompt` (required; `{{templates}}` erlaubt), `systemPrompt` (optional; leer = Passthrough), `jsonMode` (bool → `response_format:json_object`, Antwort wird **nicht** validiert). Per-Node-Overrides (leer → global): `baseUrl` (absolute http/https), `model`, `apiKey` (Secret, auto-redigiert), `maxTokens` (>0), `temperature` (0–2, per-Node-only), `timeoutSeconds` (>0). Zeigt `baseUrl` auf einen anderen Origin (Schema, Host, Port) als das aktive Profil, geht der API-Key des Profils nicht dorthin; gesendet wird nur ein am Node gesetzter `apiKey`.
 - **Outputs:** `output` (Antworttext), `param.model`, `param.promptTokens`, `param.completionTokens`, `param.totalTokens`, `param.finishReason` (Token-Keys immer gesetzt; `""` wenn der Server keine `usage` liefert).
 
 ## `waitForCondition`
