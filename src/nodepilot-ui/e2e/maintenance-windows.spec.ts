@@ -37,8 +37,8 @@ function windowJson(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// The dialog has no role="dialog" (role="presentation") and the name input has no associated
-// <label htmlFor>, so fields are scoped by the dialog heading's parent panel and picked by role.
+// The dialog carries no accessible name and the name input has no associated <label htmlFor>,
+// so fields are scoped by the dialog heading's parent panel and picked by role.
 function createPanel(page: Page) {
   return page
     .getByRole('heading', { name: /wartungsfenster anlegen|create maintenance window/i })

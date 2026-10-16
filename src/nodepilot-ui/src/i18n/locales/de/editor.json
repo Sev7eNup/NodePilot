@@ -620,6 +620,8 @@
   "scriptEditor": {
     "toggleFullscreen": "Vollbild umschalten",
     "close": "Skript-Editor schließen",
+    "discardConfirm": "Das Skript hat ungespeicherte Änderungen. Editor schließen und die Änderungen verwerfen?",
+    "discardChanges": "Änderungen verwerfen",
     "undo": "Rückgängig (Ctrl+Z)",
     "redo": "Wiederherstellen (Ctrl+Y)",
     "wordWrap": "Zeilenumbruch",

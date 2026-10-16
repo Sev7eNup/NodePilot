@@ -706,7 +706,8 @@ function OidcRoleMappingsEditor({
       )}
       <div className="space-y-2">
         {mappings.map((m, idx) => (
-          <div key={`${m.groupId}-${idx}`} className="flex items-center gap-2">
+          // The key must not contain the edited value, or React remounts the row on every keystroke.
+          <div key={idx} className="flex items-center gap-2">
             <input
               type="text"
               value={m.groupId}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { EtagConflictDialog } from '../../../components/admin-settings/EtagConflictDialog';
 
 describe('EtagConflictDialog', () => {
@@ -47,5 +47,27 @@ describe('EtagConflictDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /abbrechen|manuell|manually/i }));
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('is a modal dialog named by its title, and Escape cancels without resolving', () => {
+    const onKeepMine = vi.fn();
+    const onTakeTheirs = vi.fn();
+    const onCancel = vi.fn();
+    render(
+      <EtagConflictDialog
+        open
+        serverSnapshot={serverSnapshot}
+        localDraft={{ Host: 'mine' }}
+        onKeepMine={onKeepMine} onTakeTheirs={onTakeTheirs} onCancel={onCancel}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: /konflikt|conflict/i });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+
+    fireEvent.keyDown(within(dialog).getByRole('button', { name: /abbrechen|manuell|manually/i }), { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(onKeepMine).not.toHaveBeenCalled();
+    expect(onTakeTheirs).not.toHaveBeenCalled();
   });
 });

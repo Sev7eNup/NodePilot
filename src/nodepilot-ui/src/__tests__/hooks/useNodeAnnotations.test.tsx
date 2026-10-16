@@ -10,10 +10,10 @@ vi.mock('../../api/client', () => ({
   api: { get: (...args: unknown[]) => mockApiGet(...args) },
 }));
 
-import { useNodeAnnotations } from '../../hooks/useNodeAnnotations';
+import { useNodeAnnotations, type NodeAnnotation } from '../../hooks/useNodeAnnotations';
 import { useDesignStore } from '../../stores/designStore';
 
-type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
+type LiveExecutionArg = { status: string; steps: { stepId: string; status: string }[] } | null;
 
 function makeNode(id: string, overrides: Partial<Node> = {}, data: Record<string, unknown> = {}): Node {
   return {
@@ -27,157 +27,142 @@ function makeMachine(id: string, name: string, hostname: string): ManagedMachine
   return { id, name, hostname } as ManagedMachine;
 }
 
+interface HookProps {
+  nodes: Node[];
+  edges: Edge[];
+  workflowIsEnabled: boolean;
+  liveExecution: LiveExecutionArg;
+}
+
 function setup({
   initialNodes = [] as Node[],
   initialEdges = [] as Edge[],
   workflowId = 'wf-1' as string | undefined,
   workflowIsEnabled = true as boolean,
-  liveExecution = null as { status: string; steps: { stepId: string; status: string }[] } | null,
+  liveExecution = null as LiveExecutionArg,
   replayExecutionId = null as string | null,
   replaySteps = undefined as StepExecution[] | undefined,
   scrubTimeMs = null as number | null,
   machines = [] as ManagedMachine[],
   selected = null as { type: 'node' | 'edge'; id: string } | null,
 } = {}) {
-  let currentNodes = initialNodes;
-  let currentEdges = initialEdges;
-  const setNodes = vi.fn((updater: any) => {
-    currentNodes = typeof updater === 'function' ? updater(currentNodes) : updater;
-  }) as unknown as SetState<Node[]>;
-  const setEdges = vi.fn((updater: any) => {
-    currentEdges = typeof updater === 'function' ? updater(currentEdges) : updater;
-  }) as unknown as SetState<Edge[]>;
-
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
 
   const { result, rerender } = renderHook(
-    (props: { workflowIsEnabled: boolean; liveExecution?: typeof liveExecution }) =>
+    (props: HookProps) =>
       useNodeAnnotations({
         workflowId, workflowIsEnabled: props.workflowIsEnabled,
-        nodes: currentNodes, setNodes,
-        edges: currentEdges, setEdges, selected,
-        liveExecution: props.liveExecution ?? liveExecution, replayExecutionId, replaySteps,
+        nodes: props.nodes, edges: props.edges, selected,
+        liveExecution: props.liveExecution, replayExecutionId, replaySteps,
         scrubTimeMs, machines,
       }),
-    { wrapper, initialProps: { workflowIsEnabled, liveExecution } }
+    { wrapper, initialProps: { nodes: initialNodes, edges: initialEdges, workflowIsEnabled, liveExecution } },
   );
 
   return {
-    result, rerender, qc,
-    setNodes, setEdges,
-    getCurrentNodes: () => currentNodes,
-    getCurrentEdges: () => currentEdges,
-    // Simulates an external node rebuild (for example a workflow refetch after lock/unlock):
-    // replaces currentNodes with fresh references that carry no annotations.
-    replaceNodes: (next: Node[]) => { currentNodes = next; },
+    result, rerender,
+    annotationOf: (id: string): NodeAnnotation | undefined => result.current.nodeAnnotations.get(id),
   };
 }
 
 describe('useNodeAnnotations', () => {
   beforeEach(() => {
     mockApiGet.mockReset();
+    mockApiGet.mockResolvedValue({});
     // Reset persisted Zustand store between tests so toggles don't leak.
     useDesignStore.setState({ machineColoringEnabled: false });
   });
 
+  it('never touches the node data it is given', async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url.includes('/step-health')) return Promise.resolve({ 'step-a': [{ status: 'Succeeded', startedAt: '2026-04-26T12:00:00Z' }] });
+      if (url.includes('/step-stats')) return Promise.resolve({ 'step-a': { totalRuns: 1, failedRuns: 0, failureRate: 0, avgDurationMs: 5, p95DurationMs: 5, lastDurationMs: 5 } });
+      return Promise.resolve({});
+    });
+    const a = makeNode('step-a');
+    const harness = setup({
+      initialNodes: [a],
+      workflowIsEnabled: false,
+      liveExecution: { status: 'Running', steps: [{ stepId: 'step-a', status: 'Running' }] },
+    });
+
+    await waitFor(() => expect(harness.annotationOf('step-a')?.__stats).toBeDefined());
+    expect(harness.annotationOf('step-a')?.__liveStatus).toBe('Running');
+    expect(a.data).toEqual({ activityType: 'runScript' });
+  });
+
   describe('liveStatus annotation', () => {
-    it('writes __liveStatus on nodes for each running step from liveExecution', () => {
-      const a = makeNode('step-a');
-      const b = makeNode('step-b');
-      mockApiGet.mockResolvedValue({});
+    it('annotates each step of the live execution', () => {
       const harness = setup({
-        initialNodes: [a, b],
+        initialNodes: [makeNode('step-a'), makeNode('step-b')],
         liveExecution: { status: 'Running', steps: [{ stepId: 'step-a', status: 'Running' }] },
       });
 
-      // Find the setNodes call that sets the live-status annotation.
-      const updaterCalls = (harness.setNodes as any).mock.calls.map((c: any[]) => c[0]);
-      const annotated: Node[] = updaterCalls.reduce(
-        (nds: Node[], up: (n: Node[]) => Node[]) => up(nds),
-        [a, b],
-      );
-
-      const ann = annotated.find(n => n.id === 'step-a')!;
-      expect((ann.data as Record<string, unknown>).__liveStatus).toBe('Running');
+      expect(harness.annotationOf('step-a')?.__liveStatus).toBe('Running');
+      expect(harness.annotationOf('step-b')?.__liveStatus).toBeUndefined();
     });
 
     it('paints liveExecution changes immediately for designer-started canvas runs', () => {
-      const a = makeNode('step-a');
-      mockApiGet.mockResolvedValue({});
-      const harness = setup({
-        initialNodes: [a],
-        liveExecution: null,
-      });
+      const nodes = [makeNode('step-a')];
+      const harness = setup({ initialNodes: nodes, liveExecution: null });
+      expect(harness.annotationOf('step-a')?.__liveStatus).toBeUndefined();
 
-      (harness.setNodes as any).mockClear();
       harness.rerender({
-        workflowIsEnabled: true,
+        nodes, edges: [], workflowIsEnabled: true,
         liveExecution: { status: 'Running', steps: [{ stepId: 'step-a', status: 'Running' }] },
       });
 
-      const hasRunningAnnotation = () => (harness.setNodes as any).mock.calls.some((c: any[]) => {
-        const annotated = c[0]([a]);
-        return (annotated.find((n: Node) => n.id === 'step-a')!.data as Record<string, unknown>).__liveStatus === 'Running';
-      });
-
-      expect(hasRunningAnnotation()).toBe(true);
+      expect(harness.annotationOf('step-a')?.__liveStatus).toBe('Running');
     });
 
     it('keeps terminal liveExecution status so the designer test path remains visible', () => {
-      const a = makeNode('step-a', {}, { __liveStatus: 'Running' });
-      mockApiGet.mockResolvedValue({});
       const harness = setup({
-        initialNodes: [a],
+        initialNodes: [makeNode('step-a')],
         liveExecution: { status: 'Succeeded', steps: [{ stepId: 'step-a', status: 'Succeeded' }] },
       });
 
-      const updater = (harness.setNodes as any).mock.calls[0][0];
-      const annotated: Node[] = updater([a]);
-      const ann = annotated.find(n => n.id === 'step-a')!;
-      expect((ann.data as Record<string, unknown>).__liveStatus).toBe('Succeeded');
+      expect(harness.annotationOf('step-a')?.__liveStatus).toBe('Succeeded');
     });
 
-    it('clears __liveStatus when no live execution and no replay is active', () => {
-      const a = makeNode('step-a', {}, { __liveStatus: 'Running' });
-      mockApiGet.mockResolvedValue({});
+    it('has no live status when no live execution and no replay is active', () => {
+      const harness = setup({ initialNodes: [makeNode('step-a')], liveExecution: null });
+
+      expect(harness.annotationOf('step-a')?.__liveStatus).toBeUndefined();
+    });
+
+    it('drops the live status once the execution is gone', () => {
+      const nodes = [makeNode('step-a')];
       const harness = setup({
-        initialNodes: [a],
-        liveExecution: null,
+        initialNodes: nodes,
+        liveExecution: { status: 'Running', steps: [{ stepId: 'step-a', status: 'Running' }] },
       });
 
-      const updater = (harness.setNodes as any).mock.calls[0][0];
-      const annotated: Node[] = updater([a]);
-      const ann = annotated.find(n => n.id === 'step-a')!;
-      expect('__liveStatus' in (ann.data as Record<string, unknown>)).toBe(false);
+      harness.rerender({ nodes, edges: [], workflowIsEnabled: true, liveExecution: null });
+
+      expect(harness.annotationOf('step-a')?.__liveStatus).toBeUndefined();
     });
 
     it('paints replay steps when no live execution is active', () => {
-      const a = makeNode('step-a');
-      const b = makeNode('step-b');
       const replaySteps: StepExecution[] = [
         { stepId: 'step-a', status: 'Succeeded', startedAt: '2026-04-26T12:00:00Z', completedAt: '2026-04-26T12:00:01Z' } as StepExecution,
         { stepId: 'step-b', status: 'Failed', startedAt: '2026-04-26T12:00:02Z', completedAt: '2026-04-26T12:00:03Z' } as StepExecution,
       ];
-      mockApiGet.mockResolvedValue({});
 
       const harness = setup({
-        initialNodes: [a, b],
+        initialNodes: [makeNode('step-a'), makeNode('step-b')],
         liveExecution: null,
         replayExecutionId: 'exec-1',
         replaySteps,
       });
 
-      const updater = (harness.setNodes as any).mock.calls[0][0];
-      const annotated: Node[] = updater([a, b]);
-      expect((annotated.find(n => n.id === 'step-a')!.data as Record<string, unknown>).__liveStatus).toBe('Succeeded');
-      expect((annotated.find(n => n.id === 'step-b')!.data as Record<string, unknown>).__liveStatus).toBe('Failed');
+      expect(harness.annotationOf('step-a')?.__liveStatus).toBe('Succeeded');
+      expect(harness.annotationOf('step-b')?.__liveStatus).toBe('Failed');
     });
 
     it('honors scrubTimeMs by showing Running for steps that started but not finished by the cursor', () => {
-      const a = makeNode('step-a');
       const startedAt = new Date('2026-04-26T12:00:00Z').getTime();
       const completedAt = new Date('2026-04-26T12:00:10Z').getTime();
       const replaySteps: StepExecution[] = [
@@ -187,19 +172,16 @@ describe('useNodeAnnotations', () => {
           completedAt: new Date(completedAt).toISOString(),
         } as StepExecution,
       ];
-      mockApiGet.mockResolvedValue({});
 
       const harness = setup({
-        initialNodes: [a],
+        initialNodes: [makeNode('step-a')],
         liveExecution: null,
         replayExecutionId: 'exec-1',
         replaySteps,
         scrubTimeMs: startedAt + 5_000, // 5s into a 10s step
       });
 
-      const updater = (harness.setNodes as any).mock.calls[0][0];
-      const annotated: Node[] = updater([a]);
-      expect((annotated.find(n => n.id === 'step-a')!.data as Record<string, unknown>).__liveStatus).toBe('Running');
+      expect(harness.annotationOf('step-a')?.__liveStatus).toBe('Running');
     });
   });
 
@@ -243,76 +225,75 @@ describe('useNodeAnnotations', () => {
 
       expect(harness.result.current.legendMachines).toEqual([]);
     });
+
+    it('annotates the color index only while machine coloring is on', () => {
+      const nodes = [
+        makeNode('step-a', {}, { activityType: 'runScript', targetMachineId: 'm-2' }),
+        makeNode('step-b', {}, { activityType: 'runScript', targetMachineId: 'm-1' }),
+        makeNode('step-c', {}, { activityType: 'delay', targetMachineId: 'm-1' }),
+      ];
+      const harness = setup({ initialNodes: nodes });
+      expect(harness.annotationOf('step-a')?.__machineColorIdx).toBeUndefined();
+
+      act(() => { useDesignStore.setState({ machineColoringEnabled: true }); });
+
+      expect(harness.annotationOf('step-a')?.__machineColorIdx).toBe(1);
+      expect(harness.annotationOf('step-b')?.__machineColorIdx).toBe(0);
+      // Engine-local activities run on the server, so they get no machine colour.
+      expect(harness.annotationOf('step-c')?.__machineColorIdx).toBeUndefined();
+    });
   });
 
   describe('variable-flow hover annotation', () => {
-    it('handleVarHover applies __varFlowRole=producer to the producer node and consumer to the selected node', () => {
-      const producer = makeNode('step-prod');
-      const consumer = makeNode('step-cons');
+    it('handleVarHover marks the producer and the selected consumer, plus the path between them', () => {
+      const edges: Edge[] = [{ id: 'e1', source: 'step-prod', target: 'step-cons' }];
       const harness = setup({
-        initialNodes: [producer, consumer],
+        initialNodes: [makeNode('step-prod'), makeNode('step-cons')],
+        initialEdges: edges,
         selected: { type: 'node', id: 'step-cons' },
       });
 
-      // Initial setNodes call is the role-clear pass; trigger hover and capture the next call.
-      (harness.setNodes as any).mockClear();
       act(() => { harness.result.current.handleVarHover('step-prod'); });
 
-      const updater = (harness.setNodes as any).mock.calls.at(-1)[0];
-      const annotated: Node[] = updater([producer, consumer]);
-      expect((annotated.find(n => n.id === 'step-prod')!.data as Record<string, unknown>).__varFlowRole).toBe('producer');
-      expect((annotated.find(n => n.id === 'step-cons')!.data as Record<string, unknown>).__varFlowRole).toBe('consumer');
+      expect(harness.annotationOf('step-prod')?.__varFlowRole).toBe('producer');
+      expect(harness.annotationOf('step-cons')?.__varFlowRole).toBe('consumer');
+      expect([...harness.result.current.varFlowEdgeIds]).toEqual(['e1']);
     });
 
-    it('handleVarHover(null) strips __varFlowRole that a prior hover set', () => {
-      const producer = makeNode('step-prod');
-      const consumer = makeNode('step-cons');
+    it('handleVarHover(null) clears the roles and the highlighted path', () => {
+      const edges: Edge[] = [{ id: 'e1', source: 'step-prod', target: 'step-cons' }];
       const harness = setup({
-        initialNodes: [producer, consumer],
+        initialNodes: [makeNode('step-prod'), makeNode('step-cons')],
+        initialEdges: edges,
         selected: { type: 'node', id: 'step-cons' },
       });
 
-      // Set the role first.
-      (harness.setNodes as any).mockClear();
       act(() => { harness.result.current.handleVarHover('step-prod'); });
-      const setUpdater = (harness.setNodes as any).mock.calls.at(-1)[0];
-      const annotatedAfterSet: Node[] = setUpdater([producer, consumer]);
-      expect((annotatedAfterSet.find(n => n.id === 'step-prod')!.data as Record<string, unknown>).__varFlowRole).toBe('producer');
-
-      // Now clear it.
-      (harness.setNodes as any).mockClear();
       act(() => { harness.result.current.handleVarHover(null); });
-      const clearUpdater = (harness.setNodes as any).mock.calls.at(-1)[0];
-      const annotatedAfterClear: Node[] = clearUpdater(annotatedAfterSet);
-      expect('__varFlowRole' in (annotatedAfterClear.find(n => n.id === 'step-prod')!.data as Record<string, unknown>)).toBe(false);
+
+      expect(harness.annotationOf('step-prod')?.__varFlowRole).toBeUndefined();
+      expect(harness.annotationOf('step-cons')?.__varFlowRole).toBeUndefined();
+      expect(harness.result.current.varFlowEdgeIds.size).toBe(0);
     });
   });
 
   describe('step-health/step-stats integration', () => {
-    it('writes __health onto nodes when /step-health resolves with data', async () => {
-      const a = makeNode('step-a');
+    it('annotates __health when /step-health resolves with data', async () => {
       mockApiGet.mockImplementation((url: string) => {
         if (url.includes('/step-health')) return Promise.resolve({ 'step-a': [{ status: 'Succeeded', startedAt: '2026-04-26T12:00:00Z' }] });
         return Promise.resolve({});
       });
 
-      const harness = setup({ initialNodes: [a] });
+      const harness = setup({ initialNodes: [makeNode('step-a')] });
 
-      // Wait for the useQuery to settle and useEffect to fire setNodes with the health annotation.
-      await waitFor(() => {
-        const calls = (harness.setNodes as any).mock.calls;
-        const hadHealth = calls.some((c: any[]) => {
-          const annotated = c[0]([a]);
-          return Array.isArray(annotated) && (annotated[0]?.data as Record<string, unknown>)?.__health !== undefined;
-        });
-        expect(hadHealth).toBe(true);
-      });
+      await waitFor(() => expect(harness.annotationOf('step-a')?.__health).toEqual(
+        [{ status: 'Succeeded', startedAt: '2026-04-26T12:00:00Z' }],
+      ));
     });
 
-    it('re-applies __health/__stats after a node rebuild, without refetching', async () => {
-      // After save/publish/lock the editor rebuilds `nodes` from definitionJson, which strips
-      // the annotations. `nodes` must stay in the effect deps so they are re-applied at once
-      // instead of only on the next refetch.
+    it('annotates a node rebuilt from the server at once, without refetching', async () => {
+      // After save/publish/lock the editor rebuilds `nodes` from definitionJson. The annotations
+      // follow the node ids, so the fresh nodes carry them immediately.
       mockApiGet.mockImplementation((url: string) => {
         if (url.includes('/step-health')) return Promise.resolve({ 'step-a': [{ status: 'Failed', startedAt: '2026-04-26T12:00:00Z' }] });
         if (url.includes('/step-stats')) return Promise.resolve({ 'step-a': { totalRuns: 3, failedRuns: 1, failureRate: 0.33, avgDurationMs: 10, p95DurationMs: 20, lastDurationMs: 12 } });
@@ -320,84 +301,42 @@ describe('useNodeAnnotations', () => {
       });
 
       const harness = setup({ initialNodes: [makeNode('step-a')] });
-
-      const annotations = () => harness.getCurrentNodes()[0].data as Record<string, unknown>;
       await waitFor(() => {
-        expect(annotations().__health).toBeDefined();
-        expect(annotations().__stats).toBeDefined();
+        expect(harness.annotationOf('step-a')?.__health).toBeDefined();
+        expect(harness.annotationOf('step-a')?.__stats).toBeDefined();
       });
-
       const requestsBefore = mockApiGet.mock.calls.length;
 
-      // Workflow refetch: fresh node objects, annotations gone.
-      harness.replaceNodes([makeNode('step-a')]);
-      harness.rerender({ workflowIsEnabled: true, liveExecution: null });
+      harness.rerender({ nodes: [makeNode('step-a')], edges: [], workflowIsEnabled: true, liveExecution: null });
 
-      await waitFor(() => {
-        expect(annotations().__health).toBeDefined();
-        expect(annotations().__stats).toBeDefined();
-      });
+      expect(harness.annotationOf('step-a')?.__health).toBeDefined();
+      expect(harness.annotationOf('step-a')?.__stats).toBeDefined();
+      expect(harness.result.current.stepStats?.['step-a'].p95DurationMs).toBe(20);
       // Same node ids give the same query key, so the data is served from cache.
       expect(mockApiGet.mock.calls.length).toBe(requestsBefore);
-    });
-
-    it('returns the original node array when nothing changed (no render loop from the nodes dep)', async () => {
-      mockApiGet.mockImplementation((url: string) => {
-        if (url.includes('/step-health')) return Promise.resolve({ 'step-a': [{ status: 'Succeeded', startedAt: '2026-04-26T12:00:00Z' }] });
-        if (url.includes('/step-stats')) return Promise.resolve({ 'step-a': { totalRuns: 1, failedRuns: 0, failureRate: 0, avgDurationMs: 5, p95DurationMs: 5, lastDurationMs: 5 } });
-        return Promise.resolve({});
-      });
-
-      const harness = setup({ initialNodes: [makeNode('step-a')] });
-      await waitFor(() => {
-        expect((harness.getCurrentNodes()[0].data as Record<string, unknown>).__stats).toBeDefined();
-      });
-
-      // Re-render with unchanged inputs: the effects run again (nodes is in their deps) but must
-      // hand back the identical array, otherwise setNodes keeps re-triggering them forever.
-      const settled = harness.getCurrentNodes();
-      harness.rerender({ workflowIsEnabled: true, liveExecution: null });
-      harness.rerender({ workflowIsEnabled: true, liveExecution: null });
-      expect(harness.getCurrentNodes()).toBe(settled);
     });
   });
 
   describe('__workflowEnabled annotation', () => {
     it('marks every node with __workflowEnabled=false when the workflow is disabled', () => {
-      const a = makeNode('step-a');
-      const b = makeNode('step-b');
-      const harness = setup({ initialNodes: [a, b], workflowIsEnabled: false });
+      const harness = setup({ initialNodes: [makeNode('step-a'), makeNode('step-b')], workflowIsEnabled: false });
 
-      const updaters = (harness.setNodes as any).mock.calls.map((c: any[]) => c[0]);
-      const annotated = updaters.reduce((nds: Node[], u: any) => u(nds), [a, b]);
-      expect((annotated[0].data as Record<string, unknown>).__workflowEnabled).toBe(false);
-      expect((annotated[1].data as Record<string, unknown>).__workflowEnabled).toBe(false);
+      expect(harness.annotationOf('step-a')?.__workflowEnabled).toBe(false);
+      expect(harness.annotationOf('step-b')?.__workflowEnabled).toBe(false);
     });
 
     it('does not annotate nodes when the workflow is enabled (enabled is the default)', () => {
-      const a = makeNode('step-a', {}, { __workflowEnabled: true });
-      const harness = setup({ initialNodes: [a], workflowIsEnabled: true });
+      const harness = setup({ initialNodes: [makeNode('step-a')], workflowIsEnabled: true });
 
-      const updaters = (harness.setNodes as any).mock.calls.map((c: any[]) => c[0]);
-      const annotated = updaters.reduce((nds: Node[], u: any) => u(nds), [a]);
-      expect('__workflowEnabled' in (annotated[0].data as Record<string, unknown>)).toBe(false);
+      expect(harness.annotationOf('step-a')).toBeUndefined();
     });
 
-    it('re-applies __workflowEnabled=false when nodes are externally rebuilt (lock-refetch flow)', () => {
-      // Initial render: the workflow is disabled, so the annotation gets set.
-      const a = makeNode('step-a');
-      const harness = setup({ initialNodes: [a], workflowIsEnabled: false });
+    it('marks nodes rebuilt from the server (lock-refetch flow)', () => {
+      const harness = setup({ initialNodes: [makeNode('step-a')], workflowIsEnabled: false });
 
-      // Simulate a workflow refetch: the editor rebuilds `nodes` from definitionJson,
-      // producing fresh node references without the __workflowEnabled annotation.
-      const aFresh = makeNode('step-a');
-      harness.replaceNodes([aFresh]);
-      // Re-render with the same workflowIsEnabled=false (locking doesn't flip enabled to true).
-      harness.rerender({ workflowIsEnabled: false, liveExecution: null });
+      harness.rerender({ nodes: [makeNode('step-a')], edges: [], workflowIsEnabled: false, liveExecution: null });
 
-      const updaters = (harness.setNodes as any).mock.calls.map((c: any[]) => c[0]);
-      const annotated = updaters.reduce((nds: Node[], u: any) => u(nds), [aFresh]);
-      expect((annotated[0].data as Record<string, unknown>).__workflowEnabled).toBe(false);
+      expect(harness.annotationOf('step-a')?.__workflowEnabled).toBe(false);
     });
   });
 });

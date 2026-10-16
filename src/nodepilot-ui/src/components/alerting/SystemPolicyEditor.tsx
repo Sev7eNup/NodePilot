@@ -1,10 +1,11 @@
-import { Add, Send, TrashCan } from '@carbon/icons-react';
+import { Add, Send } from '@carbon/icons-react';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../api/client';
 import { sharedFoldersApi } from '../../api/sharedFolders';
 import { ModalShell } from '../common/ModalShell';
+import { AlertRouteFields, routeSecretForSave, type AlertRouteBase } from './AlertRouteFields';
 import { ConditionBuilder, type ExprNode } from '../designer/ConditionBuilder';
 import { NOTIFICATION_CHANNELS, type NotificationChannel } from '../../lib/eventFields';
 import {
@@ -16,13 +17,9 @@ import { toast } from '../../stores/toastStore';
 
 type Scope = 'Global' | 'Folders' | 'Workflows';
 
-type RouteForm = {
+type RouteForm = AlertRouteBase & {
   id: string | null;
-  channel: NotificationChannel;
-  target: string;
   conditionExpressionJson: string | null;
-  hasStoredSecret: boolean;
-  secretInput: string;
 };
 
 type FormState = {
@@ -145,7 +142,7 @@ export function SystemPolicyEditor({
       occurrenceWindowMinutes: f.occurrenceWindowMinutes,
       routes: f.routes.map((r, i) => ({
         id: r.id, channel: r.channel, target: r.target.trim(),
-        secret: r.channel !== 'GenericWebhook' ? null : (r.secretInput ? r.secretInput : (r.hasStoredSecret ? UNCHANGED_SECRET : null)),
+        secret: routeSecretForSave(r),
         order: i, conditionExpressionJson: r.conditionExpressionJson,
       })),
       targets:
@@ -342,23 +339,8 @@ export function SystemPolicyEditor({
           </div>
           <div className="space-y-2">
             {form.routes.map((r, idx) => (
-              <div key={idx} className="flex flex-wrap items-center gap-2 border border-outline-variant/60 rounded-md p-2 bg-surface-lowest">
-                <select value={r.channel} onChange={(e) => updateRoute(idx, { channel: e.target.value as NotificationChannel })}
-                  className="text-xs border border-outline-variant/50 rounded px-1 py-1.5 bg-surface-lowest">
-                  {NOTIFICATION_CHANNELS.map((c) => <option key={c} value={c}>{t(`alerts:channels.${c}`)}</option>)}
-                </select>
-                <input type="text" value={r.target} onChange={(e) => updateRoute(idx, { target: e.target.value })}
-                  placeholder={r.channel === 'Email' ? t('alerts:emailPlaceholder') : t('alerts:webhookPlaceholder')}
-                  className="flex-1 min-w-[160px] px-2 py-1.5 border border-outline-variant rounded text-xs font-mono" />
-                {r.channel === 'GenericWebhook' && (
-                  <input type="password" value={r.secretInput} onChange={(e) => updateRoute(idx, { secretInput: e.target.value })}
-                    placeholder={r.hasStoredSecret ? t('alerts:secretStored') : t('alerts:secretPlaceholder')}
-                    className="w-40 px-2 py-1.5 border border-outline-variant rounded text-xs font-mono" />
-                )}
-                <button type="button" onClick={() => removeRoute(idx)} className="p-1.5 text-outline hover:text-red-600" title={t('common:delete')}>
-                  <TrashCan size={14} />
-                </button>
-              </div>
+              <AlertRouteFields key={idx} route={r} channels={NOTIFICATION_CHANNELS}
+                onChange={(patch) => updateRoute(idx, patch)} onRemove={() => removeRoute(idx)} />
             ))}
           </div>
         </div>

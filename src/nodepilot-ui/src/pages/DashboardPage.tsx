@@ -180,11 +180,21 @@ export function DashboardPage() {
   // returns the latest 10 rows, so this filters within those; full filtering lives on /executions.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
-  // Nothing to show until a first response has arrived.
+  // Nothing to show until a first response has arrived. A failed first load offers a retry.
   if (!stats) {
     return (
       <div ref={probeRef} className="max-w-[1600px] mx-auto">
-        <p className="text-outline">{t('common:loadingDots')}</p>
+        {statsQuery.isError ? (
+          <div role="alert" className="flex items-center gap-2 text-sm text-on-surface-variant">
+            <WarningAltFilled size={14} className="text-error shrink-0" />
+            {t('common:loadError')}
+            <button type="button" className="np-btn np-btn-secondary" onClick={() => void statsQuery.refetch()}>
+              {t('common:retry')}
+            </button>
+          </div>
+        ) : (
+          <p className="text-outline">{t('common:loadingDots')}</p>
+        )}
       </div>
     );
   }

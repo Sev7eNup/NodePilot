@@ -6,10 +6,11 @@ import { useCoverageHeatmap } from '../../hooks/useCoverageHeatmap';
 
 /**
  * Covers:
- * - When enabled, the hook stamps __coverage onto activity nodes with the matching class.
- * - Trigger nodes (type !== 'activity') never receive __coverage.
- * - Disabling the hook clears __coverage so stale tints do not linger.
+ * - When enabled, the hook derives a coverage annotation per activity node with the matching class.
+ * - Trigger nodes (type !== 'activity') never receive one.
+ * - Disabled, the hook returns null and fetches nothing, so no stale tint can linger.
  * - The never, rare and common classification follows the 25% threshold.
+ * - The node data itself is never written.
  */
 
 const fetchMock = vi.fn();
@@ -36,7 +37,7 @@ function wrap(qc: QueryClient) {
 }
 
 describe('useCoverageHeatmap', () => {
-  it('stamps __coverage onto activity nodes with correct classification', async () => {
+  it('derives a coverage annotation per activity node with the correct classification', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({
       workflowId: 'wf1',
       windowDays: 30,
@@ -52,67 +53,59 @@ describe('useCoverageHeatmap', () => {
       ],
     }));
 
-    let nodes: Node[] = [
+    const nodes: Node[] = [
       { id: 'a', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'A' } },
       { id: 'b', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'B' } },
       { id: 'c', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'C' } },
       { id: 't', type: 'trigger', position: { x: 0, y: 0 }, data: { label: 'Trigger' } },
     ];
-    const setNodes: React.Dispatch<React.SetStateAction<Node[]>> = (updater) => {
-      nodes = typeof updater === 'function' ? updater(nodes) : updater;
-    };
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    renderHook(
-      () => useCoverageHeatmap({
-        workflowId: 'wf1',
-        enabled: true,
-        windowDays: 30,
-        setNodes,
-      }),
+    const { result } = renderHook(
+      () => useCoverageHeatmap({ workflowId: 'wf1', enabled: true, windowDays: 30, nodes }),
       { wrapper: wrap(qc) },
     );
 
-    await waitFor(() => {
-      expect(nodes.find((n) => n.id === 'a')?.data.__coverage).toBeDefined();
-    });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    const coverage = result.current!;
 
-    const a = nodes.find((n) => n.id === 'a')!;
-    const b = nodes.find((n) => n.id === 'b')!;
-    const c = nodes.find((n) => n.id === 'c')!;
-    const t = nodes.find((n) => n.id === 't')!;
-
-    expect((a.data.__coverage as { cls: string }).cls).toBe('common');
-    expect((b.data.__coverage as { cls: string }).cls).toBe('rare');
-    expect((c.data.__coverage as { cls: string }).cls).toBe('never');
+    expect(coverage.get('a')?.cls).toBe('common');
+    expect(coverage.get('b')?.cls).toBe('rare');
+    expect(coverage.get('b')?.failedCount).toBe(1);
+    expect(coverage.get('c')?.cls).toBe('never');
     // A trigger is not an activity node, so it receives no coverage data.
-    expect(t.data.__coverage).toBeUndefined();
+    expect(coverage.has('t')).toBe(false);
+    for (const n of nodes) expect(n.data).not.toHaveProperty('__coverage');
   });
 
-  it('clears __coverage when disabled', async () => {
-    let nodes: Node[] = [
-      { id: 'a', type: 'activity', position: { x: 0, y: 0 },
-        data: { __coverage: { cls: 'never', executedCount: 0, totalExecutions: 100 } } },
-    ];
-    const setNodes: React.Dispatch<React.SetStateAction<Node[]>> = (updater) => {
-      nodes = typeof updater === 'function' ? updater(nodes) : updater;
-    };
+  it('keeps the same annotations when only node positions change', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      workflowId: 'wf1', windowDays: 30, totalExecutions: 0, oldestExecutionInWindow: null, nodes: [],
+    }));
+    const nodes: Node[] = [{ id: 'a', type: 'activity', position: { x: 0, y: 0 }, data: {} }];
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, rerender } = renderHook(
+      (p: { nodes: Node[] }) => useCoverageHeatmap({ workflowId: 'wf1', enabled: true, windowDays: 30, nodes: p.nodes }),
+      { wrapper: wrap(qc), initialProps: { nodes } },
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+    const first = result.current;
+
+    rerender({ nodes: nodes.map((n) => ({ ...n, position: { x: 40, y: 10 } })) });
+
+    expect(result.current).toBe(first);
+  });
+
+  it('returns null and fetches nothing when disabled', () => {
+    const nodes: Node[] = [{ id: 'a', type: 'activity', position: { x: 0, y: 0 }, data: {} }];
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    renderHook(
-      () => useCoverageHeatmap({
-        workflowId: 'wf1',
-        enabled: false,
-        windowDays: 30,
-        setNodes,
-      }),
+    const { result } = renderHook(
+      () => useCoverageHeatmap({ workflowId: 'wf1', enabled: false, windowDays: 30, nodes }),
       { wrapper: wrap(qc) },
     );
 
-    await waitFor(() => {
-      expect(nodes.find((n) => n.id === 'a')?.data.__coverage).toBeUndefined();
-    });
-    // A disabled hook issues no fetch at all.
+    expect(result.current).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

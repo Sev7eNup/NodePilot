@@ -6,7 +6,7 @@ import { createBrowserRouter, Navigate } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from './components/layout/AppLayout';
-import { ErrorBoundary } from './components/ErrorBoundary';
+import { ErrorBoundary, RouteErrorFallback } from './components/ErrorBoundary';
 import { ConfirmHost } from './components/common/ConfirmHost';
 import { ToastHost } from './components/common/ToastHost';
 import { DatabaseOutageBanner } from './components/layout/DatabaseOutageBanner';
@@ -96,14 +96,17 @@ function DatabaseHealthWatcher() {
 }
 
 // The DOM-based demo tour shares this router without reloading its in-memory world.
+// The router catches render errors before the app ErrorBoundary sees them, so each top-level
+// route names the localized fallback as its error element.
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: <LoginPage />, errorElement: <RouteErrorFallback /> },
   {
     element: (
       <ProtectedRoute>
         <AppLayout />
       </ProtectedRoute>
     ),
+    errorElement: <RouteErrorFallback />,
     children: [
       { path: '/', element: <DashboardPage /> },
       { path: '/workflows', element: <WorkflowsPage /> },

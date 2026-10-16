@@ -125,4 +125,24 @@ describe('ConcurrencyLimitDialog', () => {
     fireEvent.click(save);
     expect(onSave).toHaveBeenCalledWith(1000);
   });
+
+  it('is a modal dialog named by its title, and Escape closes it without saving', () => {
+    const onClose = vi.fn();
+    const onSave = vi.fn();
+    render(
+      <ConcurrencyLimitDialog
+        workflow={workflow(5)}
+        onClose={onClose}
+        onSave={onSave}
+        isSaving={false}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: /concurrency|parallel/i });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+
+    fireEvent.keyDown(screen.getByRole('spinbutton'), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onSave).not.toHaveBeenCalled();
+  });
 });

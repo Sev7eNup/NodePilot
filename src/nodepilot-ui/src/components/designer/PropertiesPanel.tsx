@@ -249,6 +249,8 @@ function PropertiesPanelImpl({
               />
             </FieldGrid>
             <CredentialTestButton
+              // A result belongs to one node, machine and credential; a new key starts it idle.
+              key={`${node.id}|${(data.targetMachineId as string) || ''}|${(data.credentialId as string) || ''}`}
               machineId={(data.targetMachineId as string) || ''}
               credentialId={(data.credentialId as string) || ''}
             />

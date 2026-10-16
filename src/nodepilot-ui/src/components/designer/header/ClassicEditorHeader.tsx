@@ -44,20 +44,17 @@ const iconBtn = 'flex items-center justify-center rounded-md h-9 w-9 bg-transpar
  * reachable when the header wraps.
  */
 export function ClassicEditorHeader({
-  workflowId, workflow, name, onRename, isDirty, canWrite, nodes,
-  aiChatOpen, onToggleAiChat,
-  undo, redo, historyPast, historyFuture,
-  tidyLayout, isTidying, layoutMode, restoreOrigLayout, hasOrigLayout,
-  setSearchOpen, setFindReplaceOpen, zoomToSelection, setDiffOpen,
-  simulation, runSimulation, clearSimulation, lintResult, setLintPanelOpen, setHelpOpen,
-  hiddenActivityTypes, setHiddenActivityTypes,
-  liveExecution, handleRunClick,
-  exportPng, onSave, isPublishing, onRequestPublish,
-  roleCanWrite, isLockedByMe, isLockedByOther,
-  onLock, isLocking, onUnlock, isUnlocking, onDisable, isDisabling, isEnabling,
+  workflowId, workflow, name, onRename, nodes, lifecycle, history, layout, overlays,
+  simulation: sim, run, lintResult, hiddenActivityTypes, setHiddenActivityTypes,
+  zoomToSelection, exportPng, aiChatOpen, onToggleAiChat,
 }: Readonly<EditorHeaderProps>) {
   const { t } = useTranslation(['editor', 'common']);
   const isExpert = useDesignStore((s) => s.designerMode === 'expert');
+  const { canWrite, roleCanWrite } = lifecycle;
+  const { undo, redo, historyPast, historyFuture } = history;
+  const { tidyLayout, isTidying, layoutMode, restoreOrigLayout, hasOrigLayout } = layout;
+  const { setSearchOpen, setFindReplaceOpen, setDiffOpen, setLintPanelOpen, setHelpOpen } = overlays;
+  const { simulation, runSimulation, clearSimulation } = sim;
 
   return (
     <header className="np-editor-header relative z-[45] flex flex-wrap items-center gap-x-4 gap-y-2 bg-surface-lowest px-6 py-3 shrink-0 border-b border-outline-variant/15">
@@ -162,8 +159,7 @@ export function ClassicEditorHeader({
             <RunControls
               variant="icon"
               roleCanWrite={roleCanWrite}
-              liveExecution={liveExecution}
-              handleRunClick={handleRunClick}
+              run={run}
               lintResult={lintResult}
               setLintPanelOpen={setLintPanelOpen}
             />
@@ -173,23 +169,7 @@ export function ClassicEditorHeader({
           {/* Lifecycle */}
           {roleCanWrite && (
             <ToolbarSection id="lifecycle">
-              <LifecycleControls
-                workflow={workflow}
-                canWrite={canWrite}
-                isDirty={isDirty}
-                isLockedByMe={isLockedByMe}
-                isLockedByOther={isLockedByOther}
-                onLock={onLock}
-                isLocking={isLocking}
-                onUnlock={onUnlock}
-                isUnlocking={isUnlocking}
-                onSave={onSave}
-                isPublishing={isPublishing}
-                onRequestPublish={onRequestPublish}
-                onDisable={onDisable}
-                isDisabling={isDisabling}
-                isEnabling={isEnabling}
-              />
+              <LifecycleControls workflow={workflow} lifecycle={lifecycle} />
             </ToolbarSection>
           )}
 

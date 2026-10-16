@@ -1,6 +1,5 @@
 import { Apps, ChevronDown, FolderTree, Search, SidePanelClose, SidePanelOpen } from '@carbon/icons-react';
-import { useMemo } from 'react';
-import type { Node } from '@xyflow/react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { WorkflowListItem } from '../../types/api';
 import { buildActivityCategories } from './library/activityCategories';
@@ -9,7 +8,7 @@ import { WorkflowBrowser } from './WorkflowBrowser';
 import { useCustomActivityCatalogStore } from '../../lib/customActivities';
 import { useCustomActivityCatalog } from '../../hooks/useCustomActivityCatalog';
 
-type SelectedItem = { type: 'node'; id: string } | { type: 'edge'; id: string } | null;
+const COLLAPSED_CATEGORIES_KEY = 'nodepilot.designer.collapsedCategories';
 
 interface EditorSidebarProps {
   fullscreen: boolean;
@@ -20,11 +19,6 @@ interface EditorSidebarProps {
   setLeftTab: (t: 'nodes' | 'workflows') => void;
   leftCollapsed: boolean;
   setLeftCollapsed: (c: boolean) => void;
-  // Search + categories
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
-  collapsedCategories: Record<string, boolean>;
-  toggleCategory: (name: string) => void;
   // Resizable panel
   panelSize: number;
   panelHandleProps: { onMouseDown: (e: React.MouseEvent) => void; onDoubleClick: () => void };
@@ -33,8 +27,6 @@ interface EditorSidebarProps {
   addSnippet: (snippetId: string) => void;
   // Workflow-Browser tab
   isStartWorkflowSelected: boolean;
-  selected: SelectedItem;
-  nodes: Node[];
   onOpenWorkflow: (workflow: WorkflowListItem) => void;
   onEmbedWorkflow: (workflow: WorkflowListItem) => void;
 }
@@ -55,10 +47,6 @@ export function EditorSidebar({
   setLeftTab,
   leftCollapsed,
   setLeftCollapsed,
-  searchQuery,
-  setSearchQuery,
-  collapsedCategories,
-  toggleCategory,
   panelSize,
   panelHandleProps,
   addNode,
@@ -68,6 +56,24 @@ export function EditorSidebar({
   onEmbedWorkflow,
 }: Readonly<EditorSidebarProps>) {
   const { t, i18n } = useTranslation(['editor', 'nav']);
+  const [searchQuery, setSearchQuery] = useState('');
+  // Node-library categories are collapsible. Persisted to localStorage so the user does not
+  // have to re-expand their preferred categories the next time they open a workflow.
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = globalThis.localStorage.getItem(COLLAPSED_CATEGORIES_KEY);
+      return raw ? (JSON.parse(raw) as Record<string, boolean>) : { Actions: true };
+    } catch { return {}; }
+  });
+  useEffect(() => {
+    try {
+      globalThis.localStorage.setItem(COLLAPSED_CATEGORIES_KEY, JSON.stringify(collapsedCategories));
+    } catch { /* storage full or disabled, non-fatal */ }
+  }, [collapsedCategories]);
+  const toggleCategory = (name: string) => {
+    setCollapsedCategories((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
   // Hydrate the runtime custom-activity catalog (palette "Custom Nodes" section).
   useCustomActivityCatalog();
   // Subscribe so the palette rebuilds when the catalog loads / changes.

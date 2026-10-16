@@ -68,6 +68,7 @@
     "reloadPage": "Reload page"
   },
   "loadError": "Failed to load.",
+  "actionFailed": "The action failed.",
   "retry": "Try again",
   "minus": "—",
   "dash": "–",

@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ModalShell } from './ModalShell';
 import { useConfirmStore } from '../../stores/confirmStore';
@@ -11,11 +12,12 @@ export function ConfirmHost() {
   const pending = useConfirmStore((s) => s.pending);
   const settle = useConfirmStore((s) => s.settle);
   const { t } = useTranslation();
+  const titleId = useId();
   if (!pending) return null;
 
   return (
-    <ModalShell onClose={() => settle(false)} maxWidth="max-w-sm" z="z-[70]">
-      <h2 className="text-base font-semibold text-on-surface">
+    <ModalShell onClose={() => settle(false)} maxWidth="max-w-sm" z="z-[70]" labelledBy={titleId}>
+      <h2 id={titleId} className="text-base font-semibold text-on-surface">
         {pending.title ?? t('common:confirm')}
       </h2>
       <p className="mt-2 whitespace-pre-line break-words text-sm text-on-surface-variant">

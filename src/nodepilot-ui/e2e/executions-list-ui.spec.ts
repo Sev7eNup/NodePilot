@@ -67,12 +67,24 @@ async function mockExecutions(page: Page) {
     // /executions/{id}/steps is registered separately; never shadow it here.
     if (route.request().url().includes('/steps')) return route.fallback();
     listRequests += 1;
+    // Filters and sorts like the server: the page renders the returned page as is.
     const query = new URL(route.request().url()).searchParams;
     const search = query.get('search')?.toLowerCase();
+    const status = query.get('status');
+    const workflowId = query.get('workflowId');
     const rows = executions().filter(row => !search || [
       workflows().find(workflow => workflow.id === row.workflowId)?.name,
       row.id, row.triggeredBy, row.errorMessage,
-    ].some(value => value?.toLowerCase().includes(search)));
+    ].some(value => value?.toLowerCase().includes(search)))
+      .filter(row => (!status || row.status === status) && (!workflowId || row.workflowId === workflowId));
+    // All runs share one start instant, so the default "started" order is the input order; only
+    // the duration sort the sorting test drives needs modelling.
+    if (query.get('sortBy') === 'duration') {
+      const direction = query.get('sortDir') === 'asc' ? 1 : -1;
+      const durationMs = (row: { startedAt: string; completedAt: string }) =>
+        Date.parse(row.completedAt) - Date.parse(row.startedAt);
+      rows.sort((a, b) => (durationMs(a) - durationMs(b)) * direction);
+    }
     return route.fulfill({ json: {
       items: rows, page: Number(query.get('page') ?? 1), pageSize: Number(query.get('pageSize') ?? 50),
       total: rows.length, totalPages: rows.length ? 1 : 0,
@@ -168,8 +180,9 @@ test.describe('Executions list UI (Teil 57)', () => {
     await expect(table.getByText('Nightly Report')).toBeVisible();
     await expect(table.getByText('Backup Job')).toHaveCount(0);
     await expect(table.getByText('Cleanup Task')).toHaveCount(0);
-    // With count=1 i18n picks the singular form; "execution" is a substring of both forms.
-    await expect(page.getByText('1 of 3 execution')).toBeVisible();
+    // The server filters before counting, so the total is the filtered one. With count=1 i18n
+    // picks the singular form; "execution" is a substring of both forms.
+    await expect(page.getByText('1 of 1 execution')).toBeVisible();
 
     await page.getByRole('button', { name: /^All$/ }).click();
     await expect(table.getByText('Backup Job')).toBeVisible();

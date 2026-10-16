@@ -71,6 +71,8 @@ function BackupTab() {
     mutationFn: (args: { sections: string[]; passphrase: string }) =>
       backupApi.download(args.sections, args.passphrase),
     onSuccess: () => { setPassphrase(''); setConfirm(''); },
+    // The tab shows the error inline.
+    meta: { handlesError: true },
   });
 
   // Default to all sections selected once the manifest loads.
@@ -153,10 +155,13 @@ function RestoreTab() {
     // Initialise per-section conflict policy to "skip".
     onSuccess: (r: BackupPreviewResult) =>
       setPolicies(Object.fromEntries(r.sections.map((s) => [s.section, 'skip' as RestorePolicy]))),
+    // Both restore mutations show their error inline.
+    meta: { handlesError: true },
   });
   const restoreMutation = useMutation({
     mutationFn: (args: { file: File; passphrase: string; policyString: string }) =>
       backupApi.restore(args.file, args.passphrase, args.policyString),
+    meta: { handlesError: true },
   });
 
   const policyString = useMemo(

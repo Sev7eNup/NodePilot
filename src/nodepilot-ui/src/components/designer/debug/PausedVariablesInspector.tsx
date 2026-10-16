@@ -17,7 +17,8 @@ export interface PausedVariablesInspectorProps {
   pausedAt: string;
   reason: string;
   variables: Record<string, string>;
-  onResume: (mode: 'continue' | 'stepOver' | 'stop', overrides: Record<string, string>) => Promise<void>;
+  /** Rejects when the resume fails. The caller shows the error; the inspector keeps the edits. */
+  onResume:(mode: 'continue' | 'stepOver' | 'stop', overrides: Record<string, string>) => Promise<void>;
 }
 
 export function PausedVariablesInspector(props: Readonly<PausedVariablesInspectorProps>) {
@@ -70,6 +71,8 @@ export function PausedVariablesInspector(props: Readonly<PausedVariablesInspecto
     try {
       await onResume(mode, edits);
       setEdits({});
+    } catch {
+      // The caller reports the failure. Keep the edits so the user can retry.
     } finally {
       setSubmitting(null);
     }

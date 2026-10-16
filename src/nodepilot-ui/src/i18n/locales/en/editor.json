@@ -620,6 +620,8 @@
   "scriptEditor": {
     "toggleFullscreen": "Toggle fullscreen",
     "close": "Close script editor",
+    "discardConfirm": "The script has unsaved changes. Close the editor and discard them?",
+    "discardChanges": "Discard changes",
     "undo": "Undo (Ctrl+Z)",
     "redo": "Redo (Ctrl+Y)",
     "wordWrap": "Word Wrap",

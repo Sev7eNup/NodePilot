@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
  * form taller than the viewport stays fully reachable. Rendered through a portal to
  * `document.body` (wrapped in `np-shell`) so no transformed ancestor can clip it and
  * theme tokens still apply. Click-outside and Escape both close when `onClose` is set.
+ * The panel is the modal dialog; `labelledBy` names it after its heading.
  */
 export function ModalShell({
   onClose,
@@ -14,12 +15,15 @@ export function ModalShell({
   maxWidth = 'max-w-md',
   z = 'z-50',
   panelClassName,
+  labelledBy,
 }: Readonly<{
   onClose?: () => void;
   children: ReactNode;
   maxWidth?: string;
   z?: string;
   panelClassName?: string;
+  /** Id of the element that names the dialog, usually its heading. */
+  labelledBy?: string;
 }>) {
   return createPortal(
     <div className="np-shell">
@@ -37,7 +41,9 @@ export function ModalShell({
             className={panelClassName ?? `np-modal-panel bg-surface-lowest rounded-xl shadow-2xl ring-1 ring-outline-variant/20 p-4 sm:p-6 w-full ${maxWidth} shrink-0`}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && !e.defaultPrevented) onClose?.(); }}
-            role="presentation"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={labelledBy}
           >
             {children}
           </div>

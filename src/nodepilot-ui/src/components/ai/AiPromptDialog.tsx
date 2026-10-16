@@ -74,7 +74,12 @@ export function AiPromptDialog({
   }, [prompt, replaceAll, includeCurrentScript, submitting, onSubmit]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Escape' && !submitting) onClose();
+    if (e.key === 'Escape') {
+      // This dialog can sit inside another dialog's React tree (the script editor), whose own
+      // Escape handler would otherwise close it as well.
+      e.stopPropagation();
+      if (!submitting) onClose();
+    }
     // Ctrl/Cmd+Enter submits — the usual convention for multi-line prompt fields.
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();

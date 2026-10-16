@@ -215,6 +215,22 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
+  it('shows an error with retry instead of loading forever when the first load fails', async () => {
+    let available = false;
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () =>
+      available ? HttpResponse.json(BASE_STATS) : new HttpResponse(null, { status: 500 })));
+    renderPage();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Failed to load.');
+    expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
+
+    available = true;
+    await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('8 enabled')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('renders KPI strip after load', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
     renderPage();

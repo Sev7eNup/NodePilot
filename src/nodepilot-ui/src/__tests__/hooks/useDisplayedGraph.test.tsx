@@ -26,6 +26,10 @@ function baseArgs(over: Partial<Parameters<typeof useDisplayedGraph>[0]> = {}) {
     revealIndex: 0,
     lintResult: { errors: [], warnings: [] },
     failureHeatmapEnabled: false,
+    criticalPath: null,
+    annotations: new Map(),
+    coverage: null,
+    varFlowEdgeIds: new Set<string>(),
     ...over,
   };
 }
@@ -143,5 +147,108 @@ describe('useDisplayedGraph — identity stability', () => {
     expect(a.__lintWarnings).toBe(1);
     expect(b.__lintErrors).toBeUndefined();
     expect(b.__lintWarnings).toBe(1);
+  });
+});
+
+describe('useDisplayedGraph — critical path and projection-owned keys', () => {
+  const annotation = { isCritical: true, slack: 0, earliestStart: 0, duration: 100 };
+
+  function nodeData(nodes: Node[], id: string) {
+    return nodes.find((n) => n.id === id)!.data as Record<string, unknown>;
+  }
+
+  it('merges the critical-path annotation into the projected node only', () => {
+    const criticalPath = new Map([['a', annotation]]);
+    const { displayedNodes } = project({ criticalPath });
+
+    expect(nodeData(displayedNodes, 'a').__criticalPath).toBe(annotation);
+    expect(nodeData(displayedNodes, 'b')).not.toHaveProperty('__criticalPath');
+    // The raw graph stays clean; the overlay lives in the projection alone.
+    for (const n of NODES) expect(n.data).not.toHaveProperty('__criticalPath');
+  });
+
+  it('drops projection-owned keys that leaked into the raw graph', () => {
+    // A leaked value must never be shown as current: with the overlay off and no lint,
+    // simulation or heatmap, none of these keys may survive the projection.
+    const leaked: Node[] = NODES.map((n) => ({
+      ...n,
+      data: {
+        ...n.data,
+        __lintErrors: 3, __lintWarnings: 2, __simulated: 'reachable', __failureTint: 0.5,
+        __criticalPath: annotation,
+      },
+    }));
+    const { displayedNodes } = project({ nodes: leaked });
+
+    for (const id of ['a', 'b']) {
+      const data = nodeData(displayedNodes, id);
+      for (const key of ['__lintErrors', '__lintWarnings', '__simulated', '__failureTint', '__criticalPath']) {
+        expect(data, `${id}.${key}`).not.toHaveProperty(key);
+      }
+      expect(data.label).toBeTruthy(); // authored data untouched
+    }
+  });
+
+  it('merges the runtime annotations, which feed the failure tint', () => {
+    const stats = { totalRuns: 5, failedRuns: 1, failureRate: 0.2, avgDurationMs: 1, p95DurationMs: 1, lastDurationMs: 1 };
+    const annotations = new Map([['a', { __stats: stats, __machineColorIdx: 2 }]]);
+    const { displayedNodes } = project({ annotations, failureHeatmapEnabled: true });
+
+    expect(nodeData(displayedNodes, 'a').__stats).toBe(stats);
+    expect(nodeData(displayedNodes, 'a').__machineColorIdx).toBe(2);
+    expect(nodeData(displayedNodes, 'a').__failureTint).toBe(0.2);
+    expect(nodeData(displayedNodes, 'b')).not.toHaveProperty('__stats');
+    for (const n of NODES) expect(n.data).not.toHaveProperty('__stats');
+  });
+
+  it('suppresses lint counts on a node with a live status', () => {
+    const issue = (nodeId: string) => ({ severity: 'error' as const, nodeId, message: 'x', code: 'test' });
+    const lintResult = { errors: [issue('a'), issue('b')], warnings: [] };
+    const annotations = new Map([['a', { __liveStatus: 'Running' }]]);
+    const { displayedNodes } = project({ annotations, lintResult });
+
+    expect(nodeData(displayedNodes, 'a').__liveStatus).toBe('Running');
+    expect(nodeData(displayedNodes, 'a')).not.toHaveProperty('__lintErrors');
+    expect(nodeData(displayedNodes, 'b').__lintErrors).toBe(1);
+  });
+
+  it('merges the coverage heatmap', () => {
+    const cov = { cls: 'never' as const, executedCount: 0, failedCount: 0, skippedCount: 0, totalExecutions: 4, windowDays: 30, lastExecutedAt: null };
+    const { displayedNodes } = project({ coverage: new Map([['a', cov]]) });
+
+    expect(nodeData(displayedNodes, 'a').__coverage).toBe(cov);
+    expect(nodeData(displayedNodes, 'b')).not.toHaveProperty('__coverage');
+  });
+
+  it('drops runtime annotations that leaked into the raw graph', () => {
+    const leaked: Node[] = NODES.map((n) => ({
+      ...n,
+      data: {
+        ...n.data,
+        __liveStatus: 'Running', __health: [], __stats: { failureRate: 1, totalRuns: 1 },
+        __machineColorIdx: 0, __varFlowRole: 'producer', __workflowEnabled: false, __coverage: { cls: 'never' },
+      },
+    }));
+    const { displayedNodes } = project({ nodes: leaked, failureHeatmapEnabled: true });
+
+    for (const id of ['a', 'b']) {
+      const data = nodeData(displayedNodes, id);
+      for (const key of ['__liveStatus', '__health', '__stats', '__machineColorIdx', '__varFlowRole',
+        '__workflowEnabled', '__coverage', '__failureTint']) {
+        expect(data, `${id}.${key}`).not.toHaveProperty(key);
+      }
+    }
+  });
+
+  it('highlights the variable-flow path on the projected edges only', () => {
+    const edges: Edge[] = [
+      { id: 'e1', source: 'a', target: 'b', data: {} },
+      { id: 'e2', source: 'b', target: 'a', data: { __varFlowHighlighted: true } },
+    ];
+    const { displayedEdges } = project({ edges, varFlowEdgeIds: new Set(['e1']) });
+
+    expect(edgeData(displayedEdges, 'e1').__varFlowHighlighted).toBe(true);
+    expect(edgeData(displayedEdges, 'e2')).not.toHaveProperty('__varFlowHighlighted');
+    expect(edges[0].data).not.toHaveProperty('__varFlowHighlighted');
   });
 });

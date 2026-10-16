@@ -13,7 +13,8 @@ import { useState, useEffect, useMemo, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { EmptyState } from '../../common/EmptyState';
-import { api } from '../../../api/client';
+import { useMutation } from '@tanstack/react-query';
+import { resumeExecution } from '../../../api/operations';
 import { AgentRunPanel } from '../agents/AgentRunPanel';
 import type { WorkflowExecution } from '../../../types/api';
 import type { LiveExecution } from '../../../hooks/useSignalR';
@@ -307,22 +308,7 @@ function LiveExecutionDetail({ execution, workflowId, historyExecutions }: Reado
   // the paused step in the sidebar first just to get to the resume buttons.
   const pausedStep = execution?.steps.find((s) => s.status === 'Paused');
   if (pausedStep && execution) {
-    return (
-      <PausedVariablesInspector
-        stepName={pausedStep.stepName || pausedStep.stepId}
-        stepId={pausedStep.stepId}
-        pausedAt={pausedStep.pausedAt!}
-        reason={pausedStep.pausedReason ?? 'breakpoint'}
-        variables={pausedStep.pausedVariables ?? {}}
-        onResume={async (mode, overrides) => {
-          await api.post(`/executions/${execution.executionId}/resume`, {
-            stepId: pausedStep.stepId,
-            mode,
-            overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
-          });
-        }}
-      />
-    );
+    return <PausedStepInspector executionId={execution.executionId} step={pausedStep} />;
   }
 
   // A dry-run takes priority over the normal live view: if a simulation is active, we
@@ -501,6 +487,35 @@ function LiveExecutionDetail({ execution, workflowId, historyExecutions }: Reado
 }
 
 /* ---- Simulation Tab ---- */
+
+/**
+ * Debugger inspector for the paused step. Its own component so the resume mutation only mounts
+ * while a step is paused. The mutation has no onError: the global mutation toast reports a
+ * failed resume with the API message, and the inspector keeps the variable edits for a retry.
+ */
+function PausedStepInspector({ executionId, step }: Readonly<{
+  executionId: string;
+  step: LiveExecution['steps'][number];
+}>) {
+  const resumeMutation = useMutation({
+    mutationFn: ({ mode, overrides }: { mode: 'continue' | 'stepOver' | 'stop'; overrides: Record<string, string> }) =>
+      resumeExecution(executionId, {
+        stepId: step.stepId,
+        mode,
+        overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
+      }),
+  });
+  return (
+    <PausedVariablesInspector
+      stepName={step.stepName || step.stepId}
+      stepId={step.stepId}
+      pausedAt={step.pausedAt!}
+      reason={step.pausedReason ?? 'breakpoint'}
+      variables={step.pausedVariables ?? {}}
+      onResume={async (mode, overrides) => { await resumeMutation.mutateAsync({ mode, overrides }); }}
+    />
+  );
+}
 
 function SimulationTab({ simulation }: Readonly<{ simulation: SimulationSnapshot }>) {
   const { t } = useTranslation('designer');

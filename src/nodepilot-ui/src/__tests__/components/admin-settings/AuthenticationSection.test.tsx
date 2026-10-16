@@ -73,6 +73,19 @@ describe('AuthenticationSection', () => {
     expect(sidInputs.length).toBe(3);
   });
 
+  it('keeps the same OIDC group input mounted while typing', async () => {
+    renderSection();
+    const input = await screen.findByRole('textbox', { name: 'OIDC group ID 1' });
+    input.focus();
+
+    fireEvent.change(input, { target: { value: 'group-admins-2' } });
+
+    // A remounted row would replace the DOM node and drop the focus.
+    expect(screen.getByRole('textbox', { name: 'OIDC group ID 1' })).toBe(input);
+    expect(input).toHaveValue('group-admins-2');
+    expect(document.activeElement).toBe(input);
+  });
+
   it('Save sends PascalCase payload with __unchanged__ for the kept secret', async () => {
     let putBody: unknown = null;
     server.use(http.put('/api/admin/settings/Authentication', async ({ request }) => {

@@ -1,30 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import type { Node, Edge } from '@xyflow/react';
+import { useCriticalPath, type CriticalPathAnnotation, type CriticalPathStats } from '../../hooks/useCriticalPath';
 
 /**
- * Harness approach:
  * useCriticalPath derives Critical Path Method (CPM) annotations (earliest start, duration,
- * slack, and whether a node sits on the longest chain) from its `nodes`/`edges` args and stamps
- * `__criticalPath` back onto the graph via `useReactFlow().setNodes(updater)`. These tests mock
- * `useReactFlow` so `setNodes` only captures the updaters, then replay them onto the seeded node
- * array to read the stamped `data.__criticalPath`. No ReactFlowProvider and no timers needed.
+ * slack, and whether a node sits on the longest chain) from its `nodes`/`edges` args. It is a
+ * pure computation: the result is merged into the canvas projection by useDisplayedGraph and is
+ * never written into the graph, because a write in controlled mode marks the workflow dirty.
  */
-
-const setNodes = vi.fn();
-vi.mock('@xyflow/react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@xyflow/react')>();
-  return { ...actual, useReactFlow: () => ({ setNodes }) };
-});
-
-import { useCriticalPath } from '../../hooks/useCriticalPath';
-
-interface CriticalPathAnnotation {
-  isCritical: boolean;
-  slack: number;
-  earliestStart: number;
-  duration: number;
-}
 
 function makeNode(id: string, p95?: number, opts: { disabled?: boolean } = {}): Node {
   const data: Record<string, unknown> = { activityType: 'runScript' };
@@ -33,44 +17,38 @@ function makeNode(id: string, p95?: number, opts: { disabled?: boolean } = {}): 
   return { id, position: { x: 0, y: 0 }, type: 'activity', data };
 }
 
+/** The step stats the hook takes as an argument, collected from the fixtures' `__stats`. */
+function statsOf(nodes: Node[]): CriticalPathStats {
+  return Object.fromEntries(nodes.flatMap((n) => {
+    const stats = (n.data as { __stats?: { p95DurationMs: number } }).__stats;
+    return stats ? [[n.id, stats]] : [];
+  }));
+}
+
 function makeEdge(id: string, source: string, target: string, disabled = false): Edge {
   return { id, source, target, ...(disabled ? { data: { disabled: true } } : {}) };
 }
 
-/**
- * Render the hook, then replay all captured setNodes updaters onto the seeded nodes so the
- * `__criticalPath` stamps become observable. Returns the stamped node array.
- */
-function runAndStamp(nodes: Node[], edges: Edge[], enabled = true): Node[] {
-  setNodes.mockReset();
-  renderHook(() => useCriticalPath('wf-1', enabled, nodes, edges));
-  const updaters = setNodes.mock.calls.map((c) => c[0]);
-  return updaters.reduce<Node[]>(
-    (nds, u) => (typeof u === 'function' ? u(nds) : u ?? nds),
-    nodes,
-  );
+type Annotations = ReadonlyMap<string, CriticalPathAnnotation> | null;
+
+function compute(nodes: Node[], edges: Edge[], enabled = true): Annotations {
+  return renderHook(() => useCriticalPath(enabled, nodes, edges, statsOf(nodes))).result.current;
 }
 
-function annotationOf(nodes: Node[], id: string): CriticalPathAnnotation | undefined {
-  const n = nodes.find((x) => x.id === id);
-  return (n?.data as Record<string, unknown> | undefined)?.__criticalPath as
-    | CriticalPathAnnotation
-    | undefined;
+function annotationOf(annotations: Annotations, id: string): CriticalPathAnnotation | undefined {
+  return annotations?.get(id);
 }
 
 describe('useCriticalPath', () => {
-  beforeEach(() => {
-    setNodes.mockReset();
-  });
 
   it('marks the whole of a linear A→B→C chain critical with accumulating earliestStart', () => {
     const nodes = [makeNode('A', 100), makeNode('B', 200), makeNode('C', 300)];
     const edges = [makeEdge('e1', 'A', 'B'), makeEdge('e2', 'B', 'C')];
 
-    const stamped = runAndStamp(nodes, edges);
-    const a = annotationOf(stamped, 'A')!;
-    const b = annotationOf(stamped, 'B')!;
-    const c = annotationOf(stamped, 'C')!;
+    const annotations = compute(nodes, edges);
+    const a = annotationOf(annotations, 'A')!;
+    const b = annotationOf(annotations, 'B')!;
+    const c = annotationOf(annotations, 'C')!;
 
     // Every node on a single chain is on the critical path (zero slack).
     expect(a.isCritical).toBe(true);
@@ -101,11 +79,11 @@ describe('useCriticalPath', () => {
       makeEdge('e4', 'D', 'C'),
     ];
 
-    const stamped = runAndStamp(nodes, edges);
-    const a = annotationOf(stamped, 'A')!;
-    const b = annotationOf(stamped, 'B')!;
-    const d = annotationOf(stamped, 'D')!;
-    const c = annotationOf(stamped, 'C')!;
+    const annotations = compute(nodes, edges);
+    const a = annotationOf(annotations, 'A')!;
+    const b = annotationOf(annotations, 'B')!;
+    const d = annotationOf(annotations, 'D')!;
+    const c = annotationOf(annotations, 'C')!;
 
     // The long branch (B) and the shared endpoints are critical.
     expect(a.isCritical).toBe(true);
@@ -122,27 +100,27 @@ describe('useCriticalPath', () => {
 
   it('excludes a disabled node from the CPM graph but its successor still reaches the topo queue', () => {
     // Chain A, B, C with B disabled. B and its edges leave the graph, so C becomes an isolated
-    // root that still has to be processed and stamped instead of waiting on B's in-degree.
+    // root that still has to be processed and annotated instead of waiting on B's in-degree.
     const nodes = [makeNode('A', 50), makeNode('B', 999, { disabled: true }), makeNode('C', 70)];
     const edges = [makeEdge('e1', 'A', 'B'), makeEdge('e2', 'B', 'C')];
 
-    const stamped = runAndStamp(nodes, edges);
+    const annotations = compute(nodes, edges);
 
-    // C reached the queue and was stamped despite its disabled predecessor.
-    const c = annotationOf(stamped, 'C');
+    // C reached the queue and was annotated despite its disabled predecessor.
+    const c = annotationOf(annotations, 'C');
     expect(c).toBeDefined();
     expect(c!.isCritical).toBe(true);
     expect(c!.earliestStart).toBe(0); // isolated root, no predecessor duration
     expect(c!.duration).toBe(70);
 
     // A is an isolated terminal node with slack; it finishes before C's longer duration.
-    const a = annotationOf(stamped, 'A');
+    const a = annotationOf(annotations, 'A');
     expect(a).toBeDefined();
     expect(a!.isCritical).toBe(false);
     expect(a!.slack).toBe(20);
 
     // The disabled node itself is never annotated (excluded from the graph entirely).
-    expect(annotationOf(stamped, 'B')).toBeUndefined();
+    expect(annotationOf(annotations, 'B')).toBeUndefined();
   });
 
   it('skips a disabled edge so its target is treated as a root (earliestStart 0)', () => {
@@ -151,31 +129,57 @@ describe('useCriticalPath', () => {
     const nodes = [makeNode('A', 100), makeNode('B', 200), makeNode('C', 300)];
     const edges = [makeEdge('e1', 'A', 'B'), makeEdge('e2', 'B', 'C', /* disabled */ true)];
 
-    const stamped = runAndStamp(nodes, edges);
-    const c = annotationOf(stamped, 'C')!;
+    const annotations = compute(nodes, edges);
+    const c = annotationOf(annotations, 'C')!;
 
     expect(c.earliestStart).toBe(0); // the edge from B to C was not counted
-    const b = annotationOf(stamped, 'B')!;
+    const b = annotationOf(annotations, 'B')!;
     expect(b.earliestStart).toBe(100); // the edge from A to B still counts
   });
 
-  it('stamps nothing and clears prior annotations when enabled is false', () => {
-    const a = makeNode('A', 100);
-    // Seed a stale annotation that the disabled pass must strip.
-    (a.data as Record<string, unknown>).__criticalPath = {
-      isCritical: true,
-      slack: 0,
-      earliestStart: 0,
-      duration: 100,
-    };
-    const nodes = [a];
-    const edges: Edge[] = [];
+  it('returns null and leaves the nodes untouched when enabled is false', () => {
+    const nodes = [makeNode('A', 100), makeNode('B', 200)];
+    const edges = [makeEdge('e1', 'A', 'B')];
+    const before = nodes.map((n) => n.data);
 
-    const stamped = runAndStamp(nodes, edges, /* enabled */ false);
+    expect(compute(nodes, edges, /* enabled */ false)).toBeNull();
+    expect(nodes.map((n) => n.data)).toEqual(before);
+  });
 
-    // The clearing pass removes the existing __criticalPath key.
-    expect(annotationOf(stamped, 'A')).toBeUndefined();
-    expect('__criticalPath' in (stamped[0].data as Record<string, unknown>)).toBe(false);
+  it('never writes annotations into the node data it reads', () => {
+    const nodes = [makeNode('A', 100), makeNode('B', 200)];
+    const edges = [makeEdge('e1', 'A', 'B')];
+
+    compute(nodes, edges);
+
+    for (const n of nodes) expect(n.data).not.toHaveProperty('__criticalPath');
+  });
+
+  it('keeps the same result when only node positions change', () => {
+    // A drag replaces the node array on every frame. A fresh annotation object per frame would
+    // defeat the node components' memo comparators.
+    const nodes = [makeNode('A', 100), makeNode('B', 200)];
+    const edges = [makeEdge('e1', 'A', 'B')];
+    const { result, rerender } = renderHook((p: { nodes: Node[] }) => useCriticalPath(true, p.nodes, edges, statsOf(p.nodes)), {
+      initialProps: { nodes },
+    });
+    const first = result.current;
+
+    rerender({ nodes: nodes.map((n) => ({ ...n, position: { x: n.position.x + 40, y: 10 } })) });
+
+    expect(result.current).toBe(first);
+  });
+
+  it('recomputes when a duration changes', () => {
+    const nodes = [makeNode('A', 100), makeNode('B', 200)];
+    const edges = [makeEdge('e1', 'A', 'B')];
+    const { result, rerender } = renderHook((p: { nodes: Node[] }) => useCriticalPath(true, p.nodes, edges, statsOf(p.nodes)), {
+      initialProps: { nodes },
+    });
+
+    rerender({ nodes: [makeNode('A', 100), makeNode('B', 500)] });
+
+    expect(result.current?.get('B')?.duration).toBe(500);
   });
 
   it('defaults nodes without __stats to 0ms duration', () => {
@@ -183,9 +187,9 @@ describe('useCriticalPath', () => {
     const nodes = [makeNode('A'), makeNode('B'), makeNode('C')];
     const edges = [makeEdge('e1', 'A', 'B'), makeEdge('e2', 'B', 'C')];
 
-    const stamped = runAndStamp(nodes, edges);
+    const annotations = compute(nodes, edges);
     for (const id of ['A', 'B', 'C']) {
-      const ann = annotationOf(stamped, id)!;
+      const ann = annotationOf(annotations, id)!;
       expect(ann.duration).toBe(0);
       expect(ann.earliestStart).toBe(0);
       expect(ann.isCritical).toBe(true);

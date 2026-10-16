@@ -26,20 +26,17 @@ import type { EditorHeaderProps } from './editorHeaderTypes';
  * Selected via `designStore.toolbarLayout === 'compact'` by the {@link EditorHeader} dispatcher.
  */
 export function CompactEditorHeader({
-  workflowId, workflow, name, onRename, isDirty, canWrite, nodes,
-  aiChatOpen, onToggleAiChat,
-  undo, redo, historyPast, historyFuture,
-  tidyLayout, isTidying, layoutMode, restoreOrigLayout, hasOrigLayout,
-  setSearchOpen, setFindReplaceOpen, zoomToSelection, setDiffOpen,
-  simulation, runSimulation, clearSimulation, lintResult, setLintPanelOpen, setHelpOpen,
-  hiddenActivityTypes, setHiddenActivityTypes,
-  liveExecution, handleRunClick,
-  exportPng, onSave, isPublishing, onRequestPublish,
-  roleCanWrite, isLockedByMe, isLockedByOther,
-  onLock, isLocking, onUnlock, isUnlocking, onDisable, isDisabling, isEnabling,
+  workflowId, workflow, name, onRename, nodes, lifecycle, history, layout, overlays,
+  simulation: sim, run, lintResult, hiddenActivityTypes, setHiddenActivityTypes,
+  zoomToSelection, exportPng, aiChatOpen, onToggleAiChat,
 }: Readonly<EditorHeaderProps>) {
   const { t } = useTranslation('editor');
   const isExpert = useDesignStore((s) => s.designerMode === 'expert');
+  const { canWrite, roleCanWrite } = lifecycle;
+  const { undo, redo, historyPast, historyFuture } = history;
+  const { tidyLayout, isTidying, layoutMode, restoreOrigLayout, hasOrigLayout } = layout;
+  const { setSearchOpen, setFindReplaceOpen, setDiffOpen, setLintPanelOpen, setHelpOpen } = overlays;
+  const { simulation, runSimulation, clearSimulation } = sim;
 
   return (
     <header className="np-editor-header relative z-[45] flex items-center gap-4 bg-surface-lowest px-6 py-3 shrink-0 border-b border-outline-variant/15">
@@ -139,8 +136,7 @@ export function CompactEditorHeader({
             <RunControls
               variant="cta"
               roleCanWrite={roleCanWrite}
-              liveExecution={liveExecution}
-              handleRunClick={handleRunClick}
+              run={run}
               lintResult={lintResult}
               setLintPanelOpen={setLintPanelOpen}
             />
@@ -149,23 +145,7 @@ export function CompactEditorHeader({
           {/* Lifecycle. Edit-lock toggle + Save + Publish/Disable. Admin/Operator only. */}
           {roleCanWrite && (
             <ToolbarSection id="lifecycle">
-              <LifecycleControls
-                workflow={workflow}
-                canWrite={canWrite}
-                isDirty={isDirty}
-                isLockedByMe={isLockedByMe}
-                isLockedByOther={isLockedByOther}
-                onLock={onLock}
-                isLocking={isLocking}
-                onUnlock={onUnlock}
-                isUnlocking={isUnlocking}
-                onSave={onSave}
-                isPublishing={isPublishing}
-                onRequestPublish={onRequestPublish}
-                onDisable={onDisable}
-                isDisabling={isDisabling}
-                isEnabling={isEnabling}
-              />
+              <LifecycleControls workflow={workflow} lifecycle={lifecycle} />
             </ToolbarSection>
           )}
 

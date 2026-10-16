@@ -1,6 +1,8 @@
 import { DirectionMerge } from '@carbon/icons-react';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SettingsSectionResponse } from '../../api/adminSettings';
+import { ModalShell } from '../common/ModalShell';
 
 type Props = {
   open: boolean;
@@ -25,14 +27,15 @@ type Props = {
  */
 export function EtagConflictDialog({ open, serverSnapshot, localDraft, onKeepMine, onTakeTheirs, onCancel }: Readonly<Props>) {
   const { t } = useTranslation(['adminSettings']);
+  const titleId = useId();
   if (!open || !serverSnapshot) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-      <div className="bg-surface-lowest rounded-lg shadow-xl w-full max-w-3xl p-6 space-y-4">
+    <ModalShell onClose={onCancel} maxWidth="max-w-3xl" labelledBy={titleId}>
+      <div className="space-y-4">
         <div className="flex items-center gap-2">
           <DirectionMerge size={18} className="text-amber-600" />
-          <h3 className="text-lg font-semibold text-on-surface">{t('adminSettings:etagConflictTitle')}</h3>
+          <h3 id={titleId} className="text-lg font-semibold text-on-surface">{t('adminSettings:etagConflictTitle')}</h3>
         </div>
         <p className="text-sm text-on-surface-variant">{t('adminSettings:etagConflictBody')}</p>
 
@@ -79,6 +82,6 @@ export function EtagConflictDialog({ open, serverSnapshot, localDraft, onKeepMin
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }

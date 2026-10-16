@@ -1,5 +1,5 @@
-import { QueryCache, QueryClient } from '@tanstack/react-query';
-import { handleQueryError } from './lib/queryErrorToast';
+import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
+import { handleMutationError, handleQueryError } from './lib/queryErrorToast';
 import { registerAuthBoundaryQueryCacheClearer } from './security/authBoundary';
 
 /**
@@ -8,6 +8,7 @@ import { registerAuthBoundaryQueryCacheClearer } from './security/authBoundary';
  */
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({ onError: handleQueryError }),
+  mutationCache: new MutationCache({ onError: handleMutationError }),
   defaultOptions: {
     queries: {
       retry: 1,

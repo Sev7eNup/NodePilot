@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { Node, Edge } from '@xyflow/react';
 import { api } from '../api/client';
 import { getPage } from '../api/paging';
+import { cancelExecution } from '../api/operations';
 import type { Workflow, WorkflowExecution } from '../types/api';
 import { withSpan } from '../telemetry/otel';
 import { extractManualTriggerConfig } from '../components/common/RunWorkflowDialog';
@@ -82,6 +83,8 @@ export function useWorkflowExecution({
       pinCanvasExecution(execution.id);
       clearReplay();
     },
+    // Every call site passes its own onError to mutate().
+    meta: { handlesError: true },
   });
 
   // Test/Debug entry point. `debug` applies to this one run only and makes the engine honor
@@ -133,11 +136,15 @@ export function useWorkflowExecution({
   }, [executeMutation, pendingRunIsDebug, t]);
   const closeRunDialog = useCallback(() => { setShowRunDialog(false); }, []);
 
+  // No onError of its own: the global mutation toast reports a failed cancel with the API message.
+  const { mutate: cancel } = useMutation({ mutationFn: (executionId: string) => cancelExecution(executionId) });
+
   return {
     run,
     confirmRunWithParams,
     closeRunDialog,
     showRunDialog,
     lastExecutionList,
+    cancel,
   };
 }

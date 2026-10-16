@@ -22,8 +22,8 @@ const UNCHANGED_SECRET = '__unchanged__';
  *
  * Icon-only row buttons (Power/Edit/Trash) carry `title={t(...)}`, so they are located with
  * `getByTitle(regex)`. The confirm dialog (ConfirmHost) renders an "OK" button, located with
- * `getByRole('button', { name: /^ok$/i })`. Editor modals use ModalShell (role="presentation");
- * scope to the heading's parent panel.
+ * `getByRole('button', { name: /^ok$/i })`. Editor modals use ModalShell, whose panel carries no
+ * accessible name; scope to the heading's parent panel.
  */
 
 // ---- mock-factory helpers ---------------------------------------------------------------
@@ -149,8 +149,8 @@ function testFireJson(opts: { allSucceeded?: boolean; error?: string | null } = 
   };
 }
 
-// ModalShell wraps the panel in role="presentation"; the h3 heading is a direct child of the
-// panel div, so the heading's parent locator resolves to the editable panel.
+// The h3 heading is a direct child of the ModalShell panel div, so the heading's parent locator
+// resolves to the editable panel.
 function editorPanel(page: Page, headingRegex: RegExp) {
   return page.getByRole('heading', { name: headingRegex }).locator('..');
 }

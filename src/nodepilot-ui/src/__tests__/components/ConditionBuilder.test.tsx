@@ -111,4 +111,95 @@ describe('ConditionBuilder', () => {
     // The LHS Field dropdown should list output/error/success + status (param)
     expect(screen.getByText(/status \(param\)/i)).toBeInTheDocument();
   });
+
+  it('renders not(group) and keeps its shape when an inner value changes', () => {
+    const existing: ExprNode = {
+      type: 'not',
+      child: {
+        type: 'group', op: 'OR', children: [
+          { type: 'comparison', left: { kind: 'literal', value: 'a' }, op: '==', right: { kind: 'literal', value: 'first' } },
+          { type: 'comparison', left: { kind: 'literal', value: 'b' }, op: '==', right: { kind: 'literal', value: 'second' } },
+        ],
+      },
+    };
+    const onChange = vi.fn();
+    renderBuilder(<ConditionBuilder value={existing} upstreamVars={upstreamVars} onChange={onChange} />);
+
+    expect(screen.getByDisplayValue('first')).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue('second'), { target: { value: 'changed' } });
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      type: 'not',
+      child: {
+        type: 'group', op: 'OR', children: [
+          { type: 'comparison', left: { kind: 'literal', value: 'a' }, op: '==', right: { kind: 'literal', value: 'first' } },
+          { type: 'comparison', left: { kind: 'literal', value: 'b' }, op: '==', right: { kind: 'literal', value: 'changed' } },
+        ],
+      },
+    });
+  });
+
+  it('shows a manual operand as itself and keeps it on unrelated edits', () => {
+    const existing: ExprNode = {
+      type: 'comparison',
+      left: { kind: 'variable', source: 'manual', name: 'region' },
+      op: '==',
+      right: { kind: 'literal', value: 'eu' },
+    };
+    const onChange = vi.fn();
+    renderBuilder(<ConditionBuilder value={existing} upstreamVars={upstreamVars} onChange={onChange} />);
+
+    const selected = screen.getByRole('option', { name: 'manual.region' }) as HTMLOptionElement;
+    expect(selected.selected).toBe(true);
+    fireEvent.change(screen.getByDisplayValue('eu'), { target: { value: 'us' } });
+
+    expect(onChange).toHaveBeenLastCalledWith({ ...existing, right: { kind: 'literal', value: 'us' } });
+  });
+
+  it('marks a reference to a step that is no longer upstream instead of dropping it', () => {
+    const existing: ExprNode = {
+      type: 'comparison',
+      left: { kind: 'variable', stepId: 'removedStep', field: 'param', paramName: 'code' },
+      op: '==',
+      right: { kind: 'literal', value: '0' },
+    };
+    const onChange = vi.fn();
+    renderBuilder(<ConditionBuilder value={existing} upstreamVars={upstreamVars} onChange={onChange} />);
+
+    const stale = screen.getByRole('option', { name: 'removedStep.param.code (not available)' }) as HTMLOptionElement;
+    expect(stale.selected).toBe(true);
+    expect(stale.closest('select')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText(/not available here/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByDisplayValue('0'), { target: { value: '1' } });
+    expect(onChange).toHaveBeenLastCalledWith({ ...existing, right: { kind: 'literal', value: '1' } });
+  });
+
+  it('resolves a reference by output variable to its step', () => {
+    const aliased: UpstreamVariable[] = [
+      { stepId: 'step-1', label: 'Check Disk', variable: 'diskCheck', expression: '{{diskCheck.output}}', type: 'string' },
+    ];
+    const existing: ExprNode = {
+      type: 'comparison',
+      left: { kind: 'variable', stepId: 'diskCheck', field: 'success' },
+      op: 'isTrue',
+    };
+    renderBuilder(<ConditionBuilder value={existing} upstreamVars={aliased} onChange={() => {}} />);
+
+    expect((screen.getByRole('option', { name: 'Check Disk → success (bool)' }) as HTMLOptionElement).selected).toBe(true);
+    expect(screen.queryByText(/not available/i)).toBeNull();
+  });
+
+  it('keeps the operand when the already active Variable mode is clicked', () => {
+    const existing: ExprNode = {
+      type: 'comparison',
+      left: { kind: 'variable', source: 'manual', name: 'region' },
+      op: 'isNotEmpty',
+    };
+    const onChange = vi.fn();
+    renderBuilder(<ConditionBuilder value={existing} upstreamVars={upstreamVars} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Variable$/i }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

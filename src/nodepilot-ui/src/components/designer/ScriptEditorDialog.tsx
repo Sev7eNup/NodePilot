@@ -27,6 +27,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { cssColorToHex } from '../../lib/cssColor';
 import { monaco, MONO_FONT_STACK } from '../../lib/monacoSetup';
 import { isMinimalSkin, useThemeStore } from '../../stores/themeStore';
+import { confirmDialog } from '../../stores/confirmStore';
 import { AiPromptDialog } from '../ai/AiPromptDialog';
 import type { StepTestResult } from '../../types/api';
 
@@ -364,13 +365,27 @@ export function ScriptEditorDialog({
     }
   }, [onRun, code, onChange, testing]);
 
+  // Closing without saving asks first when the buffer differs from the saved value.
+  const requestClose = useCallback(async () => {
+    if (code !== value && !(await confirmDialog({
+      message: t('editor:scriptEditor.discardConfirm'),
+      confirmLabel: t('editor:scriptEditor.discardChanges'),
+      danger: true,
+    }))) return;
+    onClose();
+  }, [code, value, onClose, t]);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       onChange(code);
     }
-    if (e.key === 'Escape') onClose();
-  }, [code, onChange, onClose]);
+    // A child that consumed Escape (Monaco widget, nested dialog) marks it handled.
+    if (e.key === 'Escape' && !e.defaultPrevented) {
+      e.preventDefault();
+      void requestClose();
+    }
+  }, [code, onChange, requestClose]);
 
   const insertText = useCallback((text: string) => {
     const editor = editorRef.current;
@@ -619,7 +634,7 @@ export function ScriptEditorDialog({
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => { void requestClose(); }}
               className="inline-flex h-7 w-7 items-center justify-center text-on-surface-variant hover:text-error hover:bg-error-container/30 rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
               aria-label={t('editor:scriptEditor.close')}
             >

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Workflow } from '../../types/api';
 
@@ -10,7 +10,9 @@ import type { Workflow } from '../../types/api';
  * isLockedByOther, canWrite), computed at render time. `canWrite` is the edit gate, so
  * every combination of lock owner and role is covered.
  */
-vi.mock('../../api/client', () => ({
+vi.mock('../../api/client', async (importOriginal) => ({
+  // Keeps ApiError and the error predicates the global mutation handler reads.
+  ...(await importOriginal<typeof import('../../api/client')>()),
   api: {
     get: vi.fn(),
     post: vi.fn().mockResolvedValue({}),
@@ -19,7 +21,10 @@ vi.mock('../../api/client', () => ({
   },
 }));
 
+import { api, ApiError } from '../../api/client';
 import { useWorkflowLock } from '../../hooks/useWorkflowLock';
+import { queryClient } from '../../queryClient';
+import { useToastStore } from '../../stores/toastStore';
 
 function makeWorkflow(checkedOutByUserId: string | null): Workflow {
   return { id: 'wf-1', name: 'WF', checkedOutByUserId } as Workflow;
@@ -113,5 +118,44 @@ describe('useWorkflowLock derived state', () => {
       expect(result.current.isLockedByOther).toBe(true);
       expect(result.current.canWrite).toBe(false);
     }
+  });
+});
+
+describe('useWorkflowLock failures', () => {
+  beforeEach(() => useToastStore.setState({ toasts: [] }));
+  afterEach(() => queryClient.clear());
+
+  // The app's own client, so the test also covers the MutationCache wiring in queryClient.ts.
+  function renderWithAppClient() {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    return renderHook(
+      () => useWorkflowLock({ workflowId: 'wf-1', workflow: makeWorkflow(null), currentUserId: 'user-1', roleCanWrite: true }),
+      { wrapper },
+    );
+  }
+
+  it('lock_conflict_showsAnErrorToast', async () => {
+    vi.mocked(api.post).mockRejectedValueOnce(
+      new ApiError('Workflow is already locked by another user (WORKFLOW_LOCKED)', 409, 'WORKFLOW_LOCKED'));
+    const { result } = renderWithAppClient();
+
+    act(() => result.current.lock());
+
+    await waitFor(() => expect(useToastStore.getState().toasts).toContainEqual(expect.objectContaining({
+      kind: 'error',
+      message: 'Workflow is already locked by another user (WORKFLOW_LOCKED)',
+    })));
+    expect(api.post).toHaveBeenCalledWith('/workflows/wf-1/lock', {});
+  });
+
+  it('enable_lockedWorkflow_showsAnErrorToast', async () => {
+    vi.mocked(api.post).mockRejectedValueOnce(new ApiError('Workflow is locked (WORKFLOW_LOCKED)', 423, 'WORKFLOW_LOCKED'));
+    const { result } = renderWithAppClient();
+
+    act(() => result.current.enable());
+
+    await waitFor(() => expect(useToastStore.getState().toasts.filter((t) => t.kind === 'error')).toHaveLength(1));
   });
 });

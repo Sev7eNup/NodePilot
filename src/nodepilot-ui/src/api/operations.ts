@@ -65,6 +65,14 @@ export function cancelExecution(executionId: string) {
   return api.post<void>(`/executions/${executionId}/cancel`);
 }
 
+/** Resume a run paused at a breakpoint (step debugger). */
+export function resumeExecution(
+  executionId: string,
+  body: { stepId: string; mode: 'continue' | 'stepOver' | 'stop'; overrides?: Record<string, string> },
+) {
+  return api.post<void>(`/executions/${executionId}/resume`, body);
+}
+
 /** Execution detail for the drilldown (error, triggeredBy, parent link, failed steps). */
 export function getExecution(executionId: string) {
   return api.get<WorkflowExecution>(`/executions/${executionId}`);

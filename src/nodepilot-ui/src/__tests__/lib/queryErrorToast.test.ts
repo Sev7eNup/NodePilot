@@ -1,8 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import type { Query } from '@tanstack/react-query';
-import { handleQueryError, shouldToastQueryError } from '../../lib/queryErrorToast';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { MutationCache, MutationObserver, QueryClient, type Query } from '@tanstack/react-query';
+import {
+  handleMutationError, handleQueryError, isSuppressedServerError, shouldToastQueryError,
+} from '../../lib/queryErrorToast';
 import { useToastStore } from '../../stores/toastStore';
 import { ApiError } from '../../api/client';
+import { AuthBoundaryChangedError } from '../../security/authBoundary';
 
 /**
  * Builds the smallest object the policy reads. A real `Query` carries far more, and building one
@@ -121,5 +124,99 @@ describe('handleQueryError — database codes', () => {
   it('handleQueryError_ordinaryError_stillToasts', () => {
     handleQueryError(new ApiError('Workflow is locked', 423, 'WORKFLOW_LOCKED'), fakeQuery());
     expect(useToastStore.getState().toasts).toHaveLength(1);
+  });
+});
+
+describe('handleMutationError', () => {
+  beforeEach(() => useToastStore.setState({ toasts: [] }));
+
+  // Runs a mutation through a real MutationCache wired like the app's, so the handler sees the
+  // same mutation object (options, meta) it gets in production.
+  async function runFailingMutation(
+    error: unknown,
+    options: { onError?: () => void; meta?: { handlesError?: boolean }; callOnError?: () => void } = {},
+  ) {
+    const client = new QueryClient({ mutationCache: new MutationCache({ onError: handleMutationError }) });
+    const observer = new MutationObserver(client, {
+      mutationFn: () => Promise.reject(error),
+      onError: options.onError,
+      meta: options.meta,
+    });
+    // Call-time callbacks only reach a subscribed observer, as with a mounted useMutation.
+    observer.subscribe(() => undefined);
+    await observer.mutate(undefined, options.callOnError ? { onError: options.callOnError } : undefined)
+      .catch(() => undefined);
+  }
+
+  const errorToasts = () => useToastStore.getState().toasts.filter((t) => t.kind === 'error');
+
+  it('handleMutationError_noOwnHandler_showsTheServerMessage', async () => {
+    await runFailingMutation(new ApiError('Workflow is locked by someone else (WORKFLOW_LOCKED)', 409, 'WORKFLOW_LOCKED'));
+    expect(errorToasts()).toHaveLength(1);
+    expect(errorToasts()[0].message).toBe('Workflow is locked by someone else (WORKFLOW_LOCKED)');
+  });
+
+  it('handleMutationError_errorWithoutMessage_fallsBackToGenericText', async () => {
+    await runFailingMutation(new Error(''));
+    expect(errorToasts()).toHaveLength(1);
+    expect(errorToasts()[0].message).toBeTruthy();
+  });
+
+  it('handleMutationError_ownOnError_doesNotToastTwice', async () => {
+    const own = vi.fn(() => { useToastStore.getState().push('error', 'own message'); });
+    await runFailingMutation(new Error('boom'), { onError: own });
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(errorToasts().map((t) => t.message)).toEqual(['own message']);
+  });
+
+  it('handleMutationError_handlesErrorMeta_staysSilent', async () => {
+    await runFailingMutation(new Error('rendered inline'), { meta: { handlesError: true } });
+    expect(errorToasts()).toHaveLength(0);
+  });
+
+  it('handleMutationError_callTimeOnErrorWithMeta_toastsOnce', async () => {
+    // onError passed to mutate() lives on the observer, which the cache cannot see. The meta
+    // flag is what keeps these call sites from showing two toasts.
+    const callOnError = vi.fn(() => { useToastStore.getState().push('error', 'call-site message'); });
+    await runFailingMutation(new Error('boom'), { meta: { handlesError: true }, callOnError });
+    // Observer callbacks are delivered through React Query's batched notify, one tick later.
+    await vi.waitFor(() => expect(callOnError).toHaveBeenCalledTimes(1));
+    expect(errorToasts().map((t) => t.message)).toEqual(['call-site message']);
+  });
+
+  it('handleMutationError_abort_staysSilent', async () => {
+    const abort = new Error('cancelled');
+    abort.name = 'AbortError';
+    await runFailingMutation(abort);
+    expect(errorToasts()).toHaveLength(0);
+  });
+
+  it('handleMutationError_authBoundaryChange_staysSilent', async () => {
+    await runFailingMutation(new AuthBoundaryChangedError());
+    expect(errorToasts()).toHaveLength(0);
+  });
+
+  it('handleMutationError_databaseUnavailable_staysSilent', async () => {
+    await runFailingMutation(
+      new ApiError('The database is not reachable right now. (DATABASE_UNAVAILABLE)', 503, 'DATABASE_UNAVAILABLE'));
+    expect(errorToasts()).toHaveLength(0);
+  });
+
+  it('handleMutationError_databaseTimeout_stillToasts', async () => {
+    await runFailingMutation(
+      new ApiError('The database did not answer in time. (DATABASE_TIMEOUT)', 503, 'DATABASE_TIMEOUT'));
+    expect(errorToasts()).toHaveLength(1);
+  });
+});
+
+describe('isSuppressedServerError', () => {
+  it('matches what both global handlers skip', () => {
+    const abort = new Error('x');
+    abort.name = 'AbortError';
+    expect(isSuppressedServerError(abort)).toBe(true);
+    expect(isSuppressedServerError(new AuthBoundaryChangedError())).toBe(true);
+    expect(isSuppressedServerError(new ApiError('down', 503, 'DATABASE_UNAVAILABLE'))).toBe(true);
+    expect(isSuppressedServerError(new ApiError('slow', 503, 'DATABASE_TIMEOUT'))).toBe(false);
+    expect(isSuppressedServerError(new Error('boom'))).toBe(false);
   });
 });

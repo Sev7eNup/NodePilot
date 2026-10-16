@@ -3,9 +3,12 @@ import { act, cleanup, render, screen, fireEvent, waitFor } from '@testing-libra
 
 import { ScriptEditorDialog } from '../../components/designer/ScriptEditorDialog';
 import { monaco } from '../../lib/monacoSetup';
+import { useConfirmStore } from '../../stores/confirmStore';
 import { useThemeStore } from '../../stores/themeStore';
 
 describe('ScriptEditorDialog', () => {
+  afterEach(() => { useConfirmStore.getState().settle(false); });
+
   it('renders title bar, PS badge and the (mocked) Monaco editor', () => {
     render(<ScriptEditorDialog value="$foo = 1" onChange={() => {}} onClose={() => {}} />);
     expect(screen.getByText('PowerShell Script Editor')).toBeInTheDocument();
@@ -43,6 +46,76 @@ describe('ScriptEditorDialog', () => {
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('Esc with unsaved changes asks first and stays open on cancel', async () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    render(<ScriptEditorDialog value="$x = 1" onChange={onChange} onClose={onClose} />);
+    fireEvent.change(screen.getByTestId('monaco-editor-mock'), { target: { value: '$x = 2' } });
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+
+    await waitFor(() => expect(useConfirmStore.getState().pending?.message).toMatch(/unsaved changes/i));
+    act(() => useConfirmStore.getState().settle(false));
+    await act(async () => {});
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    expect((screen.getByTestId('monaco-editor-mock') as HTMLTextAreaElement).value).toBe('$x = 2');
+  });
+
+  it('Esc with unsaved changes closes once the discard is confirmed', async () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    render(<ScriptEditorDialog value="$x = 1" onChange={onChange} onClose={onClose} />);
+    fireEvent.change(screen.getByTestId('monaco-editor-mock'), { target: { value: '$x = 2' } });
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(useConfirmStore.getState().pending).not.toBeNull());
+    act(() => useConfirmStore.getState().settle(true));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('the close button asks before discarding unsaved changes', async () => {
+    const onClose = vi.fn();
+    render(<ScriptEditorDialog value="" onChange={() => {}} onClose={onClose} />);
+    fireEvent.change(screen.getByTestId('monaco-editor-mock'), { target: { value: 'Get-Date' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /close script editor/i }));
+
+    await waitFor(() => expect(useConfirmStore.getState().pending).not.toBeNull());
+    act(() => useConfirmStore.getState().settle(false));
+    await act(async () => {});
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('ignores an Escape a child already handled', () => {
+    const onClose = vi.fn();
+    render(<ScriptEditorDialog value="" onChange={() => {}} onClose={onClose} />);
+    const editor = screen.getByTestId('monaco-editor-mock');
+    // Monaco marks Escape as handled when it closes its own suggest or find widget.
+    editor.addEventListener('keydown', (e) => { if (e.key === 'Escape') e.preventDefault(); });
+
+    fireEvent.keyDown(editor, { key: 'Escape' });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(useConfirmStore.getState().pending).toBeNull();
+  });
+
+  it('Esc in the AI prompt closes only the prompt, not the editor', () => {
+    const onClose = vi.fn();
+    render(<ScriptEditorDialog value="$x = 1" onChange={() => {}} onClose={onClose} onAiGenerate={async () => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /generate script with ai/i }));
+    const prompt = screen.getByLabelText('AI prompt');
+
+    fireEvent.keyDown(prompt, { key: 'Escape' });
+
+    expect(screen.queryByLabelText('AI prompt')).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(useConfirmStore.getState().pending).toBeNull();
+    expect(screen.getByText('PowerShell Script Editor')).toBeInTheDocument();
   });
 
   it('Run button is shown only when onRun is provided and triggers it', async () => {

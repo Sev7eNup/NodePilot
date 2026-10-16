@@ -240,11 +240,10 @@ export function WorkflowsPage() {
       setShowAiGenerate(false);
       navigate(`/workflows/${workflow.id}`);
     },
+    // Called through mutateAsync; WorkflowGenerationDialog shows the error itself.
+    meta: { handlesError: true },
   });
 
-  // There is no MutationCache.onError in queryClient.ts, so a mutation without its own handler
-  // fails silently. Enable is the visible case: it answers 423 while an edit lock is held, and
-  // without this the toggle just refuses to move.
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/workflows/${id}`),
     onSuccess: () => {

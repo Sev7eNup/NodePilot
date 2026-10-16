@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -73,6 +73,7 @@ import { WorkflowEditorPage } from '../../pages/WorkflowEditorPage';
 import { useAuthStore } from '../../stores/authStore';
 import { COMPLETED_EXECUTION_TTL_MS } from '../../hooks/useSignalR';
 import { clearLocalAuthBoundary } from '../../security/authBoundary';
+import { handleMutationError } from '../../lib/queryErrorToast';
 
 const BASE = 'http://localhost';
 
@@ -205,10 +206,12 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
+function renderPage(
+  role: 'Admin' | 'Operator' | 'Viewer' = 'Admin',
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   useAuthStore.setState({ userId: TEST_USER_ID, username: 'tester', role, isAuthenticated: true });
   patchFetch();
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/workflows/wf-smoke-1']}>
@@ -493,6 +496,8 @@ describe('WorkflowEditorPage — Workflow data variations', () => {
     await act(async () => { finishRender(new Blob(['user-a'], { type: 'image/png' })); });
 
     expect(anchorClick).not.toHaveBeenCalled();
+    // Discarding the image after an identity change is intended, not an export failure.
+    expect(useToastStore.getState().toasts).toHaveLength(0);
   });
 
   it('downloads PNG through a blob URL accepted by the desktop shell', async () => {
@@ -513,6 +518,65 @@ describe('WorkflowEditorPage — Workflow data variations', () => {
     await waitFor(() => expect(anchorClick).toHaveBeenCalledTimes(1));
     expect(createUrl).toHaveBeenCalledWith(blob);
     expect(revokeUrl).toHaveBeenCalledWith('blob:https://localhost:47000/test');
+  });
+});
+
+describe('WorkflowEditorPage — failed actions report an error', () => {
+  // Same mutation cache as the app, so a mutation without its own onError reaches the toast.
+  const appLikeClient = () => new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+    mutationCache: new MutationCache({ onError: handleMutationError }),
+  });
+
+  async function startRunningExecution() {
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_PRODUCTIVE)),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/execute`, () => HttpResponse.json({
+        id: 'exec-1', workflowId: 'wf-smoke-1', status: 'Pending', startedAt: '2026-04-26T12:00:00Z',
+      }, { status: 202 })),
+      http.post(`${BASE}/api/executions/exec-1/cancel`, () =>
+        HttpResponse.json({ detail: 'Execution already finished' }, { status: 409 })),
+    );
+    renderPage('Admin', appLikeClient());
+    await waitForCanvasReady();
+    fireEvent.click(await screen.findByRole('button', { name: /^Run$/ }));
+    await waitFor(() => expect(signalRMock.connection?.invoke).toHaveBeenCalledWith('JoinWorkflow', 'wf-smoke-1'));
+    act(() => {
+      emitSignalR('LiveEventsBatch', {
+        Events: [{
+          Type: 'StepStarted',
+          Event: {
+            executionId: 'exec-1', workflowId: 'wf-smoke-1', stepId: 'step-a', stepName: 'Trigger',
+            stepType: 'manualTrigger', startedAt: '2026-04-26T12:00:00Z',
+          },
+        }],
+      });
+    });
+    return screen.findByTitle('Cancel running execution');
+  }
+
+  const toastMessages = () => useToastStore.getState().toasts.map((t) => t.message);
+
+  it('shows the API error when cancelling from the toolbar fails', async () => {
+    fireEvent.click(await startRunningExecution());
+    await waitFor(() => expect(toastMessages()).toContain('Execution already finished'));
+  });
+
+  it('shows the API error when the cancel shortcut fails', async () => {
+    await startRunningExecution();
+    fireEvent.keyDown(globalThis.window, { key: 'X', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(toastMessages()).toContain('Execution already finished'));
+  });
+
+  it('shows an error when the PNG export cannot render the canvas', async () => {
+    toBlobMock.mockRejectedValue(new Error('canvas tainted'));
+    renderPage();
+    await waitForCanvasReady();
+    await openToolsMenu();
+
+    fireEvent.click(screen.getByTitle('Export as PNG'));
+
+    await waitFor(() => expect(toastMessages()).toContain('Export failed: canvas tainted'));
   });
 });
 
@@ -2076,6 +2140,112 @@ describe('WorkflowEditorPage — characterization (autosave + run + unload)', ()
     const dirtyPrevent = vi.spyOn(dirtyEvt, 'preventDefault');
     globalThis.dispatchEvent(dirtyEvt);
     expect(dirtyPrevent).toHaveBeenCalled();
+  });
+});
+
+describe('WorkflowEditorPage — critical-path overlay', () => {
+  afterEach(() => { useDesignStore.setState({ criticalPathEnabled: false }); });
+
+  // Without stats every node sits on the critical path, so the overlay marks every node.
+  const overlaidNodes = () => document.querySelectorAll('[data-node-overlay="true"]');
+
+  it('opening a workflow with the overlay on leaves it clean', async () => {
+    // The overlay is persisted, so it is often already on when a workflow opens. Writing its
+    // annotations into the canvas store would come back as node changes and mark the draft dirty.
+    useDesignStore.setState({ criticalPathEnabled: true });
+    let putCalls = 0;
+    server.use(
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, () => { putCalls += 1; return HttpResponse.json(MOCK_WORKFLOW); }),
+    );
+    renderPage();
+    await waitForCanvasReady();
+    await waitFor(() => expect(overlaidNodes().length).toBeGreaterThan(0));
+
+    const unloadEvt = new Event('beforeunload', { cancelable: true });
+    const prevent = vi.spyOn(unloadEvt, 'preventDefault');
+    globalThis.dispatchEvent(unloadEvt);
+    expect(prevent).not.toHaveBeenCalled();
+    expect(screen.queryByTitle(/Unsaved changes|Ungespeicherte Änderungen/i)).not.toBeInTheDocument();
+    expect(putCalls).toBe(0);
+  });
+
+  it('toggling the overlay on an open workflow leaves it clean', async () => {
+    renderPage();
+    await waitForCanvasReady();
+
+    act(() => { useDesignStore.setState({ criticalPathEnabled: true }); });
+    await waitFor(() => expect(overlaidNodes().length).toBeGreaterThan(0));
+    act(() => { useDesignStore.setState({ criticalPathEnabled: false }); });
+    await waitFor(() => expect(overlaidNodes()).toHaveLength(0));
+
+    const unloadEvt = new Event('beforeunload', { cancelable: true });
+    const prevent = vi.spyOn(unloadEvt, 'preventDefault');
+    globalThis.dispatchEvent(unloadEvt);
+    expect(prevent).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkflowEditorPage — runtime annotations stay out of the authored graph', () => {
+  // Live status, step health and step stats are shown on the canvas but derived per render. They
+  // must survive the graph being rebuilt from the server and never reach a saved definition.
+  it('keeps the run status across the lock refetch and saves no annotation keys', async () => {
+    let locked = false;
+    let savedDefinition: { nodes: { id: string; data: Record<string, unknown> }[] } | null = null;
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-smoke-1`, () =>
+        HttpResponse.json(locked ? MOCK_WORKFLOW : MOCK_PRODUCTIVE)),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/execute`, () => HttpResponse.json({
+        id: 'exec-1', workflowId: 'wf-smoke-1', status: 'Pending', startedAt: '2026-04-26T12:00:00Z',
+      }, { status: 202 })),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/lock`, () => {
+        locked = true;
+        return HttpResponse.json(MOCK_WORKFLOW);
+      }),
+      http.get(/\/api\/workflows\/.+\/step-health/, () =>
+        HttpResponse.json({ 'step-b': [{ status: 'Succeeded', startedAt: '2026-04-26T11:00:00Z' }] })),
+      http.get(/\/api\/workflows\/.+\/step-stats/, () => HttpResponse.json({
+        'step-b': { totalRuns: 4, failedRuns: 1, failureRate: 0.25, avgDurationMs: 10, p95DurationMs: 20, lastDurationMs: 12 },
+      })),
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+        const body = (await request.json()) as { definitionJson: string };
+        savedDefinition = JSON.parse(body.definitionJson);
+        return HttpResponse.json(MOCK_WORKFLOW);
+      }),
+    );
+    const { container } = renderPage('Admin');
+    await waitForCanvasReady();
+    const stepBOverlaid = () =>
+      container.querySelector('.react-flow__node[data-id="step-b"] [data-node-overlay="true"]') !== null;
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Run$/ }));
+    await waitFor(() => expect(signalRMock.connection?.invoke).toHaveBeenCalledWith('JoinWorkflow', 'wf-smoke-1'));
+    act(() => {
+      emitSignalR('LiveEventsBatch', {
+        Events: [{
+          Type: 'StepStarted',
+          Event: {
+            executionId: 'exec-1', workflowId: 'wf-smoke-1', stepId: 'step-b', stepName: 'Run',
+            stepType: 'runScript', startedAt: '2026-04-26T12:00:00Z',
+          },
+        }],
+      });
+    });
+    await waitFor(() => expect(stepBOverlaid()).toBe(true));
+
+    // Edit: the lock refetch rebuilds the nodes from the server definition.
+    fireEvent.click(screen.getByRole('button', { name: /^Edit$/i }));
+    await waitFor(() => expect(screen.getByTitle(/Save in place|Zwischen-Speichern/i)).toBeInTheDocument());
+    expect(stepBOverlaid()).toBe(true);
+
+    fireEvent.contextMenu(container.querySelector('.react-flow__node[data-id="step-b"]') as HTMLElement);
+    fireEvent.click(await screen.findByText('Disable step'));
+    fireEvent.click(screen.getByTitle(/Save in place|Zwischen-Speichern/i));
+
+    await waitFor(() => expect(savedDefinition).not.toBeNull());
+    for (const node of savedDefinition!.nodes) {
+      expect(Object.keys(node.data).filter((key) => key.startsWith('__')), node.id).toEqual([]);
+    }
+    expect(savedDefinition!.nodes.find((n) => n.id === 'step-b')!.data.disabled).toBe(true);
   });
 });
 

@@ -3,22 +3,20 @@ import { useTranslation } from 'react-i18next';
 import { confirmDialog } from '../../../stores/confirmStore';
 import type { EditorHeaderProps } from './editorHeaderTypes';
 
-type LifecycleControlsProps = Pick<EditorHeaderProps,
-  'workflow' | 'canWrite' | 'isDirty' | 'isLockedByMe' | 'isLockedByOther'
-  | 'onLock' | 'isLocking' | 'onUnlock' | 'isUnlocking' | 'onSave'
-  | 'isPublishing' | 'onRequestPublish' | 'onDisable' | 'isDisabling' | 'isEnabling'
->;
+type LifecycleControlsProps = Pick<EditorHeaderProps, 'workflow' | 'lifecycle'>;
 
 /**
  * Edit-lock trio + Save + the Publish/Disable four-state toggle — the single source of the
  * lifecycle matrix, shared by both header layouts so it can't drift. Rendered inside a
  * `roleCanWrite` gate by the caller.
  */
-export function LifecycleControls({
-  workflow, canWrite, isDirty, isLockedByMe, isLockedByOther,
-  onLock, isLocking, onUnlock, isUnlocking, onSave, isPublishing, onRequestPublish, onDisable, isDisabling, isEnabling,
-}: Readonly<LifecycleControlsProps>) {
+export function LifecycleControls({ workflow, lifecycle }: Readonly<LifecycleControlsProps>) {
   const { t } = useTranslation(['editor', 'common']);
+  const {
+    canWrite, isDirty, isLockedByMe, isLockedByOther, lock: onLock, isLocking, unlock: onUnlock,
+    isUnlocking, save: onSave, isPublishing, requestPublish: onRequestPublish, disable: onDisable,
+    isDisabling, isEnabling,
+  } = lifecycle;
 
   return (
     <>

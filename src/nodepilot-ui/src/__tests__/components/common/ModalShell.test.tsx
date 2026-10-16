@@ -63,6 +63,14 @@ describe('ModalShell', () => {
     expect(panel).not.toHaveClass('np-modal-panel');
   });
 
+  it('exposes the panel as a modal dialog named by labelledBy', () => {
+    render(<ModalShell labelledBy="shell-title"><h2 id="shell-title">Edit machine</h2><p>body</p></ModalShell>);
+    const dialog = screen.getByRole('dialog', { name: 'Edit machine' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    // The panel is the dialog, not the backdrop, so the accessible tree holds only the content.
+    expect(dialog).toBe(screen.getByText('body').parentElement);
+  });
+
   it('closes on backdrop click and keeps clicks inside the panel', () => {
     const onClose = vi.fn();
     render(<ModalShell onClose={onClose}><p>body</p></ModalShell>);

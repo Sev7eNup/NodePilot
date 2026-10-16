@@ -2,6 +2,9 @@ import { useMemo } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import type { LintResult } from '../lib/workflowLint';
 import type { SimulationResult } from './useWorkflowSimulation';
+import type { CriticalPathAnnotation } from './useCriticalPath';
+import type { NodeAnnotation } from './useNodeAnnotations';
+import type { CoverageAnnotation } from './useCoverageHeatmap';
 import { computeFlowingVariablesPerEdge } from '../lib/variableUsageScan';
 import { withDefaultEdgePorts } from '../lib/edgePorts';
 import { buildCollapsedGraphView } from '../lib/collapsedGraphView';
@@ -9,6 +12,29 @@ import { buildCollapsedGraphView } from '../lib/collapsedGraphView';
 /** Stable empties, so a disabled overlay or filter never invalidates a memo that depends on it. */
 const EMPTY_FLOWING_VARS: ReadonlyMap<string, string[]> = new Map<string, string[]>();
 const EMPTY_HIDDEN_NODE_IDS: ReadonlySet<string> = new Set<string>();
+const NO_ANNOTATION: NodeAnnotation = Object.freeze({});
+
+/**
+ * Node data keys this projection owns, including the runtime annotations it merges in. They are
+ * dropped from the raw data before patching, so a value that leaked into the raw graph is never
+ * shown as if it were current.
+ */
+function withoutProjectionKeys(data: Record<string, unknown>): Record<string, unknown> {
+  const {
+    __lintErrors: _lintErrors, __lintWarnings: _lintWarnings, __simulated: _simulated,
+    __failureTint: _failureTint, __criticalPath: _criticalPath, __coverage: _coverage,
+    __liveStatus: _liveStatus, __health: _health, __stats: _stats, __machineColorIdx: _machineColorIdx,
+    __varFlowRole: _varFlowRole, __workflowEnabled: _workflowEnabled, ...authored
+  } = data;
+  return authored;
+}
+
+/** Drops one projection-owned key from edge data, keeping the object when the key is absent. */
+function withoutEdgeKey(data: Record<string, unknown>, key: string): Record<string, unknown> {
+  if (data[key] === undefined) return data;
+  const { [key]: _omit, ...rest } = data;
+  return rest;
+}
 
 interface UseDisplayedGraphArgs {
   nodes: Node[];
@@ -20,6 +46,14 @@ interface UseDisplayedGraphArgs {
   revealIndex: number;
   lintResult: LintResult;
   failureHeatmapEnabled: boolean;
+  /** Critical-path overlay from useCriticalPath; null while the overlay is off. */
+  criticalPath: ReadonlyMap<string, CriticalPathAnnotation> | null;
+  /** Runtime annotations per node id from useNodeAnnotations. */
+  annotations: ReadonlyMap<string, NodeAnnotation>;
+  /** Coverage heatmap from useCoverageHeatmap; null while the heatmap is off. */
+  coverage: ReadonlyMap<string, CoverageAnnotation> | null;
+  /** Edges on the hovered variable's path, from useNodeAnnotations. */
+  varFlowEdgeIds: ReadonlySet<string>;
   /** Edge whose target end is currently detached (context menu -> "Detach target"). */
   detachedEdgeId?: string | null;
   /** Node the detach preview is currently docking to — gets the highlight ring. */
@@ -28,8 +62,9 @@ interface UseDisplayedGraphArgs {
 
 /**
  * Read-only projection of the raw nodes/edges into what the React Flow canvas actually
- * renders: in-degree badges, simulation reveal state, lint counts, failure tint, the
- * activity-type filter, edge ports + animation + variable-flow overlay, and finally the
+ * renders: in-degree badges, simulation reveal state, lint counts, failure tint, critical path,
+ * runtime annotations (live status, health, stats, machine colour, coverage, variable hover),
+ * the activity-type filter, edge ports + animation + variable-flow overlay, and finally the
  * group-collapse view. Wide input (it reads every annotation/toggle the canvas cares
  * about), deliberately narrow output — the page only consumes `{ displayedNodes,
  * displayedEdges }`. The intermediate memos (flowingVarsPerEdge, the patched edge list,
@@ -45,6 +80,10 @@ export function useDisplayedGraph({
   revealIndex,
   lintResult,
   failureHeatmapEnabled,
+  criticalPath,
+  annotations,
+  coverage,
+  varFlowEdgeIds,
   detachedEdgeId = null,
   dockTargetNodeId = null,
 }: UseDisplayedGraphArgs): { displayedNodes: Node[]; displayedEdges: Edge[] } {
@@ -92,11 +131,12 @@ export function useDisplayedGraph({
       // Always remove projected __detached state from raw edges. Otherwise undo can persist the
       // marker and leave the restored edge dimmed and non-interactive.
       const isDetached = e.id === detachedEdgeId;
-      const finalData = isDetached
+      const dataWithDetach = isDetached
         ? { ...dataWithFlow, __detached: true }
-        : dataWithFlow.__detached !== undefined
-          ? (() => { const { __detached: _, ...rest } = dataWithFlow; return rest; })()
-          : dataWithFlow;
+        : withoutEdgeKey(dataWithFlow, '__detached');
+      const finalData = varFlowEdgeIds.has(e.id)
+        ? { ...dataWithDetach, __varFlowHighlighted: true }
+        : withoutEdgeKey(dataWithDetach, '__varFlowHighlighted');
       // Keep the edge object when the projection changes nothing about it. `animated` is
       // coerced on both sides because an edge hydrated from definitionJson carries no
       // `animated` at all, and a strict comparison against the toggle could never hold.
@@ -108,7 +148,7 @@ export function useDisplayedGraph({
       ) return e;
       return { ...withPorts, animated: edgesAnimated, hidden: shouldHide, data: finalData };
     });
-  }, [edges, edgesAnimated, hiddenNodeIds, flowingVarsPerEdge, dataFlowOverlayEnabled, detachedEdgeId]);
+  }, [edges, edgesAnimated, hiddenNodeIds, flowingVarsPerEdge, dataFlowOverlayEnabled, detachedEdgeId, varFlowEdgeIds]);
 
   // Lint counts per node, bucketed once. Scanning the issue lists inside the node loop below
   // made the projection quadratic in graph size.
@@ -143,7 +183,14 @@ export function useDisplayedGraph({
       ? new Map(simulation.order.map((id, i) => [id, i]))
       : null;
     return nodes.map((n) => {
-      const dataPatch: Record<string, unknown> = { ...n.data, inDegreeCount: inDegree.get(n.id) ?? 0 };
+      const annotation = annotations.get(n.id) ?? NO_ANNOTATION;
+      const dataPatch: Record<string, unknown> = {
+        ...withoutProjectionKeys(n.data as Record<string, unknown>),
+        ...annotation,
+        inDegreeCount: inDegree.get(n.id) ?? 0,
+      };
+      const coverageAnnotation = coverage?.get(n.id);
+      if (coverageAnnotation) dataPatch.__coverage = coverageAnnotation;
       if (simulation && orderIndex) {
         if (simulation.reachable.has(n.id)) {
           const idx = orderIndex.get(n.id) ?? 0;
@@ -153,8 +200,7 @@ export function useDisplayedGraph({
           dataPatch.__simulated = 'skipped';
         }
       }
-      const hasLiveStatus = !!(n.data as Record<string, unknown>).__liveStatus;
-      if (!hasLiveStatus) {
+      if (!annotation.__liveStatus) {
         const counts = lintCountsByNode.get(n.id);
         if (counts) {
           if (counts.errors > 0) dataPatch.__lintErrors = counts.errors;
@@ -168,14 +214,17 @@ export function useDisplayedGraph({
       // Failure heatmap: when toggle is on, surface the failure rate so ActivityNode can
       // render a red-shade border. We piggyback on the __stats data fetched separately.
       if (failureHeatmapEnabled) {
-        const stats = (n.data as Record<string, unknown>)?.__stats as { failureRate: number; totalRuns: number } | undefined;
+        const stats = annotation.__stats;
         if (stats && stats.totalRuns > 0 && stats.failureRate > 0) dataPatch.__failureTint = stats.failureRate;
       }
+      const criticalPathAnnotation = criticalPath?.get(n.id);
+      if (criticalPathAnnotation) dataPatch.__criticalPath = criticalPathAnnotation;
       // Mark only the accepted preview target so the ring never promises an invalid connection.
       const isDockTarget = n.id === dockTargetNodeId;
       return { ...n, data: dataPatch, hidden: isHidden, className: isDockTarget ? 'np-dock-target' : undefined };
     });
-  }, [nodes, edges, simulation, revealIndex, lintCountsByNode, hiddenActivityTypes, failureHeatmapEnabled, dockTargetNodeId]);
+  }, [nodes, edges, simulation, revealIndex, lintCountsByNode, hiddenActivityTypes, failureHeatmapEnabled,
+    criticalPath, annotations, coverage, dockTargetNodeId]);
 
   const collapsedGraphView = useMemo(
     () => buildCollapsedGraphView(nodesWithDegree, displayedEdges),

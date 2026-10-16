@@ -148,15 +148,16 @@ async function settle(page: Page): Promise<void> {
 }
 
 /**
- * True when any error UI is on screen.
+ * True when any error UI is on screen: the app's localized fallback in either language, which the
+ * routes also use as their error element, or React Router's default error element.
  *
- * Deliberately matched on page text rather than a `[role="alert"]` container: the app's own
- * ErrorBoundary uses that role, but React Router's error element does not, and scoping to the
- * role let a crashed Alerting page pass as clean.
+ * Deliberately matched on page text rather than a `[role="alert"]` container: React Router's
+ * default error element has no such role, and scoping to the role let a crashed Alerting page
+ * pass as clean.
  */
 async function hasErrorUi(page: Page): Promise<boolean> {
   return page.evaluate(() =>
-    /Unerwarteter Fehler|Unexpected Application Error/i.test(document.body.innerText),
+    /Unerwarteter Fehler|Unexpected error|Unexpected Application Error/i.test(document.body.innerText),
   );
 }
 

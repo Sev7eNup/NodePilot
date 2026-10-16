@@ -1,12 +1,10 @@
 import { useParams, useNavigate } from 'react-router';
 import { AgentCanvasExecutionContext } from '../components/designer/agents/AgentRunPanel';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { api, downloadFromApi } from '../api/client';
+import { api } from '../api/client';
 import type { Workflow, MachineOption, Credential } from '../types/api';
-import { Add, Chemistry, CircleDash, Close, Minimize } from '@carbon/icons-react';
-import { toBlob } from 'html-to-image';
-import { autoLayout, autoLayoutTB, autoLayoutCompact, autoLayoutELK } from '../lib/autoLayout';
+import { Minimize } from '@carbon/icons-react';
 import { randomUuid } from '../lib/uuid';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
@@ -38,26 +36,24 @@ import '@xyflow/react/dist/style.css';
 import { ActivityNode } from '../components/designer/nodes/ActivityNode';
 import { StickyNoteNode } from '../components/designer/nodes/StickyNoteNode';
 import { GroupNode, GroupNodeEditContext, GroupDropTargetContext } from '../components/designer/nodes/GroupNode';
-import { lintWorkflow, type LintResult } from '../lib/workflowLint';
-import { getPrePublishLint } from '../lib/prePublishChecks';
+import { lintWorkflow } from '../lib/workflowLint';
 import { useSettledGraph } from '../hooks/useSettledGraph';
 import { getSmartDefaults } from '../lib/lastSimilarNode';
 import { newActivityConfig } from '../lib/customActivities';
 import { absolutePosition, reparentDraggedNodes, findDropTargetGroupId } from '../lib/groupReparenting';
-import { useDesignStore, LAYOUT_MODES, MACHINE_COLORS } from '../stores/designStore';
+import { useDesignStore, MACHINE_COLORS } from '../stores/designStore';
 import { usePointerFlowPosition } from '../stores/pointerFlowPositionStore';
 import { LabeledEdge, EdgeInsertContext } from '../components/designer/edges/LabeledEdge';
 import { NpEdgeMarkerDefs } from '../components/designer/edges/NpEdgeMarkerDefs';
 import { NpConnectionLine } from '../components/designer/edges/NpConnectionLine';
 import { EdgeDetachPreview } from '../components/designer/edges/EdgeDetachPreview';
-import { classifyReattachTarget, resolveDockTarget } from '../lib/edgeDetach';
 import { npStatusFromExecution, STATUS_COLOR_VAR } from '../lib/statusTokens';
 import { SubWorkflowPreviewContext } from '../components/designer/nodes/ActivityNode';
-import { SubWorkflowPreviewModal } from '../components/designer/overlays/SubWorkflowPreviewModal';
 import { EdgeInserter } from '../components/designer/overlays/EdgeInserter';
 import { NodeContextMenu } from '../components/designer/overlays/NodeContextMenu';
 import { EdgeContextMenu } from '../components/designer/overlays/EdgeContextMenu';
 import { QuickConnectPicker } from '../components/designer/overlays/QuickConnectPicker';
+import { SimulationBanner } from '../components/designer/overlays/SimulationBanner';
 import { pushRecentWorkflow } from '../components/designer/overlays/WorkflowQuickSwitcher';
 import {
   carrySelection,
@@ -74,12 +70,12 @@ import {
   normalizePort,
 } from '../lib/edgePorts';
 import { FolderPathBreadcrumb } from '../components/designer/FolderPathBreadcrumb';
+import { NewWorkflowButton } from '../components/designer/NewWorkflowButton';
 import { ResizeHandle } from '../components/designer/library/NodeLibrary';
 import { EditorOverlays } from '../components/designer/EditorOverlays';
 import { ExecutionPanel } from '../components/designer/ExecutionPanel';
 import { useWorkflowSignalR } from '../hooks/useSignalR';
 import { useResizable } from '../hooks/useResizable';
-import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
 import { useWorkflowHistory } from '../hooks/useWorkflowHistory';
 import { useWorkflowClipboard } from '../hooks/useWorkflowClipboard';
@@ -87,10 +83,6 @@ import { useWorkflowSimulation } from '../hooks/useWorkflowSimulation';
 import { useEditorKeyboardShortcuts } from '../hooks/useEditorKeyboardShortcuts';
 import { useNodeAnnotations } from '../hooks/useNodeAnnotations';
 import { useCoverageHeatmap } from '../hooks/useCoverageHeatmap';
-import {
-  assertAuthBoundaryGenerationCurrent,
-  captureAuthBoundaryGeneration,
-} from '../security/authBoundary';
 import { useCriticalPath } from '../hooks/useCriticalPath';
 import { useNodeOperations } from '../hooks/useNodeOperations';
 import { useCanvasConnect } from '../hooks/useCanvasConnect';
@@ -99,6 +91,11 @@ import { useDisplayedGraph } from '../hooks/useDisplayedGraph';
 import { useWorkflowLock } from '../hooks/useWorkflowLock';
 import { useWorkflowPersistence } from '../hooks/useWorkflowPersistence';
 import { useWorkflowExecution } from '../hooks/useWorkflowExecution';
+import { useEditorOverlays } from '../hooks/useEditorOverlays';
+import { useEditorLifecycle } from '../hooks/useEditorLifecycle';
+import { useEdgeDetach } from '../hooks/useEdgeDetach';
+import { useTidyLayout } from '../hooks/useTidyLayout';
+import { useWorkflowExport } from '../hooks/useWorkflowExport';
 import { EditorHeader } from '../components/designer/EditorHeader';
 import { MaintenanceWindowBadge } from '../components/designer/MaintenanceWindowBadge';
 import { EditorStatusBanners } from '../components/designer/EditorStatusBanners';
@@ -111,15 +108,9 @@ import { useRole } from '../lib/rbac';
 import { useAuthStore } from '../stores/authStore';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
-
-
-
 /* ---- Editor Page ---- */
 
 type SelectedItem = { type: 'node'; id: string } | { type: 'edge'; id: string } | null;
-
-/** Placeholder until the Publish handler computes the real one. Frozen so it cannot be mutated. */
-const EMPTY_LINT_RESULT: LintResult = Object.freeze({ errors: [], warnings: [] });
 
 /** Stable identity for the closed AI panel, so its memo does not churn on every frame. */
 const EMPTY_AI_SELECTION = Object.freeze({ nodeLabels: [] as string[], edgeCount: 0 });
@@ -172,7 +163,7 @@ export function WorkflowEditorPage() {
 function WorkflowEditorInner() {
   const { t } = useTranslation(['editor', 'workflows', 'common']);
   const { id } = useParams<{ id: string }>();
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter } = useReactFlow();
   const canvasRef = useRef<HTMLElement>(null);
   // Track the cursor in flow-coords (rAF-throttled) so nodes can reveal their ports on proximity.
   // Only runs while auto-hide is on; off-canvas resets to null so ports hide again.
@@ -221,26 +212,9 @@ function WorkflowEditorInner() {
   const isTidying = !!id && tidyingWorkflowId === id;
   const [selected, setSelected] = useState<SelectedItem>(null);
   const [connectionNotice, setConnectionNotice] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [leftTab, setLeftTab] = useState<'nodes' | 'workflows'>('workflows');
   const [leftCollapsed, setLeftCollapsed] = useState(false);
-  // Node-library categories are collapsible. Persisted to localStorage so the user does not
-  // have to re-expand their preferred categories the next time they open a workflow.
-  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>(() => {
-    if (typeof window === 'undefined') return {};
-    try {
-      const raw = globalThis.localStorage.getItem('nodepilot.designer.collapsedCategories');
-      return raw ? (JSON.parse(raw) as Record<string, boolean>) : { Actions: true };
-    } catch { return {}; }
-  });
-  useEffect(() => {
-    try {
-      globalThis.localStorage.setItem('nodepilot.designer.collapsedCategories', JSON.stringify(collapsedCategories));
-    } catch { /* storage full or disabled, non-fatal */ }
-  }, [collapsedCategories]);
-  const toggleCategory = useCallback((name: string) => {
-    setCollapsedCategories((prev) => ({ ...prev, [name]: !prev[name] }));
-  }, []);
+  const overlays = useEditorOverlays();
   const { liveExecution, liveExecutions, liveActiveCount, connected, joinExecution, leaveExecution } = useWorkflowSignalR(id);
   const {
     effectiveCanvasExecution,
@@ -268,56 +242,24 @@ function WorkflowEditorInner() {
     enabled: !!id,
   });
 
-  const {
-    isLockedByMe, isLockedByOther, canWrite: lockCanWrite,
-    lock, unlock, forceUnlock, disable, enable,
-    isLocking, isUnlocking, isForceUnlocking, isDisabling, isEnabling,
-  } = useWorkflowLock({ workflowId: id, workflow, currentUserId, roleCanWrite });
-  const {
-    name, isDirty, isSaving, isPublishing,
-    rename, markDirty, save, saveAsync, publish, syncFromServer,
-    beginAsyncGraphEdit, applyAsyncGraphEdit,
-  } = useWorkflowPersistence({
+  const lockState = useWorkflowLock({ workflowId: id, workflow, currentUserId, roleCanWrite });
+  const persistence = useWorkflowPersistence({
     workflowId: id, workflow, nodes, edges, suspendAutoSave: isTidying,
   });
+  const {
+    name, isDirty, isPublishing,
+    rename, markDirty, saveAsync, syncFromServer,
+    beginAsyncGraphEdit, applyAsyncGraphEdit,
+  } = persistence;
   // Publish saves and releases the lock atomically. Freeze all edit affordances as soon as it
   // is queued, and while an async layout still owns a pre-apply graph snapshot.
-  const canWrite = lockCanWrite && !isPublishing && !isTidying;
+  const canWrite = lockState.canWrite && !isPublishing && !isTidying;
 
   const { data: allWorkflows } = useQuery({
     queryKey: ['workflows', 'names'],
     queryFn: () => api.get<Array<{ id: string; name: string }>>('/workflows/names'),
     staleTime: 60_000,
   });
-
-  // Create a workflow from the canvas. Mirrors WorkflowsPage.createMutation, except the target
-  // folder comes from the currently open workflow, because defaulting to Root would return 403
-  // for folder-scoped users. On success the workflow list is invalidated and the new, empty
-  // workflow is opened, where the header allows inline renaming.
-  const queryClient = useQueryClient();
-  const [newWorkflowOpen, setNewWorkflowOpen] = useState(false);
-  const [newWorkflowName, setNewWorkflowName] = useState('');
-  const createWorkflowMutation = useMutation({
-    mutationFn: (name: string) =>
-      api.post<Workflow>('/workflows', {
-        name,
-        description: '',
-        definitionJson: JSON.stringify({ nodes: [], edges: [] }),
-        folderId: workflow?.folderId ?? undefined,
-      }),
-    onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ['workflows'] });
-      queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
-      setNewWorkflowOpen(false);
-      setNewWorkflowName('');
-      navigate(`/workflows/${created.id}`);
-    },
-  });
-  const submitNewWorkflow = useCallback(() => {
-    const trimmed = newWorkflowName.trim();
-    if (!trimmed || createWorkflowMutation.isPending) return;
-    createWorkflowMutation.mutate(trimmed);
-  }, [newWorkflowName, createWorkflowMutation]);
 
   const { data: machines = [] } = useQuery({ queryKey: ['machines', 'options'], queryFn: () => api.get<MachineOption[]>('/machines/options') });
   const { data: credentials = [] } = useQuery({ queryKey: ['credentials'], queryFn: () => api.get<Credential[]>('/credentials') });
@@ -389,10 +331,11 @@ function WorkflowEditorInner() {
     }
   }, [workflow, setNodes, setEdges, resetPasteCount, fitView, syncFromServer]);
 
-  const { legendMachines, handleVarHover } = useNodeAnnotations({
+  // ---- Runtime annotations: derived, merged into the display projection only ----
+  const { nodeAnnotations, varFlowEdgeIds, stepStats, legendMachines, handleVarHover } = useNodeAnnotations({
     workflowId: id,
     workflowIsEnabled: !!workflow?.isEnabled,
-    nodes, setNodes, edges, setEdges,
+    nodes, edges,
     selected,
     liveExecution: effectiveCanvasExecution,
     replayExecutionId, replaySteps, scrubTimeMs,
@@ -402,13 +345,13 @@ function WorkflowEditorInner() {
   const coverageHeatmapEnabled = useDesignStore((s) => s.coverageHeatmapEnabled);
   const coverageWindowDays = useDesignStore((s) => s.coverageWindowDays);
   const criticalPathEnabled = useDesignStore((s) => s.criticalPathEnabled);
-  useCoverageHeatmap({
+  const coverage = useCoverageHeatmap({
     workflowId: id,
     enabled: coverageHeatmapEnabled,
     windowDays: coverageWindowDays,
-    setNodes,
+    nodes,
   });
-  useCriticalPath(id, criticalPathEnabled, nodes, edges);
+  const criticalPath = useCriticalPath(criticalPathEnabled, nodes, edges, stepStats);
 
   const showConnectionNotice = useCallback((message: string) => {
     setConnectionNotice(message);
@@ -543,9 +486,7 @@ function WorkflowEditorInner() {
   }, [updateSelection]);
 
   // ---- Quick-edit popup (double-click on a node) --------------------------
-  const [quickEdit, setQuickEdit] = useState<{ node: Node; x: number; y: number } | null>(null);
-  const [scriptEditNodeId, setScriptEditNodeId] = useState<string | null>(null);
-
+  const { setQuickEdit, setScriptEditNodeId } = overlays;
   const onNodeDoubleClick = useCallback((_e: React.MouseEvent, node: Node) => {
     if (node.type !== 'activity') return;
     const activityType = (node.data as Record<string, unknown>)?.activityType as string | undefined;
@@ -556,7 +497,7 @@ function WorkflowEditorInner() {
       return;
     }
     setQuickEdit({ node, x: _e.clientX, y: _e.clientY });
-  }, []);
+  }, [setQuickEdit, setScriptEditNodeId]);
 
   // Live drop-target highlight: id of the group the dragged node hovers over and would be
   // reparented into on drop. Null clears the highlight. Only changes when the target changes,
@@ -598,9 +539,6 @@ function WorkflowEditorInner() {
     }));
   }, [setNodes, commitHistory, markDirty]);
 
-  // ---- Find & Replace (Ctrl+H) -------------------------------------------
-  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
-
   // ---- Fullscreen / Distraction-free (F11) -------------------------------
   const [fullscreen, setFullscreen] = useState(false);
 
@@ -626,9 +564,6 @@ function WorkflowEditorInner() {
   useEffect(() => {
     if (selected) setAiChatOpen(false);
   }, [selected, setAiChatOpen]);
-  // `onNodeClick` is defined further down, next to `completeEdgeReattach`: it closes the AI
-  // chat and finishes a pending edge detach, so it needs that handler in its dependency list.
-  //
   // Current canvas labels scope AI chat to the selection. Only scanned while the panel is
   // open — the node and edge arrays are replaced on every frame of a drag.
   const aiSelection = useMemo(() => (aiChatOpen ? {
@@ -637,14 +572,6 @@ function WorkflowEditorInner() {
   } : EMPTY_AI_SELECTION), [aiChatOpen, nodes, edges]);
   const toggleFullscreen = useCallback(() => setFullscreen((f) => !f), []);
 
-  // ---- Quick-Switcher / Recent Workflows (Ctrl+P) -------------------------
-  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
-  const toggleQuickSwitcher = useCallback(() => setQuickSwitcherOpen((o) => !o), []);
-
-  // ---- Command Palette (Ctrl+Shift+P) -------------------------------------
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const toggleCommandPalette = useCallback(() => setCommandPaletteOpen((o) => !o), []);
-
   // ---- Activity-Type-Filter (transient — not persisted, resets on workflow switch) ----
   const [hiddenActivityTypes, setHiddenActivityTypes] = useState<Set<string>>(new Set());
 
@@ -652,20 +579,7 @@ function WorkflowEditorInner() {
   const failureHeatmapEnabled = useDesignStore((s) => s.failureHeatmapEnabled);
 
   // ---- Search & Jump (Ctrl+F) --------------------------------------------
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchInput, setSearchInput] = useState('');
-  const { setCenter } = useReactFlow();
-  const searchResults = useMemo(() => {
-    const q = searchInput.trim().toLowerCase();
-    if (!q) return [] as Node[];
-    return nodes.filter((n) => {
-      const d = n.data as Record<string, unknown>;
-      const label = ((d?.label as string) || '').toLowerCase();
-      const type = ((d?.activityType as string) || '').toLowerCase();
-      return label.includes(q) || type.includes(q) || n.id.toLowerCase().includes(q);
-    });
-  }, [nodes, searchInput]);
-
+  const { setSearchOpen, setSearchInput } = overlays;
   const jumpToNode = useCallback((n: Node) => {
     const position = absolutePosition(n, new Map(nodes.map(node => [node.id, node])));
     const x = position.x + ((n.measured?.width ?? 140) / 2);
@@ -674,7 +588,7 @@ function WorkflowEditorInner() {
     setSelected({ type: 'node', id: n.id });
     setSearchOpen(false);
     setSearchInput('');
-  }, [nodes, setCenter]);
+  }, [nodes, setCenter, setSearchOpen, setSearchInput]);
 
   const jumpToEdge = useCallback((e: Edge) => {
     const src = nodes.find((n) => n.id === e.source);
@@ -689,78 +603,10 @@ function WorkflowEditorInner() {
     setSelected({ type: 'edge', id: e.id });
   }, [nodes, setCenter]);
 
-  // ---- Help overlay -------------------------------------------------------
-  const [helpOpen, setHelpOpen] = useState(false);
-
-  // ---- Auto-layout (Tidy): cycles LR, TB, Compact, ELK --------------------
-  const layoutMode = useDesignStore((s) => s.layoutMode);
-  const setLayoutMode = useDesignStore((s) => s.setLayoutMode);
-  // Snapshot of positions before the first auto-layout in this session.
-  const origLayoutRef = useRef<{
-    workflowId: string | undefined;
-    positions: Map<string, { position: Node['position']; parentId: Node['parentId'] }>;
-  } | null>(null);
-  const [origLayoutWorkflowId, setOrigLayoutWorkflowId] = useState<string | null>(null);
-  const hasOrigLayout = origLayoutWorkflowId === id;
-  const tidyLayout = useCallback(async () => {
-    if (nodes.length === 0 || isTidying) return;
-    const modeToApply = designerMode === 'standard' ? 'LR' : layoutMode;
-    const next = LAYOUT_MODES[(LAYOUT_MODES.indexOf(layoutMode) + 1) % LAYOUT_MODES.length];
-    const rememberOriginal = () => {
-      if (origLayoutRef.current?.workflowId !== id) {
-        origLayoutRef.current = {
-          workflowId: id,
-          positions: new Map(nodes.map((n) => [n.id, { position: { ...n.position }, parentId: n.parentId }])),
-        };
-        setOrigLayoutWorkflowId(id ?? null);
-      }
-    };
-
-    if (modeToApply === 'ELK') {
-      const token = beginAsyncGraphEdit();
-      if (!token || !id) return;
-      setTidyingWorkflowId(id);
-      try {
-        const laidOut = await autoLayoutELK(nodes, edges);
-        // Reject results after another edit, publish, unmount, or workflow visit.
-        if (!applyAsyncGraphEdit(token, laidOut, edges)) return;
-        rememberOriginal();
-        commitHistory('Tidy layout');
-        setNodes(laidOut);
-        if (designerMode === 'expert') setLayoutMode(next);
-      } catch (err) {
-        toast.error(t('editor:tidyFailed', { message: (err as Error).message }));
-      } finally {
-        setTidyingWorkflowId((current) => current === id ? null : current);
-      }
-      return;
-    }
-
-    rememberOriginal();
-    commitHistory('Tidy layout');
-    markDirty();
-    if (modeToApply === 'LR') setNodes(autoLayout(nodes, edges));
-    else if (modeToApply === 'TB') setNodes(autoLayoutTB(nodes, edges));
-    else setNodes(autoLayoutCompact(nodes, edges));
-    if (designerMode === 'expert') setLayoutMode(next);
-  }, [nodes, edges, designerMode, layoutMode, isTidying, id, beginAsyncGraphEdit,
-      applyAsyncGraphEdit, commitHistory, markDirty, setNodes, setLayoutMode, t]);
-  const restoreOrigLayout = useCallback(() => {
-    if (!origLayoutRef.current || origLayoutRef.current.workflowId !== id) return;
-    commitHistory('Restore layout');
-    markDirty();
-    const { positions } = origLayoutRef.current;
-    // Tidy changes only positions. Keep later edits and graph membership; a reparented
-    // node also keeps its position because its coordinate system has changed.
-    setNodes((current) => current.map((node) => {
-      const original = positions.get(node.id);
-      return original && original.parentId === node.parentId
-        ? { ...node, position: { ...original.position } }
-        : node;
-    }));
-    origLayoutRef.current = null;
-    setOrigLayoutWorkflowId(null);
-  }, [id, commitHistory, markDirty, setNodes]);
+  // ---- Auto-layout (Tidy) -------------------------------------------------
+  const layout = useTidyLayout({
+    workflowId: id, graph: graphSource, isTidying, setTidyingWorkflowId, persistence, commitHistory,
+  });
 
   // ---- Select All (Ctrl+A) ------------------------------------------------
   const selectAll = useCallback(() => {
@@ -791,80 +637,17 @@ function WorkflowEditorInner() {
     fitView({ nodes: [target], padding: 0.3, duration: 250 });
   }, [selected, edges, nodes, setNodes, fitView]);
 
-  // ---- Node Alignment (multi-select) --------------------------------------
-
-  // ---- Export as PNG ------------------------------------------------------
-  // Captures the whole `.react-flow` element at its current size and viewport transform, so
-  // the PNG matches what the user sees (background pattern, edges, nodes, panels). Editor
-  // chrome (Controls, MiniMap, attribution) is filtered out; it is UI, not workflow content.
-  const exportPng = useCallback(async () => {
-    const flow = canvasRef.current?.querySelector('.react-flow') as HTMLElement | null;
-    if (!flow) return;
-    const authBoundaryGeneration = captureAuthBoundaryGeneration();
-    const surfaceBg = canvasRef.current
-      ? getComputedStyle(canvasRef.current).backgroundColor
-      : '#ffffff';
-    try {
-      const blob = await toBlob(flow, {
-        backgroundColor: surfaceBg,
-        pixelRatio: Math.max(globalThis.devicePixelRatio || 1, 2),
-        cacheBust: true,
-        filter: (node) => {
-          if (!(node instanceof HTMLElement)) return true;
-          const cls = node.classList;
-          if (!cls) return true;
-          if (cls.contains('react-flow__controls')) return false;
-          if (cls.contains('react-flow__minimap')) return false;
-          if (cls.contains('react-flow__attribution')) return false;
-          return true;
-        },
-      });
-      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${name || 'workflow'}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch { /* ignore render errors */ }
-  }, [name]);
-
-  // ---- Dry-Run / Simulate -------------------------------------------------
-  const { simulation, revealIndex, runSimulation, clearSimulation } = useWorkflowSimulation(nodes, edges);
+  // ---- Export (JSON, PNG) and Dry-Run / Simulate --------------------------
+  const { exportPng, exportJson } = useWorkflowExport({ workflowId: id, name, canvasRef });
+  const sim = useWorkflowSimulation(nodes, edges);
+  const { simulation, revealIndex, runSimulation, clearSimulation } = sim;
 
   // ---- Edge detach (release the target) -----------------------------------
-  // Declared before both context-menu handlers, which cancel a running detach and therefore
-  // need `cancelEdgeDetach` in their dependency lists.
-  //
-  // The state is purely transient: the edge is only changed on a successful click on the new
-  // target node, so cancelling just resets the state to null, with no history entry and no
-  // dirty flag.
-  const [edgeDetach, setEdgeDetach] = useState<{ edgeId: string } | null>(null);
-  // Node the preview line is currently docking to. Changes only when the pointer crosses a
-  // node boundary, which is when EdgeDetachPreview reports, not on every mouse move.
-  const [dockTargetNodeId, setDockTargetNodeId] = useState<string | null>(null);
-  const cancelEdgeDetach = useCallback(() => {
-    setEdgeDetach(null);
-    setDockTargetNodeId(null);
-  }, []);
-
-  /**
-   * A right-click cancels a running detach anywhere on the canvas, whether the cursor is over
-   * a node, an edge or empty space. The click is consumed: neither the app context menu nor
-   * the browser one opens, since right-click is the usual gesture for cancelling a pending
-   * operation and opening a menu would force the user to dismiss it again.
-   *
-   * Returns true when the click was consumed as a cancel.
-   */
-  const consumeContextMenuAsDetachCancel = useCallback((e: React.MouseEvent | MouseEvent): boolean => {
-    if (!edgeDetach) return false;
-    e.preventDefault();
-    cancelEdgeDetach();
-    return true;
-  }, [edgeDetach, cancelEdgeDetach]);
+  // Set up before both context-menu handlers, which cancel a running detach.
+  const edgeDetach = useEdgeDetach({
+    graph: graphSource, canWrite, setSelected, commitHistory, markDirty, showConnectionNotice,
+  });
+  const { consumeContextMenuAsDetachCancel, completeEdgeReattach, cancelEdgeDetach, detachedEdge } = edgeDetach;
 
   // ---- Node Context Menu --------------------------------------------------
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
@@ -910,19 +693,12 @@ function WorkflowEditorInner() {
     handleConnectEnd(event, connectionState);
   }, [handleConnectEnd, hasDuplicateConnection, showConnectionNotice, t]);
 
-  // ---- Workflow-Diff ------------------------------------------------------
-  const [diffOpen, setDiffOpen] = useState(false);
-
   const { addNode, addSnippet, duplicateNode, deleteNodeById, groupSelection } = useNodeOperations({
     nodes, setNodes, edges, setEdges,
     selected, setSelected,
     commitHistory, markDirty,
     canvasRef, screenToFlowPosition,
   });
-
-  // useEditorKeyboardShortcuts is set up later in the file, after the mutations, tidyLayout,
-  // handleRunClick and lintPanel state it depends on are declared. See the call site near
-  // `handleRunClick` for the actual binding.
 
   const handleNodeDataUpdate = useCallback(
     (nodeId: string, newData: Record<string, unknown>) => {
@@ -1015,71 +791,6 @@ function WorkflowEditorInner() {
     }));
   }, [setEdges, commitHistory, markDirty]);
 
-  const beginEdgeDetach = useCallback((edgeId: string) => {
-    // Keep the edge selected so EdgePropertiesPanel shows the condition that moves with it.
-    setSelected({ type: 'edge', id: edgeId });
-    setEdgeDetach({ edgeId });
-  }, []);
-
-  /**
-   * Handles a node click while an edge target is detached and reports whether it consumed the
-   * click. Invalid targets show a notice and keep the detach active.
-   *
-   * The current target remains valid so users can change only the target port.
-   */
-  const completeEdgeReattach = useCallback((event: React.MouseEvent, node: Node): boolean => {
-    if (!edgeDetach) return false;
-    const edge = edges.find((e) => e.id === edgeDetach.edgeId);
-    if (!edge) { cancelEdgeDetach(); return true; }
-    const verdict = classifyReattachTarget({
-      edges,
-      edgeId: edge.id,
-      sourceId: edge.source,
-      candidate: { id: node.id, type: node.type },
-    });
-    if (verdict !== 'ok') {
-      showConnectionNotice(t(`editor:edgeDetach.${verdict}`));
-      return true;
-    }
-    // Use the preview resolver so the committed port matches the click position. Preserve the
-    // current targetHandle if no handle can be resolved.
-    const dock = resolveDockTarget(event.target, event.clientX, event.clientY, (id) => id === node.id);
-    const nextPort = dock?.port ?? edgeTargetPort(edge);
-    // Returning to the same node and port must not create an empty undo step or dirty state.
-    if (node.id === edge.target && nextPort === edgeTargetPort(edge)) {
-      cancelEdgeDetach();
-      return true;
-    }
-    // Drag and click reconnection share the same history action.
-    commitHistory('Move edge');
-    markDirty();
-    setEdges((eds: Edge[]) => eds.map((e) => (
-      e.id === edge.id ? { ...e, target: node.id, targetHandle: nextPort } : e
-    )));
-    cancelEdgeDetach();
-    return true;
-  }, [edgeDetach, edges, cancelEdgeDetach, commitHistory, markDirty, setEdges, showConnectionNotice, t]);
-
-  // Preview and hover accept the same targets as the click, including the current target.
-  const canDockTo = useCallback((nodeId: string): boolean => {
-    if (!edgeDetach) return false;
-    const edge = edges.find((e) => e.id === edgeDetach.edgeId);
-    const candidate = nodes.find((n) => n.id === nodeId);
-    if (!edge || !candidate) return false;
-    return classifyReattachTarget({
-      edges,
-      edgeId: edge.id,
-      sourceId: edge.source,
-      candidate: { id: candidate.id, type: candidate.type },
-    }) === 'ok';
-  }, [edgeDetach, edges, nodes]);
-
-  // Cancel detachment when write access is lost or the edge no longer exists.
-  useEffect(() => {
-    if (!edgeDetach) return;
-    if (!canWrite || !edges.some((e) => e.id === edgeDetach.edgeId)) cancelEdgeDetach();
-  }, [edgeDetach, canWrite, edges, cancelEdgeDetach]);
-
   // A click on an already selected node does not fire onSelectionChange, so close chat here.
   // Multi-select keeps chat open, and edge detachment consumes its target click first.
   const onNodeClick = useCallback((e: React.MouseEvent, node: Node) => {
@@ -1098,14 +809,11 @@ function WorkflowEditorInner() {
     if (changes.some((c) => c.type !== 'select')) markDirty();
   }, [onEdgesChange, markDirty]);
 
-  // "Cannot execute" is now surfaced entirely by the always-on lint: roots are trigger-only, so a
-  // graph with nodes but no (enabled) trigger — including a cycle-only graph — yields the
-  // `no-trigger` lint error (which also blocks publish). No separate cycle banner needed.
-
   // Revalidate every graph change for the header badge and lint panel without blocking saves.
   // Runs on the settled graph, not the live one: lintWorkflow walks every edge against every
   // node, which is far too much work to repeat on each frame of a drag. The badge and the
-  // panel trail the canvas by one settle interval, which is what they are worth.
+  // panel trail the canvas by one settle interval, which is what they are worth. A graph with
+  // nodes but no enabled trigger yields the `no-trigger` error, which also blocks publish.
   const lintResult = useMemo(
     () => lintWorkflow(settledGraph.nodes, settledGraph.edges, allWorkflows),
     [settledGraph, allWorkflows],
@@ -1117,116 +825,32 @@ function WorkflowEditorInner() {
     const { errors, warnings } = lintWorkflow(live.nodes, live.edges, allWorkflows);
     return [...errors, ...warnings];
   }, [allWorkflows]);
-  const [lintPanelOpen, setLintPanelOpen] = useState(false);
-
-  // Pre-publish lint folds the standard lint with extra publish-time-only checks (no trigger,
-  // trigger without out-edge, missing description). Computed in the Publish handler so the
-  // modal always sees the live graph, never a settled one.
-  const [prePublishLint, setPrePublishLint] = useState<LintResult>(EMPTY_LINT_RESULT);
-  const [prePublishOpen, setPrePublishOpen] = useState(false);
 
   const {
-    run, confirmRunWithParams, closeRunDialog, showRunDialog, lastExecutionList,
+    run, confirmRunWithParams, closeRunDialog, showRunDialog, lastExecutionList, cancel: cancelExecution,
   } = useWorkflowExecution({
     workflowId: id, workflow, canWrite, isDirty, nodes, edges,
     saveAsync, pinCanvasExecution, clearReplay,
   });
 
-  // Lifecycle / save / run shortcut bindings. Each one self-gates against current state so
-  // the keyboard hook can fire blindly without re-implementing the same conditions surfaced
-  // in the toolbar buttons + command palette. Declared here (not earlier) because they
-  // reference saveMutation/lockMutation/handleRunClick/etc., which are declared above.
-  const triggerSave = useCallback(() => {
-    if (canWrite && isDirty && !isSaving && !isTidying) save();
-  }, [canWrite, isDirty, isSaving, isTidying, save]);
-  const triggerLock = useCallback(() => {
-    if (roleCanWrite && !isLockedByMe && !isLockedByOther && !isLocking) lock();
-  }, [roleCanWrite, isLockedByMe, isLockedByOther, isLocking, lock]);
-  const triggerUnlock = useCallback(() => {
-    if (isLockedByMe && !isUnlocking && !isTidying) unlock();
-  }, [isLockedByMe, isUnlocking, isTidying, unlock]);
-  const triggerForceUnlock = useCallback(async () => {
-    if (isAdmin && isLockedByOther && !isForceUnlocking) {
-      if (await confirmDialog(t('editor:banners.forceUnlockConfirm', { user: workflow?.checkedOutByUserName ?? t('common:unknown') }))) {
-        forceUnlock();
-      }
-    }
-  }, [isAdmin, isLockedByOther, isForceUnlocking, forceUnlock, workflow?.checkedOutByUserName, t]);
-  // Routes a publish/enable click (toolbar, command palette, keyboard) through the
-  // pre-publish checklist. If the workflow is currently Productive (isEnabled), this is
-  // really a Disable — the kill-switch path stays direct (no modal) because stopping
-  // production is not a "is everything ready"-question.
-  const requestPublish = useCallback(async () => {
-    if (!roleCanWrite || isLockedByOther || isTidying) return;
-    if (workflow?.isEnabled) {
-      if (await confirmDialog(t('editor:stopWorkflowConfirm'))) {
-        disable();
-      }
-      return;
-    }
-    if (isPublishing || isEnabling) return;
-    // Linted here rather than per render: this is the one moment the verdict matters, and it
-    // must describe the graph as it is right now, not as it settled.
-    const live = liveGraphRef.current;
-    const fresh = getPrePublishLint(
-      lintWorkflow(live.nodes, live.edges, allWorkflows), live.nodes, live.edges, workflow);
-    // Clean lint -> straight through. Otherwise gate behind the modal so the user sees the
-    // outstanding issues exactly once before going live.
-    if (fresh.errors.length === 0 && fresh.warnings.length === 0) {
-      if (isLockedByMe) publish();
-      else enable();
-      return;
-    }
-    setPrePublishLint(fresh);
-    setPrePublishOpen(true);
-  }, [roleCanWrite, isLockedByOther, workflow, isLockedByMe, allWorkflows,
-      isPublishing, isTidying, publish, isEnabling, enable, disable, t]);
+  // ---- Lifecycle: lock, save, publish (state object + gated shortcut triggers) ----
+  const { lifecycle, confirmPrePublish, triggerSave, triggerLock, triggerUnlock, triggerForceUnlock } = useEditorLifecycle({
+    workflow, roleCanWrite, isAdmin, canWrite, isTidying, lockState, persistence,
+    getLiveGraph: () => liveGraphRef.current,
+    allWorkflows,
+    openPrePublish: overlays.setPrePublishLint,
+    closePrePublish: () => overlays.setPrePublishLint(null),
+  });
 
-  // Modal "Trotzdem publizieren" / "Publizieren" callback — fires the right mutation.
-  // Errors block the button at render time, so we don't re-check here.
-  const confirmPrePublish = useCallback(() => {
-    setPrePublishOpen(false);
-    if (isTidying) return;
-    if (isLockedByMe) publish();
-    else enable();
-  }, [isLockedByMe, isTidying, publish, enable]);
-
-  // Keyboard shortcut (Ctrl+Shift+S) reuses the same gate so power users see the modal too.
-  const triggerPublish = requestPublish;
-  const triggerTest = useCallback(() => {
-    if (roleCanWrite && liveExecution?.status !== 'Running') run(false);
-  }, [roleCanWrite, liveExecution?.status, run]);
-  const triggerDebug = useCallback(() => {
-    if (roleCanWrite && liveExecution?.status !== 'Running') run(true);
-  }, [roleCanWrite, liveExecution?.status, run]);
-  // Both values are read into locals first so the dependency list is a list of simple
-  // expressions. Reading `liveExecution.executionId` inside the body made the lint infer the
-  // whole `liveExecution` object as the dependency while the source listed the two properties,
-  // which trips react-hooks/preserve-manual-memoization. Only the lint runs here — the React
-  // Compiler itself is not enabled, so every memo boundary in this file is hand-written.
-  const liveExecutionStatus = liveExecution?.status;
-  const liveExecutionId = liveExecution?.executionId;
-  const triggerCancel = useCallback(() => {
-    if (liveExecutionStatus === 'Running' && liveExecutionId) {
-      api.post(`/executions/${liveExecutionId}/cancel`, {}).catch(() => { /* ignore */ });
-    }
-  }, [liveExecutionStatus, liveExecutionId]);
-  const triggerTidy = useCallback(() => {
-    if (canWrite && !isTidying) tidyLayout();
-  }, [canWrite, isTidying, tidyLayout]);
-  const toggleLintPanel = useCallback(() => setLintPanelOpen((o) => !o), [setLintPanelOpen]);
-  const triggerSimulation = useCallback(() => {
-    if (simulation) clearSimulation(); else runSimulation();
-  }, [simulation, runSimulation, clearSimulation]);
-  const clearActivityTypeFilterCallback = useCallback(() => setHiddenActivityTypes(new Set()), []);
-  const exportJson = useCallback(async () => {
-    if (!id) return;
-    try {
-      await downloadFromApi(`/workflows/${id}/export`, `${name || 'workflow'}.workflow.json`);
-    } catch (err) {
-      toast.error(t('common:exportFailed', { message: (err as Error).message }));
-    }
-  }, [id, name, t]);
+  // Run shortcuts self-gate against the current state, like the lifecycle triggers above.
+  const isRunning = liveExecution?.status === 'Running';
+  const triggerTest = () => { if (roleCanWrite && !isRunning) run(false); };
+  const triggerDebug = () => { if (roleCanWrite && !isRunning) run(true); };
+  const cancelRun = () => {
+    if (isRunning && liveExecution?.executionId) cancelExecution(liveExecution.executionId);
+  };
+  const triggerTidy = () => { if (canWrite && !isTidying) layout.tidyLayout(); };
+  const triggerSimulation = () => { if (simulation) clearSimulation(); else runSimulation(); };
 
   // Per-node Quick-Toggle bindings. We toggle EVERY currently-selected Activity node — useful
   // when triaging a debugging session ("disable these 5 steps temporarily"). When a mixed group
@@ -1246,8 +870,6 @@ function WorkflowEditorInner() {
       ids.has(n.id) ? { ...n, data: { ...n.data, [flag]: next } } : n
     )));
   }, [canWrite, nodes, setNodes, commitHistory, markDirty]);
-  const toggleSelectedDisabled = useCallback(() => toggleSelectedFlag('disabled'), [toggleSelectedFlag]);
-  const toggleSelectedBreakpoint = useCallback(() => toggleSelectedFlag('breakpoint'), [toggleSelectedFlag]);
 
   // Arrow-key nudge: moves all selected nodes by (dx,dy). Shift = 1px fine, normal = 10px step.
   const nudgeSelectedNodes = useCallback((dx: number, dy: number) => {
@@ -1273,19 +895,21 @@ function WorkflowEditorInner() {
     designerMode,
     undo, redo, copySelection, pasteBuffer, groupSelection,
     selectAll, zoomToSelection, navigateNode,
-    searchOpen, setSearchOpen, setSearchInput,
-    helpOpen, setHelpOpen,
-    findReplaceOpen, setFindReplaceOpen,
-    edgeDetachActive: !!edgeDetach, cancelEdgeDetach,
-    toggleFullscreen, toggleQuickSwitcher, toggleCommandPalette,
+    searchOpen: overlays.searchOpen, setSearchOpen, setSearchInput,
+    helpOpen: overlays.helpOpen, setHelpOpen: overlays.setHelpOpen,
+    findReplaceOpen: overlays.findReplaceOpen, setFindReplaceOpen: overlays.setFindReplaceOpen,
+    edgeDetachActive: !!edgeDetach.detachedEdgeId, cancelEdgeDetach,
+    toggleFullscreen,
+    toggleQuickSwitcher: overlays.toggleQuickSwitcher,
+    toggleCommandPalette: overlays.toggleCommandPalette,
     triggerSave, triggerLock, triggerUnlock, triggerForceUnlock,
-    triggerPublish, triggerTest, triggerDebug, triggerCancel,
-    triggerTidy, toggleLintPanel,
+    triggerPublish: lifecycle.requestPublish, triggerTest, triggerDebug, triggerCancel: cancelRun,
+    triggerTidy, toggleLintPanel: overlays.toggleLintPanel,
     // Layout
-    restoreOrigLayout,
-    setDiffOpen,
+    restoreOrigLayout: layout.restoreOrigLayout,
+    setDiffOpen: overlays.setDiffOpen,
     triggerSimulation,
-    clearActivityTypeFilter: clearActivityTypeFilterCallback,
+    clearActivityTypeFilter: () => setHiddenActivityTypes(new Set()),
     // Style/view toggles — read fresh state from the design store on every key press so
     // stacking them (e.g. spam 'R' to cycle through routing modes) works correctly without
     // stale closures. The design store is a Zustand singleton; getState() is cheap.
@@ -1310,7 +934,8 @@ function WorkflowEditorInner() {
       const s = useDesignStore.getState();
       s.setSnapToGrid(!s.snapToGrid);
     },
-    toggleSelectedDisabled, toggleSelectedBreakpoint,
+    toggleSelectedDisabled: () => toggleSelectedFlag('disabled'),
+    toggleSelectedBreakpoint: () => toggleSelectedFlag('breakpoint'),
     nudgeSelectedNodes, fitViewAll,
     // Export
     exportJson,
@@ -1327,10 +952,6 @@ function WorkflowEditorInner() {
   const dataFlowOverlayEnabled = useDesignStore((s) => s.dataFlowOverlayEnabled);
   const premiumCanvas = useDesignStore((s) => s.premiumCanvas);
 
-  // Sub-workflow preview — held outside the per-edit-action state because it can be opened
-  // from any selected startWorkflow node, not from a specific user action like Save.
-  const [previewSubWorkflowRef, setPreviewSubWorkflowRef] = useState<string | null>(null);
-
   const defaultEdgeOptions = useMemo(() => ({
     type: 'labeled',
     // Animation is handled by the np-edge-flow overlay path in LabeledEdge (CSS keyframe),
@@ -1346,15 +967,15 @@ function WorkflowEditorInner() {
 
   const { displayedNodes, displayedEdges } = useDisplayedGraph({
     nodes, edges, edgesAnimated, hiddenActivityTypes, dataFlowOverlayEnabled,
-    simulation, revealIndex, lintResult, failureHeatmapEnabled,
-    detachedEdgeId: edgeDetach?.edgeId ?? null,
-    dockTargetNodeId,
+    simulation, revealIndex, lintResult, failureHeatmapEnabled, criticalPath,
+    annotations: nodeAnnotations, coverage, varFlowEdgeIds,
+    detachedEdgeId: edgeDetach.detachedEdgeId,
+    dockTargetNodeId: edgeDetach.dockTargetNodeId,
   });
 
-  // The raw detached edge supplies source, ports, and label to the preview and notice.
-  const detachedEdge = edgeDetach ? edges.find((e) => e.id === edgeDetach.edgeId) ?? null : null;
   const detachedEdgeLabel = ((detachedEdge?.data as Record<string, unknown> | undefined)?.label as string) || '';
 
+  const { setPreviewSubWorkflowRef } = overlays;
   const subWorkflowPreviewContextValue = useMemo(
     () => ({ onPreviewSubWorkflow: setPreviewSubWorkflowRef }),
     [setPreviewSubWorkflowRef],
@@ -1390,36 +1011,32 @@ function WorkflowEditorInner() {
     : undefined;
   const contextMenuData = (contextMenuNode?.data ?? {}) as Record<string, unknown>;
 
+  // Opens another workflow and passes this one along, so the header's back button can name it.
+  const openWorkflow = (workflowId: string) => {
+    const state = id && workflow ? { fromWorkflow: { id, name: workflow.name } } : undefined;
+    navigate(`/workflows/${workflowId}`, { state });
+  };
+
   return (
     <AgentCanvasExecutionContext.Provider value={{ executionId: effectiveCanvasExecution?.executionId ?? replayExecutionId,
       active: effectiveCanvasExecution?.status === 'Running', scrubTimeMs }}>
     <SubWorkflowPreviewContext.Provider value={subWorkflowPreviewContextValue}>
     <div className="np-designer wd-atelier h-screen flex flex-col bg-surface overflow-hidden">
-      {/* Header — bleibt im Fullscreen (F11) sichtbar; nur Sidebar / Properties / Bottom-Panel
-          und die optionalen Banner werden versteckt, damit der Canvas-Workspace maximiert
-          wird, der User aber die Toolbar (Save / Test / Run / Bearbeiten / Publish …) weiterhin
-          erreichen kann. */}
+      {/* The header stays visible in fullscreen (F11): only the side panels, the bottom panel and
+          the banners are hidden, so the toolbar (save, run, edit, publish) stays reachable. */}
       <EditorHeader
         workflowId={id} workflow={workflow}
-        name={name} onRename={rename} isDirty={isDirty}
-        canWrite={canWrite} nodes={nodes}
-        aiChatOpen={aiChatOpen} onToggleAiChat={() => setAiChatOpen(!aiChatOpen)}
-        undo={undo} redo={redo} historyPast={historyPast} historyFuture={historyFuture}
-        tidyLayout={tidyLayout} isTidying={isTidying} layoutMode={layoutMode}
-        restoreOrigLayout={restoreOrigLayout} hasOrigLayout={hasOrigLayout}
-        setSearchOpen={setSearchOpen} setFindReplaceOpen={setFindReplaceOpen}
-        zoomToSelection={zoomToSelection} setDiffOpen={setDiffOpen}
-        simulation={simulation} runSimulation={runSimulation} clearSimulation={clearSimulation}
-        lintResult={lintResult} setLintPanelOpen={setLintPanelOpen} setHelpOpen={setHelpOpen}
+        name={name} onRename={rename} nodes={nodes}
+        lifecycle={lifecycle}
+        history={{ undo, redo, historyPast, historyFuture }}
+        layout={layout}
+        overlays={overlays}
+        simulation={sim}
+        run={{ liveExecution, run, cancelRun }}
+        lintResult={lintResult}
         hiddenActivityTypes={hiddenActivityTypes} setHiddenActivityTypes={setHiddenActivityTypes}
-        liveExecution={liveExecution} handleRunClick={run}
-        exportPng={exportPng} onSave={save} isPublishing={isPublishing || isTidying}
-        onRequestPublish={requestPublish}
-        roleCanWrite={roleCanWrite}
-        isLockedByMe={isLockedByMe}
-        isLockedByOther={isLockedByOther}
-        onLock={lock} isLocking={isLocking} onUnlock={unlock} isUnlocking={isUnlocking || isTidying}
-        onDisable={disable} isDisabling={isDisabling} isEnabling={isEnabling}
+        zoomToSelection={zoomToSelection} exportPng={exportPng}
+        aiChatOpen={aiChatOpen} onToggleAiChat={() => setAiChatOpen(!aiChatOpen)}
       />
 
       {!fullscreen && <MaintenanceWindowBadge workflowId={id} />}
@@ -1433,11 +1050,11 @@ function WorkflowEditorInner() {
         clearDesignerCanvasHighlight={clearDesignerCanvasHighlight}
         fullscreen={fullscreen}
         roleCanWrite={roleCanWrite}
-        isLockedByMe={isLockedByMe}
-        isLockedByOther={isLockedByOther}
+        isLockedByMe={lifecycle.isLockedByMe}
+        isLockedByOther={lifecycle.isLockedByOther}
         isAdmin={isAdmin}
         workflow={workflow}
-        onForceUnlock={forceUnlock} isForceUnlocking={isForceUnlocking}
+        onForceUnlock={lifecycle.forceUnlock} isForceUnlocking={lifecycle.isForceUnlocking}
         nodes={nodes}
       />
 
@@ -1462,23 +1079,12 @@ function WorkflowEditorInner() {
           setLeftTab={setLeftTab}
           leftCollapsed={leftCollapsed}
           setLeftCollapsed={setLeftCollapsed}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          collapsedCategories={collapsedCategories}
-          toggleCategory={toggleCategory}
           panelSize={leftPanel.size}
           panelHandleProps={leftPanel.handleProps}
           addNode={addNode}
           addSnippet={addSnippet}
           isStartWorkflowSelected={isStartWorkflowSelected}
-          selected={selected}
-          nodes={nodes}
-          onOpenWorkflow={(w) => {
-            // Pass the current workflow as fromWorkflow in location state so the
-            // EditorHeader back button can show where we came from.
-            const state = id && workflow ? { fromWorkflow: { id, name: workflow.name } } : undefined;
-            navigate(`/workflows/${w.id}`, { state });
-          }}
+          onOpenWorkflow={(w) => openWorkflow(w.id)}
           onEmbedWorkflow={(w) => {
             if (selected?.type !== 'node') return;
             const node = nodes.find((n) => n.id === selected.id);
@@ -1492,7 +1098,7 @@ function WorkflowEditorInner() {
         {/* Center: Canvas */}
         <section
           ref={canvasRef}
-          className={`np-canvas flex-1 relative bg-surface overflow-hidden${premiumCanvas ? ' np-premium' : ''}${edgeDetach ? ' np-canvas--detaching' : ''}`}
+          className={`np-canvas flex-1 relative bg-surface overflow-hidden${premiumCanvas ? ' np-premium' : ''}${detachedEdge ? ' np-canvas--detaching' : ''}`}
           onPointerMove={handleCanvasPointerMove}
           onPointerLeave={handleCanvasPointerLeave}
         >
@@ -1611,9 +1217,8 @@ function WorkflowEditorInner() {
             snapGrid={[snapGridSize, snapGridSize]}
             connectionLineComponent={NpConnectionLine}
           >
-            {/* Controls-Chrome kommt vollständig aus dem token-gespeisten
-                `.react-flow__controls`-Block in index.css (--xy-controls-*) —
-                keine per-JSX !important-Overrides mehr. */}
+            {/* Controls chrome comes entirely from the token-fed `.react-flow__controls` block
+                in index.css (--xy-controls-*). */}
             <Controls />
             {detachedEdge && (
               <EdgeDetachPreview
@@ -1621,8 +1226,8 @@ function WorkflowEditorInner() {
                 sourcePort={edgeSourcePort(detachedEdge)}
                 targetPort={edgeTargetPort(detachedEdge)}
                 canvasRef={canvasRef}
-                canDockTo={canDockTo}
-                onDockTargetChange={setDockTargetNodeId}
+                canDockTo={edgeDetach.canDockTo}
+                onDockTargetChange={edgeDetach.setDockTargetNodeId}
               />
             )}
             {snapToGrid ? (
@@ -1664,25 +1269,7 @@ function WorkflowEditorInner() {
               zoomable
               nodeStrokeWidth={3}
               maskColor="var(--np-minimap-mask)"
-              // Use semantic border colors so activity types remain distinguishable in the minimap.
-              nodeColor={(n) => {
-                const d = n.data as Record<string, unknown>;
-                const live = d.__liveStatus as string | undefined;
-                const health = d.__health as Array<{ status: string }> | undefined;
-                const last = health && health.length > 0 ? health.at(-1) : undefined;
-                const type = d.activityType as string | undefined;
-                // Live execution status has highest priority — gives instant visual feedback
-                if (live) return STATUS_COLOR_VAR[npStatusFromExecution(live)];
-                // Fall back to most recent historical outcome (container tint = calmer)
-                if (last?.status === 'Succeeded') return 'var(--color-success-container)';
-                if (last?.status === 'Failed')    return 'var(--color-error-container)';
-                // Default: coarse type grouping via tokens
-                if (type === 'note')           return 'var(--color-warning-container)';
-                if (type?.endsWith('Trigger')) return 'var(--color-success-container)';
-                if (type === 'junction' || type === 'startWorkflow' || type === 'forEach' || type === 'returnData')
-                                               return 'var(--color-info-container)';
-                return 'var(--color-primary-fixed)';
-              }}
+              nodeColor={minimapNodeColor}
             />
           </ReactFlow>
           </GroupDropTargetContext.Provider>
@@ -1693,73 +1280,22 @@ function WorkflowEditorInner() {
               <FolderPathBreadcrumb
                 workflow={workflow}
                 currentWorkflowId={id}
-                onOpenWorkflow={(w) => {
-                  const state = id && workflow ? { fromWorkflow: { id, name: workflow.name } } : undefined;
-                  navigate(`/workflows/${w.id}`, { state });
-                }}
+                onOpenWorkflow={(w) => openWorkflow(w.id)}
               />
             </div>
           )}
-          {/* Neuen Workflow anlegen — schwebende Pill oben rechts (einzige freie Canvas-Ecke).
-              Im Fullscreen unter den Exit-Pill (top-3 right-3 in <main>) gestapelt, damit keine
-              Kollision. Viewer sehen keinen Create-Pfad (roleCanWrite-Gate wie Save/Publish). */}
+          {/* Viewers get no create path (same roleCanWrite gate as Save/Publish). */}
           {roleCanWrite && workflow && (
-            <div className={`absolute ${fullscreen ? 'top-14' : 'top-3'} right-3 z-40 flex flex-col items-end`}>
-              <button
-                type="button"
-                onClick={() => setNewWorkflowOpen((v) => !v)}
-                className="bg-surface-lowest/90 backdrop-blur border border-outline-variant/30 rounded-full px-3 py-1.5 text-xs font-label font-semibold text-on-surface-variant hover:bg-surface-high shadow-md transition-colors flex items-center gap-1.5"
-                title={t('editor:newWorkflow')}
-              >
-                <Add size={14} /> {t('editor:newWorkflow')}
-              </button>
-              {newWorkflowOpen && (
-                <div className="mt-1.5 w-64 bg-surface-lowest border border-outline-variant/40 rounded-lg shadow-xl p-3 flex flex-col gap-2">
-                  <label className="text-xs font-label font-medium text-on-surface-variant">{t('editor:newWorkflow')}</label>
-                  <input
-                    autoFocus
-                    type="text"
-                    data-testid="new-workflow-name-input"
-                    value={newWorkflowName}
-                    onChange={(e) => setNewWorkflowName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') { e.preventDefault(); submitNewWorkflow(); }
-                      else if (e.key === 'Escape') { e.preventDefault(); setNewWorkflowOpen(false); setNewWorkflowName(''); }
-                    }}
-                    placeholder={t('workflows:workflowName')}
-                    className="w-full px-2.5 py-1.5 text-sm rounded border border-outline-variant/50 bg-surface text-on-surface focus:outline-none focus:border-primary"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => { setNewWorkflowOpen(false); setNewWorkflowName(''); }}
-                      className="px-2.5 py-1 text-xs rounded border border-outline text-on-surface hover:bg-surface-container-high"
-                    >
-                      {t('common:cancel')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={submitNewWorkflow}
-                      disabled={!newWorkflowName.trim() || createWorkflowMutation.isPending}
-                      className="px-2.5 py-1 text-xs rounded bg-primary text-on-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                    >
-                      {createWorkflowMutation.isPending && <CircleDash size={12} className="animate-spin" />}
-                      {t('workflows:create')}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            <NewWorkflowButton folderId={workflow.folderId} fullscreen={fullscreen} />
           )}
           {connectionNotice && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 max-w-[520px] px-4 py-2 rounded-md bg-amber-100 text-amber-950 border border-amber-300 shadow-lg text-sm font-label font-medium">
               {connectionNotice}
             </div>
           )}
-          {/* Edge-Detach: bleibt stehen, solange das Ende am Cursor hängt (die Notice oben
-              blendet sich nach ein paar Sekunden aus — hier wäre das falsch, der Zustand
-              besteht ja weiter). Rutscht nach unten, wenn beide gleichzeitig sichtbar sind. */}
-          {edgeDetach && (
+          {/* Edge detach: stays while the end hangs on the cursor, unlike the notice above, which
+              fades. Moves down when both are visible. */}
+          {detachedEdge && (
             <div
               data-testid="edge-detach-hint"
               className={`absolute ${connectionNotice ? 'top-16' : 'top-4'} left-1/2 -translate-x-1/2 z-30 max-w-[520px] px-4 py-2 rounded-md bg-surface-lowest text-on-surface border border-primary/50 shadow-lg text-sm font-label font-medium`}
@@ -1803,7 +1339,7 @@ function WorkflowEditorInner() {
                 onToggleDisabled={() => handleEdgeUpdate(edgeContextMenu.edgeId, {
                   data: { ...ed, disabled: !ed.disabled },
                 })}
-                onDetachTarget={() => beginEdgeDetach(edgeContextMenu.edgeId)}
+                onDetachTarget={() => edgeDetach.beginEdgeDetach(edgeContextMenu.edgeId)}
                 onSwapSourceTarget={() => handleEdgeUpdate(edgeContextMenu.edgeId, {
                   source: edge.target,
                   target: edge.source,
@@ -1824,43 +1360,9 @@ function WorkflowEditorInner() {
               onClose={() => setQuickConnect(null)}
             />
           )}
-          {simulation && (() => {
-            const total = simulation.order.length;
-            const done = Math.min(revealIndex, total);
-            const playing = done < total;
-            return (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-4 py-2 rounded-full bg-indigo-600 text-white shadow-xl border border-indigo-400/50">
-                <Chemistry size={14} className={`shrink-0 ${playing ? 'animate-pulse' : ''}`} />
-                <span className="font-label text-sm font-semibold">
-                  {playing ? t('editor:simulation.simulating') : t('editor:simulation.complete')}
-                </span>
-                {playing ? (
-                  <>
-                    <span className="font-mono text-xs tabular-nums bg-white/20 rounded-full px-2 py-0.5">
-                      {t('editor:simulation.step', { n: done + 1, total })}
-                    </span>
-                    <div className="w-32 h-1.5 rounded-full bg-white/20 overflow-hidden">
-                      <div
-                        className="h-full bg-amber-300 transition-all duration-200"
-                        style={{ width: `${((done + 1) / total) * 100}%` }}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <span className="font-mono text-xs tabular-nums bg-white/20 rounded-full px-2 py-0.5">
-                    {t('editor:simulation.willRun', { count: simulation.reachable.size })} · {t('editor:simulation.skipped', { count: simulation.skipped.size })}
-                  </span>
-                )}
-                <button
-                  onClick={() => clearSimulation()}
-                  className="ml-1 p-1 rounded-full hover:bg-white/20 transition-colors"
-                  title={t('editor:simulationClear')}
-                >
-                  <Close size={14} />
-                </button>
-              </div>
-            );
-          })()}
+          {simulation && (
+            <SimulationBanner simulation={simulation} revealIndex={revealIndex} onClear={clearSimulation} />
+          )}
         </section>
 
         {aiChatOpen && !fullscreen ? (
@@ -1878,7 +1380,7 @@ function WorkflowEditorInner() {
                 isViewer={isViewer}
                 onClose={() => setAiChatOpen(false)}
                 onUndo={undo}
-                onAutoLayout={tidyLayout}
+                onAutoLayout={layout.tidyLayout}
                 selection={aiSelection}
                 getDiagnostics={getAiDiagnostics}
               />
@@ -1939,121 +1441,47 @@ function WorkflowEditorInner() {
       )}
 
       <EditorOverlays
-        // Graph + identity
-        id={id}
+        workflowId={id}
         name={name}
         workflow={workflow}
-        nodes={nodes}
-        edges={edges}
-        setNodes={setNodes as (updater: (nds: Node[]) => Node[]) => void}
-        setEdges={setEdges as (updater: (eds: Edge[]) => Edge[]) => void}
-        // History / dirty
-        commitHistory={commitHistory}
-        markDirty={markDirty}
-        // Run dialog
-        showRunDialog={showRunDialog}
-        onRunWithParams={confirmRunWithParams}
-        onCloseRunDialog={closeRunDialog}
-        lastExecutionList={lastExecutionList}
-        // Quick edit + script editor
-        quickEdit={quickEdit}
-        setQuickEdit={setQuickEdit}
-        handleQuickEditSave={handleQuickEditSave}
-        scriptEditNodeId={scriptEditNodeId}
-        setScriptEditNodeId={setScriptEditNodeId}
-        // Find/Replace + Search
-        findReplaceOpen={findReplaceOpen}
-        setFindReplaceOpen={setFindReplaceOpen}
-        searchOpen={searchOpen}
-        setSearchOpen={setSearchOpen}
-        searchInput={searchInput}
-        setSearchInput={setSearchInput}
-        searchResults={searchResults}
-        jumpToNode={jumpToNode}
-        jumpToEdge={jumpToEdge}
-        // Quick switcher / Command palette
-        quickSwitcherOpen={quickSwitcherOpen}
-        setQuickSwitcherOpen={setQuickSwitcherOpen}
-        commandPaletteOpen={commandPaletteOpen}
-        setCommandPaletteOpen={setCommandPaletteOpen}
-        // Help / Diff / Lint
-        helpOpen={helpOpen}
-        setHelpOpen={setHelpOpen}
-        diffOpen={diffOpen}
-        setDiffOpen={setDiffOpen}
-        lintPanelOpen={lintPanelOpen}
-        setLintPanelOpen={setLintPanelOpen}
+        graph={{ ...graphSource, commitHistory, markDirty }}
+        overlays={overlays}
+        lifecycle={lifecycle}
+        execution={{ showRunDialog, confirmRunWithParams, closeRunDialog, lastExecutionList, run, cancelRun, isRunning }}
+        actions={{
+          undo, redo, copySelection, pasteBuffer, groupSelection, selected, deleteNodeById, selectAll,
+          navigateNode, handleQuickEditSave, jumpToNode, jumpToEdge, toggleFullscreen, zoomToSelection,
+          fitViewAll, exportPng, exportJson,
+        }}
+        layout={layout}
+        simulation={sim}
         lintResult={lintResult}
-        // Pre-publish checklist
-        prePublishOpen={prePublishOpen}
-        prePublishLint={prePublishLint}
-        onConfirmPrePublish={confirmPrePublish}
-        onCancelPrePublish={() => setPrePublishOpen(false)}
-        onRequestPublish={requestPublish}
-        // Command-Palette context
-        roleCanWrite={roleCanWrite}
-        canWrite={canWrite}
-        isAdmin={isAdmin}
-        isLockedByMe={isLockedByMe}
-        isLockedByOther={isLockedByOther}
-        isDirty={isDirty}
-        onSave={save} isSaving={isSaving}
-        handleRunClick={run}
-        liveExecution={liveExecution}
-        onLock={lock}
-        isLocking={isLocking}
-        onUnlock={unlock}
-        isUnlocking={isUnlocking || isTidying}
-        isPublishing={isPublishing || isTidying}
-        isEnabling={isEnabling}
-        isDisabling={isDisabling}
-        onForceUnlock={forceUnlock}
-        isForceUnlocking={isForceUnlocking}
-        undo={undo}
-        redo={redo}
-        copySelection={copySelection}
-        pasteBuffer={pasteBuffer}
-        groupSelection={groupSelection}
-        selected={selected}
-        deleteNodeById={deleteNodeById}
-        selectAll={selectAll}
-        navigateNode={navigateNode}
-        tidyLayout={tidyLayout}
-        isTidying={isTidying}
-        layoutMode={layoutMode}
-        restoreOrigLayout={restoreOrigLayout}
-        hasOrigLayout={hasOrigLayout}
-        simulation={simulation}
-        runSimulation={runSimulation}
-        clearSimulation={clearSimulation}
         hiddenActivityTypes={hiddenActivityTypes}
         setHiddenActivityTypes={setHiddenActivityTypes}
-        toggleFullscreen={toggleFullscreen}
-        toggleQuickSwitcher={toggleQuickSwitcher}
-        zoomToSelection={zoomToSelection}
-        fitViewAll={fitViewAll}
-        machineColoringEnabled={machineColoringEnabled}
-        failureHeatmapEnabled={failureHeatmapEnabled}
-        exportPng={exportPng}
-        exportJson={exportJson}
+        onConfirmPrePublish={confirmPrePublish}
+        openWorkflow={openWorkflow}
         navigate={navigate}
       />
-
-      {previewSubWorkflowRef !== null && (
-        <SubWorkflowPreviewModal
-          workflowNameOrId={previewSubWorkflowRef}
-          onClose={() => setPreviewSubWorkflowRef(null)}
-          onOpenInEditor={(wfId) => {
-            // Caller (this page) passes a wfId — navigate the user to the dedicated editor
-            // route. setPreviewSubWorkflowRef(null) is already done by the modal's onClose
-            // callback (runs after onOpenInEditor inside the modal).
-            const state = id && workflow ? { fromWorkflow: { id, name: workflow.name } } : undefined;
-            navigate(`/workflows/${wfId}`, { state });
-          }}
-        />
-      )}
     </div>
     </SubWorkflowPreviewContext.Provider>
     </AgentCanvasExecutionContext.Provider>
   );
+}
+
+/** Minimap colour: live status first, then the latest historical outcome, then a type group. */
+function minimapNodeColor(n: Node): string {
+  const d = n.data as Record<string, unknown>;
+  const live = d.__liveStatus as string | undefined;
+  const health = d.__health as Array<{ status: string }> | undefined;
+  const last = health && health.length > 0 ? health.at(-1) : undefined;
+  const type = d.activityType as string | undefined;
+  if (live) return STATUS_COLOR_VAR[npStatusFromExecution(live)];
+  // Container tints keep the historical outcome calmer than a live status.
+  if (last?.status === 'Succeeded') return 'var(--color-success-container)';
+  if (last?.status === 'Failed') return 'var(--color-error-container)';
+  if (type === 'note') return 'var(--color-warning-container)';
+  if (type?.endsWith('Trigger')) return 'var(--color-success-container)';
+  if (type === 'junction' || type === 'startWorkflow' || type === 'forEach' || type === 'returnData')
+    return 'var(--color-info-container)';
+  return 'var(--color-primary-fixed)';
 }

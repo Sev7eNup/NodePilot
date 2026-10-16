@@ -350,7 +350,11 @@
       "isTrue": "is true",
       "isFalse": "is false"
     },
-    "groupEvent": "Event"
+    "groupEvent": "Event",
+    "groupManual": "Trigger input",
+    "groupUnavailable": "Not available",
+    "unavailableOption": "{{ref}} (not available)",
+    "unavailableHint": "This reference is not available here and will not resolve. Pick another value."
   },
   "bulkEdit": {
     "title": "Bulk Edit",

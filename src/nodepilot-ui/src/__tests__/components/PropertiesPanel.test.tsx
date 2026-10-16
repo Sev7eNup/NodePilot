@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
+import { http, HttpResponse } from 'msw';
 import type { Node } from '@xyflow/react';
 
 import { PropertiesPanel } from '../../components/designer/PropertiesPanel';
@@ -240,6 +241,37 @@ describe('PropertiesPanel — English UI has no hardcoded German', () => {
     expect(screen.getByRole('button', { name: /Test connection/ })).toHaveAttribute(
       'title', 'Opens a short connection to the machine to check that the host is reachable and the credential is valid.');
     expect(screen.getByText('(The credential is a variable, so the test uses the machine default.)')).toBeInTheDocument();
+  });
+});
+
+describe('PropertiesPanel — connection test', () => {
+  const MACHINE_A = '11111111-2222-3333-4444-555555555555';
+  const MACHINE_B = '66666666-7777-8888-9999-000000000000';
+  const panel = (qc: QueryClient, node: Node) => (
+    <QueryClientProvider client={qc}>
+      <PropertiesPanel node={node} allNodes={[node]} edges={[]} machines={[]} credentials={[]}
+        onUpdate={vi.fn()} onClose={vi.fn()} />
+    </QueryClientProvider>
+  );
+
+  // serviceManagement is a remote activity without a script editor, which jsdom cannot measure.
+  it.each([
+    ['another node', { ...makeNode('serviceManagement', { targetMachineId: MACHINE_A }), id: 'step-2' }],
+    ['another machine', makeNode('serviceManagement', { targetMachineId: MACHINE_B })],
+    ['another credential', makeNode('serviceManagement', { targetMachineId: MACHINE_A, credentialId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' })],
+  ])('drops the previous result after switching to %s', async (_case, next) => {
+    server.use(http.post(`${BASE}/api/machines/:id/test`, () =>
+      HttpResponse.json({ success: true, computerName: 'HOST-A', credentialUsed: 'svc-a' })));
+    patchFetch();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(panel(qc, makeNode('serviceManagement', { targetMachineId: MACHINE_A })));
+
+    fireEvent.click(screen.getByRole('button', { name: /Test connection/ }));
+    await waitFor(() => expect(screen.getByText('svc-a → HOST-A')).toBeInTheDocument());
+
+    view.rerender(panel(qc, next));
+    expect(screen.queryByText('svc-a → HOST-A')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Test connection/ })).toBeInTheDocument();
   });
 });
 

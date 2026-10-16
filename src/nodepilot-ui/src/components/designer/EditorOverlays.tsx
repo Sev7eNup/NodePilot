@@ -7,8 +7,12 @@ import { buildCommandPaletteCommands, filterCommandsForDesignerMode } from '../.
 import { getUpstreamVariables } from '../../lib/upstreamVariables';
 import type { StepTestResult } from '../../types/api';
 import type { LintResult } from '../../lib/workflowLint';
-import type { SimulationResult } from '../../hooks/useWorkflowSimulation';
 import type { Workflow } from '../../types/api';
+import type { EditorOverlayControls } from '../../hooks/useEditorOverlays';
+import type { EditorLifecycle } from '../../hooks/useEditorLifecycle';
+import type { TidyLayoutApi } from '../../hooks/useTidyLayout';
+import type { WorkflowGraphSource } from '../../hooks/useWorkflowHistory';
+import type { useWorkflowSimulation } from '../../hooks/useWorkflowSimulation';
 
 import { RunWorkflowDialog, extractManualTriggerConfig } from '../common/RunWorkflowDialog';
 import { QuickEditPopup } from './overlays/QuickEditPopup';
@@ -20,108 +24,32 @@ import { HelpOverlay } from './overlays/HelpOverlay';
 import { WorkflowDiffModal } from './overlays/WorkflowDiffModal';
 import { LintPanel } from './overlays/LintPanel';
 import { PrePublishChecklistModal } from './overlays/PrePublishChecklistModal';
+import { SubWorkflowPreviewModal } from './overlays/SubWorkflowPreviewModal';
 
 // Monaco editor (~1 MB) lives in this dialog — lazy-loaded so the workflow editor
 // initial bundle stays unchanged. The chunk is fetched only when the user
 // double-clicks a runScript node or opens it via the properties panel.
 const ScriptEditorDialog = lazy(() => import('./ScriptEditorDialog'));
 
-/**
- * Renders every overlay/modal/dialog that floats over the workflow canvas. Lifted out
- * of <c>WorkflowEditorPage.tsx</c> to keep the page focused on canvas + sidebar layout.
- *
- * <para>This component is intentionally a "dumb" portal — it owns no state of its own;
- * all open/close flags + handlers come in as props. The page composes its own state
- * setters into the relevant fields.</para>
- */
-export interface EditorOverlaysProps {
-  // ----- Graph + identity -----
-  id: string | undefined;
-  name: string;
-  workflow: Workflow | undefined;
-  nodes: Node[];
-  edges: Edge[];
-  setNodes: (updater: (nds: Node[]) => Node[]) => void;
-  setEdges: (updater: (eds: Edge[]) => Edge[]) => void;
-
-  // ----- History / dirty -----
+/** Graph state plus history and dirty tracking, for overlays that edit the graph. */
+export interface EditorGraphEditing extends WorkflowGraphSource {
   commitHistory: (label?: string) => void;
   markDirty: () => void;
+}
 
-  // ----- Run dialog -----
+/** Running the workflow: the parameter dialog and the run controls the palette offers. */
+export interface EditorRunControls {
   showRunDialog: boolean;
-  onRunWithParams: (params: Record<string, string>) => void;
-  onCloseRunDialog: () => void;
+  confirmRunWithParams: (params: Record<string, string>) => void;
+  closeRunDialog: () => void;
   lastExecutionList: Array<{ inputParametersJson?: string | null }> | undefined;
+  run: (debug?: boolean) => void;
+  cancelRun: () => void;
+  isRunning: boolean;
+}
 
-  // ----- Quick edit + script editor -----
-  quickEdit: { node: Node; x: number; y: number } | null;
-  setQuickEdit: (v: { node: Node; x: number; y: number } | null) => void;
-  handleQuickEditSave: (nodeId: string, configPatch: Record<string, unknown>) => void;
-  scriptEditNodeId: string | null;
-  setScriptEditNodeId: (v: string | null) => void;
-
-  // ----- Find/Replace + Search -----
-  findReplaceOpen: boolean;
-  setFindReplaceOpen: (v: boolean) => void;
-  searchOpen: boolean;
-  setSearchOpen: (v: boolean) => void;
-  searchInput: string;
-  setSearchInput: (v: string) => void;
-  searchResults: Node[];
-  jumpToNode: (n: Node) => void;
-  jumpToEdge: (e: Edge) => void;
-
-  // ----- Quick switcher / Command palette -----
-  quickSwitcherOpen: boolean;
-  setQuickSwitcherOpen: (v: boolean) => void;
-  commandPaletteOpen: boolean;
-  setCommandPaletteOpen: (v: boolean) => void;
-
-  // ----- Help / Diff / Lint -----
-  helpOpen: boolean;
-  setHelpOpen: (v: boolean | ((p: boolean) => boolean)) => void;
-  diffOpen: boolean;
-  setDiffOpen: (v: boolean) => void;
-  lintPanelOpen: boolean;
-  setLintPanelOpen: (v: boolean | ((p: boolean) => boolean)) => void;
-  lintResult: LintResult;
-
-  // ----- Pre-publish checklist -----
-  prePublishOpen: boolean;
-  prePublishLint: LintResult;
-  onConfirmPrePublish: () => void;
-  onCancelPrePublish: () => void;
-  /** Routes Publish/Enable through the modal (parent decides whether to open). */
-  onRequestPublish: () => void;
-
-  // ----- Command-Palette context (everything the palette needs to know) -----
-  // Role + lock state
-  roleCanWrite: boolean;
-  canWrite: boolean;
-  isAdmin: boolean;
-  isLockedByMe: boolean;
-  isLockedByOther: boolean;
-
-  // Save / Run
-  isDirty: boolean;
-  onSave: () => void;
-  isSaving: boolean;
-  handleRunClick: (debug?: boolean) => void;
-  liveExecution: { executionId?: string; status?: string } | null | undefined;
-
-  // Edit-Lock lifecycle mutations
-  onLock: () => void;
-  isLocking: boolean;
-  onUnlock: () => void;
-  isUnlocking: boolean;
-  isPublishing: boolean;
-  isEnabling: boolean;
-  isDisabling: boolean;
-  onForceUnlock: () => void;
-  isForceUnlocking: boolean;
-
-  // Edit operations
+/** Editor commands the command palette and the overlays trigger. */
+export interface EditorActions {
   undo: () => void;
   redo: () => void;
   copySelection: () => void;
@@ -131,68 +59,71 @@ export interface EditorOverlaysProps {
   deleteNodeById: (id: string) => void;
   selectAll: () => void;
   navigateNode: (dir: 'next' | 'prev') => void;
-
-  // Layout / Inspect
-  tidyLayout: () => void;
-  isTidying: boolean;
-  layoutMode: string;
-  restoreOrigLayout: () => void;
-  hasOrigLayout: boolean;
-
-  // Simulation
-  simulation: SimulationResult | null;
-  runSimulation: () => void;
-  clearSimulation: () => void;
-
-  // Activity-type filter
-  hiddenActivityTypes: Set<string>;
-  setHiddenActivityTypes: (v: Set<string>) => void;
-
-  // View
+  handleQuickEditSave: (nodeId: string, configPatch: Record<string, unknown>) => void;
+  jumpToNode: (n: Node) => void;
+  jumpToEdge: (e: Edge) => void;
   toggleFullscreen: () => void;
-  toggleQuickSwitcher: () => void;
   zoomToSelection: () => void;
   fitViewAll: () => void;
-  machineColoringEnabled: boolean;
-  failureHeatmapEnabled: boolean;
-
-  // Persistence / Export
   exportPng: () => void;
   exportJson: () => void;
+}
 
-  // Navigation
+export interface EditorOverlaysProps {
+  workflowId: string | undefined;
+  name: string;
+  workflow: Workflow | undefined;
+  graph: EditorGraphEditing;
+  overlays: EditorOverlayControls;
+  lifecycle: EditorLifecycle;
+  execution: EditorRunControls;
+  actions: EditorActions;
+  layout: TidyLayoutApi;
+  simulation: ReturnType<typeof useWorkflowSimulation>;
+  lintResult: LintResult;
+  hiddenActivityTypes: Set<string>;
+  setHiddenActivityTypes: (v: Set<string>) => void;
+  /** Fires the publish or enable once the pre-publish checklist is confirmed. */
+  onConfirmPrePublish: () => void;
+  /** Opens another workflow in the editor, remembering this one for the back button. */
+  openWorkflow: (workflowId: string) => void;
   navigate: (to: string) => void;
 }
 
-export function EditorOverlays(props: Readonly<EditorOverlaysProps>) {
+/**
+ * Renders every overlay, modal and dialog that floats over the workflow canvas. It owns no state:
+ * the open flags live in {@link EditorOverlayControls}, which the page also hands to the header
+ * and the keyboard shortcuts.
+ */
+export function EditorOverlays({
+  workflowId: id, name, workflow, graph, overlays, lifecycle, execution, actions, layout,
+  simulation: sim, lintResult, hiddenActivityTypes, setHiddenActivityTypes,
+  onConfirmPrePublish, openWorkflow, navigate,
+}: Readonly<EditorOverlaysProps>) {
   const designerMode = useDesignStore((s) => s.designerMode);
+  const machineColoringEnabled = useDesignStore((s) => s.machineColoringEnabled);
+  const failureHeatmapEnabled = useDesignStore((s) => s.failureHeatmapEnabled);
+  const { nodes, edges, setNodes, setEdges, commitHistory, markDirty } = graph;
   const {
-    id, name, workflow, nodes, edges, setNodes, setEdges,
-    commitHistory, markDirty,
-    showRunDialog, onRunWithParams, onCloseRunDialog, lastExecutionList,
-    quickEdit, setQuickEdit, handleQuickEditSave,
-    scriptEditNodeId, setScriptEditNodeId,
+    quickEdit, setQuickEdit, scriptEditNodeId, setScriptEditNodeId,
     findReplaceOpen, setFindReplaceOpen,
-    searchOpen, setSearchOpen, searchInput, setSearchInput, searchResults, jumpToNode, jumpToEdge,
-    quickSwitcherOpen, setQuickSwitcherOpen,
+    searchOpen, setSearchOpen, searchInput, setSearchInput,
+    quickSwitcherOpen, setQuickSwitcherOpen, toggleQuickSwitcher,
     commandPaletteOpen, setCommandPaletteOpen,
-    helpOpen, setHelpOpen,
-    diffOpen, setDiffOpen,
-    lintPanelOpen, setLintPanelOpen, lintResult,
-    prePublishOpen, prePublishLint, onConfirmPrePublish, onCancelPrePublish, onRequestPublish,
-    roleCanWrite, canWrite, isAdmin, isLockedByMe, isLockedByOther,
-    isDirty, onSave, isSaving, handleRunClick, liveExecution,
-    onLock, isLocking, onUnlock, isUnlocking, isPublishing,
-    isEnabling, isDisabling, onForceUnlock, isForceUnlocking,
-    undo, redo, copySelection, pasteBuffer, groupSelection,
-    selected, deleteNodeById, selectAll, navigateNode,
-    tidyLayout, isTidying, layoutMode, restoreOrigLayout, hasOrigLayout,
-    simulation, runSimulation, clearSimulation,
-    hiddenActivityTypes, setHiddenActivityTypes,
-    toggleFullscreen, toggleQuickSwitcher, zoomToSelection, fitViewAll,
-    machineColoringEnabled, failureHeatmapEnabled,
-    exportPng, exportJson, navigate,
-  } = props;
+    helpOpen, setHelpOpen, diffOpen, setDiffOpen,
+    lintPanelOpen, setLintPanelOpen,
+    prePublishLint, setPrePublishLint,
+    previewSubWorkflowRef, setPreviewSubWorkflowRef,
+  } = overlays;
+  const { canWrite, isDirty, isPublishing, isEnabling } = lifecycle;
+  const { showRunDialog, confirmRunWithParams, closeRunDialog, lastExecutionList } = execution;
+  const {
+    undo, redo, copySelection, pasteBuffer, groupSelection, selected, deleteNodeById, selectAll,
+    navigateNode, handleQuickEditSave, jumpToNode, jumpToEdge, toggleFullscreen, zoomToSelection,
+    fitViewAll, exportPng, exportJson,
+  } = actions;
+  const { simulation, runSimulation, clearSimulation } = sim;
+  const closePrePublish = () => setPrePublishLint(null);
 
   return (
     <>
@@ -219,8 +150,8 @@ export function EditorOverlays(props: Readonly<EditorOverlaysProps>) {
             triggerDescription={triggerConfig.description}
             parameters={triggerConfig.parameters}
             lastRunParams={lastRunParams}
-            onExecute={onRunWithParams}
-            onCancel={onCloseRunDialog}
+            onExecute={confirmRunWithParams}
+            onCancel={closeRunDialog}
           />
         );
       })()}
@@ -274,27 +205,25 @@ export function EditorOverlays(props: Readonly<EditorOverlaysProps>) {
           onClose={() => setCommandPaletteOpen(false)}
           commands={filterCommandsForDesignerMode(buildCommandPaletteCommands({
             // Role + lock state
-            roleCanWrite,
+            roleCanWrite: lifecycle.roleCanWrite,
             canWrite,
-            isAdmin,
-            isLockedByMe,
-            isLockedByOther,
+            isAdmin: lifecycle.isAdmin,
+            isLockedByMe: lifecycle.isLockedByMe,
+            isLockedByOther: lifecycle.isLockedByOther,
             workflowIsEnabled: !!workflow?.isEnabled,
             hasWorkflow: !!id,
             // Save / Run
             isDirty,
-            save: onSave, isSaving,
-            handleRunClick,
-            liveExecutionRunning: liveExecution?.status === 'Running',
-            cancelRunningExecution: () => {
-              if (liveExecution?.executionId) {
-                api.post(`/executions/${liveExecution.executionId}/cancel`, {}).catch(() => { /* ignore */ });
-              }
-            },
+            save: lifecycle.save, isSaving: lifecycle.isSaving,
+            handleRunClick: execution.run,
+            liveExecutionRunning: execution.isRunning,
+            cancelRunningExecution: execution.cancelRun,
             // Edit-Lock lifecycle
-            lock: onLock, isLocking, unlock: onUnlock, isUnlocking, isPublishing,
-            isEnabling, isDisabling, forceUnlock: onForceUnlock, isForceUnlocking,
-            requestPublish: onRequestPublish,
+            lock: lifecycle.lock, isLocking: lifecycle.isLocking,
+            unlock: lifecycle.unlock, isUnlocking: lifecycle.isUnlocking, isPublishing,
+            isEnabling, isDisabling: lifecycle.isDisabling,
+            forceUnlock: lifecycle.forceUnlock, isForceUnlocking: lifecycle.isForceUnlocking,
+            requestPublish: lifecycle.requestPublish,
             // Edit operations
             undo, redo,
             copySelection, pasteBuffer, groupSelection,
@@ -308,8 +237,8 @@ export function EditorOverlays(props: Readonly<EditorOverlaysProps>) {
             setSearchOpen, setFindReplaceOpen, setHelpOpen,
             setDiffOpen, setLintPanelOpen,
             // Layout
-            tidyLayout, isTidying, layoutMode,
-            restoreOrigLayout, hasOrigLayout,
+            tidyLayout: layout.tidyLayout, isTidying: layout.isTidying, layoutMode: layout.layoutMode,
+            restoreOrigLayout: layout.restoreOrigLayout, hasOrigLayout: layout.hasOrigLayout,
             // Simulation
             simulationActive: !!simulation,
             runSimulation, clearSimulation,
@@ -359,7 +288,7 @@ export function EditorOverlays(props: Readonly<EditorOverlaysProps>) {
         <SearchOverlay
           value={searchInput}
           onChange={setSearchInput}
-          results={searchResults}
+          results={findNodes(nodes, searchInput)}
           onPick={jumpToNode}
           onClose={() => { setSearchOpen(false); setSearchInput(''); }}
         />
@@ -398,33 +327,55 @@ export function EditorOverlays(props: Readonly<EditorOverlaysProps>) {
 
       {/* Pre-Publish Checklist — gates the Publish click. Opened by `requestPublish` in
           the page when the lint is non-empty; clean publishes skip the modal entirely. */}
-      {prePublishOpen && (
+      {prePublishLint && (
         <PrePublishChecklistModal
           result={prePublishLint}
           nodes={nodes}
           workflowName={name}
           isPending={isPublishing || isEnabling}
           onConfirm={onConfirmPrePublish}
-          onCancel={onCancelPrePublish}
+          onCancel={closePrePublish}
           onJumpToNode={(nodeId) => {
             const n = nodes.find((x) => x.id === nodeId);
             if (n) {
               jumpToNode(n);
-              onCancelPrePublish();
+              closePrePublish();
             }
           }}
           onJumpToEdge={(edgeId) => {
             const e = edges.find((x) => x.id === edgeId);
             if (e) {
               jumpToEdge(e);
-              onCancelPrePublish();
+              closePrePublish();
             }
           }}
+        />
+      )}
+
+      {previewSubWorkflowRef !== null && (
+        <SubWorkflowPreviewModal
+          workflowNameOrId={previewSubWorkflowRef}
+          onClose={() => setPreviewSubWorkflowRef(null)}
+          // The modal's onClose runs after this and clears the preview.
+          onOpenInEditor={openWorkflow}
         />
       )}
     </>
   );
 }
+
+/** Search & jump: nodes whose label, activity type or id contains the query. */
+function findNodes(nodes: Node[], input: string): Node[] {
+  const q = input.trim().toLowerCase();
+  if (!q) return [];
+  return nodes.filter((n) => {
+    const d = n.data as Record<string, unknown>;
+    const label = ((d?.label as string) || '').toLowerCase();
+    const type = ((d?.activityType as string) || '').toLowerCase();
+    return label.includes(q) || type.includes(q) || n.id.toLowerCase().includes(q);
+  });
+}
+
 
 /**
  * runScript double-click editor — its own component so the `useAiScriptStream` hook can

@@ -70,7 +70,7 @@ test.describe('Admin & User-Management (Teil 15)', () => {
 
     await page.getByRole('button', { name: /new user|neuer benutzer/i }).click();
 
-    // Dialog (role="presentation"): scope by the "New User" heading's panel.
+    // The dialog carries no accessible name: scope by the "New User" heading's panel.
     const dialog = page.getByRole('heading', { name: /new user|neuer benutzer/i }).locator('..');
     await expect(dialog).toBeVisible();
 

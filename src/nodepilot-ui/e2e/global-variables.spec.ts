@@ -9,7 +9,7 @@ import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
  * read-only. Secret values render as `***` and are never sent to the client.
  *
  * There is no backend: every call is mocked per test with page.route over the hermetic
- * catch-all, and selectors are bilingual. The create/edit dialog is role="presentation", so
+ * catch-all, and selectors are bilingual. The create/edit dialog carries no accessible name, so
  * scope to the parent element of its heading.
  */
 

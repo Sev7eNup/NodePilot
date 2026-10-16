@@ -266,7 +266,6 @@ test('quarantine confirms, then disables before cancelling all runs', async ({ p
   await page.getByRole('button', { name: 'Quarantine' }).click();
 
   // Destructive action: the confirm dialog comes first and nothing has been sent yet.
-  // (ModalShell carries no role="dialog", so match on the confirm copy instead.)
   await expect(page.getByText(/Quarantine “Nightly Backup”\?/)).toBeVisible();
   expect(order).toEqual([]);
 

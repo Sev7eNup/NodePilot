@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { createMemoryRouter, Outlet } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
+import { ErrorBoundary, RouteErrorFallback } from '../../components/ErrorBoundary';
 
 // Suppress the console noise React emits when a child throws on purpose.
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
@@ -81,5 +83,39 @@ describe('ErrorBoundary', () => {
       .map((args: unknown[]) => args.filter((a: unknown) => typeof a === 'string').join(' '))
       .join('|');
     expect(allMessages).toContain('TestScope');
+  });
+});
+
+describe('RouteErrorFallback', () => {
+  it('shows a route render error in the localized fallback and retries the route', () => {
+    let shouldThrow = true;
+    function Page() {
+      if (shouldThrow) throw new Error('route kaboom');
+      return <p>Page content</p>;
+    }
+    const router = createMemoryRouter([
+      { element: <Outlet />, errorElement: <RouteErrorFallback />, children: [{ path: '/', element: <Page /> }] },
+    ]);
+    render(<RouterProvider router={router} />);
+
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText('Unexpected error')).toBeInTheDocument();
+    expect(screen.getByText('route kaboom')).toBeInTheDocument();
+    expect(screen.queryByText(/Unexpected Application Error/i)).not.toBeInTheDocument();
+
+    shouldThrow = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByText('Page content')).toBeInTheDocument();
+  });
+
+  it('shows an unmatched path in the localized fallback', () => {
+    const router = createMemoryRouter(
+      [{ element: <Outlet />, errorElement: <RouteErrorFallback />, children: [{ path: '/', element: <p>Home</p> }] }],
+      { initialEntries: ['/missing'] },
+    );
+    render(<RouterProvider router={router} />);
+
+    expect(screen.getByText('Unexpected error')).toBeInTheDocument();
+    expect(screen.getByText('404 Not Found')).toBeInTheDocument();
   });
 });

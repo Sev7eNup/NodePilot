@@ -9,8 +9,8 @@ import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
  * page.route mock layered over the hermetic catch-all in fixtures/mockApi.ts.
  *
  * The SPA renders English under Playwright but German elsewhere, so every visible-text selector
- * is bilingual. Machine and credential dialogs use role="presentation" rather than role="dialog",
- * so they are scoped by the parent of the dialog heading.
+ * is bilingual. Machine and credential dialogs carry no accessible name, so they are scoped by
+ * the parent of the dialog heading.
  *
  * The dependency-warning and force-delete flow for credentials is not implemented in the UI, so
  * credential deletion is covered only as a confirm plus DELETE round-trip.
@@ -47,7 +47,7 @@ function credentialJson(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// The create/edit machine dialog has role="presentation". Its heading sits inside a header
+// In the create/edit machine dialog the heading sits inside a header
 // flex div, with the fields + footer as SIBLINGS of that header — so the dialog panel is the
 // heading's grandparent (`../..`), which contains header, fields and the submit footer.
 function machineCreatePanel(page: Page) {

@@ -150,7 +150,7 @@ function McpServersCard({ admin }: { admin: boolean }) {
       name: server.name, enabled: !server.enabled, transport: server.transport,
       command: server.command, arguments: server.arguments, endpoint: server.endpoint, updatedAt: server.updatedAt,
     });
-  }, onSettled: () => client.invalidateQueries({ queryKey: ['agent-mcp-servers'] }) });
+  }, onSettled: () => client.invalidateQueries({ queryKey: ['agent-mcp-servers'] }), meta: { handlesError: true } });
   return <section className="np-card p-5 space-y-4">
     {(error || mutation.error) && <p role="alert" className="text-error text-sm">{(error || mutation.error)?.message}</p>}
     <RegistryList title={t('mcpServers')} query={query} onQuery={setQuery} total={servers.length} count={filtered.length} loading={isPending} failed={!!error}>
@@ -183,7 +183,7 @@ function ServerEditor({ initial, onClose }: { initial: AgentMcpServer; onClose: 
     return api.put(`/agents/mcp-servers/${form.id}`, { name: form.name, enabled: form.enabled, transport: form.transport,
       command: form.transport === 'stdio' ? form.command : null, endpoint: form.transport === 'streamableHttp' ? form.endpoint : null,
       arguments: args.split(/\r?\n/).filter(Boolean), secrets: parsed, updatedAt: form.updatedAt || undefined });
-  }, onSuccess: async () => { setSecrets(''); await client.invalidateQueries({ queryKey: ['agent-mcp-servers'] }); onClose(); } });
+  }, onSuccess: async () => { setSecrets(''); await client.invalidateQueries({ queryKey: ['agent-mcp-servers'] }); onClose(); }, meta: { handlesError: true } });
   return <form className="border-t border-outline-variant pt-4 space-y-3" onSubmit={e => { e.preventDefault(); save.mutate(); }}>
     <label className="block text-sm">{t('name')}<input className="input-field" required maxLength={128} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label>
     <label className="block text-sm">{t('transport')}<select className="input-field" value={form.transport} onChange={e => setForm({ ...form, transport: e.target.value as AgentMcpServer['transport'] })}>
@@ -222,7 +222,7 @@ function SkillsCard({ admin }: { admin: boolean }) {
   }, onSuccess: async (_, action) => {
     await client.invalidateQueries({ queryKey: ['agent-skills'] });
     if (action.kind === 'import') { setImporting(false); setFile(null); setVersion('1.0.0'); }
-  } });
+  }, meta: { handlesError: true } });
   return <section className="np-card p-5 space-y-4">
     {(error || mutate.error) && <p role="alert" className="text-error text-sm">{(error || mutate.error)?.message}</p>}
     <RegistryList title={t('skills')} query={query} onQuery={setQuery} total={skills.length} count={filtered.length} loading={isPending} failed={!!error}>

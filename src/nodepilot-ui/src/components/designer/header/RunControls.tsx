@@ -1,12 +1,11 @@
 import { Checkbox, Debug, Play, WarningAltFilled } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
-import { api } from '../../../api/client';
 import { useDesignStore } from '../../../stores/designStore';
-import type { EditorHeaderProps } from './editorHeaderTypes';
+import type { EditorHeaderProps, HeaderRunControls } from './editorHeaderTypes';
 
-type RunControlsProps = Pick<EditorHeaderProps,
-  'roleCanWrite' | 'liveExecution' | 'handleRunClick' | 'lintResult' | 'setLintPanelOpen'
-> & {
+type RunControlsProps = Pick<EditorHeaderProps, 'run' | 'lintResult'> & {
+  roleCanWrite: boolean;
+  setLintPanelOpen: EditorHeaderProps['overlays']['setLintPanelOpen'];
   /** `cta` = the compact green "Run" call-to-action with a label; `icon` = the classic
    *  icon-only Play square. Both variants use the same Run label. */
   variant: 'cta' | 'icon';
@@ -17,8 +16,9 @@ type RunControlsProps = Pick<EditorHeaderProps,
  * logic, shared by both header layouts. Only the primary Run button's presentation differs via
  * `variant`; cancel-while-running, the expert-only Debug button and the lint pill are identical.
  */
-export function RunControls({ variant, roleCanWrite, liveExecution, handleRunClick, lintResult, setLintPanelOpen }: Readonly<RunControlsProps>) {
+export function RunControls({ variant, roleCanWrite, run, lintResult, setLintPanelOpen }: Readonly<RunControlsProps>) {
   const { t } = useTranslation('editor');
+  const { liveExecution, run: handleRunClick, cancelRun: onCancelRun }: HeaderRunControls = run;
   const isExpert = useDesignStore((s) => s.designerMode === 'expert');
   const lintCount = lintResult.errors.length + lintResult.warnings.length;
 
@@ -28,9 +28,7 @@ export function RunControls({ variant, roleCanWrite, liveExecution, handleRunCli
         liveExecution?.status === 'Running' ? (
           <button
             type="button"
-            onClick={async () => {
-              try { await api.post(`/executions/${liveExecution.executionId}/cancel`, {}); } catch { /* ignore */ }
-            }}
+            onClick={onCancelRun}
             className="flex items-center justify-center gap-1.5 rounded-md h-9 px-4 bg-error text-on-error hover:bg-error/90 text-sm font-label font-semibold transition-colors"
             title={t('cancelRunning')}
           >

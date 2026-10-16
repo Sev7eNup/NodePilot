@@ -103,9 +103,10 @@ Server, keine DB — der Zustand lebt pro Tab und ein Reload stellt den Seed wie
   statt ans Fenster, `pageerror` feuert nicht, und ein Routen-Durchlauf meldet „sauber". Der
   Smoke-Test prüft deshalb zusätzlich, dass keine Boundary gerendert ist — und geht die
   Settings-**Unterreiter** einzeln ab, weil der Crash hinter dem System-Tab lag. Gematcht wird auf
-  den Seitentext, **nicht** auf `[role="alert"]`: die ErrorBoundary der App trägt diese Rolle, das
-  Fehler-Element von React Router nicht — und genau darüber rutschte die abgestürzte
-  Alerting-Seite als „sauber" durch.
+  den Seitentext, **nicht** auf `[role="alert"]`: das Standard-Fehlerelement von React Router trägt
+  diese Rolle nicht — und genau darüber rutschte die abgestürzte Alerting-Seite als „sauber" durch.
+  Die Routen zeigen als `errorElement` inzwischen den lokalisierten Fallback der App; der Textmatch
+  deckt ihn in beiden Sprachen und den Router-Standard ab.
 - **Ein `<a href="/api/…">` geht nie durch den `fetch`-Patch.** Es ist eine Dokument-Navigation:
   unter einem Unterpfad landet der Besucher auf der 404 des Hosts, und die In-Memory-Welt ist beim
   Zurückkommen neu aufgebaut. `demo/net/anchors.ts` fängt deshalb jeden gleich-origin-Klick ab, der

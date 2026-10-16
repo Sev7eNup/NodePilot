@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useMemo } from 'react';
 import type { Node } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
@@ -27,21 +27,21 @@ export interface CoverageAnnotation {
 }
 
 /**
- * Fetches coverage stats and stamps `__coverage` onto each activity node so
- * ActivityNode.tsx can render a tint without prop drilling. The annotation is cleared
- * while the toggle is off so a stale grey border does not show up in normal designer use.
+ * Fetches coverage stats while the heatmap toggle is on and derives a `__coverage` annotation per
+ * activity node, which useDisplayedGraph merges into the projection. Returns null while the toggle
+ * is off or the data is still loading, so the default look shows.
  */
 export function useCoverageHeatmap({
   workflowId,
   enabled,
   windowDays,
-  setNodes,
+  nodes,
 }: {
   workflowId: string | undefined;
   enabled: boolean;
   windowDays: number;
-  setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
-}) {
+  nodes: Node[];
+}): ReadonlyMap<string, CoverageAnnotation> | null {
   const { data: coverage } = useQuery({
     queryKey: ['workflow-coverage', workflowId, windowDays],
     enabled: !!workflowId && enabled,
@@ -51,32 +51,27 @@ export function useCoverageHeatmap({
     ),
   });
 
-  useEffect(() => {
-    if (!enabled || !coverage) {
-      // Clear stale annotations so toggling off restores the default look.
-      setNodes((nds) => nds.map((n) => {
-        const d = n.data as Record<string, unknown>;
-        if (!('__coverage' in d)) return n;
-        const { __coverage: _c, ...rest } = d;
-        void _c;
-        return { ...n, data: rest };
-      }));
-      return;
-    }
+  // Keyed on the activity node ids rather than `nodes`, which changes on every frame of a drag.
+  // A move keeps the key, so the annotation objects stay the same and node memos hold.
+  const activityIdsKey = enabled
+    ? JSON.stringify(nodes.filter((n) => n.type === 'activity').map((n) => n.id))
+    : null;
 
+  return useMemo(() => {
+    if (activityIdsKey === null || !coverage) return null;
     const byStepId = new Map<string, NodeCoverageStats>();
     for (const s of coverage.nodes) byStepId.set(s.stepId, s);
 
     const total = coverage.totalExecutions;
-    setNodes((nds) => nds.map((n) => {
-      if (n.type !== 'activity') return n;
-      const stats = byStepId.get(n.id);
+    const byNode = new Map<string, CoverageAnnotation>();
+    for (const nodeId of JSON.parse(activityIdsKey) as string[]) {
+      const stats = byStepId.get(nodeId);
       const executed = stats?.executedCount ?? 0;
       const cls: CoverageClass =
         executed === 0 ? 'never'
         : (total > 0 && executed / total < 0.25) ? 'rare'
         : 'common';
-      const annotation: CoverageAnnotation = {
+      byNode.set(nodeId, {
         cls,
         executedCount: executed,
         failedCount: stats?.failedCount ?? 0,
@@ -84,14 +79,8 @@ export function useCoverageHeatmap({
         totalExecutions: total,
         windowDays: coverage.windowDays,
         lastExecutedAt: stats?.lastExecutedAt ?? null,
-      };
-      const current = (n.data as Record<string, unknown>).__coverage as CoverageAnnotation | undefined;
-      if (current?.cls === annotation.cls
-        && current.executedCount === annotation.executedCount
-        && current.failedCount === annotation.failedCount
-        && current.totalExecutions === annotation.totalExecutions
-      ) return n;
-      return { ...n, data: { ...n.data, __coverage: annotation } };
-    }));
-  }, [coverage, enabled, setNodes]);
+      });
+    }
+    return byNode;
+  }, [activityIdsKey, coverage]);
 }

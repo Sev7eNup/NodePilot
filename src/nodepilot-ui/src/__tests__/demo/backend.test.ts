@@ -316,6 +316,32 @@ describe('contracts read through the real clients', () => {
     expect(everything).toHaveLength(all.length);
   });
 
+  it('orders executions across all pages by the requested sort, as the executions page sends it', async () => {
+    type Row = { id: string; workflowId: string; startedAt: string; stepsCompleted?: number };
+    const names = new Map(getWorld().workflows.map((w) => [w.id, w.name]));
+    const total = getWorld().executions.filter((e) => ['Succeeded', 'Failed', 'Cancelled'].includes(e.status)).length;
+
+    // Default: newest first.
+    const byDefault = await getAllPages<Row>('/executions?terminalOnly=true', 7);
+    expect(byDefault).toHaveLength(total);
+    const started = byDefault.map((r) => Date.parse(r.startedAt));
+    expect(started).toEqual([...started].sort((a, b) => b - a));
+
+    // The order spans pages: page 2 continues where page 1 ended.
+    const byWorkflow = await getAllPages<Row>('/executions?terminalOnly=true&sortBy=workflow&sortDir=asc', 7);
+    const workflowOrder = byWorkflow.map((r) => names.get(r.workflowId) ?? '');
+    expect(workflowOrder).toEqual([...workflowOrder].sort((a, b) => a.localeCompare(b)));
+
+    const bySteps = await getAllPages<Row>('/executions?terminalOnly=true&sortBy=steps&sortDir=desc', 7);
+    const steps = bySteps.map((r) => r.stepsCompleted ?? 0);
+    expect(steps).toEqual([...steps].sort((a, b) => b - a));
+  });
+
+  it('rejects an unknown execution sort like the server does', async () => {
+    await expect(api.get('/executions?sortBy=bogus')).rejects.toMatchObject({ status: 400 });
+    await expect(api.get('/executions?sortBy=started&sortDir=sideways')).rejects.toMatchObject({ status: 400 });
+  });
+
   it('serves every settings section the admin UI asks for', async () => {
     for (const section of demoSettingsSections) {
       const response = await adminSettings.getSection<Record<string, unknown>>(section);

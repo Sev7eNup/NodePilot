@@ -1,205 +1,149 @@
-import { useEffect, useMemo } from 'react';
-import { type Node, type Edge, useReactFlow } from '@xyflow/react';
+import { useMemo } from 'react';
+import type { Node, Edge } from '@xyflow/react';
 
-interface CriticalPathAnnotation {
+export interface CriticalPathAnnotation {
   isCritical: boolean;
   slack: number;       // ms of slack (0 = on critical path)
   earliestStart: number; // ms from workflow start
   duration: number;    // p95 duration in ms
 }
 
+/** Step stats per node id, as served by /step-stats. Only the p95 duration is read. */
+export type CriticalPathStats = Readonly<Record<string, { p95DurationMs?: unknown }>> | undefined;
+
+/** What the CPM pass reads: active node ids with their p95 duration, and active edges. */
+interface CpmInput {
+  nodes: [id: string, p95DurationMs: number][];
+  edges: [source: string, target: string][];
+}
+
 /**
- * Computes the critical path through the workflow DAG using CPM (Critical Path Method).
- * Uses p95 duration from __stats as edge weights. Nodes without stats default to 0ms.
- * Stamps `__criticalPath` onto activity nodes.
- * Only active when `criticalPathEnabled` is true in the design store.
+ * Reduces the graph to the CPM input. Disabled nodes are treated as removed, together with
+ * their edges; otherwise their outgoing edges keep successors' in-degree above zero and the
+ * successor never reaches the topological queue. Nodes without stats default to 0 ms.
+ */
+function buildCpmInput(nodes: Node[], edges: Edge[], stats: CriticalPathStats): CpmInput {
+  const active = new Set<string>();
+  const cpmNodes: CpmInput['nodes'] = [];
+  for (const n of nodes) {
+    const data = n.data as Record<string, unknown> | undefined;
+    if (data?.disabled) continue;
+    active.add(n.id);
+    const p95Ms = stats?.[n.id]?.p95DurationMs;
+    const p95 = typeof p95Ms === 'number' ? Math.max(0, p95Ms) : 0;
+    cpmNodes.push([n.id, p95]);
+  }
+  const cpmEdges: CpmInput['edges'] = [];
+  for (const e of edges) {
+    if ((e.data as Record<string, unknown> | undefined)?.disabled) continue;
+    if (!active.has(e.source) || !active.has(e.target)) continue;
+    cpmEdges.push([e.source, e.target]);
+  }
+  return { nodes: cpmNodes, edges: cpmEdges };
+}
+
+/** Critical Path Method over the reduced graph: forward pass, backward pass, slack. */
+function computeCriticalPath({ nodes, edges }: CpmInput): ReadonlyMap<string, CriticalPathAnnotation> {
+  const duration = new Map(nodes);
+  const adj = new Map<string, string[]>();        // nodeId -> downstream nodeIds
+  const reverseAdj = new Map<string, string[]>(); // nodeId -> upstream nodeIds
+  const inDegree = new Map<string, number>();
+  for (const [id] of nodes) {
+    adj.set(id, []);
+    reverseAdj.set(id, []);
+    inDegree.set(id, 0);
+  }
+  for (const [source, target] of edges) {
+    adj.get(source)?.push(target);
+    reverseAdj.get(target)?.push(source);
+    inDegree.set(target, (inDegree.get(target) ?? 0) + 1);
+  }
+  const getDuration = (id: string): number => duration.get(id) ?? 0;
+
+  // Topological sort (Kahn's algorithm)
+  const topo: string[] = [];
+  const queue: string[] = [];
+  for (const [id] of nodes) {
+    if ((inDegree.get(id) ?? 0) === 0) queue.push(id);
+  }
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    topo.push(id);
+    for (const next of (adj.get(id) ?? [])) {
+      const deg = (inDegree.get(next) ?? 1) - 1;
+      inDegree.set(next, deg);
+      if (deg === 0) queue.push(next);
+    }
+  }
+
+  const annotations = new Map<string, CriticalPathAnnotation>();
+  if (topo.length === 0) return annotations;
+
+  // Forward pass: earliest start
+  const earliestStart = new Map<string, number>();
+  for (const id of topo) {
+    let maxPredFinish = 0;
+    for (const pred of (reverseAdj.get(id) ?? [])) {
+      const predFinish = (earliestStart.get(pred) ?? 0) + getDuration(pred);
+      if (predFinish > maxPredFinish) maxPredFinish = predFinish;
+    }
+    earliestStart.set(id, maxPredFinish);
+  }
+
+  // Find the overall end time
+  let maxFinish = 0;
+  for (const id of topo) {
+    const finish = (earliestStart.get(id) ?? 0) + getDuration(id);
+    if (finish > maxFinish) maxFinish = finish;
+  }
+
+  // Backward pass in reverse topological order: latest start
+  const latestStart = new Map<string, number>();
+  for (const id of [...topo].reverse()) {
+    const successors = adj.get(id) ?? [];
+    let minSuccStart = maxFinish;
+    for (const succ of successors) {
+      const succStart = latestStart.get(succ) ?? maxFinish;
+      if (succStart < minSuccStart) minSuccStart = succStart;
+    }
+    // A terminal node may finish as late as the overall end.
+    latestStart.set(id, minSuccStart - getDuration(id));
+  }
+
+  // Compute slack and critical path
+  for (const id of topo) {
+    const es = earliestStart.get(id) ?? 0;
+    const ls = latestStart.get(id) ?? 0;
+    const slack = ls - es;
+    annotations.set(id, {
+      isCritical: Math.abs(slack) < 1, // sub-ms tolerance for floating point
+      slack: Math.max(0, Math.round(slack)),
+      earliestStart: Math.round(es),
+      duration: Math.round(getDuration(id)),
+    });
+  }
+  return annotations;
+}
+
+/**
+ * Critical-path annotations per node id, or null while the overlay is off. A pure computation:
+ * useDisplayedGraph merges the result into the projection, so the overlay never writes into
+ * the authored graph.
+ *
+ * The memo is keyed on the serialized CPM input rather than on `nodes`, which changes on every
+ * frame of a drag. A move keeps the same key, so the annotation objects stay the same and the
+ * node components' memo comparators hold.
  */
 export function useCriticalPath(
-  _workflowId: string | undefined,
   enabled: boolean,
   nodes: Node[],
   edges: Edge[],
-) {
-  const { setNodes } = useReactFlow();
-
-  // Gated like the computation below it: the canvas replaces the node array on every frame of
-  // a drag, and scanning it for stats the feature is not going to use is wasted work.
-  const stats = useMemo(() => {
-    const map = new Map<string, { p95DurationMs: number }>();
-    if (!enabled) return map;
-    for (const n of nodes) {
-      const s = (n.data as Record<string, unknown>)?.__stats as { p95DurationMs: number } | undefined;
-      if (s && typeof s.p95DurationMs === 'number') {
-        map.set(n.id, { p95DurationMs: s.p95DurationMs });
-      }
-    }
-    return map;
-  }, [enabled, nodes]);
-
-  const result = useMemo(() => {
-    if (!enabled) return null;
-
-    // Build adjacency over executable nodes only. Disabled nodes are treated as removed
-    // from the CPM graph; otherwise their outgoing edges keep successors' in-degree above
-    // zero and the successor never reaches the topological queue.
-    const adj = new Map<string, string[]>();       // nodeId -> downstream nodeIds
-    const reverseAdj = new Map<string, string[]>(); // nodeId -> upstream nodeIds
-    const nodeById = new Map(nodes.map((n) => [n.id, n]));
-    const isDisabled = (id: string): boolean => {
-      const n = nodeById.get(id);
-      return !!(n?.data as Record<string, unknown>)?.disabled;
-    };
-    const activeNodeIds = new Set(nodes.filter((n) => !isDisabled(n.id)).map((n) => n.id));
-
-    for (const id of activeNodeIds) {
-      adj.set(id, []);
-      reverseAdj.set(id, []);
-    }
-
-    for (const e of edges) {
-      // Skip disabled edges and edges touching disabled/missing nodes.
-      const edgeData = e.data as Record<string, unknown> | undefined;
-      if (edgeData?.disabled) continue;
-      if (!activeNodeIds.has(e.source) || !activeNodeIds.has(e.target)) continue;
-      adj.get(e.source)?.push(e.target);
-      reverseAdj.get(e.target)?.push(e.source);
-    }
-
-    // Get duration for a node (p95, or 0 if no stats)
-    const getDuration = (id: string): number => {
-      const s = stats.get(id);
-      return s ? Math.max(0, s.p95DurationMs) : 0;
-    };
-
-    // Topological sort (Kahn's algorithm)
-    const inDegree = new Map<string, number>();
-    for (const id of activeNodeIds) {
-      inDegree.set(id, 0);
-    }
-    for (const e of edges) {
-      const edgeData = e.data as Record<string, unknown> | undefined;
-      if (edgeData?.disabled) continue;
-      if (!activeNodeIds.has(e.source) || !activeNodeIds.has(e.target)) continue;
-      inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
-    }
-
-    const topo: string[] = [];
-    const queue: string[] = [];
-    for (const id of activeNodeIds) {
-      if ((inDegree.get(id) ?? 0) === 0) {
-        queue.push(id);
-      }
-    }
-
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      topo.push(id);
-      for (const next of (adj.get(id) ?? [])) {
-        const deg = (inDegree.get(next) ?? 1) - 1;
-        inDegree.set(next, deg);
-        if (deg === 0) queue.push(next);
-      }
-    }
-
-    if (topo.length === 0) return new Map<string, CriticalPathAnnotation>();
-
-    // Forward pass: earliest start
-    const earliestStart = new Map<string, number>();
-    for (const id of topo) {
-      let maxPredFinish = 0;
-      for (const pred of (reverseAdj.get(id) ?? [])) {
-        const predFinish = (earliestStart.get(pred) ?? 0) + getDuration(pred);
-        if (predFinish > maxPredFinish) maxPredFinish = predFinish;
-      }
-      earliestStart.set(id, maxPredFinish);
-    }
-
-    // Find the overall end time
-    let maxFinish = 0;
-    for (const id of topo) {
-      const finish = (earliestStart.get(id) ?? 0) + getDuration(id);
-      if (finish > maxFinish) maxFinish = finish;
-    }
-
-    // Backward pass: latest start
-    const latestStart = new Map<string, number>();
-    // Initialize all nodes to maxFinish - duration
-    for (const id of topo) {
-      latestStart.set(id, maxFinish - getDuration(id));
-    }
-
-    // Reverse topological order
-    const revTopo = [...topo].reverse();
-    for (const id of revTopo) {
-      let minSuccStart = maxFinish;
-      const successors = adj.get(id) ?? [];
-      if (successors.length === 0) {
-        // Terminal node: latest finish = maxFinish
-        latestStart.set(id, maxFinish - getDuration(id));
-      } else {
-        for (const succ of successors) {
-          const succStart = latestStart.get(succ) ?? maxFinish;
-          if (succStart < minSuccStart) minSuccStart = succStart;
-        }
-        latestStart.set(id, minSuccStart - getDuration(id));
-      }
-    }
-
-    // Compute slack and critical path
-    const annotations = new Map<string, CriticalPathAnnotation>();
-    for (const id of topo) {
-      const es = earliestStart.get(id) ?? 0;
-      const ls = latestStart.get(id) ?? 0;
-      const dur = getDuration(id);
-      const slack = ls - es;
-      annotations.set(id, {
-        isCritical: Math.abs(slack) < 1, // sub-ms tolerance for floating point
-        slack: Math.max(0, Math.round(slack)),
-        earliestStart: Math.round(es),
-        duration: Math.round(dur),
-      });
-    }
-
-    return annotations;
-  }, [enabled, nodes, edges, stats]);
-
-  // Stamp annotations onto nodes (or clear when disabled)
-  useEffect(() => {
-    if (!enabled || !result) {
-      // Clear __criticalPath from all nodes
-      setNodes((nds: Node[]) => {
-        let changed = false;
-        const updated = nds.map((n) => {
-          if ((n.data as Record<string, unknown>)?.__criticalPath) {
-            changed = true;
-            const { __criticalPath, ...rest } = n.data as Record<string, unknown>;
-            return { ...n, data: rest };
-          }
-          return n;
-        });
-        return changed ? updated : nds;
-      });
-      return;
-    }
-
-    setNodes((nds: Node[]) => {
-      let changed = false;
-      const updated = nds.map((n) => {
-        const annotation = result.get(n.id);
-        const current = (n.data as Record<string, unknown>)?.__criticalPath as CriticalPathAnnotation | undefined;
-        if (annotation) {
-          if (!current || current.isCritical !== annotation.isCritical || current.slack !== annotation.slack) {
-            changed = true;
-            return { ...n, data: { ...n.data, __criticalPath: annotation } };
-          }
-        } else if (current) {
-          changed = true;
-          const { __criticalPath, ...rest } = n.data as Record<string, unknown>;
-          return { ...n, data: rest };
-        }
-        return n;
-      });
-      return changed ? updated : nds;
-    });
-  }, [enabled, result, setNodes]);
+  stats: CriticalPathStats,
+): ReadonlyMap<string, CriticalPathAnnotation> | null {
+  const inputKey = enabled ? JSON.stringify(buildCpmInput(nodes, edges, stats)) : null;
+  return useMemo(() => {
+    if (inputKey === null) return null;
+    const input: CpmInput = JSON.parse(inputKey);
+    return computeCriticalPath(input);
+  }, [inputKey]);
 }

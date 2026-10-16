@@ -27,6 +27,7 @@ import { parseOutputParametersJson } from '../lib/outputParameters';
 import { rawStatusLabelKey } from '../lib/statusTokens';
 import { useRole } from '../lib/rbac';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useLiveOpsFeed } from '../hooks/useLiveOpsFeed';
 import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
 import {
@@ -37,7 +38,8 @@ import {
 // so these three cover every row the page can ever render.
 type StatusFilter = 'all' | 'Succeeded' | 'Failed' | 'Cancelled';
 
-// ColKey covers every sortable column; ResizableColKey drops the auto-flex "workflow"
+// ColKey covers every sortable column and is sent as the server's `sortBy` value as is.
+// ResizableColKey drops the auto-flex "workflow"
 // column (no explicit width / no drag-handle) — same pattern as WorkflowsPage /
 // GlobalVariablesPage.
 type ColKey = 'status' | 'workflow' | 'trigger' | 'startedBy' | 'steps' | 'duration' | 'started';
@@ -45,6 +47,10 @@ type ResizableColKey = Exclude<ColKey, 'workflow'>;
 
 const WORKFLOW_MIN_WIDTH = 240;
 const PAGE_SIZE = 200;
+// Prefix of every history query below. Module-level because useLiveOpsFeed needs a stable key.
+const HISTORY_QUERY_KEY = ['executions', 'terminalOnly'];
+// One refetch per burst of finished runs; the history does not need sub-second freshness.
+const HISTORY_LIVE_DEBOUNCE_MS = 2_000;
 const ACTIONS_WIDTH = 120; // ≤3 icon buttons × ~30px + gap + px-4 cell padding
 const DEFAULT_WIDTHS: Record<ResizableColKey, number> = {
   status: 140, trigger: 160, startedBy: 140, steps: 150, duration: 100, started: 180,
@@ -108,15 +114,16 @@ export function ExecutionsPage() {
 
   // The global executions list shows only finished runs (Succeeded / Failed / Cancelled).
   // Running runs belong in the designer's live panel, not in this history list.
-  // No refetchInterval: SignalR's ExecutionStatusChanged invalidates this cache
-  // specifically (see useSignalR.scheduleQueryInvalidate). Every real status change
-  // triggers a debounced refetch — no more 5s polling against a possibly idle server.
+  // No refetchInterval: a status change on the live-ops feed invalidates every history query
+  // after a debounce. The server filters, sorts and pages the whole history; the grid renders
+  // the page as is.
+  useLiveOpsFeed({ queryKey: HISTORY_QUERY_KEY, debounceMs: HISTORY_LIVE_DEBOUNCE_MS });
   const { data: executionPage, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['executions', 'terminalOnly', statusFilter, workflowFilter, debouncedSearch, page],
+    queryKey: [...HISTORY_QUERY_KEY, statusFilter, workflowFilter, debouncedSearch, sortBy, sortDir, page],
     queryFn: () => {
       // includePayloads=false: this grid never renders returnData or inputParametersJson, and
       // both are capped at 32 KiB per row over a page of 200.
-      const params = new URLSearchParams({ terminalOnly: 'true', includePayloads: 'false' });
+      const params = new URLSearchParams({ terminalOnly: 'true', includePayloads: 'false', sortBy, sortDir });
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (workflowFilter !== 'all') params.set('workflowId', workflowFilter);
       if (debouncedSearch) params.set('search', debouncedSearch);
@@ -159,10 +166,12 @@ export function ExecutionsPage() {
     [colWidths],
   );
 
+  // A new order starts over at page 1: page N of one order says nothing about another.
   const handleSort = (col: ColKey) => {
     if (sortBy === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     // Time-ish columns feel more natural newest-first on the first click.
     else { setSortBy(col); setSortDir(col === 'started' || col === 'duration' ? 'desc' : 'asc'); }
+    setPage(1);
   };
 
   // Status and timing aggregates describe the currently visible server page. Computing
@@ -179,29 +188,7 @@ export function ExecutionsPage() {
     return { succeeded, failed, cancelled, avg, successRate };
   }, [executions]);
 
-  const filteredSorted = useMemo(() => {
-    let list = executions ?? [];
-    if (statusFilter !== 'all') list = list.filter((e) => e.status === statusFilter);
-    if (workflowFilter !== 'all') list = list.filter((e) => e.workflowId === workflowFilter);
-    // Text search is applied before server paging; filtering the returned page again can
-    // discard matches and make the visible rows disagree with the server's total.
-    const sorted = [...list].sort((a, b) => {
-      let cmp = 0;
-      switch (sortBy) {
-        case 'status':    cmp = a.status.localeCompare(b.status); break;
-        case 'workflow':  cmp = workflowNameOf(a).localeCompare(workflowNameOf(b)); break;
-        case 'trigger':   cmp = (a.triggeredBy ?? '').localeCompare(b.triggeredBy ?? ''); break;
-        case 'startedBy': cmp = (a.startedByUsername ?? '').localeCompare(b.startedByUsername ?? ''); break;
-        case 'steps':     cmp = (a.stepsCompleted ?? 0) - (b.stepsCompleted ?? 0); break;
-        case 'duration':  cmp = (executionDurationMs(a) ?? -1) - (executionDurationMs(b) ?? -1); break;
-        case 'started':   cmp = a.startedAt.localeCompare(b.startedAt); break;
-      }
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-    return sorted;
-    // workflowNameOf depends on workflowNames; listing it keeps the sort stable across renames.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [executions, statusFilter, workflowFilter, sortBy, sortDir, workflowNames]);
+  const rows = executions ?? [];
 
   // --- Virtual scrolling (desktop only) ---
   const listRef = useRef<HTMLDivElement>(null);
@@ -233,11 +220,11 @@ export function ExecutionsPage() {
   );
 
   const rowVirtualizer = useVirtualizer({
-    count: isMobile ? 0 : filteredSorted.length,
+    count: isMobile ? 0 : rows.length,
     getScrollElement: () => document.getElementById('np-main-scroll'),
-    estimateSize: (index) => filteredSorted[index]?.id === expandedId ? 300 : 52,
+    estimateSize: (index) => rows[index]?.id === expandedId ? 300 : 52,
     overscan: 8,
-    getItemKey: (index) => filteredSorted[index].id,
+    getItemKey: (index) => rows[index].id,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 52,
     scrollMargin,
     // jsdom has no layout -> initialRect prevents 0-item render in unit tests.
@@ -253,7 +240,7 @@ export function ExecutionsPage() {
     if (scrolledForRef.current === target) return;
     if (!executions.some((e) => e.id === target)) return;
     scrolledForRef.current = target;
-    const idx = filteredSorted.findIndex((e) => e.id === target);
+    const idx = rows.findIndex((e) => e.id === target);
     if (idx >= 0) rowVirtualizer.scrollToIndex(idx, { align: 'center', behavior: 'smooth' });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [executions, isLoading]);
@@ -348,13 +335,13 @@ export function ExecutionsPage() {
         <div className="np-card p-8 text-center text-on-surface-variant font-label">
           {t('executions:noExecutions')}
         </div>
-      ) : filteredSorted.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="np-card p-8 text-center text-on-surface-variant font-label">
           {t('executions:noMatch')}
         </div>
       ) : isMobile ? (
         <div className="space-y-2" data-testid="mobile-card-list">
-          {filteredSorted.map((exec) => (
+          {rows.map((exec) => (
             <ExecutionCard
               key={exec.id}
               execution={exec}
@@ -399,7 +386,7 @@ export function ExecutionsPage() {
             {/* Virtual body — absolute-positioned items, each containing main row + optional detail. */}
             <div ref={listRef} role="rowgroup" style={{ position: 'relative', height: rowVirtualizer.getTotalSize() - scrollMargin }}>
               {rowVirtualizer.getVirtualItems().map((vRow) => {
-                const exec = filteredSorted[vRow.index];
+                const exec = rows[vRow.index];
                 return (
                   <div
                     key={exec.id}
@@ -428,10 +415,10 @@ export function ExecutionsPage() {
           </div>
         </div></div>
       )}
-      {filteredSorted.length > 0 && (
+      {rows.length > 0 && (
         <div className="flex items-center justify-between gap-3 mt-3">
           <p className="font-label text-[11px] text-on-surface-variant">
-            {t('executions:showing', { count: filteredSorted.length, total: totalCount })}
+            {t('executions:showing', { count: rows.length, total: totalCount })}
           </p>
           {totalPages > 1 && (
             <div className="flex items-center gap-2 font-label text-xs text-on-surface-variant">

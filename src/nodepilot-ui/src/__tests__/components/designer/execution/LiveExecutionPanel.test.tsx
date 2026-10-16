@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { handleMutationError } from '../../../../lib/queryErrorToast';
+import { useToastStore } from '../../../../stores/toastStore';
 import type { LiveExecution } from '../../../../hooks/useSignalR';
 import { LiveTab } from '../../../../components/designer/execution/LiveExecutionPanel';
 
@@ -109,5 +112,36 @@ describe('LiveTab SignalR group lifecycle', () => {
     rerender(liveTabEl({ executionsLive: [makeExec('exec-2')], onJoinExecution: onJoin, onLeaveExecution: onLeave }));
     expect(onLeave).toHaveBeenCalledWith('exec-1');
     expect(onLeave).not.toHaveBeenCalledWith('exec-2');
+  });
+});
+
+describe('LiveTab paused-step debugger', () => {
+  it('reports a failed resume and keeps the edited variables for a retry', async () => {
+    useToastStore.setState({ toasts: [] });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ detail: 'Execution is no longer paused' }),
+      { status: 409, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const paused: LiveExecution = {
+      ...makeExec('exec-1'),
+      steps: [{
+        executionId: 'exec-1', workflowId: 'wf-1', stepId: 'step-a', stepName: 'Halted', stepType: 'runScript',
+        status: 'Paused', pausedAt: '2026-06-23T10:00:02Z', pausedVariables: { 'globals.Env': 'prod' },
+      }],
+    };
+    // Same mutation cache as the app, so a mutation without its own onError reaches the toast.
+    const client = new QueryClient({ mutationCache: new MutationCache({ onError: handleMutationError }) });
+    render(<QueryClientProvider client={client}>{liveTabEl({ executionsLive: [paused] })}</QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button'));
+
+    fireEvent.change(await screen.findByDisplayValue('prod'), { target: { value: 'test' } });
+    fireEvent.click(screen.getByRole('button', { name: /Continue/ }));
+
+    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.message))
+      .toContain('Execution is no longer paused'));
+    expect(fetchSpy.mock.calls[0][0]).toBe('/api/executions/exec-1/resume');
+    expect(screen.getByDisplayValue('test')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Continue/ })).toBeEnabled();
+    fetchSpy.mockRestore();
   });
 });

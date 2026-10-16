@@ -100,6 +100,23 @@ describe('AiPromptDialog', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('Escape does not reach a parent dialog', () => {
+    // The script editor renders this dialog inside its own tree; a bubbling Escape would close
+    // the editor too and throw away its unsaved script.
+    const onClose = vi.fn();
+    const parentKeyDown = vi.fn();
+    render(
+      <div onKeyDown={parentKeyDown}>
+        <AiPromptDialog title="x" onSubmit={async () => {}} onClose={onClose} />
+      </div>,
+    );
+
+    fireEvent.keyDown(screen.getByLabelText('AI prompt'), { key: 'Escape' });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(parentKeyDown).not.toHaveBeenCalled();
+  });
+
   it('Ctrl+Enter inside textarea submits', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<AiPromptDialog title="x" onSubmit={onSubmit} onClose={() => {}} />);

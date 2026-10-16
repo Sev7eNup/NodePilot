@@ -68,6 +68,7 @@
     "reloadPage": "Seite neu laden"
   },
   "loadError": "Laden fehlgeschlagen.",
+  "actionFailed": "Die Aktion ist fehlgeschlagen.",
   "retry": "Erneut versuchen",
   "minus": "—",
   "dash": "–",

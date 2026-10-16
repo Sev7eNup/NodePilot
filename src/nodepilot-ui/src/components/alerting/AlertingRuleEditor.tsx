@@ -1,10 +1,11 @@
-import { Add, Send, TrashCan } from '@carbon/icons-react';
+import { Add, Send } from '@carbon/icons-react';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../api/client';
 import { sharedFoldersApi } from '../../api/sharedFolders';
 import { ModalShell } from '../common/ModalShell';
+import { AlertRouteFields, routeSecretForSave, type AlertRouteBase } from './AlertRouteFields';
 import { ConditionBuilder, type ExprNode } from '../designer/ConditionBuilder';
 import {
   alertingApi, UNCHANGED_SECRET,
@@ -18,12 +19,8 @@ import { toast } from '../../stores/toastStore';
 
 type Scope = 'Global' | 'Folders' | 'Workflows';
 
-type RouteForm = {
+type RouteForm = AlertRouteBase & {
   id: string | null;
-  channel: NotificationChannel;
-  target: string;
-  hasStoredSecret: boolean;
-  secretInput: string;
   condition: ExprNode | null;
 };
 
@@ -125,11 +122,7 @@ export function AlertingRuleEditor({
         id: r.id,
         channel: r.channel,
         target: r.target.trim(),
-        // Only webhook routes carry a secret. Guard on channel so a secret typed on a webhook route
-        // that was later switched to Email is not persisted as orphaned dead data.
-        secret: r.channel !== 'GenericWebhook'
-          ? null
-          : r.secretInput ? r.secretInput : (r.hasStoredSecret ? UNCHANGED_SECRET : null),
+        secret: routeSecretForSave(r),
         order: i,
         conditionExpressionJson: r.condition ? JSON.stringify(r.condition) : null,
       })),
@@ -327,42 +320,16 @@ export function AlertingRuleEditor({
           </div>
           <div className="space-y-2">
             {form.routes.map((r, idx) => (
-              <div key={idx} className="flex flex-wrap items-start gap-2 border border-outline-variant/60 rounded-md p-2 bg-surface-lowest">
-                <select value={r.channel} onChange={(e) => updateRoute(idx, { channel: e.target.value as NotificationChannel })}
-                  className="text-xs border border-outline-variant/50 rounded px-1 py-1.5 bg-surface-lowest">
-                  {availableChannels.map((c) => (
-                    <option key={c} value={c}>{t(`alerts:channels.${c}`)}</option>
-                  ))}
-                </select>
-                <input type="text" value={r.target} onChange={(e) => updateRoute(idx, { target: e.target.value })}
-                  placeholder={r.channel === 'Email' ? t('alerts:emailPlaceholder') : t('alerts:webhookPlaceholder')}
-                  className="flex-1 min-w-[160px] px-2 py-1.5 border border-outline-variant rounded text-xs font-mono" />
-                {r.channel === 'GenericWebhook' && (
-                  <div className="flex items-center gap-1">
-                    <input type="password" value={r.secretInput} onChange={(e) => updateRoute(idx, { secretInput: e.target.value })}
-                      placeholder={r.hasStoredSecret ? t('alerts:secretStored') : t('alerts:secretPlaceholder')}
-                      className="w-40 px-2 py-1.5 border border-outline-variant rounded text-xs font-mono" />
-                    {r.hasStoredSecret && !r.secretInput && (
-                      <button type="button" onClick={() => updateRoute(idx, { hasStoredSecret: false, secretInput: '' })}
-                        className="text-[11px] px-1.5 py-1 text-outline hover:text-red-600 whitespace-nowrap" title={t('alerts:clearSecret')}>
-                        {t('alerts:clearSecret')}
-                      </button>
-                    )}
-                  </div>
-                )}
-                <button type="button" onClick={() => removeRoute(idx)} className="p-1.5 text-outline hover:text-red-600" title={t('common:delete')}>
-                  <TrashCan size={14} />
-                </button>
-                <div className="basis-full border-t border-outline-variant/50 pt-2">
-                  <label className="block text-[11px] font-medium text-on-surface-variant mb-1">{t('alerts:fields.routeCondition')}</label>
-                  <ConditionBuilder
-                    value={r.condition}
-                    upstreamVars={[]}
-                    eventFields={eventFieldOptions}
-                    onChange={(next) => updateRoute(idx, { condition: next })}
-                  />
-                </div>
-              </div>
+              <AlertRouteFields key={idx} route={r} channels={availableChannels}
+                onChange={(patch) => updateRoute(idx, patch)} onRemove={() => removeRoute(idx)}>
+                <label className="block text-[11px] font-medium text-on-surface-variant mb-1">{t('alerts:fields.routeCondition')}</label>
+                <ConditionBuilder
+                  value={r.condition}
+                  upstreamVars={[]}
+                  eventFields={eventFieldOptions}
+                  onChange={(next) => updateRoute(idx, { condition: next })}
+                />
+              </AlertRouteFields>
             ))}
           </div>
         </div>

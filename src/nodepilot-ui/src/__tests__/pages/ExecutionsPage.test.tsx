@@ -9,6 +9,29 @@ import { useAuthStore } from '../../stores/authStore';
 import { confirmDialog } from '../../stores/confirmStore';
 import type { WorkflowExecution, WorkflowNameItem } from '../../types/api';
 
+// The page subscribes to the live-ops feed; a fake hub lets a test push a status batch.
+type HubHandler = (payload: unknown) => void;
+let hubConnection: { handlers: Map<string, HubHandler>; invoke: ReturnType<typeof vi.fn> } | null = null;
+vi.mock('@microsoft/signalr', () => {
+  class HubConnectionBuilder {
+    withUrl() { return this; }
+    withAutomaticReconnect() { return this; }
+    configureLogging() { return this; }
+    build() {
+      const handlers = new Map<string, HubHandler>();
+      hubConnection = { handlers, invoke: vi.fn().mockResolvedValue(undefined) };
+      return {
+        on: (event: string, handler: HubHandler) => { handlers.set(event, handler); },
+        onreconnected: () => {}, onreconnecting: () => {}, onclose: () => {},
+        invoke: hubConnection.invoke,
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+  }
+  return { HubConnectionBuilder, LogLevel: { Warning: 1 } };
+});
+
 vi.mock('../../stores/confirmStore', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../stores/confirmStore')>();
   return { ...mod, confirmDialog: vi.fn().mockResolvedValue(true) };
@@ -289,6 +312,15 @@ describe('ExecutionsPage', () => {
 
   it('filters by status via the quick-filter chips', async () => {
     mockList();
+    const requestedStatuses: (string | null)[] = [];
+    server.use(
+      // The server applies the status filter; the page renders what comes back.
+      http.get(`${BASE}/api/executions`, ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status');
+        requestedStatuses.push(status);
+        return HttpResponse.json(status ? MOCK_EXECUTIONS.filter((e) => e.status === status) : MOCK_EXECUTIONS);
+      }),
+    );
     renderPage();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Disk Check' })).toBeInTheDocument());
 
@@ -296,6 +328,55 @@ describe('ExecutionsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Failed' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Disk Check' })).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Backup Job' })).toBeInTheDocument();
+    expect(requestedStatuses).toContain('Failed');
+  });
+
+  it('asks the server for the sort and starts over at page 1 when it changes', async () => {
+    const requests: URLSearchParams[] = [];
+    server.use(
+      http.get(`${BASE}/api/executions`, ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        requests.push(params);
+        const page = Number(params.get('page') ?? '1');
+        return HttpResponse.json({ items: [MOCK_EXECUTIONS[page === 1 ? 0 : 1]], page, pageSize: 200, total: 400, totalPages: 2 });
+      }),
+      http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json(MOCK_WORKFLOWS)),
+    );
+    renderPage();
+    await screen.findByRole('button', { name: 'Disk Check' });
+    expect(requests[0].get('sortBy')).toBe('started');
+    expect(requests[0].get('sortDir')).toBe('desc');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    await screen.findByRole('button', { name: 'Backup Job' });
+    expect(requests.at(-1)!.get('page')).toBe('2');
+
+    fireEvent.click(within(screen.getByRole('table')).getByRole('button', { name: /^Workflow/ }));
+    await waitFor(() => expect(requests.at(-1)!.get('sortBy')).toBe('workflow'));
+    expect(requests.at(-1)!.get('sortDir')).toBe('asc');
+    expect(requests.at(-1)!.get('page')).toBe('1');
+
+    fireEvent.click(within(screen.getByRole('table')).getByRole('button', { name: /^Workflow/ }));
+    await waitFor(() => expect(requests.at(-1)!.get('sortDir')).toBe('desc'));
+    expect(requests.at(-1)!.get('sortBy')).toBe('workflow');
+  });
+
+  it('renders rows in the order the server returned them', async () => {
+    // The server orders the whole history. Re-sorting the loaded page locally would disagree with
+    // it across pages; here the older run comes first although the sort is "started, newest first".
+    server.use(
+      http.get(`${BASE}/api/executions`, () => HttpResponse.json({
+        items: [MOCK_EXECUTIONS[1], MOCK_EXECUTIONS[0]], page: 1, pageSize: 200, total: 2, totalPages: 1,
+      })),
+      http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json(MOCK_WORKFLOWS)),
+    );
+    renderPage();
+    await screen.findByRole('button', { name: 'Disk Check' });
+
+    const rowOrder = within(screen.getByRole('table'))
+      .getAllByRole('button', { name: /^(Disk Check|Backup Job)$/ })
+      .map((b) => b.textContent);
+    expect(rowOrder).toEqual(['Backup Job', 'Disk Check']);
   });
 
   it('filters by free-text search', async () => {
@@ -341,6 +422,28 @@ describe('ExecutionsPage', () => {
     // Backup Job (exec-2) is the second data row.
     fireEvent.click(retryButtons[1]);
     await waitFor(() => expect(retried).toBe('exec-2'));
+  });
+
+  it('refetches the history when the live-ops feed reports a status change', async () => {
+    let listCalls = 0;
+    server.use(
+      http.get(`${BASE}/api/executions`, () => {
+        listCalls += 1;
+        return HttpResponse.json(listCalls === 1 ? [MOCK_EXECUTIONS[0]] : MOCK_EXECUTIONS);
+      }),
+      http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json(MOCK_WORKFLOWS)),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Disk Check' })).toBeInTheDocument());
+    await waitFor(() => expect(hubConnection?.invoke).toHaveBeenCalledWith('JoinOperationsFeed'));
+    expect(screen.queryByRole('button', { name: 'Backup Job' })).toBeNull();
+
+    act(() => hubConnection?.handlers.get('LiveEventsBatch')?.({
+      events: [{ type: 'ExecutionStatusChanged', evt: { executionId: 'exec-2', workflowId: 'wf-2', status: 'Failed' } }],
+    }));
+
+    await waitFor(() => expect(listCalls).toBe(2), { timeout: 5_000 });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Backup Job' })).toBeInTheDocument());
   });
 
   it('applies the ?status=Failed deep-link on mount (dashboard "Show failed" shortcut)', async () => {

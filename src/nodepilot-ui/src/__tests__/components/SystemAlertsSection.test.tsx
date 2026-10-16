@@ -7,6 +7,7 @@ import { SystemAlertsSection } from '../../components/alerting/SystemAlertsSecti
 import { SystemPolicyEditor } from '../../components/alerting/SystemPolicyEditor';
 import { useAuthStore } from '../../stores/authStore';
 import type { SystemAlertCatalog, SystemAlertPolicy } from '../../api/systemAlerting';
+import { UNCHANGED_SECRET } from '../../api/alerting';
 
 const BASE = 'http://localhost';
 
@@ -80,6 +81,45 @@ describe('SystemAlertsSection', () => {
     expect(saved).toMatchObject({ name: 'Renamed policy', minOccurrences: 5, occurrenceWindowMinutes: 15,
       routes: [{ id: 'rt1', conditionExpressionJson: condition }] });
   });
+  it('clears a stored webhook secret on a policy route', async () => {
+    useAuthStore.setState({ isAuthenticated: true, username: 'u', role: 'Admin' });
+    patchFetch();
+    const policy = { ...POLICIES[0],
+      routes: [{ id: 'rt1', channel: 'GenericWebhook', target: 'https://hooks.example.test/a', secret: UNCHANGED_SECRET, order: 0 }] };
+    let saved: { routes?: Array<{ secret: string | null }> } | undefined;
+    server.use(http.put(`${BASE}/api/alerting/system/policies/p1`, async ({ request }) => {
+      saved = await request.json() as typeof saved;
+      return HttpResponse.json(policy);
+    }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><SystemPolicyEditor source={CATALOG.sources[0]} policy={policy} onClose={vi.fn()} /></QueryClientProvider>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear secret' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
+
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved?.routes?.[0].secret).toBeNull();
+  });
+
+  it('keeps a stored webhook secret unless it is cleared', async () => {
+    useAuthStore.setState({ isAuthenticated: true, username: 'u', role: 'Admin' });
+    patchFetch();
+    const policy = { ...POLICIES[0],
+      routes: [{ id: 'rt1', channel: 'GenericWebhook', target: 'https://hooks.example.test/a', secret: UNCHANGED_SECRET, order: 0 }] };
+    let saved: { routes?: Array<{ secret: string | null }> } | undefined;
+    server.use(http.put(`${BASE}/api/alerting/system/policies/p1`, async ({ request }) => {
+      saved = await request.json() as typeof saved;
+      return HttpResponse.json(policy);
+    }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><SystemPolicyEditor source={CATALOG.sources[0]} policy={policy} onClose={vi.fn()} /></QueryClientProvider>);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
+
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved?.routes?.[0].secret).toBe(UNCHANGED_SECRET);
+  });
+
   it('rendersCatalogCards_groupedByCategory', async () => {
     renderSection();
     await waitFor(() => expect(screen.getByText('Execution backlog')).toBeInTheDocument());

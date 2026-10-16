@@ -350,7 +350,11 @@
       "isTrue": "ist wahr",
       "isFalse": "ist falsch"
     },
-    "groupEvent": "Ereignis"
+    "groupEvent": "Ereignis",
+    "groupManual": "Trigger-Eingabe",
+    "groupUnavailable": "Nicht verfügbar",
+    "unavailableOption": "{{ref}} (nicht verfügbar)",
+    "unavailableHint": "Dieser Verweis ist hier nicht verfügbar und wird nicht aufgelöst. Wähle einen anderen Wert."
   },
   "bulkEdit": {
     "title": "Sammelbearbeitung",

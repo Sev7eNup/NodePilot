@@ -139,6 +139,8 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
         return next;
       });
     },
+    // The result pane shows the error inline.
+    meta: { handlesError: true },
   });
 
   // Imperatively insert a string at the cursor. Called when the sidebar fires an

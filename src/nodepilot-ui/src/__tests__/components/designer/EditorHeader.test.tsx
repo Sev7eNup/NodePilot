@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { EditorHeader } from '../../../components/designer/EditorHeader';
+import { EditorHeader, type EditorHeaderProps } from '../../../components/designer/EditorHeader';
+import type { EditorLifecycle } from '../../../hooks/useEditorLifecycle';
 import type { Workflow } from '../../../types/api';
 import type { KnowledgeCapabilities } from '../../../api/ai';
 import { useDesignStore } from '../../../stores/designStore';
@@ -23,7 +24,8 @@ import { useThemeStore, THEMES } from '../../../stores/themeStore';
  */
 
 
-function defaultProps(over: Partial<Parameters<typeof EditorHeader>[0]> = {}) {
+/** Header props with lock-by-me defaults; `over` patches the lifecycle flags. */
+function defaultProps(over: Partial<EditorLifecycle> = {}): EditorHeaderProps {
   const workflow: Workflow = {
     id: 'wf-current',
     name: 'Current Workflow',
@@ -41,49 +43,53 @@ function defaultProps(over: Partial<Parameters<typeof EditorHeader>[0]> = {}) {
     workflow,
     name: 'Current Workflow',
     onRename: vi.fn(),
-    isDirty: false,
-    canWrite: true,
     nodes: [],
-    aiChatOpen: false,
-    onToggleAiChat: vi.fn(),
-    undo: vi.fn(),
-    redo: vi.fn(),
-    historyPast: [],
-    historyFuture: [],
-    tidyLayout: vi.fn(),
-    isTidying: false,
-    layoutMode: 'LR' as const,
-    restoreOrigLayout: vi.fn(),
-    hasOrigLayout: false,
-    setSearchOpen: vi.fn(),
-    setFindReplaceOpen: vi.fn(),
-    zoomToSelection: vi.fn(),
-    setDiffOpen: vi.fn(),
-    simulation: null,
-    runSimulation: vi.fn(),
-    clearSimulation: vi.fn(),
+    lifecycle: {
+      roleCanWrite: true,
+      canWrite: true,
+      isAdmin: false,
+      isDirty: false,
+      isSaving: false,
+      isLockedByMe: true,
+      isLockedByOther: false,
+      isLocking: false,
+      isUnlocking: false,
+      isPublishing: false,
+      isEnabling: false,
+      isDisabling: false,
+      isForceUnlocking: false,
+      save: vi.fn(),
+      lock: vi.fn(),
+      unlock: vi.fn(),
+      forceUnlock: vi.fn(),
+      disable: vi.fn(),
+      requestPublish: vi.fn(),
+      ...over,
+    },
+    history: { undo: vi.fn(), redo: vi.fn(), historyPast: [], historyFuture: [] },
+    layout: {
+      tidyLayout: vi.fn(),
+      isTidying: false,
+      layoutMode: 'LR' as const,
+      restoreOrigLayout: vi.fn(),
+      hasOrigLayout: false,
+    },
+    overlays: {
+      setSearchOpen: vi.fn(),
+      setFindReplaceOpen: vi.fn(),
+      setDiffOpen: vi.fn(),
+      setLintPanelOpen: vi.fn(),
+      setHelpOpen: vi.fn(),
+    },
+    simulation: { simulation: null, runSimulation: vi.fn(), clearSimulation: vi.fn() },
+    run: { liveExecution: null, run: vi.fn(), cancelRun: vi.fn() },
     lintResult: { errors: [], warnings: [] },
-    setLintPanelOpen: vi.fn(),
-    setHelpOpen: vi.fn(),
     hiddenActivityTypes: new Set<string>(),
     setHiddenActivityTypes: vi.fn(),
-    liveExecution: null,
-    handleRunClick: vi.fn(),
+    zoomToSelection: vi.fn(),
     exportPng: vi.fn(),
-    onSave: vi.fn(),
-    isPublishing: false,
-    onRequestPublish: vi.fn(),
-    roleCanWrite: true,
-    isLockedByMe: true,
-    isLockedByOther: false,
-    onLock: vi.fn(),
-    isLocking: false,
-    onUnlock: vi.fn(),
-    isUnlocking: false,
-    onDisable: vi.fn(),
-    isDisabling: false,
-    isEnabling: false,
-    ...over,
+    aiChatOpen: false,
+    onToggleAiChat: vi.fn(),
   };
 }
 
