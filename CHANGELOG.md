@@ -12,7 +12,81 @@ exhaustive.
 
 ## [Unreleased]
 
-Planned version: **1.5.1**.
+## [1.5.1] - 2026-10-16
+
+### Added
+
+- **Server log on the log page.** The application log, where platform errors land, is a second
+  tab next to the workflow events. Repeated warnings and errors are grouped, the page says how much
+  of the requested window it could read, and the daily download is a redacted export (audited as
+  `APP_LOG_DOWNLOADED`). The MCP tool `get_support_diagnostics` reads it with `kind='server'`.
+- **The Engine Switcher works without a NodePilot account.** A local administrator can switch
+  workflows with a machine key that only administrators can read and that the server accepts only
+  from the same machine. Allowlist entries may now be quoted.
+- The executions list sorts on the server (`sortBy`, `sortDir`) across all pages and updates live.
+- The designer has a button back to the workflow list. The AI chat in the designer sees the lint
+  findings of the canvas and reads scripts, SQL queries and program arguments in clear; values that
+  look like secrets stay masked, and an administrator can switch this off per LLM profile.
+- `Update-NodePilot.ps1 -AllowDowngrade`: an update to an older version is refused without it.
+
+### Changed
+
+- The dashboard's running and recent-executions lists are denser: trigger badges, grouped child
+  runs, duration bars, who started a run and step progress. The Prometheus telemetry tile is gone;
+  `/observability/summary` stays.
+- The metrics pages use Grafana's 24-column grid correctly, so KPIs sit in one strip and charts are
+  smaller and sorted.
+- Designer group boxes are quiet tinted frames with a corner label and nine colours instead of five.
+- `enable` runs the same checks as publish, including the agent configuration
+  (`400 invalid_agent_configuration`).
+- A system restore rejects an unknown policy or section with 400 instead of skipping it.
+- Junction `mode` and `requiredCount` are validated on save (`400 invalid-junction-config`).
+- An invalid pattern under `Logging:Redaction:Patterns` now stops the start instead of being ignored.
+- Failed alert deliveries are retried after 30 s, 2, 10 and 30 minutes and keep the real failure
+  reason. The "alert delivery failed" policy counts by the last try.
+- A step retry with `maxDelayMs` of 0 or less waits at most 30 seconds.
+- The workflow editor page was split into smaller parts; behaviour is unchanged.
+
+### Fixed
+
+- Cancelling a run records the running step as Cancelled and starts no follow-up step.
+- A trigger value or step output containing `{{...}}` is no longer resolved a second time.
+- A `restApi` step that hits its own timeout fails instead of cancelling the whole run.
+- Failed actions in the UI (cancel, resume, PNG export and others) show an error instead of nothing.
+- Run status, critical path and coverage in the designer survive lock, unlock and publish refetches.
+- The OIDC role mapping no longer loses focus on every keystroke; the system alert editor can clear
+  a route secret; the condition builder shows `not(group)`, trigger inputs and stale references
+  instead of dropping them; the connection test resets when node, machine or credential changes.
+- The dashboard shows a retry instead of loading forever when its first request fails; errors in a
+  page show the localized error screen.
+- The MCP server picks up a later `np auth login` without a restart.
+- The file watcher trigger no longer writes its checkpoint for every ignored file event.
+- SCIM can deprovision an administrator account that is already inactive. OIDC account creation is
+  audited (`USER_OIDC_JIT_CREATED`).
+- The SCOrch import warns when a step with several conditional incoming links changes meaning.
+- Selection in the designer, the workflow table's sort order and the folder counts of global
+  variables survive navigation and refetches.
+
+### Security
+
+- UNC paths written with mixed separators (`\/server\share`) are rejected by the path guards.
+- The SSRF guards always block the IPv6 cloud metadata endpoints (`fd00:ec2::254`, `fd20:ce::254`),
+  also when private networks are allowed.
+- `llmQuery` no longer sends the profile's API key to a `baseUrl` that a node points elsewhere.
+- Secrets that are not strings (numbers, objects) are masked before AI calls and protected in the
+  AI chat and MCP merges.
+- `serviceManagement` validates the service name before it reaches `sc.exe`.
+- `StartProgram:DisallowShellExecute` is read the same way everywhere; only an explicit `false`
+  turns it off.
+- Audit and lifecycle writes land even when the request is cancelled, and audit events reach the
+  SIEM only after their transaction commits.
+- The server setup no longer prints the trigger key or setup token into its log when the setup
+  adapter runs it.
+- The desktop app's Electron fuses are hardened: no Node mode, no `NODE_OPTIONS` or inspector
+  flags, cookies encrypted, and the app loads only from its integrity-checked archive.
+- The Switcher uses its configuration and the `np` CLI only from locations that only administrators
+  can write.
+- CI runs with a read-only token.
 
 ## [1.5.0] - 2026-10-11
 
@@ -1914,7 +1988,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.5.0...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.5.1...main
+[1.5.1]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.1
 [1.5.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.0
 [1.4.4]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.4
 [1.4.3]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.3
