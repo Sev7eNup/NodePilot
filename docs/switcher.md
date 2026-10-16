@@ -25,7 +25,9 @@ Each service gets 30 seconds for a graceful stop, except `oremoting` and `omonit
 documents that these SCOrch services do not exit cleanly, so the switcher force-stops them
 immediately. In both the immediate and fallback force-stop paths, the utility re-queries the Service
 Control Manager and terminates only the process id currently owned by that allowlisted service. It
-never matches arbitrary processes by name.
+never matches arbitrary processes by name. A service that is still starting or already stopping
+cannot accept the stop request; it goes through the same graceful wait and forced-stop fallback
+instead of failing the stop.
 
 The switch completes as soon as the live service states, persisted start modes, and exact workload
 allowlist have been verified. There is no fixed post-switch delay. If stopping, starting, or final
@@ -92,11 +94,39 @@ Both the server artifact and the standalone zip include a template next to the e
 utility is configurable wherever it is unpacked. For a machine-wide configuration, copy the
 template to `%ProgramData%\NodePilot\Switcher`.
 
+Any user may create folders under `%ProgramData%`, and the switcher runs elevated, so the
+machine-wide file is used only while administrators alone control it: `switcher.json`,
+`%ProgramData%\NodePilot\Switcher` and `%ProgramData%\NodePilot` must be owned by Administrators or
+SYSTEM, and no other account may hold write, delete or permission rights on them, inherited entries
+included (TrustedInstaller is accepted as well). Otherwise the system check reports the folder or
+file and the account, both switch buttons stay disabled, and the switcher does **not** fall back to
+the template next to the executable. The switcher creates both folders that way itself and takes
+ownership of its own folder at every start; a folder created by hand inherits write access for
+`BUILTIN\Users` from `%ProgramData%`. On a machine without a NodePilot server installation, repair
+it like this:
+
+```powershell
+$folder = "$env:ProgramData\NodePilot"
+icacls $folder /setowner '*S-1-5-32-544'
+icacls $folder /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F'
+```
+
+Do not run this on a NodePilot server: there `%ProgramData%\NodePilot` is the service's data
+directory. When the service runs under its own account (gMSA), that directory grants the account
+write access by design, so a machine-wide configuration is rejected; use the configuration next to
+the executable, which the installer fills in, or `--config`.
+
 `cliPath` is optional. Left at `null`, the switcher locates `np.exe` through the installation
 marker `HKLM\SOFTWARE\NodePilot\Server` (`InstallPath` plus `tools\np`) and then through the machine
-PATH; a configured value wins and stays relative to the configuration file. The template ships
-without one because a relative path only points at the installation while the configuration sits
-inside it.
+PATH; a configured value wins and stays relative to the configuration file. Only the machine PATH
+counts, not the PATH of the elevated session, which also contains the approving administrator's
+user PATH; relative entries are skipped. The template ships without a `cliPath` because a relative
+path only points at the installation while the configuration sits inside it.
+
+Whichever `np.exe` is used, it and its folder must meet the same rule as the machine-wide
+configuration (owned by Administrators or SYSTEM, writable by nobody else) and must be on a local
+drive. Otherwise a switch to NodePilot stops in its preflight, before any service is changed, with
+an error naming the path and the account. The installation directory meets the rule.
 
 `serverUrl` is filled in by the server installer from the hostname and HTTPS port it just
 configured, so the switcher passes `--server` on every `np` call. It is written only into the copy
@@ -255,8 +285,8 @@ Monitor Incoming Incidents
 
 The scrollable activity panel shows the complete history for the current app session, with the
 newest action first. Its Copy action copies the complete visible history. The persistent rolling
-log is stored under `%ProgramData%\NodePilot\Switcher` and is restricted to Administrators
-and SYSTEM.
+log is stored under `%ProgramData%\NodePilot\Switcher`, which is owned by Administrators and
+restricted to Administrators and SYSTEM.
 The title-bar toggle switches between light and dark mode; the selected theme is stored per user.
 Engine activation confirmations use the same themed in-app dialog design as NodePilot reauthentication
 and show the services that will be stopped and activated before the switch begins.

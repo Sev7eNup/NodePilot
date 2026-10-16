@@ -8,7 +8,7 @@
 -->
 <RunSettings>
   <!--
-    Bound VSTest containers within each invocation. At solution level the six assemblies run
+    Bound VSTest containers within each invocation. At solution level the seven assemblies run
     in separate MSBuild projects: CI also passes -maxcpucount:2 to dotnet test to cap those
     projects. MaxCpuCount here alone does not limit that project-level concurrency.
 

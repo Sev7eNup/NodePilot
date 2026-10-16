@@ -56,6 +56,7 @@ internal sealed class SwitcherConfigurationLoader
     private readonly string _programData;
     private readonly string _applicationDirectory;
     private readonly Func<IEnumerable<string>> _cliCandidates;
+    private readonly Func<string, string?> _findAccessViolation;
 
     public SwitcherConfigurationLoader()
         : this(Environment.GetCommandLineArgs(),
@@ -68,13 +69,19 @@ internal sealed class SwitcherConfigurationLoader
         string[] arguments,
         string programData,
         string applicationDirectory,
-        Func<IEnumerable<string>>? cliCandidates = null)
+        Func<IEnumerable<string>>? cliCandidates = null,
+        Func<string, string?>? findAccessViolation = null)
     {
         _arguments = arguments;
         _programData = programData;
         _applicationDirectory = applicationDirectory;
         _cliCandidates = cliCandidates ?? NodePilotCliLocator.Candidates;
+        _findAccessViolation = findAccessViolation ?? AdministratorOnlyPath.FindViolation;
     }
+
+    private string NodePilotDataDirectory => Path.GetFullPath(Path.Combine(_programData, "NodePilot"));
+    private string MachineConfigurationDirectory => Path.Combine(NodePilotDataDirectory, "Switcher");
+    private string MachineConfigurationPath => Path.Combine(MachineConfigurationDirectory, FileName);
 
     public SwitcherConfiguration Load()
     {
@@ -83,6 +90,8 @@ internal sealed class SwitcherConfigurationLoader
         if (!File.Exists(path))
             throw new InvalidOperationException(
                 "Switcher configuration not found. Checked: " + string.Join(", ", candidates));
+        if (string.Equals(path, MachineConfigurationPath, StringComparison.OrdinalIgnoreCase))
+            RequireAdministratorOnly(path);
 
         SwitcherConfiguration? value;
         try
@@ -138,9 +147,25 @@ internal sealed class SwitcherConfigurationLoader
 
         return
         [
-            Path.GetFullPath(Path.Combine(_programData, "NodePilot", "Switcher", FileName)),
+            MachineConfigurationPath,
             Path.GetFullPath(Path.Combine(_applicationDirectory, FileName)),
         ];
+    }
+
+    /// <summary>
+    /// Any user may create folders under %ProgramData% before the switcher first runs, so the
+    /// machine-wide file is only read while administrators alone control it and both folders above
+    /// it. A rejected file does not fall back to the template next to the executable.
+    /// </summary>
+    private void RequireAdministratorOnly(string path)
+    {
+        var violation = _findAccessViolation(NodePilotDataDirectory)
+            ?? _findAccessViolation(MachineConfigurationDirectory)
+            ?? _findAccessViolation(path);
+        if (violation is not null)
+            throw new InvalidOperationException(
+                $"Switcher configuration {path} is not used: {violation}. The file and both folders "
+                + "above it must be owned by Administrators or SYSTEM, and no other account may change them.");
     }
 
     /// <summary>
@@ -290,6 +315,15 @@ internal static class SwitcherConfigurationValidator
     {
         if (!File.Exists(value.CliPath))
             throw new InvalidOperationException($"NodePilot CLI not found: {value.CliPath}");
+        // np.exe runs elevated, so neither it nor its folder may be replaceable by a standard user.
+        var directory = Path.GetDirectoryName(value.CliPath)
+            ?? throw new InvalidOperationException($"NodePilot CLI path has no folder: {value.CliPath}");
+        var violation = AdministratorOnlyPath.FindViolation(directory)
+            ?? AdministratorOnlyPath.FindViolation(value.CliPath);
+        if (violation is not null)
+            throw new InvalidOperationException(
+                $"NodePilot CLI {value.CliPath} is not run: {violation}. np.exe and its folder must be "
+                + "owned by Administrators or SYSTEM, and no other account may change them.");
         if (string.IsNullOrWhiteSpace(value.Profile))
             throw new InvalidOperationException("NodePilot CLI profile is missing.");
         if (value.CommandTimeoutSeconds is < 1 or > 600)

@@ -83,13 +83,32 @@ internal sealed class ActivityLogger : IActivityLogger
         }
     }
 
+    /// <summary>
+    /// Takes the folder over for Administrators, so a folder a standard user created first keeps
+    /// no owner who could grant itself access again. A missing parent gets the same protection:
+    /// one inherited from %ProgramData% lets every user add entries to it.
+    /// </summary>
     private static void EnsureProtectedDirectory(string path)
     {
+        var parent = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(parent) && !Directory.Exists(parent))
+        {
+            Directory.CreateDirectory(parent);
+            new DirectoryInfo(parent).SetAccessControl(CreateProtectedDirectorySecurity());
+        }
+
         Directory.CreateDirectory(path);
+        new DirectoryInfo(path).SetAccessControl(CreateProtectedDirectorySecurity());
+    }
+
+    internal static DirectorySecurity CreateProtectedDirectorySecurity()
+    {
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
         var security = new DirectorySecurity();
+        security.SetOwner(administrators);
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         security.AddAccessRule(new FileSystemAccessRule(
-            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+            administrators,
             FileSystemRights.FullControl,
             InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
             PropagationFlags.None,
@@ -100,6 +119,6 @@ internal sealed class ActivityLogger : IActivityLogger
             InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
             PropagationFlags.None,
             AccessControlType.Allow));
-        new DirectoryInfo(path).SetAccessControl(security);
+        return security;
     }
 }

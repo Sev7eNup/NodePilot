@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using FluentAssertions;
 using NodePilot.Switcher.Configuration;
@@ -89,9 +91,81 @@ public sealed class SwitcherConfigurationLoaderTests : IDisposable
         WriteValidConfiguration(Path.Combine(application, "switcher.json"), "np.exe");
         File.WriteAllText(Path.Combine(SwitcherDirectory(programData), "np.exe"), string.Empty);
 
-        var loaded = new SwitcherConfigurationLoader(["switcher.exe"], programData, application).Load();
+        var loaded = new SwitcherConfigurationLoader(
+            ["switcher.exe"], programData, application, findAccessViolation: _ => null).Load();
 
         loaded.NodePilot.WorkflowAllowListPath.Should().Be(@"\\server\share\machine.txt");
+    }
+
+    // Any user can create folders under %ProgramData% before the elevated switcher first runs.
+    [Fact]
+    public void Load_MachineWideConfiguration_ChecksBothFoldersAndTheFile()
+    {
+        var programData = CreateDirectory("program-data");
+        var config = MachineConfigPath(programData);
+        WriteValidConfiguration(config, "np.exe");
+        var checkedPaths = new List<string>();
+
+        new SwitcherConfigurationLoader(
+            ["switcher.exe"], programData, CreateDirectory("app"),
+            findAccessViolation: path => { checkedPaths.Add(path); return null; }).Load();
+
+        checkedPaths.Should().Equal(
+            Path.Combine(programData, "NodePilot"),
+            Path.Combine(programData, "NodePilot", "Switcher"),
+            config);
+    }
+
+    [Fact]
+    public void Load_MachineWideConfigurationNotAdministratorOnly_FailsWithoutFallingBack()
+    {
+        var programData = CreateDirectory("program-data");
+        var application = CreateDirectory("app");
+        var config = MachineConfigPath(programData);
+        WriteValidConfiguration(config, "np.exe");
+        WriteValidConfiguration(Path.Combine(application, "switcher.json"), "np.exe");
+        var nodePilotDirectory = Path.Combine(programData, "NodePilot");
+        const string reason = "'NodePilot' is owned by CONTOSO\\bob (S-1-5-21-1-2-3-1001)";
+
+        var action = new SwitcherConfigurationLoader(
+            ["switcher.exe"], programData, application,
+            findAccessViolation: path => path == nodePilotDirectory ? reason : null).Load;
+
+        action.Should().Throw<InvalidOperationException>()
+            .Which.Message.Should().Contain(config).And.Contain(reason);
+    }
+
+    // The template next to the executable is as trusted as the executable beside it.
+    [Fact]
+    public void Load_ConfigurationNextToTheExecutable_SkipsTheAccessCheck()
+    {
+        var application = CreateDirectory("app");
+        WriteValidConfiguration(Path.Combine(application, "switcher.json"), "np.exe");
+        var checkedPaths = new List<string>();
+
+        new SwitcherConfigurationLoader(
+            ["switcher.exe"], CreateDirectory("program-data"), application,
+            findAccessViolation: path => { checkedPaths.Add(path); return "untrusted"; }).Load();
+
+        checkedPaths.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidateNodePilot_WithCliOtherAccountsCanChange_RejectsIt()
+    {
+        var cli = Path.Combine(_directory, "np.exe");
+        File.WriteAllText(cli, string.Empty);
+        var info = new FileInfo(cli);
+        var security = info.GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.WorldSid, null), FileSystemRights.Write, AccessControlType.Allow));
+        info.SetAccessControl(security);
+
+        var action = () => SwitcherConfigurationValidator.ValidateNodePilot(
+            new NodePilotWorkloadConfiguration(@"\\server\share\nodepilot.txt", cli));
+
+        action.Should().Throw<InvalidOperationException>()
+            .Which.Message.Should().Contain("NodePilot CLI").And.Contain(cli).And.Contain("is not run");
     }
 
     [Fact]

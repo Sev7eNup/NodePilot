@@ -52,6 +52,20 @@ public sealed class SwitcherConfigurationProbeTests : IDisposable
     }
 
     [Fact]
+    public void Probe_WithMachineWideConfigurationOtherAccountsCanChange_ReportsTheReason()
+    {
+        var switcherDirectory = Path.Combine(_directory, "NodePilot", "Switcher");
+        Directory.CreateDirectory(switcherDirectory);
+        File.WriteAllText(Path.Combine(switcherDirectory, "switcher.json"), "{}");
+        const string reason = "'switcher.json' lets BUILTIN\\Users (S-1-5-32-545) change, delete or re-permission it";
+        var probe = new SwitcherConfigurationProbe(new SwitcherConfigurationLoader(
+            ["switcher.exe"], _directory, _directory,
+            findAccessViolation: path => path.EndsWith("switcher.json", StringComparison.Ordinal) ? reason : null));
+
+        probe.Probe().Should().Contain("is not used").And.Contain(reason);
+    }
+
+    [Fact]
     public async Task RefreshAsync_WithUnusableConfiguration_BlocksBothSwitchesAndReportsIt()
     {
         var strings = new StringCatalog();

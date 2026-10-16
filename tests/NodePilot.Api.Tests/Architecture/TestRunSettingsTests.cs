@@ -59,6 +59,28 @@ public sealed class TestRunSettingsTests
             testProjects);
     }
 
+    [Fact]
+    public void Solution_ContainsEveryProjectUnderSrcAndTests()
+    {
+        // CI, CodeQL, the vulnerability audit and the nightly all build NodePilot.slnx, so a
+        // project missing from it is never built, tested or analysed.
+        var repoRoot = FindRepoRoot();
+        var inSolution = XDocument.Load(Path.Combine(repoRoot, "NodePilot.slnx"))
+            .Descendants("Project")
+            .Select(project => (project.Attribute("Path")?.Value ?? "").Replace('\\', '/'))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Projects live one level below src/ and tests/; a recursive walk would crawl node_modules.
+        var onDisk = new[] { "src", "tests" }
+            .SelectMany(folder => Directory.EnumerateDirectories(Path.Combine(repoRoot, folder)))
+            .SelectMany(directory => Directory.EnumerateFiles(directory, "*.csproj", SearchOption.TopDirectoryOnly))
+            .Select(path => Path.GetRelativePath(repoRoot, path).Replace('\\', '/'))
+            .ToList();
+
+        onDisk.Should().NotBeEmpty();
+        onDisk.Should().BeSubsetOf(inSolution);
+    }
+
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

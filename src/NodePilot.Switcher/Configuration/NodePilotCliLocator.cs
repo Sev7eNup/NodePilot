@@ -20,7 +20,16 @@ internal static class NodePilotCliLocator
         if (!string.IsNullOrWhiteSpace(installPath))
             yield return Path.Combine(installPath, "tools", "np", ExecutableName);
 
-        foreach (var directory in PathDirectories())
+        // Only the machine PATH: the elevated process also inherits the approving user's PATH, where
+        // that user can place any np.exe.
+        foreach (var candidate in PathCandidates(
+                     Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine)))
+            yield return candidate;
+    }
+
+    internal static IEnumerable<string> PathCandidates(string? path)
+    {
+        foreach (var directory in PathDirectories(path))
             yield return Path.Combine(directory, ExecutableName);
     }
 
@@ -39,11 +48,12 @@ internal static class NodePilotCliLocator
         }
     }
 
-    private static IEnumerable<string> PathDirectories()
+    private static IEnumerable<string> PathDirectories(string? value)
     {
-        var value = Environment.GetEnvironmentVariable("PATH") ?? "";
-        foreach (var entry in value.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var entry in (value ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
+            // A relative entry would resolve against the working directory.
+            if (!Path.IsPathFullyQualified(entry)) continue;
             string full;
             try
             {

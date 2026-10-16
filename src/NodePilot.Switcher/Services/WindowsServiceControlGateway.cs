@@ -23,6 +23,7 @@ internal sealed class WindowsServiceControlGateway : IServiceControlGateway
     private const uint ErrorInsufficientBuffer = 122;
     private const uint ErrorServiceAlreadyRunning = 1056;
     private const uint ErrorServiceDoesNotExist = 1060;
+    private const uint ErrorServiceCannotAcceptControl = 1061;
     private const uint ErrorServiceNotActive = 1062;
     private const uint ProcessTerminate = 0x0001;
 
@@ -103,7 +104,7 @@ internal sealed class WindowsServiceControlGateway : IServiceControlGateway
             if (!ControlService(service, ServiceControlStop, out _))
             {
                 var error = (uint)Marshal.GetLastWin32Error();
-                if (error != ErrorServiceNotActive)
+                if (!IsStopAlreadyUnderway(error))
                     throw Win32(error, $"Could not stop service '{serviceName}'.");
             }
         }
@@ -115,6 +116,14 @@ internal sealed class WindowsServiceControlGateway : IServiceControlGateway
         ForceTerminateVerifiedServiceProcess(serviceName);
         await WaitForStateAsync(serviceName, ServiceRuntimeState.Stopped, forcedTimeout, cancellationToken).ConfigureAwait(false);
     }, cancellationToken);
+
+    /// <summary>
+    /// True when the stop control failed only because the service is already stopped (1062) or is
+    /// still starting or already stopping (1061). The graceful wait and the PID-verified forced
+    /// stop handle those states, so they must not abort the stop.
+    /// </summary>
+    internal static bool IsStopAlreadyUnderway(uint error) =>
+        error is ErrorServiceNotActive or ErrorServiceCannotAcceptControl;
 
     public Task ForceStopAsync(
         string serviceName,
