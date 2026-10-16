@@ -57,7 +57,7 @@ public sealed class RestrictedFileWriterTests : IDisposable
     }
 
     private static bool Invoke(string path, string content, bool failClosed)
-        => (bool)WriteText.Invoke(null, new object[] { path, content, failClosed })!;
+        => (bool)WriteText.Invoke(null, new object[] { path, content, failClosed, false })!;
 
     [Fact]
     public void WriteText_FreshPath_WritesContent()
