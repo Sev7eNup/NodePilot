@@ -81,3 +81,19 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''^\.claude/settings\.json$''']
 regexes = ['''Authorization:\s*Bearer\s+_{2}[A-Z]+_[A-Z]+_{2}''']
+
+[[allowlists]]
+description = "Synthetic chat history binding key in the SSE client test"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^src/nodepilot-ui/src/__tests__/api/ai\.test\.ts$''']
+regexes = ['''historyContextKey["']?\s*:\s*["']0a1b2c3d4e5f6a7b["']''']
+
+[[allowlists]]
+description = "Truncated fake RSA key that the log download test expects to be redacted"
+targetRules = ["private-key"]
+condition = "AND"
+regexTarget = "match"
+paths = ['''^tests/NodePilot\.Api\.Tests/Controllers/AppLogControllerTests\.cs$''']
+regexes = ['''MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gun''']
