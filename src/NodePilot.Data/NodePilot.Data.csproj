@@ -27,5 +27,8 @@
          the scheduler stack pulls in via Quartz.Extensions.Hosting (no version drift). -->
     <PackageReference Include="Quartz" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <!-- Security floor over Microsoft.Data.SqlClient's transitive System.Security.Cryptography.Pkcs;
+         version + rationale in Directory.Packages.props. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
   </ItemGroup>
 </Project>

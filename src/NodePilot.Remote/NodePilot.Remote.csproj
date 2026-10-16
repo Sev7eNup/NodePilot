@@ -6,6 +6,9 @@
 
   <ItemGroup>
     <PackageReference Include="System.Management.Automation" />
+    <!-- Security floor over System.Management.Automation's transitive
+         System.Security.Cryptography.Pkcs; version + rationale in Directory.Packages.props. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
     <!-- GetValue&lt;T&gt;() is an extension in the Binder package. Without it
          WinRmSessionPool fails to compile against IConfiguration. -->
