@@ -11,6 +11,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStore,
   Controls,
   Background,
   addEdge,
@@ -65,10 +66,13 @@ import { insertJunctionForFanIn, requiresJunctionForConnection } from '../lib/ju
 import {
   DEFAULT_SOURCE_PORT,
   DEFAULT_TARGET_PORT,
+  connectionRadiusForZoom,
   edgeSourcePort,
   edgeTargetPort,
   normalizePort,
+  quantizeZoom,
 } from '../lib/edgePorts';
+import { isAllowedNewConnection } from '../lib/edgeDetach';
 import { FolderPathBreadcrumb } from '../components/designer/FolderPathBreadcrumb';
 import { NewWorkflowButton } from '../components/designer/NewWorkflowButton';
 import { ResizeHandle } from '../components/designer/library/NodeLibrary';
@@ -164,6 +168,8 @@ function WorkflowEditorInner() {
   const { t } = useTranslation(['editor', 'workflows', 'common']);
   const { id } = useParams<{ id: string }>();
   const { screenToFlowPosition, fitView, setCenter } = useReactFlow();
+  // Quantized, so the page re-renders on a few zoom steps instead of every wheel tick.
+  const zoomStep = useStore((s) => quantizeZoom(s.transform[2]));
   const canvasRef = useRef<HTMLElement>(null);
   // Track the cursor in flow-coords (rAF-throttled) so nodes can reveal their ports on proximity.
   // Only runs while auto-hide is on; off-canvas resets to null so ports hide again.
@@ -367,8 +373,8 @@ function WorkflowEditorInner() {
   );
 
   const isValidConnection = useCallback<IsValidConnection>(
-    (connection) => !hasDuplicateConnection(connection.source, connection.target),
-    [hasDuplicateConnection],
+    (connection) => isAllowedNewConnection(connection, edges),
+    [edges],
   );
 
   const offerRequiredJunction = useCallback(
@@ -1121,6 +1127,7 @@ function WorkflowEditorInner() {
             onConnect={onConnect}
             onConnectEnd={onConnectEnd}
             connectionMode={ConnectionMode.Loose}
+            connectionRadius={connectionRadiusForZoom(zoomStep)}
             isValidConnection={isValidConnection}
             onNodeContextMenu={handleNodeContextMenu}
             onEdgeContextMenu={handleEdgeContextMenu}

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Edge } from '@xyflow/react';
-import { classifyReattachTarget, detachedSourcePoint } from '../../lib/edgeDetach';
+import { classifyReattachTarget, detachedSourcePoint, isAllowedNewConnection } from '../../lib/edgeDetach';
 
 /**
  * Edge detach ("release target" in the edge context menu): classification of a clicked node
@@ -75,6 +75,26 @@ describe('classifyReattachTarget', () => {
   it('sourceNodeThatIsAlsoAGroup_prefersSelfLoopVerdict', () => {
     // Precedence: the more specific verdict wins over the generic type rejection.
     expect(classify('a', 'group')).toBe('selfLoop');
+  });
+});
+
+describe('isAllowedNewConnection', () => {
+  it('freePair_returnsTrue', () => {
+    expect(isAllowedNewConnection({ source: 'a', target: 'd' }, EDGES)).toBe(true);
+  });
+
+  it('otherPortOfTheSameNode_returnsFalse', () => {
+    // Loose mode lets a drag reach another port of the source node; that would be a self-loop.
+    expect(isAllowedNewConnection({ source: 'a', target: 'a' }, EDGES)).toBe(false);
+  });
+
+  it('existingPair_returnsFalse', () => {
+    expect(isAllowedNewConnection({ source: 'a', target: 'b' }, EDGES)).toBe(false);
+  });
+
+  it('reversePair_returnsTrue', () => {
+    // One edge per direction: b->a is a different pair than a->b.
+    expect(isAllowedNewConnection({ source: 'b', target: 'a' }, EDGES)).toBe(true);
   });
 });
 

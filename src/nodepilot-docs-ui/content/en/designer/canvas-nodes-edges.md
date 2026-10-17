@@ -47,11 +47,13 @@ The most important node types:
 2. Drop the connection on the target node's input port.
 3. Select the edge to set a label or a condition.
 
+A port responds a little outside its visible dot, and a dragged connection snaps to a nearby port, even when zoomed out.
+
 The arrow direction shows the direction of execution. An edge can run always, only on success, only on failure, or based on a condition of your own. Details are in [Edge conditions](../concepts/edge-conditions). An edge that runs always carries no label — only a condition, or a label you write yourself, is shown on the canvas.
 
 An edge's plus symbol inserts a new activity between two existing nodes.
 
-An existing edge can be re-routed to a different target without recreating it: either drag its target end onto the new node, or — more convenient on large graphs — right-click the edge, choose **Detach target**, and then click the new target node. The preview line continuously shows which of the four connection points it will land on: whichever one is nearest to the click. This includes the node the edge is already attached to — clicking it again simply moves the connection point. Label, condition and the disabled state move along; Esc or a click on empty canvas cancels.
+An existing edge can be re-routed to a different target without recreating it: either select the edge and drag its target end onto the new node, or — more convenient on large graphs — right-click the edge, choose **Detach target**, and then click the new target node. The preview line continuously shows which of the four connection points it will land on: whichever one is nearest to the click. This includes the node the edge is already attached to — clicking it again simply moves the connection point. Label, condition and the disabled state move along; Esc or a click on empty canvas cancels.
 
 ## State during an execution
 

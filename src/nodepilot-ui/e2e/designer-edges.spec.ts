@@ -508,4 +508,25 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     const panel = page.getByRole('heading', { name: /^connection$|^verbindung$/i }).locator('../..');
     await expect(panel.getByText('Consumer')).toBeVisible();
   });
+
+  test('4.10 — a port is hit a little outside its visible dot', async ({ page }) => {
+    await page.route(`**/api/workflows/${WF_ID}`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson({ withAltTarget: true }) }),
+    );
+
+    await seedExpertMode(page);
+    await page.goto(`/workflows/${WF_ID}`);
+    await waitForCanvas(page, 3);
+    await page.waitForTimeout(500); // Let the fitView animation finish before measuring.
+
+    const dot = (await page.locator(`.react-flow__node[data-id="${NODE_B}"] [data-handleid="right"]`).boundingBox())!;
+    const portAt = (x: number, y: number) => page.evaluate(({ px, py }) => (
+      document.elementFromPoint(px, py)?.closest('.react-flow__handle')?.getAttribute('data-handleid') ?? null
+    ), { px: x, py: y });
+
+    // The zone is three times the dot's padding box. A third of a dot past its edge still hits
+    // the port; two dots past it does not.
+    expect(await portAt(dot.x + dot.width * 1.3, dot.y + dot.height / 2)).toBe('right');
+    expect(await portAt(dot.x + dot.width * 3, dot.y + dot.height / 2)).toBeNull();
+  });
 });

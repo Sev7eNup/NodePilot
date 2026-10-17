@@ -2464,6 +2464,16 @@ select:disabled {
   background-color: var(--color-primary) !important;
 }
 
+/* Invisible hit zone, three times the dot, so a port is easy to grab and to drop on. It inherits
+   the handle's pointer-events (a read-only handle stays inert) and leaves the dot's geometry,
+   and with it every edge anchor, unchanged. */
+.np-canvas .react-flow__handle::before {
+  content: '';
+  position: absolute;
+  inset: -100%;
+  border-radius: 50%;
+}
+
 /* ── Shaped nodes (Trigger / Junction / returnData) ─────────────── */
 /* clip-path prevents box-shadow — filter:drop-shadow follows the clipped outline.
    --np-act-color is set as inline CSS variable on the wrapper in ActivityNode.tsx.

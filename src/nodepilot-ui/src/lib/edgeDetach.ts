@@ -52,6 +52,20 @@ export function classifyReattachTarget({
 }
 
 /**
+ * Rule for a connection dragged between two ports, matching `classifyReattachTarget`: no
+ * self-loop and at most one edge per node pair. React Flow's Loose mode would otherwise accept
+ * a drop on another port of the same node.
+ */
+export function isAllowedNewConnection(
+  connection: { source: string | null; target: string | null },
+  edges: Edge[],
+): boolean {
+  const { source, target } = connection;
+  if (!source || !target || source === target) return false;
+  return !edges.some((e) => e.source === source && e.target === target);
+}
+
+/**
  * Minimal slice of React Flow's `InternalNode`. Structurally typed so tests do not have to
  * build a complete node-internals object.
  */

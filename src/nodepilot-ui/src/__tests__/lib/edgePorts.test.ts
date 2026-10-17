@@ -13,6 +13,8 @@ import {
   portToPosition,
   getPortPoint,
   nearestPortPoint,
+  quantizeZoom,
+  connectionRadiusForZoom,
   type PortPoint,
 } from '../../lib/edgePorts';
 
@@ -172,5 +174,42 @@ describe('nearestPortPoint', () => {
 
   it('emptyPointList_returnsNull', () => {
     expect(nearestPortPoint([], 10, 10)).toBeNull();
+  });
+});
+
+describe('quantizeZoom', () => {
+  it('exactPowersOfTwo_staySame', () => {
+    expect(quantizeZoom(1)).toBe(1);
+    expect(quantizeZoom(0.5)).toBe(0.5);
+    expect(quantizeZoom(2)).toBe(2);
+  });
+
+  it('nearbyZooms_snapToTheSameStep', () => {
+    // The editor re-renders on step changes only, so small wheel movements must not change it.
+    expect(quantizeZoom(1.03)).toBe(1);
+    expect(quantizeZoom(0.97)).toBe(1);
+  });
+
+  it('steps_areQuarterOctaves', () => {
+    expect(quantizeZoom(1.19)).toBeCloseTo(2 ** 0.25);
+  });
+
+  it('nonPositiveOrNaN_returnsOne', () => {
+    expect(quantizeZoom(0)).toBe(1);
+    expect(quantizeZoom(-1)).toBe(1);
+    expect(quantizeZoom(Number.NaN)).toBe(1);
+  });
+});
+
+describe('connectionRadiusForZoom', () => {
+  it('keepsTheScreenRadiusConstant', () => {
+    // The radius is in flow units; times the zoom it is the on-screen distance.
+    for (const zoom of [0.15, 0.5, 1, 2]) {
+      expect(connectionRadiusForZoom(zoom) * zoom).toBeCloseTo(24);
+    }
+  });
+
+  it('invalidZoom_fallsBackToZoomOne', () => {
+    expect(connectionRadiusForZoom(0)).toBe(24);
   });
 });
