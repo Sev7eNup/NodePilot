@@ -69,6 +69,11 @@ exhaustive.
 
 ### Security
 
+- **.NET security update.** The ASP.NET Core and .NET packages move to 10.0.13 and the server setup
+  bundles runtime 10.0.13. This closes the advisories Microsoft published on 2026-10-13:
+  CVE-2026-70179 (Windows authentication), CVE-2026-70159 (SignalR), CVE-2026-84008 and
+  CVE-2026-70162 (`System.Security.Cryptography.Pkcs`) and CVE-2026-96958, -96959 and -96960
+  (`System.Security.Cryptography.Xml`). NodePilot 1.5.0 is affected; update to 1.5.1.
 - UNC paths written with mixed separators (`\/server\share`) are rejected by the path guards.
 - The SSRF guards always block the IPv6 cloud metadata endpoints (`fd00:ec2::254`, `fd20:ce::254`),
   also when private networks are allowed.
