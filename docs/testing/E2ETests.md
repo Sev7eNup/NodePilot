@@ -888,6 +888,22 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 ---
 
+### Test 4.10 — Trefferfläche der Ports
+
+**Schritte:**
+1. Workflow öffnen (bearbeitbar)
+2. Mit der Maus knapp neben einen Port-Punkt fahren und von dort ziehen
+
+**Prüfpunkte:**
+- [ ] Der Port reagiert schon etwas außerhalb seines sichtbaren Punkts (Cursor wechselt, der Punkt leuchtet auf)
+- [ ] Beim Ziehen rastet die Verbindung auch bei kleinem Zoom in der Nähe eines Ports ein
+- [ ] Größe und Lage der sichtbaren Punkte sind unverändert; ein Node lässt sich in seiner Mitte weiterhin verschieben
+- [ ] Ziehen von einem Port zu einem anderen Port desselben Nodes legt keine Edge an
+
+**Erwartung:** Ports sind ohne starkes Hineinzoomen treffbar
+
+---
+
 ## Teil 5: Properties Panel & Variablen
 
 ### Test 5.1 — Output Variable setzen & umbenennen
@@ -5055,7 +5071,7 @@ Die Checkliste führt die Teile mit manuellen Schritten. Teile, die nur automati
 [ ] Teil 1: Workflow-Management (1.1 — 1.4)
 [ ] Teil 2: Activity-Typen (2.1 — 2.14, 2.2b, 2.2c)
 [ ] Teil 3: Node-Operationen (3.1 — 3.5)
-[ ] Teil 4: Edges & Bedingungen (4.1 — 4.8)
+[ ] Teil 4: Edges & Bedingungen (4.1 — 4.10)
 [ ] Teil 5: Properties & Variablen (5.1 — 5.4)
 [ ] Teil 6: Workflow-Ausführung (6.1 — 6.7)
 [ ] Teil 7: Fehlerbehandlung (7.1 — 7.5)

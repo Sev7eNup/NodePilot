@@ -47,11 +47,13 @@ Die wichtigsten Node-Typen:
 2. Verbindung am Eingangsport des Ziel-Nodes ablegen.
 3. Edge auswählen, um Beschriftung oder Bedingung festzulegen.
 
+Ein Port reagiert schon etwas neben seinem sichtbaren Punkt, und eine gezogene Verbindung rastet in der Nähe eines Ports ein, auch bei kleinem Zoom.
+
 Die Pfeilrichtung zeigt die Ausführungsrichtung. Eine Edge kann immer, nur bei Erfolg, nur bei Fehler oder anhand einer eigenen Bedingung ausgeführt werden. Details enthält [Edge-Bedingungen](../concepts/edge-conditions). Eine Edge, die immer läuft, trägt keine Beschriftung — auf der Leinwand steht nur eine Bedingung oder ein selbst vergebenes Label.
 
 Über das Plus-Symbol einer Edge kann eine neue Activity zwischen zwei vorhandenen Nodes eingefügt werden.
 
-Eine bestehende Edge lässt sich auf ein anderes Ziel umhängen, ohne sie neu anzulegen: entweder das Zielende direkt auf den neuen Node ziehen, oder — auf großen Graphen bequemer — per Rechtsklick auf die Edge **Ziel lösen** wählen und anschließend den neuen Ziel-Node anklicken. Die Vorschau-Linie zeigt dabei laufend, an welchem der vier Verbindungspunkte sie landen wird: maßgeblich ist der Punkt, der dem Klick am nächsten liegt. Das gilt auch für den Node, an dem die Edge bereits hängt — ihn erneut anzuklicken verschiebt nur den Anschlusspunkt. Beschriftung, Bedingung und der Deaktiviert-Zustand ziehen mit um; Esc oder ein Klick auf die leere Fläche bricht ab.
+Eine bestehende Edge lässt sich auf ein anderes Ziel umhängen, ohne sie neu anzulegen: entweder die Edge auswählen und ihr Zielende direkt auf den neuen Node ziehen, oder — auf großen Graphen bequemer — per Rechtsklick auf die Edge **Ziel lösen** wählen und anschließend den neuen Ziel-Node anklicken. Die Vorschau-Linie zeigt dabei laufend, an welchem der vier Verbindungspunkte sie landen wird: maßgeblich ist der Punkt, der dem Klick am nächsten liegt. Das gilt auch für den Node, an dem die Edge bereits hängt — ihn erneut anzuklicken verschiebt nur den Anschlusspunkt. Beschriftung, Bedingung und der Deaktiviert-Zustand ziehen mit um; Esc oder ein Klick auf die leere Fläche bricht ab.
 
 ## Status während einer Ausführung
 
