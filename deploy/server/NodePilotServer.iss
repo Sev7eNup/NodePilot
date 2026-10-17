@@ -196,6 +196,7 @@ var
   FinishSaveButton: TNewButton;
   FinishSummary: String;
   FinishHasCredentials: Boolean;
+  FinishIsUpdate: Boolean;
   FinishUrl: String;
   FinishOpenButton: TNewButton;
 
@@ -843,7 +844,7 @@ procedure FinishSaveClick(Sender: TObject);
 var
   Target, MessageText: String;
 begin
-  if IsUpdateSelected() then
+  if FinishIsUpdate then
     Target := ExpandConstant('{userdesktop}\nodepilot-update-summary.txt')
   else
     Target := ExpandConstant('{userdesktop}\nodepilot-setup-summary.txt');
@@ -865,14 +866,17 @@ end;
 // token is consumed by the first login, so neither is available anywhere else.
 procedure BuildFinishSummary(const ResultIni: String);
 var
-  Url, Token, ApiKey, Thumb, InstallDir, DataDir, Service, S: String;
+  Url, Token, ApiKey, Thumb, InstallDir, DataDir, Service, S, CertificateSummary: String;
   BootstrapUser, BootstrapPassword: String;
 begin
   Url := GetIniString('result', 'url', '', ResultIni);
+  // Answer files can choose a different operation from the skipped mode page.
+  FinishIsUpdate := GetIniString('result', 'mode', '', ResultIni) = 'update';
   FinishUrl := Url;
   Token := GetIniString('result', 'adminSetupToken', '', ResultIni);
   ApiKey := GetIniString('result', 'externalTriggerApiKey', '', ResultIni);
   Thumb := GetIniString('result', 'certificateThumbprint', '', ResultIni);
+  CertificateSummary := ExpandNewlines(GetIniString('result', 'certificateSummary', '', ResultIni));
   InstallDir := GetIniString('result', 'installPath', '', ResultIni);
   DataDir := GetIniString('result', 'dataPath', '', ResultIni);
   Service := GetIniString('result', 'serviceName', '', ResultIni);
@@ -881,8 +885,7 @@ begin
   BootstrapPassword := GetIniString('bootstrap', 'password', '', ResultIni);
   FinishHasCredentials := (Token <> '') or (ApiKey <> '') or (BootstrapPassword <> '');
 
-  // A label per line with the value straight after it. The memo has no word wrap, so long prose
-  // lines would be cut off at the right edge.
+  // The displayed memo wraps; the saved text retains copyable command lines.
   S := '';
   if Url <> '' then S := S + 'Address       ' + Url + #13#10;
 
@@ -904,7 +907,7 @@ begin
     S := S + 'Setup token unreadable. Retrieve it with:' + #13#10;
     S := S + '  robocopy "' + DataDir + '" "%TEMP%" admin-setup.token /B' + #13#10;
   end
-  else if not IsUpdateSelected() then
+  else if not FinishIsUpdate then
     S := S + 'Sign in with an existing account - no setup token was issued.' + #13#10;
 
   if ApiKey <> '' then
@@ -917,7 +920,10 @@ begin
   if Service <> '' then S := S + 'Service       ' + Service + #13#10;
   if InstallDir <> '' then S := S + 'Program       ' + InstallDir + #13#10;
   if DataDir <> '' then S := S + 'Data          ' + DataDir + #13#10;
-  if Thumb <> '' then S := S + 'Certificate   ' + Thumb + #13#10;
+  if CertificateSummary <> '' then
+    S := S + #13#10 + 'HTTPS certificate' + #13#10 + CertificateSummary + #13#10
+  else if Thumb <> '' then
+    S := S + 'Certificate store ID (SHA-1)   ' + Thumb + #13#10;
   FinishSummary := S;
 end;
 
@@ -1314,6 +1320,17 @@ begin
   Result.Show;
 end;
 
+function DefaultPublicHostname(): String;
+var
+  Ini: String;
+  ResultCode: Integer;
+begin
+  Result := GetComputerNameString;
+  Ini := ExpandConstant('{tmp}\network-defaults.ini');
+  if RunPowerShell('-Mode Defaults -OutFile "' + Ini + '"', ResultCode) and (ResultCode = 0) then
+    Result := GetIniString('network', 'publicHostname', Result, Ini);
+end;
+
 procedure InitializeWizard();
 var
   I: Integer;
@@ -1456,7 +1473,8 @@ begin
   NetworkPage.Add('Public host name:', False);
   NetworkPage.Add('HTTPS port:', False);
   NetworkPage.Add('HTTP port (0 disables the redirect):', False);
-  NetworkPage.Add('Allowed host names (semicolon separated; blank uses the public host):', False);
+  NetworkPage.Add('Allowed host names (semicolon separated; blank uses server defaults):', False);
+  NetworkPage.Values[0] := DefaultPublicHostname();
   NetworkPage.Values[1] := '443';
   NetworkPage.Values[2] := '80';
   for I := 1 to 2 do
@@ -1551,12 +1569,10 @@ begin
   FinishMemo.Width := WizardForm.FinishedLabel.Width;
   FinishMemo.Top := WizardForm.FinishedLabel.Top + ScaleY(58);
   FinishMemo.Height := WizardForm.FinishedPage.Height - FinishMemo.Top - ScaleY(38);
-  // Both scrollbars, not just the vertical one. Word wrap stays off so the labelled columns line
-  // up, which means a 64-character API key is wider than the memo - without a horizontal bar it is
-  // silently cut at the right edge, exactly as the first version shipped.
-  FinishMemo.ScrollBars := ssBoth;
+  // Wrap guidance without inserting line breaks into copied or saved commands.
+  FinishMemo.ScrollBars := ssVertical;
   FinishMemo.ReadOnly := True;
-  FinishMemo.WordWrap := False;
+  FinishMemo.WordWrap := True;
   FinishMemo.Visible := False;
 
   FinishSaveButton := TNewButton.Create(WizardForm);
@@ -1684,7 +1700,7 @@ begin
     if FinishHasCredentials then
       WizardForm.FinishedLabel.Caption := 'NodePilot is installed and running.' + #13#10 +
         'Save the values below - the credentials are shown only here.'
-    else if IsUpdateSelected() then
+    else if FinishIsUpdate then
       WizardForm.FinishedLabel.Caption := 'NodePilot was updated and is running.' + #13#10 +
         'Your configuration and sign-in details were kept.'
     else

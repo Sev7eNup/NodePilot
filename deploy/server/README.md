@@ -469,7 +469,7 @@ so that a stale file is not half-applied.
 |---|---|
 | `serviceDisplayName` | Display name of the service |
 | `database.sqlCertificateHostName` | Leave empty → the installer derives it from `sqlServer` |
-| `network.allowedHosts`, `network.knownProxyIps` | Host filter and trusted proxy IPs. The installer always appends `localhost` — its own health probe goes there |
+| `network.allowedHosts`, `network.knownProxyIps` | Host filter and trusted proxy IPs. Blank host lists use the public hostname, short computer name and `localhost`. Explicit lists retain their restrictions with `localhost` appended for the health probe; certificate SANs do not expand them |
 | `certificate.source` | `existing` (default when omitted) or `pfx` |
 | `certificate.pfxPath`, `.pfxPassword` | PFX path and password; both required for `source: pfx`, with an empty thumbprint. The password may be empty. |
 | `provisioning.importPfxCertificate` | Import that PFX before installation; mutually exclusive with self-signed generation or an existing thumbprint |

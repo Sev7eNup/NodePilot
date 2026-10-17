@@ -21,6 +21,7 @@
     Probe       - run the readiness checks and report them. Never mutates anything.
     Certificates- list Cert:\LocalMachine\My for the wizard's picker. Reads nothing else and
                   needs no answer file; the thumbprint can still be typed by hand.
+    Defaults    - suggest the same public hostname as the script installer.
     Provision   - carry out the opt-in fixes the operator ticked on the readiness page.
     Apply       - install or upgrade, whichever the answer file declares.
     Cleanup     - shred the answer file and remove the session directory.
@@ -55,7 +56,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('InitSession', 'Probe', 'Ports', 'Certificates', 'Provision', 'Apply', 'Cleanup')]
+    [ValidateSet('InitSession', 'Probe', 'Ports', 'Certificates', 'Defaults', 'Provision', 'Apply', 'Cleanup')]
     [string]$Mode,
     [string]$SessionPath,
     [string]$HandoffPath,
@@ -536,6 +537,12 @@ function Invoke-NodePilotSetupMode {
             return 0
         }
 
+        'Defaults' {
+            . (Join-Path $scriptDirectory 'Preflight.ps1')
+            Set-NodePilotResult -Buffer $result -Section 'network' -Name 'publicHostname' -Value (Get-NodePilotDefaultPublicHostname)
+            return 0
+        }
+
         'Certificates' {
             # The certificate list on its own, for the TLS page, which the operator reaches before
             # the probe has run. Kept separate from Probe: Probe opens a database connection and
@@ -579,7 +586,7 @@ function Invoke-NodePilotSetupMode {
             if ($answers.Contains('provisioning.generateSelfSignedCertificate') -and [bool]$answers['provisioning.generateSelfSignedCertificate']) {
                 Write-NodePilotProgress -Step 'certificate' -Text 'Creating a self-signed certificate'
                 $thumbprint = & (Join-Path $scriptDirectory 'New-NodePilotSelfSignedCertificate.ps1') `
-                    -PublicHostname ([string]$answers['network.publicHostname'])
+                    -PublicHostname ([string]$answers['network.publicHostname']) -HttpsPort ([int]$answers['network.httpsPort'])
                 Set-NodePilotResult -Buffer $result -Section 'provision.certificate' -Name 'status' -Value 'Pass'
                 Set-NodePilotResult -Buffer $result -Section 'provision.certificate' -Name 'thumbprint' -Value $thumbprint
                 Set-NodePilotResult -Buffer $result -Section 'provision.certificate' -Name 'detail' `
@@ -668,8 +675,24 @@ function Invoke-NodePilotSetupMode {
     }
 }
 
+function Add-NodePilotInstalledCertificateResult {
+    param([Parameter(Mandatory)][string]$InstallPath, [string]$ServerUrl = '')
+    . (Join-Path $scriptDirectory 'Preflight.ps1')
+    try {
+        $settings = Get-Content -LiteralPath (Join-Path $InstallPath 'appsettings.Production.json') -Raw | ConvertFrom-Json
+        $thumbprint = [string]$settings.Kestrel.Https.CertificateThumbprint
+        $certificate = Get-Item -LiteralPath "Cert:\LocalMachine\My\$thumbprint" -ErrorAction Stop
+        Set-NodePilotResult -Buffer $result -Section 'result' -Name 'certificateSummary' `
+            -Value (Format-NodePilotCertificateSummary -Certificate $certificate -ServerUrl $ServerUrl)
+    } catch {
+        Set-NodePilotResult -Buffer $result -Section 'result' -Name 'certificateSummary' `
+            -Value ''
+    }
+}
+
 function Invoke-SetupInstall {
     $answers = Read-NodePilotAnswerFile -Path $AnswerFile
+    Set-NodePilotResult -Buffer $result -Section 'result' -Name 'mode' -Value 'install'
     . (Join-Path $scriptDirectory 'ArtifactSecurity.ps1')
 
     $splat = ConvertTo-NodePilotInstallParameters -Answers $answers
@@ -727,6 +750,7 @@ function Invoke-SetupInstall {
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'installPath' -Value $answers['installPath']
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'dataPath' -Value $answers['dataPath']
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'serviceName' -Value $answers['serviceName']
+    Add-NodePilotInstalledCertificateResult -InstallPath $answers['installPath'] -ServerUrl $result['result']['url']
 
     # Read the bootstrap token here rather than scraping console text for a secret.
     #
@@ -788,6 +812,7 @@ function Invoke-SetupInstall {
 
 function Invoke-SetupUpdate {
     $answers = Read-NodePilotAnswerFile -Path $AnswerFile
+    Set-NodePilotResult -Buffer $result -Section 'result' -Name 'mode' -Value 'update'
     Write-NodePilotProgress -Step '0' -Text 'Updating NodePilot'
     # No HTTPS port here: Update-NodePilot.ps1 derives the probe port from the installed Kestrel
     # configuration, so passing a default would probe the wrong port and roll back a healthy
@@ -834,6 +859,8 @@ function Invoke-SetupUpdate {
         }
     }
     catch { }
+    $serverUrl = if ($result['result'].Contains('url')) { [string]$result['result']['url'] } else { '' }
+    Add-NodePilotInstalledCertificateResult -InstallPath $splat['InstallPath'] -ServerUrl $serverUrl
     return 0
 }
 

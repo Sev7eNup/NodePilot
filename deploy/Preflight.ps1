@@ -697,6 +697,83 @@ function Get-NodePilotCertificateNames {
     return $names
 }
 
+function Get-NodePilotDefaultPublicHostname {
+    [CmdletBinding()]
+    param([string]$ComputerName = $env:COMPUTERNAME)
+    try {
+        $resolved = [Net.Dns]::GetHostEntry($ComputerName).HostName
+        if (-not [string]::IsNullOrWhiteSpace($resolved)) { return $resolved }
+    } catch { Write-Verbose 'DNS lookup unavailable; using the computer name as the suggestion.' }
+    return $ComputerName
+}
+
+function Get-NodePilotServerNames {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$PublicHostname, [string]$ComputerName = $env:COMPUTERNAME)
+    $names = @()
+    foreach ($name in @($PublicHostname, $ComputerName, 'localhost')) {
+        if ($name -and $names -notcontains $name.Trim()) { $names += $name.Trim() }
+    }
+    return $names
+}
+
+function Resolve-NodePilotAllowedHosts {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$PublicHostname, [string]$ComputerName = $env:COMPUTERNAME,
+        [string]$AllowedHosts = '')
+    [string[]]$names = if ([string]::IsNullOrWhiteSpace($AllowedHosts)) {
+        @(Get-NodePilotServerNames -PublicHostname $PublicHostname -ComputerName $ComputerName)
+    } else { @($AllowedHosts -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+    if ($names -notcontains 'localhost') { $names += 'localhost' }
+    return ($names -join ';')
+}
+
+function Get-NodePilotTlsLoginCommand {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$PublicHostname,
+        [ValidateRange(1, 65535)][int]$HttpsPort = 443, [string]$Sha256 = '')
+    $url = (New-Object UriBuilder('https', $PublicHostname, $HttpsPort)).Uri.AbsoluteUri
+    $command = 'np auth login --server "{0}"' -f $url
+    if ($Sha256) { $command += " --tls-thumbprint $Sha256" }
+    return $command
+}
+
+function Format-NodePilotCertificateSummary {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Certificate, [AllowEmptyString()][string]$ServerUrl = '')
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { $pin = [BitConverter]::ToString($sha.ComputeHash($Certificate.RawData)).Replace('-', '') }
+    finally { $sha.Dispose() }
+    $names = @(Get-NodePilotCertificateNames -Certificate $Certificate)
+    $selfSigned = $Certificate.Subject -eq $Certificate.Issuer
+    $lines = @(
+        "Names         $($names -join ', ')"
+        "Valid from    $($Certificate.NotBefore.ToString('yyyy-MM-dd'))"
+        "Expires       $($Certificate.NotAfter.ToString('yyyy-MM-dd'))"
+        'Windows store ID (SHA-1)'
+        "  $($Certificate.Thumbprint)"
+        'Certificate pin (SHA-256)'
+        "  $pin"
+        ''
+    )
+    if ($selfSigned) {
+        $lines += @('This certificate is self-signed (lab/pilot use).',
+            'Browsers and API clients need its public certificate trusted on each client.',
+            'Setup does not add client trust. For np, use the certificate pin below instead.')
+    } else {
+        $lines += 'Clients must trust the issuing CA; trust on this server does not establish client trust.'
+    }
+    if ($ServerUrl) {
+        $address = [Uri]$ServerUrl
+        $command = Get-NodePilotTlsLoginCommand -PublicHostname $address.DnsSafeHost -HttpsPort $address.Port
+        if (-not $selfSigned) { $lines += @('', 'CLI login:', $command, '', 'CLI certificate pinning (optional):') }
+        else { $lines += @('', 'CLI login with this certificate:') }
+        $lines += Get-NodePilotTlsLoginCommand -PublicHostname $address.DnsSafeHost -HttpsPort $address.Port -Sha256 $pin
+        $lines += 'After certificate replacement, verify and update any saved certificate pin.'
+    }
+    return ($lines -join "`r`n")
+}
+
 function Test-NodePilotTlsCertificate {
     param(
         [Parameter(Mandatory)][AllowEmptyString()][string]$Thumbprint,
@@ -905,36 +982,32 @@ function New-NodePilotCertificateVerdict {
     # swapping the certificate afterwards is a store import plus a restart. Refusing to install
     # would block a host whose certificate is renewed the same afternoon.
     $replaceHint = "$importHint The installation is not blocked - the service will start and serve it, " +
-                   'but every client, including np and the MCP server, will refuse the connection until it is replaced.'
+                   'but clients normally refuse the connection until it is replaced.'
+    $names = @(Get-NodePilotCertificateNames -Certificate $Certificate)
+    $claimed = if ($names.Count -gt 0) { $names -join ', ' } else { '(no host name at all)' }
+    $metadata = " Names: $claimed. Valid from $($Certificate.NotBefore.ToString('yyyy-MM-dd')); " +
+                "expires $($Certificate.NotAfter.ToString('yyyy-MM-dd'))."
     # -Required stays, as on every other branch of this check: only Fail plus Required aborts, so on
     # a Warn the flag says "this requirement is checked", not "this stops here".
     if ($Certificate.NotAfter -lt $Now) {
         return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Warn' -Required $true `
             -Detail ("Certificate $($Certificate.Subject) expired on $($Certificate.NotAfter.ToString('yyyy-MM-dd')). " +
-                     'Kestrel will serve it and every client will refuse it.') `
+                     "Kestrel will serve it and clients normally refuse it.$metadata") `
             -RemediationHint $replaceHint -Remediation $importCommand
     }
     if ($Certificate.NotBefore -gt $Now) {
         return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Warn' -Required $true `
             -Detail ("Certificate $($Certificate.Subject) is not valid until $($Certificate.NotBefore.ToString('yyyy-MM-dd')). " +
-                     'Clients will refuse it until then.') `
+                     "Clients normally refuse it until then.$metadata") `
             -RemediationHint $replaceHint -Remediation $importCommand
-    }
-
-    $expiryWarning = ''
-    if ($Certificate.NotAfter -lt $Now.AddDays(30)) {
-        $expiryWarning = " Expires $($Certificate.NotAfter.ToString('yyyy-MM-dd'))."
     }
 
     # A warning, never a stop. A certificate whose SAN does not name this host is wrong far more
     # often than it is deliberate - but behind a reverse proxy, or on a host reached under an
     # alias, it is exactly right, and refusing the install would be refusing a valid setup.
-    $names = @(Get-NodePilotCertificateNames -Certificate $Certificate)
     if (-not (Test-NodePilotCertificateNameMatch -Names $names -PublicHostname $PublicHostname)) {
-        $claimed = if ($names.Count -gt 0) { $names -join ', ' } else { '(no host name at all)' }
         return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Warn' -Required $true `
-            -Detail ("Certificate $($Certificate.Subject) is available.$expiryWarning It is issued for " +
-                     "$claimed - not for $PublicHostname.") `
+            -Detail "Certificate $($Certificate.Subject) does not cover $PublicHostname.$metadata" `
             -RemediationHint ('Browsers will show a name mismatch unless something in front of NodePilot ' +
                               "terminates TLS under that name. Either use a certificate naming " +
                               "$PublicHostname, or set the public host name to one the certificate covers.") `
@@ -942,7 +1015,7 @@ function New-NodePilotCertificateVerdict {
     }
 
     New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Pass' -Required $true `
-        -Detail "Certificate $($Certificate.Subject) is available.$expiryWarning"
+        -Detail "Certificate $($Certificate.Subject) is available.$metadata"
 }
 
 function Get-NodePilotGmsaRetrievalState {
