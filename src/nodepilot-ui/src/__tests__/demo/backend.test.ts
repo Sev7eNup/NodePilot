@@ -470,6 +470,8 @@ describe('contracts read through the real clients', () => {
   });
 
   it('links every failure cause to the run it came from', async () => {
+    configureWorld(() => buildWorld(Date.now()));
+
     const causes = await api.get<{ groups: { latestExecutionId: string; latestStartedAt: string }[] }>(
       '/stats/failure-causes?windowHours=720',
     );
