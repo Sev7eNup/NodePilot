@@ -386,7 +386,7 @@ elseif ($settingsReadError) {
     Write-Info "  Could not read the installed configuration ($settingsReadError), so the items"
     Write-Info "  below are named generically."
 }
-Write-Info "  $databaseLabel is untouched. This installer never created it, so it does not remove it."
+Write-Info "  $databaseLabel is untouched. Uninstall never removes databases, including those created by setup."
 Write-Info "  Drop it with your usual DBA tooling once you are certain nothing else uses it."
 $isManagedAccount = $serviceStartName -and $serviceStartName.TrimEnd().EndsWith('$') -and
     $serviceStartName.Trim().ToLowerInvariant() -ne 'localsystem'

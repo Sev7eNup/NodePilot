@@ -20,7 +20,7 @@ The rest of this file explains **why** things are the way they are. This section
 
 ### Get two things ready first
 
-**1. The Kestrel certificate** in the machine store on the target server:
+**1. The HTTPS certificate**, either as a PFX to import in the wizard or already in the machine store:
 
 ```powershell
 Import-PfxCertificate -FilePath cert.pfx -CertStoreLocation Cert:\LocalMachine\My `
@@ -46,9 +46,9 @@ server. SQL Server must be **2022 CU1** (`16.0.4003.1`) or newer. For PostgreSQL
 running it is `sysadmin`; on PostgreSQL if superuser credentials are supplied. That is no longer
 preparatory work, see [Auto-fixes](#auto-fixes).
 
-Only on the gMSA path: create the account in AD, allow the host to retrieve its password, and run
-`Install-ADServiceAccount` on the target server. Access to the certificate's private key is handled
-by the installer.
+Only on the gMSA path: create the account in AD and allow the host to retrieve its password.
+The setup can install AD tools and prepare the existing account locally. Access to the certificate's
+private key is handled by the installer.
 
 ### The wizard
 
@@ -61,11 +61,12 @@ by the installer.
 | 5 | Database | SQL Server 2022 CU1+ or PostgreSQL 16+ |
 | 6a | SQL Server | Server, database, certificate host name (empty = derived from the server) |
 | 6b | PostgreSQL | Host/port/database, then user, password, root certificate — optionally superuser + password so role and database can be created |
-| 7 | Network and TLS | Public hostname, HTTPS port, HTTP port (**`0`** = no redirect), allowed hosts, thumbprint — the list below fills the field, **empty** means "I don't have one yet" |
-| 8 | Optional content | Whether to install the product source code (~27 MB). Ticked by default; see below |
-| 9 | Prerequisites | Ten check rows; red blocking rows disable "Next". Where a checkbox appears: tick it, "Next" runs the fix and **re-checks** |
-| 10 | Installation | Runs with a progress bar and phase text, 2–3 minutes |
-| 11 | Finish | URL, credentials or setup token, paths, certificate — and the **external-trigger API key, which appears only here** |
+| 7 | Network | Public hostname, ports, URL preview; allowed hosts under Advanced; checked port suggestions |
+| 8 | HTTPS certificate | Existing certificate, PFX import or explicit lab certificate generation |
+| 9 | Review configuration | Address, paths and optional product source code (~27 MB, selected by default) |
+| 10 | Prerequisites | Scrolling status list and details; Apply selected fixes and Check again; Next only navigates |
+| 11 | Installation | Measured copy progress, activity indicator for unknown durations, elapsed time and log access |
+| 12 | Finish | Open NodePilot, save credentials/setup token and the **external-trigger API key, which appears only here** |
 
 First login: enter the setup token in the field the sign-in form reveals on the first attempt.
 
@@ -73,7 +74,7 @@ First login: enter the setup token in the field the sign-in form reveals on the 
 
 The server artifact carries a snapshot of the product source under `knowledge\source` — around
 2500 files and 27 MB — which the AI assistant reads for source-code questions. Untick the box on
-page 8 and it is not kept on the machine. Everything else is unchanged; only that one knowledge
+the configuration review and it is not kept on the machine. Everything else is unchanged; only that one knowledge
 source ends up empty, and it is off by default anyway (`AiKnowledge:SourceCodeEnabled`).
 
 The snapshot is removed **after** the artifact has been verified, not skipped during the copy:
@@ -158,79 +159,32 @@ Leave `/DIR` off whenever `installPath` is the default, which is the common case
 
 Uninstalling **never** touches the database; it touches the data directory only with `/PURGEDATA=1`.
 
-## What it takes off your hands — and what it does not
+## Prerequisites and actions
 
-| | |
-|---|---|
-| **Takes off your hands** | Downloading five release assets, comparing checksums, verifying the signer thumbprint out of band, typing nine parameters without a mistake, digging the Kestrel thumbprint out of the certificate MMC. One asset, one double-click. |
-| **Takes off your hands (opt-in)** | Installing the .NET and ASP.NET Core runtimes, creating the SQL login and database, **creating the PostgreSQL role and database**, generating a self-signed Kestrel certificate, trusting the publisher certificate. |
-| **Does not** | Creating the gMSA (an AD task), TLS for the database, Kerberos delegation, antivirus exclusions. |
+The readiness page has a scrolling, keyboard-accessible list with text statuses. Failed checks come
+first, then notices, passed checks and skipped checks. Selecting a row shows its full explanation and
+copyable instructions in a separate scrolling detail area. Available fixes have a selection checkbox;
+selected rows are marked in the list and counted on **Apply selected fixes**.
 
-The **readiness page** checks all of that *before* anything is changed — ten rows: .NET runtime,
-Kestrel certificate, **HTTP/HTTPS ports**, gMSA, service identity, domain membership, database
-reachability, database version, **the service identity's database access**, and **the artifact's
-publisher**. The runtime row explicitly checks for the **64-bit** runtime: NodePilot is published as
-`win-x64`, and a 32-bit host cannot start the apphost — a row that let any architecture through would
-be green while the service still failed to start. Every row carries a status glyph on the right —
-check, cross, exclamation mark or dash — and is colour-coded as well. The glyph is not decoration:
-colour alone means nothing to someone who cannot tell this green from this red, and certainly not in
-a screenshot pasted into a ticket. Red blocking rows disable "Next" — the installer would abort
-anyway, and a wizard that walks you into a guaranteed failure is worse than one that stops.
+**Check again** only reads the machine state. **Apply selected fixes** performs the selected changes,
+reports each operation, consumes the selections and runs the checks again. **Next** only navigates and
+is disabled until the check succeeds without required failures. Prerequisites already installed are
+retained if the operator cancels the wizard.
 
-Clicking a row shows the matching instructions below it — a **read-only, scrolling `TNewMemo`**.
-This used to be a label, because a memo next to eight fixed-height check rows was only one line tall
-and looked like a broken input field; now that the rows are laid out dynamically that reason no
-longer applies, and instructions do not end after five lines: a database fix is a
-`CREATE LOGIN` / `CREATE USER` / `ALTER ROLE` block. A side effect that would have justified the
-change on its own: the text is selectable again. "Save to file…" stays regardless, because Inno
-Pascal has no clipboard API.
+Available actions:
 
-The rows are only positioned once their text is known. Previously each of the eight rows reserved
-16 px for an auto-fix checkbox that is almost never visible — 128 px of a 309 px area for nothing.
+- Install the bundled x64 .NET and ASP.NET Core runtimes.
+- Create the database/login and permissions on an existing SQL Server or PostgreSQL server.
+- Import the selected HTTPS PFX into `LocalMachine\\My`, or explicitly generate a lab certificate.
+- Prepare an existing gMSA locally, installing RSAT-AD-PowerShell if necessary. The account and its
+  password-retrieval permissions must already exist in AD. Readiness is tested after installation;
+  a required Windows restart is reported without restarting the machine.
+- Optionally trust the pinned publisher certificate. This remains unselected and is not required
+  for artifact verification.
 
-### Auto-fixes
-
-Red rows the adapter can repair itself carry a checkbox. Tick it, press "Next", and the fix runs and
-**re-checks afterwards** — a fix never counts as successful merely because it ran. The tick is
-consumed by the attempt: it is cleared afterwards, otherwise a permanently failing fix (typically:
-no permissions on the SQL Server) would loop between "Next" and the same red row.
-
-**Publisher** is the row with the most unusual history. It used to be red and blocking, because
-`Install-NodePilot.ps1` verified the signature **including the certificate chain** and
-`CN=NodePilot Release Signing` is self-signed: on every host that did not know it — that is, on every
-first installation — verification failed mid-run, with a rollback. The row anticipated that.
-
-The installer now verifies the signature **without the chain** against the compiled-in thumbprint
-(plus code-signing EKU, KeyUsage and validity explicitly — the part the chain used to supply). For a
-self-signed publisher the trust anchor is the same certificate, so the chain only confirmed what the
-pin already says. That makes the row **amber and optional**: importing into `LocalMachine\Root` now
-only causes Windows to validate the Authenticode signature of the installers themselves — offered,
-**not** pre-ticked, with the thumbprint in the message.
-
-What still makes the row **red** is everything the installer itself will reject: thumbprint ≠ pin,
-expired or not yet valid, missing code-signing EKU, a KeyUsage without
-`DigitalSignature`/`NonRepudiation`, or a chain error that is **not** merely missing trust. In all of
-those cases the offer disappears — an import repairs none of them, and a button that makes a foreign
-CA machine-wide trusted would be worse than a refused installation.
-
-An empty thumbprint field is the route to exactly one of these fixes: the certificate row then
-reports "No certificate selected" instead of a thumbprint it could not find, and offers to generate a
-self-signed one — **not** pre-ticked, because a lab certificate is created on request, not by pressing
-"Next". For an **expired** certificate, generation is still not offered (see below).
-
-Two rows come **pre-ticked**, both about the database. The first is the database itself: if it is not
-there, pressing "Next" creates it. The second is the service identity's access to it — the pre-flight
-tests reachability using the installing administrator's identity, but at runtime it is the *service*
-that signs in, under the computer account (LocalSystem) or the gMSA, and that row asks exactly that
-(login present? user in the target database? `db_owner`?).
-
-Both are pre-ticked because the operator already asked for them: the server and the database name
-were typed two pages earlier. A row that is merely offered is a row people miss, and a red line next
-to copyable T-SQL is answered by copying the T-SQL. Every tick stays visible and can be cleared.
-
-The fix runs through `Provision-NodePilotDatabase.ps1`: first a permission gate (`sysadmin` or
-`CREATE ANY DATABASE`), then existence-checked login → database → user → `db_owner`. Without the
-permissions, **nothing** is changed and the wizard shows the instructions for the DBA.
+No database server is installed. Domain account creation, AD permissions and database-server TLS
+remain infrastructure tasks. The network page offers checked HTTPS alternatives (443, 8443, 9443)
+with HTTP redirection disabled; the operator explicitly accepts the suggestion.
 
 ### PostgreSQL
 
@@ -364,43 +318,26 @@ way carries `IsBreakGlass` and satisfies exactly that condition — SSO can be e
 
 ## Progress display
 
-During installation the wizard shows a phase and a progress bar. It used to sit on "Preparing to
-Install" and show **nothing** — measured at 136 s for a successful run, 187 s for one that runs into
-the health-probe timeout. Long enough for Windows to grey out the window and add "Not responding";
-that is exactly how it was read.
+Probe, provisioning and installation run through the same asynchronous worker. The wizard shows the
+current operation, elapsed time and an **Open setup log** button. The outcome still comes from the
+result file's exit code.
 
-The cause was `Exec` with `ewWaitUntilTerminated`: synchronous, blocking Inno's UI thread completely.
-**Only the installation** therefore now runs detached (`ewNoWait`); probe, provision, certificates and
-cleanup stay synchronous, as those finish in seconds.
+Install and update scripts report structured progress through an optional `ProgressCallback`.
+`DeploymentProgress.ps1` writes complete, delimited records to the protected session. Progress is
+independent of console text and failures in the progress listener cannot fail a deployment.
 
-Four points about this that are not obvious:
+Copying reports bytes and completed files, including updates within large files, at most four times
+per second plus phase boundaries. Its percentage describes the current copy operation. Extraction,
+signature verification, runtime installation and service readiness use an activity indicator because
+their duration is unknown. There is no estimated overall percentage.
 
-- **The exit code comes from `result.ini`, not from `Exec`.** With `ewNoWait` there is none — the
-  process is still running. The adapter writes the file in a `finally`, so it exists on the rollback
-  paths as well. What is checked is not its existence but whether `summary.exitCode` is in it:
-  `WriteAllLines` is not atomic, so the file can be present and half-written.
-- **Inno has no message pump.** `AppProcessMessages`, `ProcessMessages` and `Application` are all
-  unknown identifiers in 6.7.3 (measured). The loop therefore calls `ProgressPage.SetProgress` once
-  per tick — the mechanism Inno provides for long operations.
-- **The progress comes from the output of the installer scripts**, not from new messages added to
-  them. `Install-NodePilot.ps1` (10 phases) and `Update-NodePilot.ps1` (4) are unchanged; the adapter
-  translates their `Write-Step` lines into `percent|text` in passing. Matching is by **prefix**,
-  because several headings embed a value (`Stopping service '$ServiceName'`). That is safe because
-  `Write-Step` writes flush left and `Write-Info` indents — a detail line starts with a space and
-  cannot prefix a phase name.
-- **The drift contract runs in both directions.** Every table entry must exist in the script *and*
-  every `Write-Step` in the script must be covered by an entry. The second direction was missing at
-  first, and that is exactly what slipped through: the updater reports four phases, the table knew
-  two; the installer ten, the table nine. The bar stood still for half the update runtime without a
-  single test turning red.
-- **No cancel.** A half-installed system is worse than waiting three minutes.
+The wizard detects a worker that exits without a result and retains the existing 45-minute timeout.
+On timeout it retains the protected session because the worker may still need it; close setup and
+inspect the log before retrying. Setup does not cancel an in-flight mutation.
 
-The bar **stands still** during "Starting service" — that phase waits up to 180 s for
-`/healthz/ready`. The text says so. A bar that kept moving artificially would claim progress nobody
-is measuring.
-
-A 45-minute timeout bounds the loop. It only triggers if the adapter was killed outright and
-`result.ini` never appears — otherwise the wizard would wait forever.
+Small scripts and the publisher certificate precede the large payload in the package. Large payloads
+are outside the solid-compressed script block, avoiding decompression of the artifact just to read a
+helper script.
 
 ## Port check
 
@@ -432,77 +369,22 @@ a log file nobody opens.
 
 ## Certificate selection (TLS page)
 
-Below the *Certificate thumbprint* field there is a list of the certificates in
-`Cert:\LocalMachine\My`. Selecting one writes the thumbprint **into the field above** — that field
-remains the single value read by the answer file, the validation and the write-back path of the
-self-signed certificate. That is why the list required no change at any of those places.
+The HTTPS certificate has its own page after the network configuration:
 
-**An empty field is allowed** and means "I don't have one yet". The page only checks the length if
-something is actually there; the decision happens on the readiness page, which turns the certificate
-row red and offers to generate one. Previously the page unconditionally demanded 40 characters — and
-in the same message told you to leave the field as it was. On a machine with no certificate at all,
-the only way to reach the offer was to invent 40 hex characters.
+- **Existing certificate:** select from `Cert:\\LocalMachine\\My` or enter its thumbprint. Each
+  choice includes subject, thumbprint and expiry; missing private keys are named. Inventory reloads
+  on each visit, and failure to enumerate preserves manual entry.
+- **PFX import:** select a PFX and enter its password (empty is allowed). Probe inspects the file
+  without persisting its private key. Applying the selected fix imports it into the machine's
+  personal store, without making the private key exportable or adding root trust. The imported
+  thumbprint becomes the selected certificate; the password is cleared from the wizard.
+- **Lab certificate:** explicitly select generation, then apply the certificate fix on the readiness
+  page. Generation is never selected by default.
 
-The reason for the list is the route it replaces: the only other way to get the thumbprint of an
-already-installed certificate is the certificate MMC, whose copy button prepends an **invisible
-U+200E**. That is exactly why `Install-NodePilot.ps1` strips all non-hex characters before measuring
-the length — 40 characters, looks right, still rejected.
-
-Four decisions that are not obvious:
-
-- **A dedicated adapter mode, not the probe.** `-Mode Certificates` only reads the certificate store:
-  no answer file, no session directory, no database connection. The probe does not run until the
-  readiness page, i.e. one page *after* the one where the thumbprint is typed — and it is allowed to
-  spend seconds on a network timeout.
-- **Never blocking.** If the list cannot be read, a row appears saying so, and the thumbprint is typed
-  as before. The readiness page checks it anyway. A convenience feature that stops a working
-  installation would be a bad trade.
-- **Certificates without a private key are shown**, marked `NO PRIVATE KEY`, rather than filtered out.
-  "It is in the store, why isn't it listed?" has one common answer — a `.cer` was imported where a
-  `.pfx` was meant — and a filtered list turns that into a riddle.
-- **Every row carries the thumbprint**, not just subject and expiry. On CM1 there are two certificates
-  with the same subject **and** the same expiry date ("NodePilot Lab HTTPS" and "NodePilot Lab SQL
-  TLS", issued 39 seconds apart): without the thumbprint those were two identical rows, and the wrong
-  one would have handed Kestrel the database certificate without comment. Side effect: the value can be
-  checked against a supplied thumbprint instead of being taken on trust.
-- **Sorted by expiry, latest first.** A renewed certificate sits next to the one it replaces under the
-  same subject; the date is the first thing that tells them apart.
-
-**Layout.** The list is on the same page as the five input fields — which required re-flowing the
-page. Inno budgets 54 px per label+field pair while the controls actually need ~43 px; five pairs
-therefore occupied 270 of the 309 px available and the list was drawn **below the visible edge**. An
-input page does not scroll and gives no hint that there is more. The re-flow measures the controls
-instead of hard-coding constants, and a clamp additionally forces the list to end inside the area. The
-alternative would have been a second page — five values that belong to one decision, split across two
-screens.
-
-**What the readiness page checks:** presence in the machine store, the private key, the **validity
-period** and a **name match**. An expired (or not-yet-valid) certificate is an **amber** row: it names
-the date, says every client will refuse the connection until the certificate is replaced, and lets the
-installation continue. Validity is a property of the certificate, not of the installation — Kestrel
-binds by thumbprint and never reads `NotAfter`, so the service starts either way, and swapping the
-certificate afterwards is a store import plus a restart. Refusing to install would stop a host whose
-certificate is renewed the same afternoon. There is deliberately **no** auto-fix here either:
-answering "your PKI certificate has expired" with "here, have a lab certificate" would be worse than
-saying so plainly.
-
-The name match runs against the SAN list (wildcards cover exactly one label, RFC 6125; without a SAN
-the CN counts) and is **only a warning** — behind a reverse proxy or under an alias a different name
-is legitimate, and "Next" stays available. It reads `DnsNameList` from the PowerShell certificate
-provider, not `Extensions.Format()`: that output is localized (`DNS Name=` vs. `DNS-Name=`), so a
-parser built on it works on an English host and silently finds nothing on a German one.
-
-**What still nobody checks:** whether the chain is trusted by the clients. For a PKI certificate from
-your own CA that is the normal case — it has to be in the machine store beforehand, and the setup
-asks for nothing more:
-
-```powershell
-Import-PfxCertificate -FilePath cert.pfx -CertStoreLocation Cert:\LocalMachine\My `
-  -Password (Read-Host -AsSecureString)
-```
-
-Without `MachineKeySet|PersistKeySet`, `Grant-CertPrivateKeyAccess` later fails to find the key file
-under `ProgramData\Microsoft\Crypto` and aborts.
+The same readiness check evaluates presence, private key, validity and hostname after provisioning.
+Validity and hostname problems remain warnings; existing certificates are not silently replaced.
+A PFX containing multiple end-entity certificates is rejected so the setup cannot choose the wrong
+server identity.
 
 ## Architecture
 
@@ -575,10 +457,11 @@ installation.
 `database.provider` is `sqlserver` (then `sqlServer` + `sqlDatabase`) or `postgres` (then
 `postgresHost`, `postgresDatabase`, `postgresUser`, `postgresPassword`, `postgresRootCertificate`).
 `certificate.thumbprint` is the only mandatory key that may be **empty**: empty means "none available
-yet" and then requires `provisioning.generateSelfSignedCertificate`. If something is there, it must be
+yet" and requires either `provisioning.generateSelfSignedCertificate` or an explicitly requested PFX import. If something is there, it must be
 40 hex characters — otherwise the run aborts here instead of later in the Kestrel configuration.
-For `"mode": "update"`, `installPath` and `serviceName` are enough; every further key is rejected, so
-that a stale file is not half-applied.
+For `"mode": "update"`, `installPath` and `serviceName` are enough. `dataPath` is optional and preserves
+a custom data-directory location in the completion summary. Installation-only keys are rejected,
+so that a stale file is not half-applied.
 
 **Optional keys at a glance:**
 
@@ -587,7 +470,10 @@ that a stale file is not half-applied.
 | `serviceDisplayName` | Display name of the service |
 | `database.sqlCertificateHostName` | Leave empty → the installer derives it from `sqlServer` |
 | `network.allowedHosts`, `network.knownProxyIps` | Host filter and trusted proxy IPs. The installer always appends `localhost` — its own health probe goes there |
-| `certificate.source` | Purely documentary |
+| `certificate.source` | `existing` (default when omitted) or `pfx` |
+| `certificate.pfxPath`, `.pfxPassword` | PFX path and password; both required for `source: pfx`, with an empty thumbprint. The password may be empty. |
+| `provisioning.importPfxCertificate` | Import that PFX before installation; mutually exclusive with self-signed generation or an existing thumbprint |
+| `provisioning.installGmsa`, `.installAdTools` | Prepare the existing gMSA locally; optionally install missing AD tools. `installAdTools` requires `installGmsa`. |
 | `provisioning.installDotnetRuntime`, `.createDatabaseAndLogin`, `.generateSelfSignedCertificate`, `.trustArtifactSigner` | The same auto-fixes as on the readiness page, **in silent mode too** — there the answer file is the only place they can be requested. They run before the installation, not after. |
 | `provisioning.postgresSuperUser`, `.postgresSuperPassword` | For the PostgreSQL fix only. `CREATE ROLE`/`CREATE DATABASE` need an authorization that SQL Server gets for free via the Windows identity. The service never sees them |
 | `bootstrap.adminUsername` | Creates the first admin, password random (see [Turnkey rollout](#turnkey-rollout-unattended-without-typing-a-token)) |
@@ -626,8 +512,12 @@ production password.
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 3 | Preparation failed (Inno) |
-| 7 | Installation failed — the message is in the log, the installer has already rolled back |
+| 3 | Fatal Inno error while preparing the next installation phase |
+| 7 | Setup could not proceed: invalid answer file, prerequisite preparation or installation failure. Read the log for the cause and any rollback result |
+| 8 | Setup could not proceed and Windows must be restarted |
+
+Any nonzero exit code means setup did not complete. Code 7 alone does not prove a rollback occurred:
+validation can fail before installation starts, and restoration can itself fail. Check the setup log.
 
 Adapter-internal (visible in the log): 2 = readiness red, 3 = answer file invalid, 4 = installation
 failed, 1 = adapter crash.
@@ -659,6 +549,10 @@ Here it is a `TNewMemo`, not a label as on the readiness page: the page is other
 room for a properly sized one, and a 64-character API key that cannot be selected would have to be
 typed out by hand. "Save this summary…" writes the same text to the desktop — **including the secrets**,
 which the confirmation dialog points out.
+
+Updates confirm that existing sign-in details were retained and save to
+`nodepilot-update-summary.txt`. Installation credentials remain in the separate
+`nodepilot-setup-summary.txt`; saving an update summary does not overwrite them.
 
 The summary is built in `PrepareToInstall`, not in `CurPageChanged`: `DeinitializeSetup` clears the
 session directory, so the INI would be long gone by display time. And only on the success path — a
@@ -782,9 +676,11 @@ checkable in the `.iss`, the adapter, the runtime fetch and the build — every 
   the clamp in `CompactNetworkPage` and a contract on it. How the page then looks — whether the spacing
   is right or it feels cramped — is only visible in the running wizard. That is exactly how the list
   shipped cut off the first time.
-- **The GUI has never been clicked.** All lab runs were unattended. The interactive path — readiness
-  indicators, auto-fix checkboxes, certificate selection — is untested.
-- **Unattended only.** All four identity/database combinations (gMSA or LocalSystem, SQL Server or
+- **Native GUI coverage is outside CI.** The October 2026 GW1 review exercised real dialogs,
+  repairs, progress, upgrade/uninstall and DPI, plus separate synthetic worker failures. Repeatable
+  cases and their evidence requirements are in the optional installer matrix linked below;
+  results belong to the tested artifact hash, not automatically to the next release.
+- **Historical unattended matrix.** All four identity/database combinations (gMSA or LocalSystem, SQL Server or
   PostgreSQL 16 with TLS) were installed fresh in the lab, and the SQL Server ones also as an update
   from 1.4.0; see the addendum of 2026-09-23 below. The wizard pages for them were not clicked.
 - **SQL Server only on the NodePilot host itself.** A remote SQL Server with LocalSystem (the
@@ -792,6 +688,13 @@ checkable in the `.iss`, the adapter, the runtime fetch and the build — every 
 - **Only Windows Server 2025.** Server 2022 (the `MinVersion`) is untested.
 
 ### Manual smoke matrix before each release
+
+The reproducible [optional server installer acceptance step](../../scripts/release-lab/server-ui/README.md)
+is release step 6a. It records the GW1 cases with stable IDs, baseline preparation, full-text scrolling,
+expected results, reusable fault/CRL fixtures and cleanup. Use it for the native-dialog, silent,
+upgrade/rollback and DPI follow-up; the broader catalog below remains a list of additional smoke
+scenarios, not a claim that every row has been exercised. Mandatory release gates remain in
+[RELEASING.md](../../RELEASING.md).
 
 | # | Case | Expectation |
 |---|---|---|
@@ -801,7 +704,7 @@ checkable in the `.iss`, the adapter, the runtime fetch and the build — every 
 | 4 | `/FULLREINSTALL` | Confirmation dialog appears, new API key |
 | 5 | `/VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE` | Exit 0, service runs |
 | 6 | Runtime missing, offer declined | "Next" stays disabled |
-| 7 | Red readiness row | "Next" disabled, instructions visible |
+| 7 | Blocking readiness row | "Next" disabled, instructions visible |
 | 8 | Cancel mid-wizard | No session directory left behind |
 | 9 | Uninstall without switches | Everything gone, data and database remain |
 | 10 | Uninstall `/PURGEDATA=1` | Data directory gone as well, database remains |
@@ -810,10 +713,10 @@ checkable in the `.iss`, the adapter, the runtime fetch and the build — every 
 | 13 | Finish page after a new installation | URL, setup token, API key, thumbprint, paths visible and selectable |
 | 14 | Finish page after an update | URL from the installed configuration, no token, no new API key |
 | 15 | Update over a running service | Waits for the process instead of aborting |
-| 16 | TLS page, certificate chosen from the list | Thumbprint appears in the field above, readiness row green |
+| 16 | TLS page, certificate chosen from the list | Thumbprint appears in the field above, readiness row OK |
 | 17 | TLS page, empty certificate store | Informational row instead of a list, "Next" stays available |
-| 18 | HTTP port 80 on a host with IIS | Readiness row red with "reserved by Windows", "Next" disabled |
-| 19 | HTTP port 0 | Row green, "HTTP disabled" |
+| 18 | HTTP port 80 on a host with IIS | Readiness row Needs attention with "reserved by Windows", "Next" disabled |
+| 19 | HTTP port 0 | Row OK, "HTTP disabled" |
 | 20 | Interactive installation | Bar and phase text advance, window stays responsive, no "Not responding" |
 | 21 | Unattended installation | No UI, exit code unchanged |
 | 22 | Unattended with `bootstrap.adminUsername` | Exit 0, credential file present (ACL SYSTEM + Administrators only), sign-in works without a token, `admin-setup.token` gone |
@@ -821,33 +724,42 @@ checkable in the `.iss`, the adapter, the runtime fetch and the build — every 
 | 24 | Unattended with a `seed` group, empty instance | Sign-in with a user **from the backup**, no token, no credential file, seed file deleted |
 | 25 | The same seed against a populated instance | Nothing happens, no duplicates, seed file left in place |
 | 26 | Wrong seed passphrase | Service does **not** start, the message names the passphrase, no partial data in the database |
-| 27 | SQL Server without a login for the service identity | Row red **and pre-ticked**, "Next" creates login + user + `db_owner`, green afterwards |
-| 28 | The same run with the login already present | Row green without a checkbox, nothing is changed |
+| 27 | SQL Server without a login for the service identity | Row Needs attention **with the fix selected**, "Apply selected fixes" creates login + user + `db_owner`, OK afterwards |
+| 28 | The same run with the login already present | Row OK without a checkbox, nothing is changed |
 | 29 | Fix without `sysadmin` | Nothing changed, the message names the reason, tick cleared afterwards (no loop) |
 | 30 | Unattended with `provisioning.createDatabaseAndLogin` | Exit 0, database + login created, `/healthz/ready` 200 |
-| 31 | Expired certificate selected | Row **amber** with the expiry date, "Next" stays available, no auto-fix offered |
-| 32 | Certificate with a foreign SAN | Row **amber**, names both names, "Next" stays available |
-| 33 | Postgres without role/database, superuser supplied | Row red with a checkbox, "Next" creates both, re-check green |
-| 34 | The same without superuser fields | Row red **without** a checkbox, server message verbatim, snippet visible |
-| 35 | Postgres with a wrong role password | Row red, says "both present", no fix offered, password unchanged |
-| 36 | Installer built without `-PgBinariesPath`, Postgres selected | Row **amber**: reachable, sign-in unverified |
+| 31 | Expired certificate selected | Row **Notice** with the expiry date, "Next" stays available, no auto-fix offered |
+| 32 | Certificate with a foreign SAN | Row **Notice**, names both names, "Next" stays available |
+| 33 | Postgres without role/database, superuser supplied | Row Needs attention with a checkbox, "Apply selected fixes" creates both, re-check OK |
+| 34 | The same without superuser fields | Row Needs attention **without** a checkbox, server message verbatim, snippet visible |
+| 35 | Postgres with a wrong role password | Row Needs attention, says "both present", no fix offered, password unchanged |
+| 36 | Installer built without `-PgBinariesPath`, Postgres selected | Row **Notice**: reachable, sign-in unverified |
 | 37 | New installation with gMSA over a LocalSystem installation | Exit 0, service runs as the gMSA, `jwt-secret.key` now owned by the gMSA |
 | 38 | Failure **after** the ACL step | Rollback restores the service **and** the directory ACL, the previous installation keeps running |
-| 39 | Thumbprint field left empty | "Next" leads to the readiness page, row red with "No certificate selected" plus a **not** pre-ticked offer; tick + "Next" creates one, writes the thumbprint back into the field, re-check green |
+| 39 | Thumbprint field left empty | "Next" leads to the readiness page, row Needs attention with "No certificate selected" plus a **not** pre-ticked offer; tick + "Apply selected fixes" creates one, writes the thumbprint back into the field, re-check OK |
 | 40 | Field filled with 12 characters | Message "40 hexadecimal characters", the page stays put |
-| 41 | Host that does not know the publisher | Row "Artifact publisher" **amber**, "Next" stays available, installation completes **without** an import |
-| 42 | The same case, offer ticked | Tick + "Next" imports into `LocalMachine\Root`, re-check green, afterwards `Get-AuthenticodeSignature` on the setup `.exe` reports `Valid` |
-| 43 | Expired publisher certificate | Row **red**, "Next" disabled, **no** offer (an import does not repair it) |
-| 44 | Only the **32-bit** or an older runtime (< 10.0.11) installed | Row "ASP.NET Core 10.0.11+ runtime" **red and pre-ticked**, naming the architecture or the version found together with its path |
-| 45 | x64 runtime present, x86 first in `PATH` | Row **green**, naming the 64-bit host it queried |
-| 46 | SQL Server reachable, target database not created yet | Row red **and pre-ticked**, "Next" creates database + login + user + `db_owner`, re-check green |
+| 41 | Host that does not know the publisher | Row "Artifact publisher" **Notice**, "Next" stays available, installation completes **without** an import |
+| 42 | The same case, offer ticked | Tick + "Apply selected fixes" imports into `LocalMachine\Root`, re-check OK, afterwards `Get-AuthenticodeSignature` on the setup `.exe` reports `Valid` |
+| 43 | Expired publisher certificate | Row **Needs attention**, "Next" disabled, **no** offer (an import does not repair it) |
+| 44 | Only the **32-bit** or an older runtime (< 10.0.11) installed | Row "ASP.NET Core 10.0.11+ runtime" **Needs attention, fix selected**, naming the architecture or the version found together with its path |
+| 45 | x64 runtime present, x86 first in `PATH` | Row **OK**, naming the 64-bit host it queried |
+| 46 | SQL Server reachable, target database not created yet | Row Needs attention **with the fix selected**, "Apply selected fixes" creates database + login + user + `db_owner`, re-check OK |
 | 47 | The same, but the installing account is not `sysadmin` | Nothing changed, the message names the permission, the DDL stays on the page, tick cleared (no loop) |
-| 48 | SQL Server whose certificate this host does not trust | Row red, the remediation names TLS and reachability **before** the DDL, no claim that a login is missing |
-| 49 | **Bare machine, no .NET at all** | Runtime row red **and pre-ticked**; "Next" installs both bundled packages; afterwards `C:\Program Files\dotnet\dotnet.exe` exists and `--list-runtimes` reports `Microsoft.NETCore.App` **and** `Microsoft.AspNetCore.App`; re-check green. Two MsiInstaller 1033 events, not one |
+| 48 | SQL Server whose certificate this host does not trust | Row Needs attention, the remediation names TLS and reachability **before** the DDL, no claim that a login is missing |
+| 49 | **Bare machine, no .NET at all** | Runtime row Needs attention **with the fix selected**; "Apply selected fixes" installs both bundled packages; afterwards `C:\Program Files\dotnet\dotnet.exe` exists and `--list-runtimes` reports `Microsoft.NETCore.App` **and** `Microsoft.AspNetCore.App`; re-check OK. Two MsiInstaller 1033 events, not one |
 | 50 | Installer that exits 0 without installing anything | Row stays red **and** a dialog names it: the verdict comes from re-running the readiness check, never from the exit code |
-| 51 | Machine carrying a **newer** .NET runtime but no ASP.NET Core | The host package declines with 1638, the run continues to the second package, re-check green — a decline is not a reason to stop |
+| 51 | Machine carrying a **newer** .NET runtime but no ASP.NET Core | The host package declines with 1638, the run continues to the second package, re-check OK — a decline is not a reason to stop |
+| 52 | PFX import, correct and incorrect password | Probe does not persist a key; correct import is rechecked; incorrect password is actionable and never logged |
+| 53 | Existing gMSA, AD tools absent | Explicit fix installs tools and prepares the local account; a required restart blocks continuation |
+| 54 | gMSA without password-retrieval permission | No AD permission change; actionable error and no success claim |
+| 55 | All fixes selected, long messages, keyboard navigation at 100/150/200% | List and detail scroll independently; no overlaps; every action remains reachable |
+| 56 | Large-file copy and a slow readiness probe | Real byte counts while copying, activity indicator while waiting, responsive log button |
+| 57 | Terminated worker or timeout | Failure reported; timeout retains the protected session and prevents another operation |
+| 58 | Port suggestion accepted or declined | Only accepted values change; URL preview updates; ports are checked again before installation |
+| 59 | Update or answer-file run | No unused certificate/content pages; existing source-content choice preserved |
+| 60 | Finish page | First-access values precede technical details; Open NodePilot uses the reported URL |
 
-Status: 1, 3, 5, 9, 10, 22, 23, 30, 37 and 38 have been run in the Hyper-V lab against real AD, a real
+Historical status before the October 2026 GUI review: 1, 3, 5, 9, 10, 22, 23, 30, 37 and 38 ran in the Hyper-V lab against real AD, a real
 gMSA and SQL Server 2022 CU. On **2026-08-06** the **logic** behind 39, 40, 41, 43 and 44 was added —
 through the adapter against the running CM1 installation (`InitSession` → `Probe` → `Certificates` →
 `Cleanup`, certificates as in-memory fixtures, no store writes): all ten rows green, an answer file with
@@ -855,7 +767,7 @@ an empty thumbprint accepted with exit 2, one with twelve characters rejected wi
 left behind neither the session directory nor the answer file, the service still `Running` afterwards
 and `/healthz/ready` 200. What is missing there, as with 33 to 35, is the **page**.
 
-Open: 2, 4, 6, 7, 8, 11 to 21, 24 to 29, 31 to 36, 42 and 45. 42 would write machine-wide into
+Then open: 2, 4, 6, 7, 8, 11 to 21, 24 to 29, 31 to 36, 42 and 45. 42 would write machine-wide into
 `LocalMachine\Root`; 45 needs a host with **both** runtimes — demonstrated on the development machine
 (x86 first in `PATH`, row stays green and names the x64 host), and there is no 32-bit runtime in the
 lab. The **logic** behind 33 to 35 ran against a real PostgreSQL 16 with TLS (see below).

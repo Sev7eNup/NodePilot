@@ -6,6 +6,10 @@ session. Computer Use is required for every UI assertion: screenshots, visible c
 keyboard, native file pickers, tray menus and observable results. API, PowerShell and fixture
 scripts may prepare data or corroborate an observation, but they cannot mark a UI case passed.
 
+Native server installer dialogs have a separate [optional acceptance matrix](../server-ui/README.md).
+It includes repeatable prerequisites, installer faults, silent paths and DPI checks. Those cases are
+not part of this installed-application catalog or its case count.
+
 ## Prepare and run
 
 Copy `environment.example.json` outside the repository and fill in the full release commit,

@@ -1,5 +1,4 @@
 #requires -Version 5.1
-
 <#
 .SYNOPSIS
     Behavioural self-test of the setup answer-file contract.
@@ -572,60 +571,7 @@ try {
     Assert-True -Name 'a readable token needs no staging copy at all' `
         -Condition (@(Get-ChildItem -LiteralPath $tokenStage -Recurse -Force -ErrorAction SilentlyContinue).Count -eq 0)
 
-    # --- installation progress ------------------------------------------------------------------
-    # Drives the wizard's progress bar by translating the installer's own phase headings as they
-    # stream past, so deciding whether a line is a phase heading has to be exact.
-    $phase = Get-NodePilotPhaseProgress -Line '[install] Extracting artifact'
-    Assert-True -Name 'a phase heading yields a position and a caption' `
-        -Condition ($null -ne $phase -and $phase.Percent -gt 0 -and $phase.Text)
-    # Write-Info emits detail lines under the same [install] prefix. Loose matching would let an
-    # indented detail register as a phase and move the bar to an arbitrary position.
-    Assert-True -Name 'an indented detail line is not a phase' `
-        -Condition ($null -eq (Get-NodePilotPhaseProgress -Line '[install]   Service acct  : CORP\svc$'))
-    Assert-True -Name 'an unrelated line is not a phase' `
-        -Condition ($null -eq (Get-NodePilotPhaseProgress -Line 'random output'))
-    # Several headings interpolate a value, so an exact string comparison cannot match them and
-    # the bar would stand still for those phases.
-    $updatePhase = Get-NodePilotPhaseProgress -Line "[update] Stopping service 'NodePilot'"
-    Assert-True -Name 'an updater heading with an interpolated name still matches' `
-        -Condition ($null -ne $updatePhase -and $updatePhase.Percent -gt 0)
-    Assert-True -Name 'an installer heading with an interpolated account still matches' `
-        -Condition ($null -ne (Get-NodePilotPhaseProgress -Line "[install] Granting 'Log on as a service' to CORP\svc`$"))
-    # Every phase either script announces has to be recognised, checked against the real phase
-    # tables rather than against the scripts.
-    foreach ($sample in @(
-        '[update] Extracting artifact',
-        '[update] Backing up current install',
-        "[update] Stopping service 'NodePilot'",
-        '[update] Installing verified artifact',
-        "[update] Starting service 'NodePilot'")) {
-        Assert-True -Name "the updater phase in '$sample' is recognised" `
-            -Condition ($null -ne (Get-NodePilotPhaseProgress -Line $sample))
-    }
-    # Extraction must exist as its own phase and come before the backup. It is the longest part of
-    # an update, so without a phase the dialog sits on the start caption for minutes and looks
-    # hung. Renaming the heading or reordering the table past the backup would restore that.
-    $extractPhase = Get-NodePilotPhaseProgress -Line '[update] Extracting artifact'
-    $backupPhase  = Get-NodePilotPhaseProgress -Line '[update] Backing up current install'
-    Assert-True -Name 'the updater announces extraction before the backup' `
-        -Condition ($null -ne $extractPhase -and $null -ne $backupPhase -and
-                    [int]$extractPhase.Percent -lt [int]$backupPhase.Percent)
-    Assert-True -Name 'an updater detail line is not a phase' `
-        -Condition ($null -eq (Get-NodePilotPhaseProgress -Line '[update]   Backup: C:\x'))
-    # Ascending percentages let the wizard keep the bar from moving backwards without tracking
-    # state per phase.
-    foreach ($table in @(
-        @{ Name = 'install'; Percents = @(Get-NodePilotInstallPhases | ForEach-Object { [int]$_.Percent }) },
-        @{ Name = 'update';  Percents = @(Get-NodePilotUpdatePhases  | ForEach-Object { [int]$_.Percent }) })) {
-        $percents = $table.Percents
-        Assert-True -Name "$($table.Name) phases ascend" `
-            -Condition (($percents -join ',') -eq ((@($percents) | Sort-Object) -join ',') -and
-                        (@($percents | Select-Object -Unique).Count -eq $percents.Count))
-    }
-    # Progress is cosmetic but runs inside the pipe that carries the installer's output, so an
-    # exception here would take the installation down with it.
-    Assert-True -Name 'an empty line is handled rather than thrown on' `
-        -Condition ($null -eq (Get-NodePilotPhaseProgress -Line ''))
+    & (Join-Path $scriptDirectory 'Test-SetupExperience.ps1')
 
     # --- the .NET runtime row -----------------------------------------------------------------
     # The row has to check which architecture answered, not only whether some dotnet reports
@@ -920,8 +866,10 @@ try {
     Assert-True -Name 'collecting pre-flight results never throws' -Condition ($checks.Count -gt 0)
     Assert-True -Name 'an unreachable database is reported as a required failure' `
         -Condition (@($checks | Where-Object { $_.Id -eq 'database' -and $_.Status -eq 'Fail' -and $_.Required }).Count -eq 1)
-    Assert-True -Name 'a failed check still carries a remediation snippet' `
-        -Condition (@($checks | Where-Object { $_.Id -eq 'database' })[0].Remediation -match 'CREATE LOGIN')
+    $unreachableDatabase = @($checks | Where-Object { $_.Id -eq 'database' })[0]
+    Assert-True -Name 'an unreachable database offers connection guidance instead of database creation' `
+        -Condition (-not $unreachableDatabase.CanAutoFix -and -not $unreachableDatabase.Remediation -and
+                    $unreachableDatabase.RemediationHint -match 'reachable')
     Assert-Throws -Name 'asserting the same results does abort' -MessagePattern 'Aborted|not found|not present' -Action {
         Assert-NodePilotPreflight -Results $checks | Out-Null
     }
@@ -1434,13 +1382,12 @@ try {
         -Condition (($againLog -join "`n") -notmatch 'CREATE (LOGIN|DATABASE \[|USER)' -and
                     ($againLog -join "`n") -match 'ALTER ROLE db_owner')
 
-    # The row the operator meets on a first install arrives ticked, so pressing Next creates the
-    # database instead of leaving a red line next to copyable T-SQL.
+    # Database preparation cannot repair an unreachable SQL Server.
     $missingDb = Test-NodePilotSqlReachable -Server 'nodepilot-unreachable.invalid' `
         -Database 'NodePilot' -CertificateHostName 'nodepilot-unreachable.invalid' `
         -Principal 'CONTOSO\HOST$'
-    Assert-True -Name 'an unreachable database offers its fix pre-ticked' `
-        -Condition ($missingDb.CanAutoFix -and $missingDb.AutoFixDefault)
+    Assert-True -Name 'an unreachable SQL Server does not offer database preparation' `
+        -Condition (-not $missingDb.CanAutoFix -and -not $missingDb.AutoFixDefault -and -not $missingDb.Remediation)
     # A connection that never came up is not a permission problem, and CREATE LOGIN as the only
     # advice sent the first users looking for one they did not have.
     Assert-True -Name 'a connection failure names TLS and reachability before the DDL' `
@@ -1496,6 +1443,9 @@ try {
     $pgDown = New-NodePilotPostgresResult @pgArgs -TcpReachable $false -TcpError 'No route to host'
     Assert-True -Name 'an unreachable Postgres is still a required failure' `
         -Condition ($pgDown.Status -eq 'Fail' -and $pgDown.Required)
+    Assert-True -Name 'TCP failure gives network guidance without database creation or authentication advice' `
+        -Condition ($pgDown.RemediationHint -match 'host and port' -and
+                    ($pgDown.Detail + $pgDown.RemediationHint + $pgDown.Remediation) -notmatch 'CREATE ROLE|CREATE DATABASE|pg_hba')
 
     # Built without -PgBinariesPath. Reporting Pass here would be repeating the old lie with extra
     # steps; the row says what it does and does not know.
@@ -1506,6 +1456,8 @@ try {
         -Condition ($pgNoClient.Detail -match 'untested')
     Assert-True -Name 'the clientless row offers no fix it cannot run' `
         -Condition (-not $pgNoClient.CanAutoFix)
+    Assert-True -Name 'an untested login does not claim that objects or the bundled client are missing' `
+        -Condition ($pgNoClient.Detail -notmatch 'carries no|does not exist' -and [string]::IsNullOrEmpty($pgNoClient.Remediation))
 
     $pgOk = New-NodePilotPostgresResult @pgArgs -TcpReachable $true `
         -PsqlOutcome ([pscustomobject]@{ Succeeded = $true; Error = '' })
@@ -1518,6 +1470,12 @@ try {
         -RevocationProblem "the revocation status of the server certificate 'CN=pg1' could not be checked"
     Assert-True -Name 'an unverifiable revocation status fails the row even when the login works' `
         -Condition ($pgRevocation.Status -eq 'Fail' -and $pgRevocation.Required -and $pgRevocation.Detail -match 'revocation')
+    $pgRevoked = New-NodePilotPostgresResult @pgArgs -TcpReachable $true `
+        -PsqlOutcome ([pscustomobject]@{ Succeeded = $true; Error = '' }) `
+        -RevocationProblem "the server certificate 'CN=pg1' is revoked"
+    Assert-True -Name 'a revoked certificate requires replacement rather than another CRL import' `
+        -Condition ($pgRevoked.Status -eq 'Fail' -and $pgRevoked.RemediationHint -match 'Replace the revoked' -and
+                    $pgRevoked.RemediationHint -notmatch 'addstore' -and $pgRevocation.RemediationHint -match 'current CRL')
 
     # The chain evaluation itself, on in-memory certificates: a server certificate without a CRL
     # distribution point cannot have its revocation checked.
@@ -1553,6 +1511,19 @@ try {
         -Condition ($pgNoRole.Status -eq 'Fail' -and $pgNoRole.CanAutoFix -and $pgNoRole.Detail -match "role 'nodepilot' does not exist")
     Assert-True -Name 'a missing database is named alongside it' `
         -Condition ($pgNoRole.Detail -match 'database \[nodepilot\] does not exist')
+    Assert-True -Name 'both missing objects are offered and use a password prompt without a CLI placeholder' `
+        -Condition ($pgNoRole.AutoFixLabel -match 'missing role and database' -and
+                    $pgNoRole.Remediation -match 'CREATE ROLE "nodepilot"' -and
+                    $pgNoRole.Remediation -match 'CREATE DATABASE "nodepilot"' -and
+                    $pgNoRole.Remediation.Contains('\password "nodepilot"') -and
+                    $pgNoRole.Remediation -notmatch 'PostgresPassword|PASSWORD ''')
+    $pgOnlyRoleMissing = New-NodePilotPostgresResult @pgArgs -TcpReachable $true -CanProvision $true `
+        -PsqlOutcome ([pscustomobject]@{ Succeeded = $false; Error = $germanNoRole }) `
+        -RoleExists $false -DatabaseExists $true
+    Assert-True -Name 'a missing role never instructs recreating an existing database' `
+        -Condition ($pgOnlyRoleMissing.AutoFixLabel -match 'missing role on' -and
+                    $pgOnlyRoleMissing.Remediation -match 'CREATE ROLE' -and
+                    $pgOnlyRoleMissing.Remediation -notmatch 'CREATE DATABASE')
 
     # Role there, database not: half the work, and the fix does only the half that is missing.
     $pgNoDb = New-NodePilotPostgresResult @pgArgs -TcpReachable $true -CanProvision $true `
@@ -1562,6 +1533,13 @@ try {
         -Condition ($pgNoDb.Status -eq 'Fail' -and $pgNoDb.CanAutoFix -and $pgNoDb.Detail -match 'database \[nodepilot\] does not exist')
     Assert-True -Name 'an existing role is not reported as missing' `
         -Condition ($pgNoDb.Detail -notmatch "role 'nodepilot' does not exist")
+    Assert-True -Name 'a missing database never instructs recreating or resetting an existing role' `
+        -Condition ($pgNoDb.AutoFixLabel -match 'missing database on' -and
+                    $pgNoDb.Remediation -match 'CREATE DATABASE' -and $pgNoDb.Remediation -notmatch 'CREATE ROLE|password')
+    $pgQuotedInstructions = Get-NodePilotPostgresRemediationScript -User 'Mixed"Role' -Database 'Mixed"Database'
+    Assert-True -Name 'manual PostgreSQL statements preserve case and escape identifier quotes' `
+        -Condition ($pgQuotedInstructions.Contains('CREATE ROLE "Mixed""Role" WITH LOGIN;') -and
+                    $pgQuotedInstructions.Contains('CREATE DATABASE "Mixed""Database" OWNER "Mixed""Role";'))
 
     # THE localisation regression: a German "password authentication failed" must not read as a
     # missing role just because the English words are absent.
@@ -1579,6 +1557,9 @@ try {
         -Condition ($pgBadPassword.Detail -match "both the role 'nodepilot' and the database \[nodepilot\] exist")
     Assert-True -Name 'the refusal is quoted verbatim, in whatever language it arrived' `
         -Condition ($pgBadPassword.Detail -match 'Passwort-Authentifizierung')
+    Assert-True -Name 'existing objects with a bad password lead to credentials and never to DDL' `
+        -Condition ($pgBadPassword.RemediationHint -match 'PostgreSQL - credentials page' -and
+                    $pgBadPassword.RemediationHint -notmatch 'answer file' -and [string]::IsNullOrEmpty($pgBadPassword.Remediation))
 
     # Could not ask: no superuser credentials. "I do not know" is a different answer from "they are
     # not there", and offering to create a role because nobody could look would be the worse guess.
@@ -1588,8 +1569,15 @@ try {
         -Condition ($pgUnknown.Status -eq 'Fail' -and -not $pgUnknown.CanAutoFix -and $pgUnknown.Detail -notmatch 'does not exist')
     Assert-True -Name 'the unknown case still repeats what the server said' `
         -Condition ($pgUnknown.Detail -match 'existiert nicht')
-    Assert-True -Name 'the unfixable row still carries the statements for a DBA' `
-        -Condition ($pgUnknown.Remediation -match 'CREATE ROLE' -and $pgUnknown.Remediation -match 'CREATE DATABASE')
+    Assert-True -Name 'unknown catalogue state requests verification instead of creating unverified objects' `
+        -Condition ($pgUnknown.RemediationHint -match 'valid administrator credentials' -and
+                    [string]::IsNullOrEmpty($pgUnknown.Remediation))
+    $pgUnknownAdmin = New-NodePilotPostgresResult @pgArgs -TcpReachable $true -CanProvision $true `
+        -PsqlOutcome ([pscustomobject]@{ Succeeded = $false; Error = 'TLS host name mismatch' })
+    Assert-True -Name 'a failed administrator lookup does not pretend that credentials were omitted' `
+        -Condition (-not $pgUnknownAdmin.CanAutoFix -and $pgUnknownAdmin.RemediationHint -match 'host name and root certificate' -and
+                    $pgUnknownAdmin.RemediationHint -notmatch 'Without a PostgreSQL superuser' -and
+                    [string]::IsNullOrEmpty($pgUnknownAdmin.Remediation))
 
     # Windows PowerShell 5.1 has no ProcessStartInfo.ArgumentList, so the quoting is ours to get
     # right. A database name is validated before it reaches DDL, but a PASSWORD is not, and a

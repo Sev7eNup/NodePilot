@@ -143,11 +143,13 @@ Write-Step 'Staging the deployment scripts'
 # $PSScriptRoot references in the entry points and fails when the lists drift apart again.
 $deployScripts = @(
     'ArtifactSecurity.ps1'
+    'DeploymentProgress.ps1'
     'MachinePath.ps1'
     'SwitcherConfig.ps1'
     'Preflight.ps1'
     'ServiceControl.ps1'
     'SetupContract.ps1'
+    'SetupProvisioning.ps1'
     'Invoke-NodePilotSetup.ps1'
     'Install-NodePilot.ps1'
     'Update-NodePilot.ps1'

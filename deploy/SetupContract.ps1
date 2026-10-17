@@ -33,6 +33,8 @@ $script:NodePilotAnswerFileKeys = @{
             'database.postgresUser', 'database.postgresPassword', 'database.postgresRootCertificate',
             'network.allowedHosts', 'network.knownProxyIps',
             'certificate.source',
+            'certificate.pfxPath', 'certificate.pfxPassword',
+            'provisioning.importPfxCertificate', 'provisioning.installGmsa', 'provisioning.installAdTools',
             'provisioning.installDotnetRuntime', 'provisioning.createDatabaseAndLogin',
             'provisioning.generateSelfSignedCertificate', 'provisioning.trustArtifactSigner',
             # PostgreSQL has no equivalent of Trusted_Connection, so createDatabaseAndLogin needs
@@ -151,6 +153,33 @@ function Read-NodePilotAnswerFile {
                    "have a self-signed certificate created; got '$thumbprint'.")
         }
         $provider = [string]$map['database.provider']
+        $pfx = $map.Contains('certificate.source') -and $map['certificate.source'] -eq 'pfx'
+        if ($map.Contains('certificate.source') -and $map['certificate.source'] -notin @('existing', 'pfx')) {
+            throw "Answer file 'certificate.source' must be 'existing' or 'pfx'."
+        }
+        if ($pfx) {
+            if (-not $map.Contains('certificate.pfxPath') -or [string]::IsNullOrWhiteSpace($map['certificate.pfxPath']) -or
+                -not $map.Contains('certificate.pfxPassword')) {
+                throw 'Answer file needs certificate.pfxPath and certificate.pfxPassword for a PFX import.'
+            }
+            if ($thumbprint -or ($map.Contains('provisioning.generateSelfSignedCertificate') -and $map['provisioning.generateSelfSignedCertificate'])) {
+                throw 'Answer file must select only one certificate source: PFX, existing thumbprint, or self-signed generation.'
+            }
+        }
+        if ($map.Contains('provisioning.importPfxCertificate') -and $map['provisioning.importPfxCertificate'] -and -not $pfx) {
+            throw 'Answer file PFX import needs certificate.source=pfx.'
+        }
+        foreach ($flag in @('provisioning.installGmsa', 'provisioning.installAdTools', 'provisioning.importPfxCertificate')) {
+            if ($map.Contains($flag) -and $map[$flag] -isnot [bool]) { throw "Answer file '$flag' must be a boolean." }
+        }
+        if (($map.Contains('provisioning.installGmsa') -and $map['provisioning.installGmsa']) -or
+            ($map.Contains('provisioning.installAdTools') -and $map['provisioning.installAdTools'])) {
+            if ($identityType -ne 'gmsa') { throw 'Answer file local gMSA preparation needs identity.type=gmsa.' }
+        }
+        if ($map.Contains('provisioning.installAdTools') -and $map['provisioning.installAdTools'] -and
+            (-not $map.Contains('provisioning.installGmsa') -or -not $map['provisioning.installGmsa'])) {
+            throw 'Answer file AD tools installation must accompany provisioning.installGmsa.'
+        }
         switch ($provider) {
             'sqlserver' {
                 foreach ($key in 'database.sqlServer', 'database.sqlDatabase') {
@@ -343,88 +372,6 @@ function ConvertTo-NodePilotIniValue {
     param([AllowNull()]$Value)
     if ($null -eq $Value) { return '' }
     return ([string]$Value) -replace "`r`n", '\n' -replace "`n", '\n' -replace "`r", '\n'
-}
-
-# The installer's phases in the order it prints them, with the percentage each one starts at.
-# Mirrors the Write-Step calls in Install-NodePilot.ps1; Test-DeploymentTemplates.ps1 checks that
-# every entry here still exists there, because a renamed step stalls the progress bar.
-#
-# The percentages are not equal slices: extracting the artifact and starting the service take the
-# most wall-clock time, so they get the widest ranges.
-$script:NodePilotInstallPhases = @(
-    [pscustomobject]@{ Step = 'NodePilot installer';                     Percent = 2;  Text = 'Starting the installer' }
-    [pscustomobject]@{ Step = 'Pre-flight checks';                       Percent = 8;  Text = 'Checking prerequisites' }
-    [pscustomobject]@{ Step = 'Checking the runtime against this build'; Percent = 11; Text = 'Matching the installed runtimes against this build' }
-    [pscustomobject]@{ Step = 'Preparing directories';                   Percent = 15; Text = 'Preparing directories' }
-    [pscustomobject]@{ Step = 'Extracting artifact';                     Percent = 25; Text = 'Extracting and verifying the signed artifact' }
-    [pscustomobject]@{ Step = 'Generating appsettings.Production.json';  Percent = 55; Text = 'Writing the configuration' }
-    [pscustomobject]@{ Step = 'Applying ACLs';                           Percent = 62; Text = 'Applying permissions' }
-    [pscustomobject]@{ Step = 'Firewall rules';                          Percent = 68; Text = 'Adding firewall rules' }
-    [pscustomobject]@{ Step = 'Registering Windows Service';             Percent = 74; Text = 'Registering the Windows service' }
-    [pscustomobject]@{ Step = "Granting 'Log on as a service' to";       Percent = 77; Text = 'Granting the service logon right' }
-    [pscustomobject]@{ Step = 'Starting service';                        Percent = 80; Text = 'Starting the service - this can take up to three minutes' }
-)
-
-# The updater's five phases. Its health probe has a shorter timeout than the installer's, so the
-# last caption promises less.
-$script:NodePilotUpdatePhases = @(
-    # Ahead of the backup on purpose: expanding the files to staging and hashing each one against
-    # the signed manifest is the longest part of an update, so it gets a phase of its own.
-    [pscustomobject]@{ Step = 'Extracting artifact';          Percent = 10; Text = 'Extracting and verifying the signed artifact - this can take a few minutes' }
-    # Between extraction and the backup: the requirement is read from the extracted artifact, and
-    # it has to be answered before anything on the machine is changed.
-    [pscustomobject]@{ Step = 'Checking the runtime against this build'; Percent = 15; Text = 'Matching the installed runtimes against this build' }
-    [pscustomobject]@{ Step = 'Backing up current install';   Percent = 20; Text = 'Backing up the current installation' }
-    [pscustomobject]@{ Step = 'Stopping service';             Percent = 40; Text = 'Stopping the service' }
-    [pscustomobject]@{ Step = 'Installing verified artifact'; Percent = 55; Text = 'Installing the verified artifact' }
-    [pscustomobject]@{ Step = 'Starting service';             Percent = 75; Text = 'Starting the service - this can take up to a minute' }
-)
-
-function Get-NodePilotInstallPhases {
-    # Exposed so the tests and the drift contract read the same tables the translation uses.
-    return $script:NodePilotInstallPhases
-}
-
-function Get-NodePilotUpdatePhases {
-    return $script:NodePilotUpdatePhases
-}
-
-function Get-NodePilotPhaseProgress {
-    <#
-      Translates one line of installer or updater output into a progress position, or $null when
-      the line is not a phase heading.
-
-      Matching is by prefix, because several headings interpolate a value into themselves
-      ("Stopping service 'NodePilot'"), which an exact comparison cannot express. A prefix is
-      unambiguous because Write-Step prints its heading flush while Write-Info indents every
-      detail line, so a detail line can never be the prefix of a phase name.
-
-      Returning $null for every other line leaves the bar where it is instead of resetting it.
-    #>
-    param([Parameter(Mandatory)][AllowEmptyString()][string]$Line)
-
-    if ($Line -cmatch '^\[install\]\s(.*)$') {
-        return Find-NodePilotPhase -Text $matches[1] -Phases $script:NodePilotInstallPhases
-    }
-    if ($Line -cmatch '^\[update\]\s(.*)$') {
-        return Find-NodePilotPhase -Text $matches[1] -Phases $script:NodePilotUpdatePhases
-    }
-    return $null
-}
-
-function Find-NodePilotPhase {
-    param(
-        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
-        [Parameter(Mandatory)][object[]]$Phases
-    )
-    # StartsWith, not -clike: the wildcard operator would read '[', ']' and '*' in a phase name as
-    # pattern syntax and stop matching without reporting anything.
-    foreach ($phase in $Phases) {
-        if ($Text.StartsWith($phase.Step, [System.StringComparison]::Ordinal)) {
-            return [pscustomobject]@{ Percent = $phase.Percent; Text = $phase.Text }
-        }
-    }
-    return $null
 }
 
 function Get-NodePilotBootstrapToken {
