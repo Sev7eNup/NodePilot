@@ -24,13 +24,13 @@ function readJson<T>(relativePath: string): T {
 }
 
 describe('desktop runtime dependency contract', () => {
-  it('pins Electron 44.5.1 consistently in the manifest and lockfile', () => {
+  it('pins Electron 44.7.0 consistently in the manifest and lockfile', () => {
     const manifest = readJson<PackageManifest>('../package.json');
     const lock = readJson<PackageLock>('../package-lock.json');
 
-    expect(manifest.devDependencies.electron).toBe('44.5.1');
-    expect(lock.packages[''].devDependencies?.electron).toBe('44.5.1');
-    expect(lock.packages['node_modules/electron'].version).toBe('44.5.1');
+    expect(manifest.devDependencies.electron).toBe('44.7.0');
+    expect(lock.packages[''].devDependencies?.electron).toBe('44.7.0');
+    expect(lock.packages['node_modules/electron'].version).toBe('44.7.0');
   });
 
   // The embedded Node major changes with Electron majors. Naming the pinned version in the note

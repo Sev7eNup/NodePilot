@@ -174,6 +174,8 @@ public sealed class AuthControllerTests : IDisposable
         // The SPA login page keys on this code to reveal its setup-token field — a plain
         // wrong-password 401 must not carry it (see Login_WrongPassword_ReturnsUnauthorized).
         unauthorized.Value!.ToString().Should().Contain("SETUP_TOKEN_REQUIRED");
+        // An installed server keeps the token in its data directory, not next to the binaries.
+        unauthorized.Value!.ToString().Should().Contain("data directory").And.NotContain("content root");
         (await db.Users.AnyAsync()).Should().BeFalse("no user must be created without a valid setup token");
         audit.Calls.Should().ContainSingle(call =>
             call.Action == AuditActions.LoginFailed

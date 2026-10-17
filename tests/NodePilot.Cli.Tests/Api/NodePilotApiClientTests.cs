@@ -702,6 +702,30 @@ public sealed class NodePilotApiClientTests : IDisposable
         ex.IsConflict.Should().BeTrue();
         ex.Title.Should().Be("Conflict");
         ex.Detail.Should().Be("Idempotency replay.");
+        ex.Code.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ErrorBodyWithCode_ExposesCode()
+    {
+        _server.Given(Request.Create().WithPath("/api/workflows").UsingGet())
+               .RespondWith(Response.Create().WithStatusCode(401).WithBodyAsJson(new
+               {
+                   code = "SETUP_TOKEN_REQUIRED", message = "Admin bootstrap required.",
+               }));
+        var ex = await Assert.ThrowsAsync<ApiException>(() => _client.ListWorkflowsAsync(CancellationToken.None));
+        ex.Code.Should().Be("SETUP_TOKEN_REQUIRED");
+    }
+
+    [Fact]
+    public async Task ErrorBodyWithNonStringCode_LeavesCodeEmpty()
+    {
+        // A code that is not a string is ignored rather than breaking error parsing.
+        _server.Given(Request.Create().WithPath("/api/workflows").UsingGet())
+               .RespondWith(Response.Create().WithStatusCode(400).WithBodyAsJson(new { code = 42, title = "Bad" }));
+        var ex = await Assert.ThrowsAsync<ApiException>(() => _client.ListWorkflowsAsync(CancellationToken.None));
+        ex.Code.Should().BeNull();
+        ex.Title.Should().Be("Bad");
     }
 
     [Fact]

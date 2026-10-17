@@ -430,8 +430,9 @@ public class AuthController : ControllerBase
                     return Unauthorized(new
                     {
                         code = "SETUP_TOKEN_REQUIRED",
-                        message = "Admin bootstrap required. Send the X-Setup-Token header " +
-                                  "matching the admin-setup.token file written to the content root on first startup."
+                        message = "Admin bootstrap required. Send the X-Setup-Token header with the contents of " +
+                                  "the admin-setup.token file the server wrote on first startup; the installer " +
+                                  "places it in the data directory."
                     });
                 }
 

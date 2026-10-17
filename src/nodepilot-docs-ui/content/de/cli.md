@@ -75,7 +75,7 @@ np exec get 7e3f... --server https://np.internal:8443 -o yaml
 
 ## auth
 
-`np auth login` ist interaktiv (fragt Username + Passwort ab, falls nicht per Flag geliefert). Flags: `--username`, `--password` (Literal — in Scripts meiden), `--password-stdin` (eine Zeile von stdin), `--setup-token <T>` (Bootstrap First-Admin), `--windows` (Anmeldung mit dem aktuellen Windows-Konto, ohne Passwort).
+`np auth login` ist interaktiv (fragt Username + Passwort ab, falls nicht per Flag geliefert). Flags: `--username`, `--password` (Literal — in Scripts meiden), `--password-stdin` (eine Zeile von stdin), `--setup-token <T>` (Bootstrap First-Admin), `--windows` (Anmeldung mit dem aktuellen Windows-Konto, ohne Passwort). Hat der Server noch keinen Admin, meldet `np auth login` das und verweist auf `--setup-token` (das Token steht auf der Abschlussseite des Setups bzw. in `admin-setup.token` im Datenverzeichnis) oder auf die erste Anmeldung im Browser. Ein falsches Token wird als abgelehnt gemeldet.
 
 ```bash
 # Interaktiv (fragt user + pw ab)
@@ -355,7 +355,7 @@ np health --server https://np.internal:8443
 # Quartz cron — nächste Feuerzeiten
 np cron next "0 0 2 ? * MON-FRI" --count 10
 
-# Dashboard & Observability
+# Dashboard & Observability (Kennzahlen im Terminal; die Weboberfläche ist die Server-Adresse im Browser)
 np dashboard -o json
 np failure-causes                             # letzte 24 h, nach Ursache gruppiert
 np failure-causes --window-hours 168 -o json  # 1..720 Stunden; GUIDs und Zeitstempel werden

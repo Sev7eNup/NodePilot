@@ -75,7 +75,7 @@ np exec get 7e3f... --server https://np.internal:8443 -o yaml
 
 ## auth
 
-`np auth login` is interactive (it asks for the user name and password if they are not supplied through flags). Flags: `--username`, `--password` (a literal — avoid it in scripts), `--password-stdin` (one line from stdin), `--setup-token <T>` (bootstrapping the first admin), `--windows` (sign in with the current Windows account, no password).
+`np auth login` is interactive (it asks for the user name and password if they are not supplied through flags). Flags: `--username`, `--password` (a literal — avoid it in scripts), `--password-stdin` (one line from stdin), `--setup-token <T>` (bootstrapping the first admin), `--windows` (sign in with the current Windows account, no password). When the server has no admin yet, `np auth login` says so and points to `--setup-token` (the token is on the setup's finish page or in `admin-setup.token` in the data directory) or to the first sign-in in a browser. A wrong token is reported as rejected.
 
 ```bash
 # Interactive (asks for user + password)
@@ -355,7 +355,7 @@ np health --server https://np.internal:8443
 # Quartz cron — the next fire times
 np cron next "0 0 2 ? * MON-FRI" --count 10
 
-# Dashboard & observability
+# Dashboard & observability (figures in the terminal; the web UI is the server address in a browser)
 np dashboard -o json
 np failure-causes                             # the last 24 h, grouped by cause
 np failure-causes --window-hours 168 -o json  # 1..720 hours; GUIDs and timestamps are folded

@@ -15,6 +15,10 @@ public sealed class ApiException : Exception
     public string? Detail { get; }
     public string? RawBody { get; }
 
+    /// <summary>The machine-readable <c>code</c> of the error body, such as
+    /// <c>SETUP_TOKEN_REQUIRED</c>; null when the server sent none.</summary>
+    public string? Code { get; init; }
+
     public ApiException(HttpStatusCode statusCode, string? title, string? detail, string? rawBody)
         : base(BuildMessage(statusCode, title, detail, rawBody))
     {
