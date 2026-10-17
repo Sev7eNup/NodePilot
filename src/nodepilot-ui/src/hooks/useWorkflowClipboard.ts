@@ -1,10 +1,22 @@
 import { useRef, useCallback, useEffect } from 'react';
-import { type Node, type Edge } from '@xyflow/react';
-import { randomUuid } from '../lib/uuid';
+import type { XYPosition } from '@xyflow/react';
+import {
+  parseFragment,
+  remapFragment,
+  selectFragment,
+  serializeFragment,
+  type FragmentParseResult,
+  type WorkflowFragment,
+} from '../lib/workflowFragment';
 import type { WorkflowGraphSource } from './useWorkflowHistory';
 
-type WorkflowClipboard = { nodes: Node[]; edges: Edge[] };
+/** Shift per repeated paste of the same copy, so the copies do not stack on each other. */
+const PASTE_OFFSET = 40;
 
+/**
+ * Copy and paste of canvas nodes as workflow JSON text. The editor puts the text on the system
+ * clipboard, so a selection can go to a text editor and back, or into another workflow.
+ */
 export function useWorkflowClipboard(
   commitHistory: (label?: string) => void,
   markDirty: () => void,
@@ -14,74 +26,85 @@ export function useWorkflowClipboard(
   // projected without its children, so copying it from the store would lose them.
   const sourceRef = useRef(source);
   useEffect(() => { sourceRef.current = source; });
-  const pasteCountRef = useRef(0);
   const selectionRef = useRef<{ nodeIds: string[]; edgeIds: string[] }>({ nodeIds: [], edgeIds: [] });
-  // Workflow nodes can contain inline credentials, so the clipboard lives in this hook instance
-  // and is dropped when the editor unmounts, including on logout. Browser storage would let the
-  // next signed-in user in the same tab recover it.
-  const clipboardRef = useRef<WorkflowClipboard | null>(null);
+  // Text this editor copied last and how often it has been pasted since. The clipboard may
+  // hand it back with Windows line endings, so it is kept and compared normalised.
+  const lastCopyRef = useRef<{ text: string; pastes: number } | null>(null);
 
-  const resetPasteCount = useCallback(() => { pasteCountRef.current = 0; }, []);
+  const resetPasteCount = useCallback(() => {
+    if (lastCopyRef.current) lastCopyRef.current.pastes = 0;
+  }, []);
 
   const updateSelection = useCallback((sel: { nodeIds: string[]; edgeIds: string[] }) => {
     selectionRef.current = sel;
   }, []);
 
-  const copySelection = useCallback(() => {
-    const { nodeIds, edgeIds } = selectionRef.current;
-    if (nodeIds.length === 0 && edgeIds.length === 0) return;
+  const selectedFragment = useCallback((): WorkflowFragment => {
     const { nodes, edges } = sourceRef.current;
-    const nodeIdSet = new Set(nodeIds);
-    const selectedNodes = nodes.filter((n) => nodeIdSet.has(n.id));
     // An edge is copied only when both of its endpoints are in the selection.
-    const selectedEdges = edges.filter((e) =>
-      (edgeIds.includes(e.id) || (nodeIdSet.has(e.source) && nodeIdSet.has(e.target)))
-      && nodeIdSet.has(e.source) && nodeIdSet.has(e.target)
-    );
-    if (selectedNodes.length === 0) return;
-    clipboardRef.current = {
-      nodes: selectedNodes.map((n) => ({ ...n, data: { ...(n.data as object) } as Node['data'] })),
-      edges: selectedEdges.map((e) => ({ ...e, data: e.data ? { ...(e.data as object) } : undefined })),
-    };
-    pasteCountRef.current = 0;
+    return selectFragment(nodes, edges, selectionRef.current.nodeIds);
   }, []);
 
-  const pasteBuffer = useCallback(() => {
-    const buf = clipboardRef.current;
-    if (!buf || buf.nodes.length === 0) return;
-    pasteCountRef.current += 1;
-    const offset = 40 * pasteCountRef.current;
-    const idMap = new Map<string, string>();
-    // Groups first, so children's parentId references can be remapped to the new group IDs.
-    const sorted = [...buf.nodes].sort((a) => a.type === 'group' ? -1 : 1);
-    const newNodes: Node[] = sorted.map((n) => {
-      const prefix = n.type === 'group' ? 'group' : 'step';
-      const newId = `${prefix}-${randomUuid().slice(0, 8)}`;
-      idMap.set(n.id, newId);
-      return {
-        ...n,
-        id: newId,
-        parentId: n.parentId ? (idMap.get(n.parentId) ?? n.parentId) : undefined,
-        position: { x: (n.position?.x ?? 0) + offset, y: (n.position?.y ?? 0) + offset },
-        selected: true,
-        data: { ...(n.data as Record<string, unknown>), __liveStatus: undefined } as Node['data'],
-      };
-    });
-    const newEdges: Edge[] = buf.edges.map((e) => ({
-      ...e,
-      id: `edge-${randomUuid().slice(0, 8)}`,
-      source: idMap.get(e.source)!,
-      target: idMap.get(e.target)!,
-      selected: true,
-    }));
-    const { setNodes, setEdges } = sourceRef.current;
+  /** The selection as JSON text for the clipboard, or null when nothing is selected. */
+  const copySelection = useCallback((): string | null => {
+    const fragment = selectedFragment();
+    if (fragment.nodes.length === 0) return null;
+    const text = serializeFragment(fragment);
+    lastCopyRef.current = { text: normalizeLineEndings(text), pastes: 0 };
+    return text;
+  }, [selectedFragment]);
+
+  const insertFragment = useCallback((fragment: WorkflowFragment, dx: number, dy: number) => {
+    const { nodes, setNodes, setEdges } = sourceRef.current;
+    const existingGroupIds = new Set(nodes.filter((n) => n.type === 'group').map((n) => n.id));
+    const pasted = remapFragment(fragment, { existingGroupIds, dx, dy });
     // Pasting writes through the setters directly, so onNodesChange never fires and the editor's
     // automatic dirty detection would miss the new nodes.
     commitHistory('Paste');
     markDirty();
-    setNodes((nds: Node[]) => [...nds.map((n) => ({ ...n, selected: false })), ...newNodes]);
-    setEdges((eds: Edge[]) => [...eds.map((e) => ({ ...e, selected: false })), ...newEdges]);
+    setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), ...pasted.nodes]);
+    setEdges((eds) => [...eds.map((e) => ({ ...e, selected: false })), ...pasted.edges]);
   }, [commitHistory, markDirty]);
 
-  return { copySelection, pasteBuffer, resetPasteCount, updateSelection };
+  /**
+   * Inserts pasted JSON text. A copy made in this editor lands next to its original, each
+   * further paste a little further away; other text lands with its top-left node at `origin`.
+   * Returns the parse result; nothing changes when it is not ok.
+   */
+  const pasteText = useCallback((text: string, origin: XYPosition): FragmentParseResult => {
+    const result = parseFragment(text);
+    if (!result.ok) return result;
+    const last = lastCopyRef.current;
+    if (last && last.text === normalizeLineEndings(text)) {
+      last.pastes += 1;
+      insertFragment(result.fragment, PASTE_OFFSET * last.pastes, PASTE_OFFSET * last.pastes);
+    } else {
+      const { dx, dy } = offsetToOrigin(result.fragment, origin);
+      insertFragment(result.fragment, dx, dy);
+    }
+    return result;
+  }, [insertFragment]);
+
+  /** Copies the selection next to itself, without touching the system clipboard. */
+  const duplicateSelection = useCallback(() => {
+    const fragment = selectedFragment();
+    if (fragment.nodes.length > 0) insertFragment(fragment, PASTE_OFFSET, PASTE_OFFSET);
+  }, [selectedFragment, insertFragment]);
+
+  return { copySelection, pasteText, duplicateSelection, resetPasteCount, updateSelection };
+}
+
+function normalizeLineEndings(text: string): string {
+  return text.replaceAll('\r\n', '\n');
+}
+
+/** Shift that moves the fragment's top-left node to `origin`. Group children move with their group. */
+function offsetToOrigin(fragment: WorkflowFragment, origin: XYPosition): { dx: number; dy: number } {
+  const groupIds = new Set(fragment.nodes.filter((n) => n.type === 'group').map((n) => n.id));
+  const outer = fragment.nodes.filter((n) => !(n.parentId && groupIds.has(n.parentId)));
+  if (outer.length === 0) return { dx: 0, dy: 0 };
+  return {
+    dx: origin.x - Math.min(...outer.map((n) => n.position.x)),
+    dy: origin.y - Math.min(...outer.map((n) => n.position.y)),
+  };
 }

@@ -459,6 +459,18 @@
     "removeBreakpoint": "Breakpoint entfernen",
     "delete": "Löschen"
   },
+  "clipboard": {
+    "copied": "Als JSON in die Zwischenablage kopiert.",
+    "unavailable": "Die Zwischenablage ist hier nur über Ctrl+C und Ctrl+V erreichbar.",
+    "redactedValues_one": "{{count}} Wert war geschwärzt (***) und muss neu gesetzt werden.",
+    "redactedValues_other": "{{count}} Werte waren geschwärzt (***) und müssen neu gesetzt werden.",
+    "error": {
+      "invalidJson": "Einfügen nicht möglich: Das ist kein gültiges JSON.",
+      "noNodes": "Einfügen nicht möglich: Das JSON enthält keine Liste „nodes“ mit mindestens einem Node.",
+      "invalidNode": "Einfügen nicht möglich: Ein Node braucht id, type (activity, group oder stickyNote), position und data.",
+      "duplicateId": "Einfügen nicht möglich: Zwei Nodes haben dieselbe id."
+    }
+  },
   "quickEdit": {
     "errorJsonObject": "Gib ein gültiges JSON-Objekt mit Rückgabefeldern ein.",
     "labelScript": "Skript",
@@ -528,9 +540,9 @@
     "undoTitle": "Rückgängig",
     "redoTitle": "Wiederherstellen",
     "copyTitle": "Auswahl kopieren",
-    "copySubtitle": "Ausgewählte Nodes in die In-App-Zwischenablage kopieren",
+    "copySubtitle": "Ausgewählte Nodes samt Edges als JSON in die Zwischenablage kopieren",
     "pasteTitle": "Einfügen",
-    "pasteSubtitle": "Zwischenablage versetzt einfügen; erfordert Lock-by-Me",
+    "pasteSubtitle": "Nodes aus JSON in der Zwischenablage einfügen; erfordert Lock-by-Me",
     "duplicateTitle": "Auswahl duplizieren",
     "duplicateSubtitle": "Kopieren + Einfügen in einem Schritt",
     "groupTitle": "Ausgewählte Nodes gruppieren",

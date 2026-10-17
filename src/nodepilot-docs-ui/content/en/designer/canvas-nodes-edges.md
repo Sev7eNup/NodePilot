@@ -38,7 +38,8 @@ The most important node types:
 - Select several nodes with `Ctrl` or `Shift`.
 - `Ctrl+D` duplicates the selection.
 - `Delete` or `Backspace` deletes the selection.
-- `Ctrl+C` and `Ctrl+V` use an in-memory buffer within the current editor tab only. It can still be used when switching directly to another workflow in the same mounted editor; a reload, closing the tab or unmounting the editor clears it. No workflow data is written to `sessionStorage`.
+- `Ctrl+C` puts the selected nodes and the edges between them on the clipboard as workflow JSON, for example to look at in VS Code. A selected group brings its nodes along. Configuration values, inline secrets included, come along.
+- `Ctrl+V` inserts such JSON, also from another workflow or a text editor. The nodes get new IDs, and conditions and references between them are updated. A copy from the designer lands offset next to its original, JSON from elsewhere in the middle of the visible canvas. Invalid JSON is reported.
 - With several nodes selected, shared values such as machine, timeout or enabled state can be changed together.
 
 ## Connecting nodes

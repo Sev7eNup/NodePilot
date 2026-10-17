@@ -55,11 +55,11 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
   - Double-click / command palette / toolbar.
 - **Moving:** drag (only with write permission); arrow-key nudge (Expert): 10 px, or 1 px with `Shift`.
 - **Multi-select:** `Shift/Ctrl + click` (toggle) plus marquee selection (left-drag on the canvas, partial touch is enough). `Ctrl+A` selects everything.
-- **Duplicate:** `Ctrl+D` (copy+paste) or the context menu, offset by +40/+40 px, with fresh IDs.
+- **Duplicate:** `Ctrl+D` or the context menu, offset by +40/+40 px, with fresh IDs. It does not touch the system clipboard.
 - **Delete:** `Delete`/`Backspace`; for groups the children are re-parented and survive.
 - **Group (Expert):** `Ctrl+G` wraps the selection in a group node.
 - **Re-parenting:** nodes can be dragged into group nodes (the target group highlights live).
-- **Clipboard:** `Ctrl+C` / `Ctrl+V` uses only the in-memory buffer of the open editor tab — no `sessionStorage` and no persistence across a reload, tab close or editor unmount. As long as the same editor stays mounted, the buffer can survive switching workflows within the tab. On paste, IDs are reassigned, edges and parent references remapped, and the offset increased by 40 px per paste.
+- **Clipboard:** `Ctrl+C` puts the selected nodes, the nodes inside selected groups and the edges between them on the system clipboard as workflow JSON (`{ "nodes": [...], "edges": [...] }`, without canvas state or `__` runtime fields), so they can go to a text editor or another workflow. It copies what the canvas holds, including inline secrets for editors; viewers get the server's `***` masks. `Ctrl+V` (write permission only) inserts such JSON, also a full workflow definition: IDs are reassigned, edges, group membership, edge conditions and `{{id.…}}` templates remapped, edges to nodes outside the text dropped. A copy made in the editor lands 40 px further from its original with each paste; text from elsewhere lands in the middle of the visible canvas. Broken JSON is reported, plain text is ignored, and values masked as `***` are flagged. Both go through the browser's copy and paste events, so they work without a permission prompt and over plain HTTP; in text fields and the script editor the browser keeps its own behaviour. Nothing is kept in `sessionStorage`.
 - **Auto-layout / tidy:** `Ctrl+Shift+T`. Standard mode is always LR; expert cycles LR → TB → Compact → ELK. **Restore original layout** (Expert) `Ctrl+Shift+O` puts the starting layout back.
 - **Undo/redo:** `Ctrl+Z` / `Ctrl+Y` (also `Ctrl+Shift+Z`). History depth 50 snapshots; structural changes immediately, property edits batched with an 800 ms debounce; cleared when switching workflows.
 - **Bulk edit:** with 2 or more nodes selected, the bulk-edit panel appears (target machine, enable/disable, timeout, retry policy — each with its own apply button).
@@ -252,7 +252,7 @@ Each activity type has its own config component (`properties/activities/`, regis
 - **Search overlay** (`Ctrl+F`): node search (label/type/ID), jump to a hit (centre plus select), up to 30 results.
 - **Find & replace** (Expert, `Ctrl+H`): across node labels, edge labels and config values (deep traverse); replace one / replace all, match navigation with a context snippet.
 - **Help overlay** (`?`): the full shortcut reference by category.
-- **Node context menu (right-click):** duplicate, toggle disabled, toggle breakpoint (Expert), delete.
+- **Node context menu (right-click):** duplicate, toggle disabled, toggle breakpoint (Expert), delete. Without write permission there is no menu.
 - **Quick-edit popup (double-click):** inline editing of the most important field per activity type (script, URL, service name and so on) — `runScript` opens the full script editor instead.
 - **Script editor dialog:** a Monaco editor (PowerShell, with its own theme), draggable and resizable or fullscreen, word wrap, font size, toggle comment, a variables sidebar (upstream plus automatically detected `$var` assignments → `{{step.param.var}}`), inline linting of unknown `{{…}}`, `{{` autocomplete, **AI generation** (replace/insert) and **run step test** with a result panel.
 - **Workflow quick switcher** (`Ctrl+P`): fast switching between workflows, recents (localStorage), scored substring matching.
@@ -326,7 +326,7 @@ Depending on the selection it shows: bulk edit (2 or more nodes, Expert), proper
 - **Publish** (`Ctrl+Shift+S`): atomically save plus enable plus unlock (through the pre-publish checklist).
 - **Disable/enable:** the kill switch (disable is **not** lock-gated); enable only without a foreign lock.
 - **Force unlock** (admin, `Ctrl+Shift+U`): breaks a foreign lock (confirmation plus an audit entry).
-- **Read-only behaviour:** without `canWrite`, dragging, connecting, deleting, context menus and inline edits are all disabled.
+- **Read-only behaviour:** without `canWrite`, dragging, connecting, deleting, pasting, duplicating, grouping, context menus and inline edits are all disabled. Copying with `Ctrl+C` still works.
 - **Selection survives lifecycle changes:** every action above refetches the workflow and re-adopts the server graph. The current selection and the open properties panel stay; the panel just switches between read-only and editable.
 
 ## 19. Persistence & export

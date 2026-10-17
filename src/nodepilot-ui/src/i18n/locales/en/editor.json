@@ -459,6 +459,18 @@
     "removeBreakpoint": "Remove breakpoint",
     "delete": "Delete"
   },
+  "clipboard": {
+    "copied": "Copied to the clipboard as JSON.",
+    "unavailable": "The clipboard can only be reached with Ctrl+C and Ctrl+V here.",
+    "redactedValues_one": "{{count}} value was masked (***) and has to be set again.",
+    "redactedValues_other": "{{count}} values were masked (***) and have to be set again.",
+    "error": {
+      "invalidJson": "Cannot paste: this is not valid JSON.",
+      "noNodes": "Cannot paste: the JSON has no \"nodes\" list with at least one node.",
+      "invalidNode": "Cannot paste: a node needs id, type (activity, group or stickyNote), position and data.",
+      "duplicateId": "Cannot paste: two nodes have the same id."
+    }
+  },
   "quickEdit": {
     "errorJsonObject": "Enter a valid JSON object of return fields.",
     "labelScript": "Script",
@@ -528,9 +540,9 @@
     "undoTitle": "Undo",
     "redoTitle": "Redo",
     "copyTitle": "Copy selection",
-    "copySubtitle": "Copy selected nodes to in-app clipboard",
+    "copySubtitle": "Copy the selected nodes and their edges to the clipboard as JSON",
     "pasteTitle": "Paste",
-    "pasteSubtitle": "Paste clipboard at offset; requires lock-by-me",
+    "pasteSubtitle": "Paste nodes from JSON on the clipboard; requires lock-by-me",
     "duplicateTitle": "Duplicate selection",
     "duplicateSubtitle": "Copy + Paste in one shot",
     "groupTitle": "Group selected nodes",

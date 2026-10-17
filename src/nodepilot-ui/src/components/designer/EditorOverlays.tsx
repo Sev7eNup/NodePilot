@@ -52,8 +52,11 @@ export interface EditorRunControls {
 export interface EditorActions {
   undo: () => void;
   redo: () => void;
+  /** Puts the selection on the system clipboard. */
   copySelection: () => void;
+  /** Pastes from the system clipboard. */
   pasteBuffer: () => void;
+  duplicateSelection: () => void;
   groupSelection: () => void;
   selected: { type: 'node' | 'edge'; id: string } | null;
   deleteNodeById: (id: string) => void;
@@ -118,9 +121,9 @@ export function EditorOverlays({
   const { canWrite, isDirty, isPublishing, isEnabling } = lifecycle;
   const { showRunDialog, confirmRunWithParams, closeRunDialog, lastExecutionList } = execution;
   const {
-    undo, redo, copySelection, pasteBuffer, groupSelection, selected, deleteNodeById, selectAll,
-    navigateNode, handleQuickEditSave, jumpToNode, jumpToEdge, toggleFullscreen, zoomToSelection,
-    fitViewAll, exportPng, exportJson,
+    undo, redo, copySelection, pasteBuffer, duplicateSelection, groupSelection, selected,
+    deleteNodeById, selectAll, navigateNode, handleQuickEditSave, jumpToNode, jumpToEdge,
+    toggleFullscreen, zoomToSelection, fitViewAll, exportPng, exportJson,
   } = actions;
   const { simulation, runSimulation, clearSimulation } = sim;
   const closePrePublish = () => setPrePublishLint(null);
@@ -226,7 +229,7 @@ export function EditorOverlays({
             requestPublish: lifecycle.requestPublish,
             // Edit operations
             undo, redo,
-            copySelection, pasteBuffer, groupSelection,
+            copySelection, pasteBuffer, duplicateSelection, groupSelection,
             deleteSelected: () => {
               if (!selected) return;
               if (selected.type === 'node') deleteNodeById(selected.id);

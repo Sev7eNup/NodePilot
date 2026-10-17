@@ -1,6 +1,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import i18n from '../i18n';
 import { randomUuid } from './uuid';
+import { remapConditionStep } from './workflowFragment';
 
 /**
  * A workflow snippet is a predefined mini-pattern the user drops onto the canvas with one
@@ -181,13 +182,6 @@ export function insertSnippet(
   // A condition names its step by snippet-local id ('try.success'). That id only exists inside
   // the snippet, so it has to follow the same remapping as the edge endpoints — otherwise the
   // save is rejected with "references unknown step".
-  const remapCondition = (condition: string | undefined): string => {
-    if (!condition) return '';
-    const dot = condition.lastIndexOf('.');
-    if (dot <= 0) return condition;
-    const mapped = idMap.get(condition.slice(0, dot));
-    return mapped ? `${mapped}${condition.slice(dot)}` : condition;
-  };
   const newEdges: Edge[] = snippet.edges.map((e) => ({
     id: `edge-${idSuffix}-${e.fromLocalId}-${e.toLocalId}`,
     source: idMap.get(e.fromLocalId)!,
@@ -196,7 +190,7 @@ export function insertSnippet(
     selected: true,
     data: {
       label: e.label ?? '',
-      condition: remapCondition(e.condition),
+      condition: remapConditionStep(e.condition, idMap),
       disabled: false,
     },
   }));

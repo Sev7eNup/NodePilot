@@ -107,6 +107,7 @@ import { EditorRightPanel } from '../components/designer/EditorRightPanel';
 import { AiWorkflowChatPanel } from '../components/ai/AiWorkflowChatPanel';
 import { useKnowledgeChatSessionStore } from '../stores/knowledgeChatSessionStore';
 import { stripRuntimeDefinition } from '../lib/workflowDefinitionSanitizer';
+import { toast } from '../stores/toastStore';
 import { EditorSidebar } from '../components/designer/EditorSidebar';
 import { useRole } from '../lib/rbac';
 import { useAuthStore } from '../stores/authStore';
@@ -302,7 +303,56 @@ function WorkflowEditorInner() {
   const seededWorkflowIdRef = useRef<string | null>(null);
 
   // ---- Copy / Paste -------------------------------------------------------
-  const { copySelection, pasteBuffer, resetPasteCount, updateSelection } = useWorkflowClipboard(commitHistory, markDirty, graphSource);
+  // Copy and paste use the system clipboard, so nodes can go to a text editor and back. Inline
+  // secrets in node config go along, as with copying a script by hand.
+  const {
+    copySelection, pasteText, duplicateSelection, resetPasteCount, updateSelection,
+  } = useWorkflowClipboard(commitHistory, markDirty, graphSource);
+
+  const copyForClipboard = useCallback((): string | null => {
+    const text = copySelection();
+    if (text) toast.success(t('editor:clipboard.copied'));
+    return text;
+  }, [copySelection, t]);
+
+  // Pasting needs write access. Text that is not JSON is ignored, broken JSON is reported.
+  const pasteFromText = useCallback((text: string) => {
+    if (!canWrite) return;
+    // Text copied elsewhere lands near the middle of the visible canvas, like an inserted snippet.
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const origin = rect
+      ? screenToFlowPosition({ x: rect.left + rect.width / 2 - 200, y: rect.top + rect.height / 2 - 100 })
+      : { x: 100, y: 100 };
+    const result = pasteText(text, origin);
+    if (!result.ok) {
+      if (/^\s*[[{]/.test(text)) toast.error(t(`editor:clipboard.error.${result.error}`));
+      return;
+    }
+    if (result.redactedValues > 0) toast.info(t('editor:clipboard.redactedValues', { count: result.redactedValues }));
+  }, [canWrite, screenToFlowPosition, pasteText, t]);
+
+  // The command palette fires no copy or paste event, so it goes through the asynchronous
+  // clipboard API, which browsers offer only over HTTPS or on localhost.
+  const copyToClipboard = useCallback(() => {
+    const text = copySelection();
+    if (!text) return;
+    if (!navigator.clipboard) {
+      toast.error(t('editor:clipboard.unavailable'));
+      return;
+    }
+    navigator.clipboard.writeText(text).then(
+      () => toast.success(t('editor:clipboard.copied')),
+      () => toast.error(t('editor:clipboard.unavailable')),
+    );
+  }, [copySelection, t]);
+  const pasteFromClipboard = useCallback(() => {
+    if (!navigator.clipboard) {
+      toast.error(t('editor:clipboard.unavailable'));
+      return;
+    }
+    navigator.clipboard.readText().then(pasteFromText, () => toast.error(t('editor:clipboard.unavailable')));
+  }, [pasteFromText, t]);
+  const duplicateIfWritable = useCallback(() => { if (canWrite) duplicateSelection(); }, [canWrite, duplicateSelection]);
 
   useEffect(() => {
     if (workflow) {
@@ -663,11 +713,12 @@ function WorkflowEditorInner() {
     // the detach, even though those node types have no context menu of their own.
     if (consumeContextMenuAsDetachCancel(e)) return;
     if (node.type !== 'activity') return;
+    if (!canWrite) return;  // Every entry changes the graph, so viewers get no menu.
     e.preventDefault();
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     setContextMenu({ nodeId: node.id, x: e.clientX - rect.left, y: e.clientY - rect.top });
-  }, [consumeContextMenuAsDetachCancel]);
+  }, [canWrite, consumeContextMenuAsDetachCancel]);
 
   // ---- Edge Context Menu --------------------------------------------------
   const [edgeContextMenu, setEdgeContextMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
@@ -705,6 +756,7 @@ function WorkflowEditorInner() {
     commitHistory, markDirty,
     canvasRef, screenToFlowPosition,
   });
+  const groupIfWritable = useCallback(() => { if (canWrite) groupSelection(); }, [canWrite, groupSelection]);
 
   const handleNodeDataUpdate = useCallback(
     (nodeId: string, newData: Record<string, unknown>) => {
@@ -899,7 +951,8 @@ function WorkflowEditorInner() {
 
   useEditorKeyboardShortcuts({
     designerMode,
-    undo, redo, copySelection, pasteBuffer, groupSelection,
+    undo, redo, copySelection: copyForClipboard, pasteText: pasteFromText,
+    duplicateSelection: duplicateIfWritable, groupSelection: groupIfWritable,
     selectAll, zoomToSelection, navigateNode,
     searchOpen: overlays.searchOpen, setSearchOpen, setSearchInput,
     helpOpen: overlays.helpOpen, setHelpOpen: overlays.setHelpOpen,
@@ -1456,8 +1509,8 @@ function WorkflowEditorInner() {
         lifecycle={lifecycle}
         execution={{ showRunDialog, confirmRunWithParams, closeRunDialog, lastExecutionList, run, cancelRun, isRunning }}
         actions={{
-          undo, redo, copySelection, pasteBuffer, groupSelection, selected, deleteNodeById, selectAll,
-          navigateNode, handleQuickEditSave, jumpToNode, jumpToEdge, toggleFullscreen, zoomToSelection,
+          undo, redo, copySelection: copyToClipboard, pasteBuffer: pasteFromClipboard, duplicateSelection,
+          groupSelection, selected, deleteNodeById, selectAll, navigateNode, handleQuickEditSave, jumpToNode, jumpToEdge, toggleFullscreen, zoomToSelection,
           fitViewAll, exportPng, exportJson,
         }}
         layout={layout}

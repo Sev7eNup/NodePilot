@@ -6,8 +6,9 @@ import type { DesignerMode } from '../../stores/designStore';
 interface ShortcutMocks {
   undo: Mock<() => void>;
   redo: Mock<() => void>;
-  copySelection: Mock<() => void>;
-  pasteBuffer: Mock<() => void>;
+  copySelection: Mock<() => string | null>;
+  pasteText: Mock<(text: string) => void>;
+  duplicateSelection: Mock<() => void>;
   groupSelection: Mock<() => void>;
   selectAll: Mock<() => void>;
   zoomToSelection: Mock<() => void>;
@@ -60,8 +61,9 @@ function newMocks(): ShortcutMocks {
   return {
     undo: vi.fn<() => void>(),
     redo: vi.fn<() => void>(),
-    copySelection: vi.fn<() => void>(),
-    pasteBuffer: vi.fn<() => void>(),
+    copySelection: vi.fn<() => string | null>(() => '{"nodes":[]}'),
+    pasteText: vi.fn<(text: string) => void>(),
+    duplicateSelection: vi.fn<() => void>(),
     groupSelection: vi.fn<() => void>(),
     selectAll: vi.fn<() => void>(),
     zoomToSelection: vi.fn<() => void>(),
@@ -118,7 +120,8 @@ function mount(mocks: ShortcutMocks, overrides: { searchOpen?: boolean; helpOpen
       undo: mocks.undo,
       redo: mocks.redo,
       copySelection: mocks.copySelection,
-      pasteBuffer: mocks.pasteBuffer,
+      pasteText: mocks.pasteText,
+      duplicateSelection: mocks.duplicateSelection,
       groupSelection: mocks.groupSelection,
       selectAll: mocks.selectAll,
       zoomToSelection: mocks.zoomToSelection,
@@ -182,6 +185,20 @@ function dispatchKey(opts: KeyboardEventInit & { target?: HTMLElement }) {
   return ev;
 }
 
+/**
+ * A copy or paste event as the browser fires it on Ctrl+C / Ctrl+V. jsdom has no
+ * ClipboardEvent, so a plain event carries a minimal clipboardData.
+ */
+function dispatchClipboard(type: 'copy' | 'paste', pasted = '', target: EventTarget = document.body) {
+  const data = new Map<string, string>([['text/plain', pasted]]);
+  const ev = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, 'clipboardData', {
+    value: { getData: (f: string) => data.get(f) ?? '', setData: (f: string, v: string) => data.set(f, v) },
+  });
+  target.dispatchEvent(ev);
+  return { ev, written: () => data.get('text/plain') };
+}
+
 describe('useEditorKeyboardShortcuts', () => {
   let mocks: ShortcutMocks;
   beforeEach(() => { mocks = newMocks(); });
@@ -235,23 +252,61 @@ describe('useEditorKeyboardShortcuts', () => {
     expect(mocks.redo).toHaveBeenCalledOnce();
   });
 
-  it('Ctrl+C_callsCopy', () => {
+  it('Ctrl+V_keydown_isLeftToTheBrowser', () => {
+    // A cancelled keydown would stop the browser from firing the paste event that carries
+    // the system clipboard.
     mount(mocks);
-    dispatchKey({ key: 'c', ctrlKey: true });
-    expect(mocks.copySelection).toHaveBeenCalledOnce();
+    const ev = dispatchKey({ key: 'v', ctrlKey: true });
+    expect(ev.defaultPrevented).toBe(false);
+    expect(mocks.pasteText).not.toHaveBeenCalled();
   });
 
-  it('Ctrl+V_callsPaste', () => {
+  it('copyEvent_putsTheSelectionOnTheClipboard', () => {
     mount(mocks);
-    dispatchKey({ key: 'v', ctrlKey: true });
-    expect(mocks.pasteBuffer).toHaveBeenCalledOnce();
+    const { ev, written } = dispatchClipboard('copy');
+    expect(written()).toBe('{"nodes":[]}');
+    expect(ev.defaultPrevented).toBe(true);
   });
 
-  it('Ctrl+D_duplicates_byCopyThenPaste', () => {
+  it('copyEvent_withNothingSelected_keepsTheBrowserCopy', () => {
+    mocks.copySelection.mockReturnValue(null);
+    mount(mocks);
+    const { ev } = dispatchClipboard('copy');
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('pasteEvent_handsTheClipboardTextToPaste', () => {
+    mount(mocks);
+    const { ev } = dispatchClipboard('paste', '{"nodes":[1]}');
+    expect(mocks.pasteText).toHaveBeenCalledWith('{"nodes":[1]}');
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it('copyAndPasteEvents_inATextField_areLeftToTheBrowser', () => {
+    mount(mocks);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    const copied = dispatchClipboard('copy', '', input);
+    const pasted = dispatchClipboard('paste', 'text', input);
+    expect(mocks.copySelection).not.toHaveBeenCalled();
+    expect(mocks.pasteText).not.toHaveBeenCalled();
+    expect(copied.ev.defaultPrevented).toBe(false);
+    expect(pasted.ev.defaultPrevented).toBe(false);
+    input.remove();
+  });
+
+  it('clipboardEvents_stopAfterUnmount', () => {
+    const { unmount } = mount(mocks);
+    unmount();
+    dispatchClipboard('paste', '{"nodes":[1]}');
+    expect(mocks.pasteText).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl+D_duplicatesWithoutTheClipboard', () => {
     mount(mocks);
     dispatchKey({ key: 'd', ctrlKey: true });
-    expect(mocks.copySelection).toHaveBeenCalledOnce();
-    expect(mocks.pasteBuffer).toHaveBeenCalledOnce();
+    expect(mocks.duplicateSelection).toHaveBeenCalledOnce();
+    expect(mocks.copySelection).not.toHaveBeenCalled();
   });
 
   it('Ctrl+Shift+D_callsSetDiffOpen_notDuplicate', () => {
@@ -259,8 +314,7 @@ describe('useEditorKeyboardShortcuts', () => {
     mount(mocks);
     dispatchKey({ key: 'D', ctrlKey: true, shiftKey: true });
     expect(mocks.setDiffOpen).toHaveBeenCalledWith(true);
-    expect(mocks.copySelection).not.toHaveBeenCalled();
-    expect(mocks.pasteBuffer).not.toHaveBeenCalled();
+    expect(mocks.duplicateSelection).not.toHaveBeenCalled();
   });
 
   it('Ctrl+A_callsSelectAll', () => {
@@ -666,8 +720,7 @@ describe('useEditorKeyboardShortcuts', () => {
   it('Ctrl+D_keepsDuplicate_notDisabledToggle', () => {
     mount(mocks);
     dispatchKey({ key: 'd', ctrlKey: true });
-    expect(mocks.copySelection).toHaveBeenCalledOnce();
-    expect(mocks.pasteBuffer).toHaveBeenCalledOnce();
+    expect(mocks.duplicateSelection).toHaveBeenCalledOnce();
     expect(mocks.toggleSelectedDisabled).not.toHaveBeenCalled();
   });
 
