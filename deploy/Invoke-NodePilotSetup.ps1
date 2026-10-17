@@ -42,8 +42,7 @@
 .PARAMETER LogPath
     Transcript destination. Defaults to %TEMP%\nodepilot-server-setup.log.
 .PARAMETER ProgressFile
-    Appended one 'step|text' line per phase so the wizard can show live progress instead of
-    appearing frozen during a long phase.
+    Structured progress records for the wizard, including measured copy progress.
 .NOTES
     Exit codes, which the wizard reads:
       0 success (Probe: every required check passed)
@@ -56,7 +55,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('InitSession', 'Probe', 'Certificates', 'Provision', 'Apply', 'Cleanup')]
+    [ValidateSet('InitSession', 'Probe', 'Ports', 'Certificates', 'Provision', 'Apply', 'Cleanup')]
     [string]$Mode,
     [string]$SessionPath,
     [string]$HandoffPath,
@@ -66,6 +65,7 @@ param(
     [string]$OutFile,
     [string]$LogPath,
     [string]$ProgressFile,
+    [string]$ProbeServiceName = 'NodePilot',
     [string]$PayloadRoot
 )
 
@@ -86,6 +86,8 @@ if ([string]::IsNullOrWhiteSpace($PayloadRoot)) {
 }
 
 . (Join-Path $scriptDirectory 'SetupContract.ps1')
+. (Join-Path $scriptDirectory 'DeploymentProgress.ps1')
+. (Join-Path $scriptDirectory 'SetupProvisioning.ps1')
 
 $result = New-NodePilotResultBuffer
 # Set when Apply begins; read by the crash lookup so it cannot attribute an older exception to
@@ -94,23 +96,10 @@ $script:ApplyStartedAt = $null
 
 function Write-NodePilotProgress {
     param([Parameter(Mandatory)][string]$Step, [string]$Text = '')
-    if ([string]::IsNullOrWhiteSpace($ProgressFile)) { return }
-    try { Add-Content -LiteralPath $ProgressFile -Value "$Step|$Text" -Encoding UTF8 -ErrorAction Stop }
-    catch { }  # Progress is cosmetic; it must never break an installation.
+    Send-NodePilotProgress -Callback $progressWriter -Phase $Step -Message $Text
 }
 
-function Write-NodePilotPhaseProgress {
-    <#
-      Turns the installer's own output into progress the wizard can draw. Install-NodePilot.ps1
-      and Update-NodePilot.ps1 announce every phase they enter, and those lines pass through this
-      process on their way to the log.
-    #>
-    param([Parameter(Mandatory)][AllowEmptyString()][string]$Line)
-
-    $phase = Get-NodePilotPhaseProgress -Line $Line
-    if (-not $phase) { return }
-    Write-NodePilotProgress -Step ([string]$phase.Percent) -Text $phase.Text
-}
+$progressWriter = { param($Progress) Write-NodePilotProgressFile -Path $ProgressFile -Progress $Progress }
 
 function Add-NodePilotCheckResults {
     param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Results)
@@ -411,7 +400,7 @@ function Invoke-ProvisionRuntime {
     foreach ($step in $plan.Steps) {
         Write-NodePilotProgress -Step 'runtime' -Text "Installing the $($step.Label)"
         $process = Start-Process -FilePath $step.Path `
-            -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
+            -ArgumentList '/install', '/quiet', '/norestart' -WindowStyle Hidden -Wait -PassThru
         $attempts += [pscustomobject]@{ Label = $step.Label; ExitCode = $process.ExitCode }
     }
 
@@ -508,7 +497,20 @@ function Invoke-NodePilotSetupMode {
             Write-NodePilotProgress -Step 'probe' -Text 'Checking prerequisites'
 
             $preflightSplat = ConvertTo-NodePilotPreflightParameters -Answers $answers
+            $preflightSplat['ProgressCallback'] = { param($message) Write-NodePilotProgress -Step 'probe' -Text $message }
             $checks = @(Invoke-NodePilotPreflight @preflightSplat)
+            if ($answers.Contains('certificate.source') -and $answers['certificate.source'] -eq 'pfx') {
+                $checks = @($checks | Where-Object { $_.Id -ne 'certificate' })
+                try {
+                    $pfx = Get-NodePilotPfxCertificate -Path $answers['certificate.pfxPath'] -Password (ConvertTo-NodePilotSecureString $answers['certificate.pfxPassword'])
+                    $checks += New-NodePilotPreflightResult -Id 'certificate' -Title 'HTTPS certificate' -Status 'Fail' -Required $true `
+                        -Detail "Ready to import: $($pfx.Subject)." -CanAutoFix $true -AutoFixDefault $true `
+                        -AutoFixLabel 'Import the selected PFX into the machine certificate store' `
+                        -RemediationHint 'Choose Apply selected fixes to import it. Certificate validity and hostname are checked afterwards.'
+                } catch {
+                    $checks += New-NodePilotPreflightResult -Id 'certificate' -Title 'HTTPS certificate' -Status 'Fail' -Required $true -Detail $_.Exception.Message
+                }
+            }
             Add-NodePilotCheckResults -Results $checks
 
             # Republished so a re-check picks up a certificate that was imported while the wizard
@@ -518,6 +520,20 @@ function Invoke-NodePilotSetupMode {
             $failed = @($checks | Where-Object { $_.Status -eq 'Fail' -and $_.Required })
             Set-NodePilotResult -Buffer $result -Section 'summary' -Name 'requiredFailures' -Value $failed.Count
             return $(if ($failed.Count -gt 0) { 2 } else { 0 })
+        }
+
+        'Ports' {
+            . (Join-Path $scriptDirectory 'Preflight.ps1')
+            Write-NodePilotProgress -Step 'ports' -Text 'Checking available HTTPS ports'
+            foreach ($port in @(443, 8443, 9443)) {
+                $portState = Get-NodePilotPortStatus -Port $port -ServiceName $ProbeServiceName
+                if (-not $portState.IsBlocked) {
+                    Set-NodePilotResult -Buffer $result -Section 'ports' -Name 'https' -Value $port
+                    break
+                }
+            }
+            Set-NodePilotResult -Buffer $result -Section 'ports' -Name 'http' -Value 0
+            return 0
         }
 
         'Certificates' {
@@ -536,6 +552,23 @@ function Invoke-NodePilotSetupMode {
             . (Join-Path $scriptDirectory 'Preflight.ps1')
             $answers = Read-NodePilotAnswerFile -Path $AnswerFile
             $performed = 0
+
+            if ($answers.Contains('provisioning.importPfxCertificate') -and $answers['provisioning.importPfxCertificate']) {
+                Write-NodePilotProgress -Step 'certificate' -Text 'Importing the HTTPS certificate'
+                $thumbprint = Import-NodePilotPfxCertificate -Path $answers['certificate.pfxPath'] -Password (ConvertTo-NodePilotSecureString $answers['certificate.pfxPassword'])
+                Set-NodePilotResult -Buffer $result -Section 'provision.certificate' -Name 'thumbprint' -Value $thumbprint
+                Set-NodePilotResult -Buffer $result -Section 'provision.certificate' -Name 'status' -Value 'Pass'
+                $performed++
+            }
+            if ($answers.Contains('provisioning.installGmsa') -and $answers['provisioning.installGmsa']) {
+                Write-NodePilotProgress -Step 'gmsa' -Text 'Preparing the existing gMSA on this computer'
+                $installTools = $answers.Contains('provisioning.installAdTools') -and $answers['provisioning.installAdTools']
+                $gmsa = Install-NodePilotLocalGmsa -Account $answers['identity.account'] -InstallAdTools:$installTools
+                Set-NodePilotResult -Buffer $result -Section 'provision.gmsa' -Name 'status' -Value $gmsa.Status
+                Set-NodePilotResult -Buffer $result -Section 'provision.gmsa' -Name 'detail' -Value $gmsa.Detail
+                Set-NodePilotResult -Buffer $result -Section 'provision.gmsa' -Name 'restartRequired' -Value ([int]$gmsa.RestartRequired)
+                $performed++
+            }
 
             if ($answers.Contains('provisioning.installDotnetRuntime') -and [bool]$answers['provisioning.installDotnetRuntime']) {
                 Write-NodePilotProgress -Step 'runtime' -Text 'Installing the .NET runtimes'
@@ -681,21 +714,16 @@ function Invoke-SetupInstall {
     # The transcript records everything the installer prints. Key and setup token reach the
     # operator through the result file below, so the installer must not print them.
     $splat['SuppressSecretOutput'] = $true
+    $splat['ProgressCallback'] = $progressWriter
 
     Write-NodePilotProgress -Step '0' -Text 'Installing NodePilot'
-    # 6>&1 because every operator-visible line in the installer is Write-Host, i.e. the
-    # information stream. The same pass that reads a line translates it into progress.
-    #
-    # The line is not written out again: Write-Host reaches the host, and therefore the
-    # transcript, whether or not the information stream is redirected, so re-emitting it would
-    # duplicate every line of the log.
-    & (Join-Path $scriptDirectory 'Install-NodePilot.ps1') @splat 6>&1 |
-        ForEach-Object { Write-NodePilotPhaseProgress -Line $_ }
+    # Write-Host already reaches the transcript. Progress travels through the callback.
+    & (Join-Path $scriptDirectory 'Install-NodePilot.ps1') @splat | Out-Null
 
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'url' -Value (
         'https://{0}:{1}/' -f $answers['network.publicHostname'], $answers['network.httpsPort'])
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'externalTriggerApiKey' -Value $splat['ExternalTriggerApiKey']
-    Set-NodePilotResult -Buffer $result -Section 'result' -Name 'certificateThumbprint' -Value $answers['certificate.thumbprint']
+    Set-NodePilotResult -Buffer $result -Section 'result' -Name 'certificateThumbprint' -Value $splat['CertThumbprint']
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'installPath' -Value $answers['installPath']
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'dataPath' -Value $answers['dataPath']
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'serviceName' -Value $answers['serviceName']
@@ -769,17 +797,20 @@ function Invoke-SetupUpdate {
         TrustedArtifactSignerThumbprint = $TrustedArtifactSignerThumbprint
         InstallPath                     = [string]$answers['installPath']
         ServiceName                     = [string]$answers['serviceName']
+        ProgressCallback                = $progressWriter
     }
     if ($answers.Contains('dataPath') -and $answers['dataPath']) {
         $splat['DataPath'] = [string]$answers['dataPath']
     }
     # Not re-emitted, for the same reason as the install path above: Write-Host has already
     # reached the transcript, and writing it again doubles every line of the log.
-    & (Join-Path $scriptDirectory 'Update-NodePilot.ps1') @splat 6>&1 |
-        ForEach-Object { Write-NodePilotPhaseProgress -Line $_ }
+    & (Join-Path $scriptDirectory 'Update-NodePilot.ps1') @splat | Out-Null
 
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'installPath' -Value $splat['InstallPath']
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'serviceName' -Value $splat['ServiceName']
+    if ($splat.ContainsKey('DataPath')) {
+        Set-NodePilotResult -Buffer $result -Section 'result' -Name 'dataPath' -Value $splat['DataPath']
+    }
 
     # An update collects no network answers, so the address comes from the configuration that is
     # already installed - the same source Update-NodePilot.ps1 derives its health-probe port from.
@@ -787,14 +818,18 @@ function Invoke-SetupUpdate {
     try {
         $installedSettings = Join-Path ([string]$splat['InstallPath']) 'appsettings.Production.json'
         if (Test-Path -LiteralPath $installedSettings -PathType Leaf) {
-            $https = (Get-Content -LiteralPath $installedSettings -Raw | ConvertFrom-Json).Kestrel.Https
-            if ($https.PublicHostname -and $https.HttpsPort) {
-                Set-NodePilotResult -Buffer $result -Section 'result' -Name 'url' `
-                    -Value ('https://{0}:{1}/' -f $https.PublicHostname, $https.HttpsPort)
-            }
+            $settings = Get-Content -LiteralPath $installedSettings -Raw | ConvertFrom-Json
+            $https = $settings.Kestrel.Https
             if ($https.CertificateThumbprint) {
                 Set-NodePilotResult -Buffer $result -Section 'result' -Name 'certificateThumbprint' `
                     -Value $https.CertificateThumbprint
+            }
+            $hostname = [string]($settings.AllowedHosts -split ';' | ForEach-Object { $_.Trim() } |
+                Where-Object { $_ -and $_ -ne 'localhost' -and [Uri]::CheckHostName($_) -ne [UriHostNameType]::Unknown } |
+                Select-Object -First 1)
+            if ($hostname -and $https.HttpsPort) {
+                $address = New-Object UriBuilder('https', $hostname, [int]$https.HttpsPort)
+                Set-NodePilotResult -Buffer $result -Section 'result' -Name 'url' -Value $address.Uri.AbsoluteUri
             }
         }
     }
@@ -811,9 +846,15 @@ function Invoke-SetupUpdate {
 $exitCode = 1
 try { Start-Transcript -Path $LogPath -Append -ErrorAction SilentlyContinue | Out-Null } catch { }
 try {
+    if ($ProgressFile) {
+        try { [IO.File]::WriteAllText("$ProgressFile.pid", [string]$PID) } catch { Write-Verbose 'Worker PID could not be reported.' }
+    }
     Set-NodePilotResult -Buffer $result -Section 'summary' -Name 'mode' -Value $Mode
     Set-NodePilotResult -Buffer $result -Section 'summary' -Name 'logPath' -Value $LogPath
     $exitCode = Invoke-NodePilotSetupMode
+    if ($exitCode -eq 0) {
+        Send-NodePilotProgress -Callback $progressWriter -Phase $Mode -State 'complete' -Message 'Completed'
+    }
 }
 catch {
     $message = $_.Exception.Message
@@ -825,6 +866,7 @@ catch {
         if ($crashReason) { $message = "$message The service failed to start with: $crashReason" }
     }
     Write-Host "[setup] $message" -ForegroundColor Red
+    Send-NodePilotProgress -Callback $progressWriter -Phase $Mode -State 'failed' -Message $message
     Set-NodePilotResult -Buffer $result -Section 'summary' -Name 'error' -Value $message
     $exitCode = if ($message -match '^Answer file') { 3 }
                 elseif ($Mode -eq 'Apply') { 4 }

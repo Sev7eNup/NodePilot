@@ -111,6 +111,20 @@ The probe URL points at another host, since an instance cannot probe itself by i
 
 **No release is tagged without a green run of both matrices and the test suite.** A fix found here means a new build and a new run, not a patched artifact, because the setups are signed and listed in `SHA256SUMS.txt` and the tag has to point at the commit they were built from. The `summary.md` of both lab runs and the verifier's result belong in the test section of the release notes.
 
+### 6a. Optional: server installer acceptance
+
+Run the [server installer acceptance matrix](scripts/release-lab/server-ui/README.md) when native
+wizard, prerequisite, unattended-installation or upgrade coverage is wanted for this release.
+It preserves the installer cases exercised on GW1, including full prerequisite-text review,
+PFX/PEM selection, automatic repairs, rollback, silent paths and DPI. The runbook includes stable
+case IDs, fixture recipes, expected results, evidence and cleanup; record a skipped optional run
+explicitly. It supplements step 6 and does not change the mandatory release gates.
+
+Use the exact candidate EXE for real cases. Synthetic worker faults use a separately labelled,
+non-installing preview built from the same source and are reported separately. Attach the completed
+case ledger and artifact hashes to the release's lab evidence. A rebuilt candidate needs new results
+for affected cases; earlier-build results remain labelled with their original hash.
+
 ### Experimental: Computer-Use UI acceptance
 
 `scripts/release-lab/computer-use/` contains an experimental run that operates the installed desktop and server releases through their UI. It is not a release gate. Usage is described in [`scripts/release-lab/computer-use/README.md`](scripts/release-lab/computer-use/README.md).

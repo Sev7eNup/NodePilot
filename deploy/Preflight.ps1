@@ -112,24 +112,69 @@ function Get-NodePilotSqlRemediationScript {
         # database the DBA can see makes the rest of the script look wrong too.
         [switch]$SkipCreateDatabase
     )
-    $lines = @("CREATE LOGIN [$Principal] FROM WINDOWS;")
-    if (-not $SkipCreateDatabase) { $lines += "CREATE DATABASE [$Database];" }
+    $principalIdentifier = $Principal.Replace(']', ']]')
+    $principalLiteral = $Principal.Replace("'", "''")
+    $databaseIdentifier = $Database.Replace(']', ']]')
+    $databaseLiteral = $Database.Replace("'", "''")
+    $lines = @(
+        '-- Run in SQL Server Management Studio as a SQL Server administrator.'
+        'USE [master];'
+        'GO'
+        "IF SUSER_ID(N'$principalLiteral') IS NULL"
+        "    CREATE LOGIN [$principalIdentifier] FROM WINDOWS;"
+        'GO'
+    )
+    if (-not $SkipCreateDatabase) {
+        $lines += @(
+            "IF DB_ID(N'$databaseLiteral') IS NULL"
+            "    CREATE DATABASE [$databaseIdentifier];"
+            'GO'
+        )
+    }
     $lines += @(
-        "USE [$Database];"
-        "CREATE USER [$Principal] FOR LOGIN [$Principal];"
-        "ALTER ROLE db_owner ADD MEMBER [$Principal];"
+        "USE [$databaseIdentifier];"
+        'GO'
+        "IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE sid = SUSER_SID(N'$principalLiteral'))"
+        "    CREATE USER [$principalIdentifier] FOR LOGIN [$principalIdentifier];"
+        'GO'
+        "DECLARE @user sysname = (SELECT TOP 1 name FROM sys.database_principals WHERE sid = SUSER_SID(N'$principalLiteral'));"
+        "IF IS_ROLEMEMBER(N'db_owner', @user) = 0"
+        'BEGIN'
+        "    DECLARE @grant nvarchar(max) = N'ALTER ROLE db_owner ADD MEMBER ' + QUOTENAME(@user);"
+        '    EXEC sys.sp_executesql @grant;'
+        'END;'
+        'GO'
     )
     $lines -join [Environment]::NewLine
+}
+
+function Get-NodePilotCertificateImportInstructions {
+    @(
+        'In setup, go back to HTTPS certificate and choose Import a PFX file.'
+        'Alternatively, run this in an elevated PowerShell window, replacing the example path:'
+        'Import-PfxCertificate -FilePath ''C:\path\server.pfx'' -CertStoreLocation Cert:\LocalMachine\My -Password (Read-Host -AsSecureString)'
+        'Then select the imported certificate on the HTTPS certificate page and check again.'
+    ) -join [Environment]::NewLine
 }
 
 function Get-NodePilotPostgresRemediationScript {
     param(
         [Parameter(Mandatory)][string]$User,
-        [Parameter(Mandatory)][string]$Database
+        [Parameter(Mandatory)][string]$Database,
+        [bool]$CreateRole = $true,
+        [bool]$CreateDatabase = $true
     )
+    $quotedUser = '"' + $User.Replace('"', '""') + '"'
+    $quotedDatabase = '"' + $Database.Replace('"', '""') + '"'
     @(
-        "CREATE ROLE $User WITH LOGIN PASSWORD '<same-as--PostgresPassword>';"
-        "CREATE DATABASE $Database OWNER $User;"
+        '-- In psql, connect as a database administrator to the postgres database.'
+        '-- Run only the statements for objects confirmed missing.'
+        if ($CreateRole) {
+            "CREATE ROLE $quotedUser WITH LOGIN;"
+            '-- At the password prompt, enter the same role password configured in setup.'
+            "\password $quotedUser"
+        }
+        if ($CreateDatabase) { "CREATE DATABASE $quotedDatabase OWNER $quotedUser;" }
     ) -join [Environment]::NewLine
 }
 
@@ -583,14 +628,14 @@ function Test-NodePilotListenPorts {
 
     New-NodePilotPreflightResult -Id 'ports' -Title $title -Status 'Fail' -Required $true `
         -Detail ($blocked -join '; ') `
-        -RemediationHint 'Pick a free port, or set the HTTP port to 0 to drop the redirect.' `
+        -RemediationHint 'Choose a free port, or set the HTTP port to 0 to disable the redirect. In setup, go back to Network and use Find available ports.' `
         -Remediation ("See what Windows has reserved:`r`n" +
                       "netsh interface ipv4 show excludedportrange protocol=tcp`r`n`r`n" +
                       "See who is listening:`r`n" +
                       "Get-NetTCPConnection -State Listen | Sort-Object LocalPort`r`n`r`n" +
-                      'On a server running IIS - a ConfigMgr site server, for instance - ports 80 and 443 ' +
-                      'belong to HTTP.SYS and Kestrel cannot bind them at all. Set the HTTP port to 0 to ' +
-                      'drop the redirect, or move both ports somewhere free.') `
+                      'IIS and other Windows services can occupy ports through HTTP.SYS. NodePilot needs ' +
+                      'ports that are free on this computer. For a blocked HTTPS port, choose another port. ' +
+                      'For a blocked HTTP port, choose another port or set it to 0 to disable the redirect.') `
         -AbortMessage ('Kestrel cannot bind: ' + ($blocked -join '; ') +
                        '. The service would start and immediately fail with SocketException 10013 or 10048.')
 }
@@ -658,7 +703,7 @@ function Test-NodePilotTlsCertificate {
         [AllowEmptyString()][string]$PublicHostname = ''
     )
 
-    $title = 'Kestrel TLS certificate'
+    $title = 'HTTPS certificate'
 
     # "I have none yet" is a different answer from "the one I named is missing", and it is the
     # answer a fresh host gives. Reported before the store is read, so this branch also states the
@@ -669,8 +714,8 @@ function Test-NodePilotTlsCertificate {
         return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
             -CanAutoFix $true -AutoFixLabel 'Generate a self-signed certificate (lab use only)' `
             -Detail 'No certificate selected. Kestrel terminates TLS itself and will not start without one.' `
-            -RemediationHint 'Pick one on the previous page, or tick the box to have a self-signed certificate created.' `
-            -Remediation 'Import-PfxCertificate -FilePath <file>.pfx -CertStoreLocation Cert:\LocalMachine\My -Password (Read-Host -AsSecureString)' `
+            -RemediationHint 'Go back to HTTPS certificate and select or import a certificate, or select the available fix to generate a self-signed certificate for lab use.' `
+            -Remediation (Get-NodePilotCertificateImportInstructions) `
             -AbortMessage 'No certificate thumbprint was given. Kestrel cannot serve HTTPS without one.'
     }
 
@@ -681,15 +726,15 @@ function Test-NodePilotTlsCertificate {
         return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
             -CanAutoFix $true -AutoFixLabel 'Generate a self-signed certificate (lab use only)' `
             -Detail "Certificate $Thumbprint is not present in Cert:\LocalMachine\My." `
-            -RemediationHint 'Import the PFX into the machine store, then re-check.' `
-            -Remediation 'Import-PfxCertificate -FilePath <file>.pfx -CertStoreLocation Cert:\LocalMachine\My -Password (Read-Host -AsSecureString)' `
+            -RemediationHint 'Go back to HTTPS certificate and select or import a certificate, then check again.' `
+            -Remediation (Get-NodePilotCertificateImportInstructions) `
             -AbortMessage "Cert $Thumbprint not found in Cert:\LocalMachine\My. Import the PFX (MachineKeySet|PersistKeySet) and retry."
     }
     if (-not $cert.HasPrivateKey) {
         return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
             -Detail "Certificate $Thumbprint is present but carries no private key." `
             -RemediationHint 'Re-import the PFX so the private key is persisted for the machine.' `
-            -Remediation 'Import-PfxCertificate -FilePath <file>.pfx -CertStoreLocation Cert:\LocalMachine\My -Exportable' `
+            -Remediation (Get-NodePilotCertificateImportInstructions) `
             -AbortMessage "Cert $Thumbprint has no private key. Re-import with -KeyStorageFlags MachineKeySet|PersistKeySet|Exportable."
     }
 
@@ -803,7 +848,7 @@ function Test-NodePilotArtifactSignerTrust {
         $chain.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
         if ($chain.Build($certificate)) {
             return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Pass' `
-                -Detail "Publisher $($certificate.Subject) is trusted on this machine ($actual)."
+                -Detail "Publisher $($certificate.Subject) is trusted on this computer ($actual)."
         }
         $flags = @($chain.ChainStatus | ForEach-Object { $_.Status })
         $reasons = @($chain.ChainStatus | ForEach-Object { $_.StatusInformation.Trim() }) -join ' '
@@ -829,7 +874,7 @@ function Test-NodePilotArtifactSignerTrust {
     # from then on - it does not authenticate the setup that is already running.
     New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Warn' `
         -CanAutoFix $true -AutoFixLabel 'Trust the publisher certificate (adds it to LocalMachine\Root)' `
-        -Detail ("Publisher $($certificate.Subject) ($actual) is not trusted on this machine. " +
+        -Detail ("Publisher $($certificate.Subject) ($actual) is not trusted on this computer. " +
                  'The installation does not need it.') `
         -RemediationHint ('Optional. Trusting it makes Windows validate the signature of this and future ' +
                           'NodePilot installers; it applies to the whole machine, so compare the thumbprint ' +
@@ -851,9 +896,9 @@ function New-NodePilotCertificateVerdict {
         [Parameter(Mandatory)][datetime]$Now
     )
 
-    $title = 'Kestrel TLS certificate'
-    $importHint = 'Import a current certificate into Cert:\LocalMachine\My (MachineKeySet|PersistKeySet), then re-check.'
-    $importCommand = 'Import-PfxCertificate -FilePath <file>.pfx -CertStoreLocation Cert:\LocalMachine\My -Password (Read-Host -AsSecureString)'
+    $title = 'HTTPS certificate'
+    $importHint = 'Go back to HTTPS certificate and select or import a current certificate, then check again.'
+    $importCommand = Get-NodePilotCertificateImportInstructions
 
     # Loud, but not a stop. Validity is a property of the certificate, not of the installation:
     # Kestrel binds by thumbprint and never reads NotAfter, so the service starts either way, and
@@ -888,7 +933,7 @@ function New-NodePilotCertificateVerdict {
     if (-not (Test-NodePilotCertificateNameMatch -Names $names -PublicHostname $PublicHostname)) {
         $claimed = if ($names.Count -gt 0) { $names -join ', ' } else { '(no host name at all)' }
         return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Warn' -Required $true `
-            -Detail ("Cert found: $($Certificate.Subject)$expiryWarning It is issued for " +
+            -Detail ("Certificate $($Certificate.Subject) is available.$expiryWarning It is issued for " +
                      "$claimed - not for $PublicHostname.") `
             -RemediationHint ('Browsers will show a name mismatch unless something in front of NodePilot ' +
                               "terminates TLS under that name. Either use a certificate naming " +
@@ -897,7 +942,7 @@ function New-NodePilotCertificateVerdict {
     }
 
     New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Pass' -Required $true `
-        -Detail "Cert found: $($Certificate.Subject)$expiryWarning"
+        -Detail "Certificate $($Certificate.Subject) is available.$expiryWarning"
 }
 
 function Get-NodePilotGmsaRetrievalState {
@@ -1023,7 +1068,14 @@ function Test-NodePilotGmsa {
         # all the way to a service that cannot log on and a rollback. The one question that decides
         # that - may this host fetch the managed password - is answerable over plain LDAP.
         $retrieval = Get-NodePilotGmsaRetrievalState -Sam $sam
-        return New-NodePilotGmsaRetrievalResult -Sam $sam -State $retrieval -Title $title
+        $verdict = New-NodePilotGmsaRetrievalResult -Sam $sam -State $retrieval -Title $title
+        if ($verdict.Status -ne 'Fail') {
+            $verdict.Status = 'Warn'
+            $verdict.Detail += ' AD PowerShell tools are missing; local readiness has not been tested.'
+            $verdict.CanAutoFix = $true
+            $verdict.AutoFixLabel = 'Prepare this gMSA locally (install AD tools if needed)'
+        }
+        return $verdict
     }
 
     try {
@@ -1047,11 +1099,12 @@ function Test-NodePilotGmsa {
                      'services already run under it, check the account rather than assuming it is ' +
                      "broken - the two do not ask the same question.$notBlocking") `
             -RemediationHint 'If the account really was never installed here, as Domain Admin:' `
-            -Remediation "Install-ADServiceAccount -Identity $sam"
+            -Remediation "Install-ADServiceAccount -Identity $sam" `
+            -CanAutoFix $true -AutoFixLabel 'Prepare this gMSA locally (install AD tools if needed)'
     }
 
     New-NodePilotPreflightResult -Id 'gmsa' -Title $title -Status 'Pass' `
-        -Detail "gMSA '$sam' is installed on this host."
+        -Detail "gMSA '$sam' is installed on this computer."
 }
 
 function Test-NodePilotServiceIdentityRestorable {
@@ -1115,12 +1168,12 @@ function Test-NodePilotDomainJoined {
     }
     if (-not $partOfDomain) {
         return New-NodePilotPreflightResult -Id 'domainJoined' -Title $title -Status 'Warn' `
-            -Detail 'This host is not domain-joined; the Domain-profile firewall rules will apply to no active profile.' `
+            -Detail 'This computer is not domain-joined; the Domain-profile firewall rules will apply to no active profile.' `
             -RemediationHint 'Open the HTTPS port for the active profile yourself after the install.' `
             -Remediation 'New-NetFirewallRule -DisplayName "NodePilot HTTPS" -Direction Inbound -Protocol TCP -LocalPort <port> -Action Allow -Profile Private'
     }
     New-NodePilotPreflightResult -Id 'domainJoined' -Title $title -Status 'Pass' `
-        -Detail 'Host is domain-joined; the Domain-profile firewall rules will apply.'
+        -Detail 'This computer is domain-joined; the Domain-profile firewall rules will apply.'
 }
 
 function Test-NodePilotSqlReachable {
@@ -1137,7 +1190,7 @@ function Test-NodePilotSqlReachable {
         [Parameter(Mandatory)][string]$Principal
     )
 
-    $title = 'SQL Server reachable'
+    $title = 'SQL Server connection'
     $connectionString = Resolve-NodePilotSqlProbeConnectionString `
         -Server $Server -Database $Database -CertificateHostName $CertificateHostName
 
@@ -1148,32 +1201,39 @@ function Test-NodePilotSqlReachable {
         $cmd.CommandText = 'SELECT 1'
         [void]$cmd.ExecuteScalar()
     } catch {
-        # 4060 is "cannot open database requested by the login": the instance answered and TLS held,
-        # so the statements below are the whole fix. Any other failure may be the connection itself -
-        # most often a server certificate this host cannot verify - and offering CREATE LOGIN for
-        # that sends the operator after a permission problem they do not have.
-        # Compared by type name rather than -is, so a host without the assembly loaded still reads.
-        $sqlNumber = if ($_.Exception.GetType().FullName -eq 'System.Data.SqlClient.SqlException') {
-            $_.Exception.Number
-        } else { 0 }
-        $hint = if ($sqlNumber -eq 4060) {
-            'The instance answered, but the database is not there for this login. Have the DBA run, on the SQL Server:'
+        # PowerShell wraps Open() failures. Stop at SqlException to retain its SQL error number.
+        $failure = $_.Exception
+        while ($failure.InnerException -and $failure.GetType().FullName -ne 'System.Data.SqlClient.SqlException') {
+            $failure = $failure.InnerException
+        }
+        $sqlNumber = if ($failure.GetType().FullName -eq 'System.Data.SqlClient.SqlException') { $failure.Number } else { 0 }
+        $canPrepare = $sqlNumber -eq 4060
+        $detail = "Could not connect to SQL Server '$Server', database '$Database'."
+        $remediation = ''
+        $fixLabel = ''
+        if ($canPrepare) {
+            $detail = "SQL Server answered, but database '$Database' is missing or inaccessible to the current Windows account."
+            $hint = 'Check the database name and account access. Database preparation requires SQL Server administrator rights. Alternatively, ask your DBA to run the SQL below.'
+            $remediation = Get-NodePilotSqlRemediationScript -Principal $Principal -Database $Database
+            $fixLabel = 'Prepare the service login and database (requires SQL Server administrator rights)'
+        } elseif ($sqlNumber -eq 18456) {
+            $hint = 'Ask your DBA to grant the current Windows account access to SQL Server, then check again.'
         } else {
-            'The connection itself did not come up. Check that this host can verify the SQL Server''s certificate - the service enforces the same TLS rule when it starts - and that the instance and port are reachable. If the database is merely missing, have the DBA run:'
+            $hint = 'Check that the SQL Server instance and port are reachable and that this computer trusts its TLS certificate, then check again.'
         }
         return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
-            -Detail "SQL reachability FAILED: $($_.Exception.Message)" `
+            -Detail "$detail`r`nSQL Server reported: $($failure.Message)" `
             -RemediationHint $hint `
-            -Remediation (Get-NodePilotSqlRemediationScript -Principal $Principal -Database $Database) `
-            -CanAutoFix $true -AutoFixDefault $true `
-            -AutoFixLabel 'Create the login and database now (needs sysadmin)' `
+            -Remediation $remediation `
+            -CanAutoFix $canPrepare -AutoFixDefault $canPrepare `
+            -AutoFixLabel $fixLabel `
             -AbortMessage 'Aborted: SQL pre-flight failed.'
     } finally {
         $conn.Dispose()
     }
 
     New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Pass' -Required $true `
-        -Detail "SQL reachable: $Server/$Database"
+        -Detail "Connected to SQL Server '$Server', database '$Database', using the current Windows account."
 }
 
 function New-NodePilotSqlServiceLoginResult {
@@ -1438,41 +1498,45 @@ function New-NodePilotPostgresResult {
         [AllowEmptyString()][string]$RevocationProblem = ''
     )
 
-    $title = 'PostgreSQL reachable'
-    $remediation = Get-NodePilotPostgresRemediationScript -User $User -Database $Database
+    $title = 'PostgreSQL connection'
 
     if (-not $TcpReachable) {
-        $suffix = if ($TcpError) { ": $TcpError" } else { '. Check DNS, firewall, and pg_hba.conf.' }
+        $suffix = if ($TcpError) { ": $TcpError" } else { '.' }
         return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
-            -Detail "Postgres reachability FAILED: TCP probe failed to ${HostName}:${Port}$suffix" `
-            -RemediationHint "Cannot reach ${HostName}:${Port} from this host. Verify DNS, firewall, and that Postgres is listening on the external interface. Role setup on the DB server:" `
-            -Remediation $remediation `
+            -Detail "The PostgreSQL TCP connection to ${HostName}:${Port} failed$suffix" `
+            -RemediationHint ('Check the host and port on the PostgreSQL - server page. Verify DNS, firewall rules, ' +
+                              'and that PostgreSQL is running and listening on that address and port. Then check again.') `
             -AbortMessage 'Aborted: Postgres pre-flight failed.'
     }
 
     # The service checks revocation and refuses the server whatever the login check says.
     if ($RevocationProblem) {
+        $revocationHint = if ($RevocationProblem -match ' is revoked$') {
+            'Replace the revoked PostgreSQL server certificate with a valid certificate issued by your CA, then check again.'
+        } else {
+            "Ask your CA administrator to publish a current CRL at the certificate's CRL distribution point " +
+            'and make it reachable from this host. Alternatively, import that CRL in an elevated PowerShell window: ' +
+            "certutil -addstore CA 'C:\path\issuer.crl'. Then check again."
+        }
         return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
-            -Detail ("Postgres answered on ${HostName}:${Port}, but $RevocationProblem. The service " +
+            -Detail ("PostgreSQL answered on ${HostName}:${Port}, but $RevocationProblem. The service " +
                      'checks certificate revocation and would refuse this server at start.') `
-            -RemediationHint ("Publish the issuing CA's CRL where the certificate's CRL distribution point " +
-                              'points and make it reachable from this host, or import the CRL into the ' +
-                              'LocalMachine\CA store here (certutil -addstore CA <file>.crl).') `
-            -AbortMessage 'Aborted: Postgres pre-flight failed - certificate revocation could not be checked.'
+            -RemediationHint $revocationHint `
+            -AbortMessage 'Aborted: Postgres pre-flight failed - certificate revocation validation failed.'
     }
 
-    # Without a bundled client, report only whether the database port responds.
+    # A TCP response alone does not verify authentication or TLS.
     if ($null -eq $PsqlOutcome) {
         return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Warn' -Required $true `
-            -Detail ("Postgres TCP reachable: ${HostName}:${Port}. This build carries no PostgreSQL " +
-                     "client, so whether '$User' can actually log in to [$Database] is untested - a " +
-                     'missing role or a wrong password will surface as a failed service start.') `
-            -RemediationHint 'Verify on the database server that the role and database exist:' `
-            -Remediation $remediation
+            -Detail ("PostgreSQL responds on ${HostName}:${Port}, but the login for '$User' to [$Database] " +
+                     'is untested because setup could not run the authenticated check.') `
+            -RemediationHint ('Check the role password and root certificate file on the PostgreSQL - credentials page. ' +
+                              'Use a setup package with the bundled PostgreSQL client, then check again. ' +
+                              'If a login check is still unavailable, ask your database administrator to verify the connection before continuing.')
     }
     if ($PsqlOutcome.Succeeded) {
         return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Pass' -Required $true `
-            -Detail "Postgres reachable and '$User' can log in to [$Database] on ${HostName}:${Port}."
+            -Detail "PostgreSQL is reachable and '$User' can log in to [$Database] on ${HostName}:${Port}."
     }
 
     # What the server said, verbatim and unparsed. Useful to a human in any language, and the only
@@ -1486,13 +1550,20 @@ function New-NodePilotPostgresResult {
     if ($DatabaseExists -eq $false) { $missing += "the database [$Database] does not exist" }
 
     if ($missing.Count -gt 0) {
-        # Only these two are something creating anything would help with, and they are exactly what
-        # the fix creates.
-        $label = if ($CanProvision) { "Create the role and database on $HostName now" } else { '' }
+        $objects = if ($RoleExists -eq $false -and $DatabaseExists -eq $false) { 'role and database' }
+                   elseif ($RoleExists -eq $false) { 'role' } else { 'database' }
+        $label = if ($CanProvision) { "Create the missing $objects on $HostName" } else { '' }
+        $hint = if ($CanProvision) {
+            'Select this fix and choose Apply selected fixes. Alternatively, ask your database administrator to run the instructions below, then check again.'
+        } else {
+            'Ask your database administrator to run the instructions below, or provide administrator credentials on the PostgreSQL - credentials page. Then check again.'
+        }
+        $remediation = Get-NodePilotPostgresRemediationScript -User $User -Database $Database `
+            -CreateRole ($RoleExists -eq $false) -CreateDatabase ($DatabaseExists -eq $false)
         return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
-            -Detail ("Postgres answered on ${HostName}:${Port} but $($missing -join ' and '). " +
-                     'The service would start and fail its first query.') `
-            -RemediationHint 'On the database server:' -Remediation $remediation `
+            -Detail ("PostgreSQL answered on ${HostName}:${Port} but $($missing -join ' and '). " +
+                     'NodePilot cannot start with this database configuration.') `
+            -RemediationHint $hint -Remediation $remediation `
             -CanAutoFix $CanProvision -AutoFixLabel $label `
             -AbortMessage "Aborted: Postgres pre-flight failed - $($missing -join ' and ')."
     }
@@ -1501,23 +1572,21 @@ function New-NodePilotPostgresResult {
         # Both there, still refused. Creating them again would change nothing, and the fix
         # deliberately never rewrites an existing role's password - so no button.
         return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
-            -Detail ("Postgres answered on ${HostName}:${Port} and both the role '$User' and the " +
+            -Detail ("PostgreSQL answered on ${HostName}:${Port} and both the role '$User' and the " +
                      "database [$Database] exist, but the login was refused: $psqlError " +
-                     'That is the password, pg_hba.conf, or the TLS trust chain - not something ' +
-                     'missing that could be created.') `
-            -RemediationHint 'Check the password in this answer file, then pg_hba.conf on the server:' `
-            -Remediation $remediation `
+                     'Setup will not recreate existing objects or reset their passwords.') `
+            -RemediationHint ('Check the role password on the PostgreSQL - credentials page. Ask your database administrator ' +
+                              'to check login permissions and pg_hba.conf. For a TLS error, check the host name and root certificate. Then check again.') `
             -AbortMessage 'Aborted: Postgres pre-flight failed - the login was refused.'
     }
 
-    # Nobody could ask the catalogue: no superuser credentials were given. The message is repeated
-    # as-is rather than guessed at.
+    # A missing or failed administrator connection leaves the catalogue state unknown.
     New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
-        -Detail ("Postgres answered on ${HostName}:${Port} but '$User' could not log in to " +
-                 "[$Database]: $psqlError The service would start and fail its first query.") `
-        -RemediationHint ('Without a PostgreSQL superuser the setup cannot tell a missing role from ' +
-                          'a wrong password. On the database server:') `
-        -Remediation $remediation `
+        -Detail ("PostgreSQL answered on ${HostName}:${Port} but '$User' could not log in to " +
+                 "[$Database]: $psqlError Setup could not verify whether the role and database exist.") `
+        -RemediationHint ('Check the role password on the PostgreSQL - credentials page. To verify missing objects, ' +
+                          'provide valid administrator credentials there or ask your database administrator. ' +
+                          'For a TLS error, check the host name and root certificate; for an access error, check pg_hba.conf and login permissions. Then check again.') `
         -AbortMessage 'Aborted: Postgres pre-flight failed - the login was refused.'
 }
 
@@ -1990,18 +2059,30 @@ function Invoke-NodePilotPreflight {
         [AllowEmptyString()][string]$ArtifactSignerCertificatePath = '',
         [AllowEmptyString()][string]$ExpectedSignerThumbprint = '',
         [switch]$SkipDatabaseCheck,
-        [switch]$SkipGmsaCheck
+        [switch]$SkipGmsaCheck,
+        [scriptblock]$ProgressCallback
     )
 
+    function Write-PreflightStatus {
+        param([string]$Message)
+        if ($ProgressCallback) {
+            try { $null = & $ProgressCallback $Message } catch { Write-Verbose 'The progress listener is unavailable.' }
+        }
+    }
     $results = @()
     if ($ArtifactSignerCertificatePath) {
+        Write-PreflightStatus 'Checking the artifact publisher'
         $results += Test-NodePilotArtifactSignerTrust `
             -CertificatePath $ArtifactSignerCertificatePath -ExpectedThumbprint $ExpectedSignerThumbprint
     }
+    Write-PreflightStatus 'Checking the .NET runtimes'
     $results += Test-NodePilotDotNetRuntime
+    Write-PreflightStatus 'Checking the HTTPS certificate'
     $results += Test-NodePilotTlsCertificate -Thumbprint $CertificateThumbprint -PublicHostname $PublicHostname
+    Write-PreflightStatus 'Checking HTTP and HTTPS ports'
     $results += Test-NodePilotListenPorts -HttpsPort $HttpsPort -HttpPort $HttpPort -ServiceName $ServiceName
 
+    Write-PreflightStatus 'Checking the service identity'
     if ($IsLocalSystem) {
         # The detail must not repeat the title: the wizard renders "<Title>: <Detail>", so a detail
         # that opens with its own title produced "Service identity: Service identity: LocalSystem -
@@ -2016,6 +2097,7 @@ function Invoke-NodePilotPreflight {
     }
 
     $results += Test-NodePilotServiceIdentityRestorable -ServiceName $ServiceName
+    Write-PreflightStatus 'Checking domain membership'
     $results += Test-NodePilotDomainJoined
 
     if ($SkipDatabaseCheck) {
@@ -2025,6 +2107,7 @@ function Invoke-NodePilotPreflight {
     }
 
     if ($DbProvider -eq 'sqlserver') {
+        Write-PreflightStatus 'Connecting to SQL Server'
         $sqlResult = Test-NodePilotSqlReachable `
             -Server $SqlServer -Database $SqlDatabase `
             -CertificateHostName $SqlCertificateHostName -Principal $SqlPrincipal
@@ -2032,6 +2115,7 @@ function Invoke-NodePilotPreflight {
         # Only meaningful once the instance answered; on a failed connection the caller aborts
         # before it could act on either follow-up.
         if ($sqlResult.Status -eq 'Pass') {
+            Write-PreflightStatus 'Checking SQL Server permissions and version'
             # Both identities, not just LocalSystem. While this was a printed caveat there was
             # nothing useful to say about a gMSA that the gMSA check had not already said; as a
             # query it answers the same question for both, and the 503 it predicts does not care
@@ -2042,6 +2126,7 @@ function Invoke-NodePilotPreflight {
                 -Server $SqlServer -CertificateHostName $SqlCertificateHostName
         }
     } else {
+        Write-PreflightStatus 'Checking the PostgreSQL login and TLS connection'
         $results += Test-NodePilotPostgresReachable `
             -HostName $PostgresHost -Port $PostgresPort `
             -User $PostgresUser -Database $PostgresDatabase `

@@ -44,7 +44,8 @@ param(
     [string]$DataPath = 'C:\ProgramData\NodePilot',
     [int]$HttpsPort = 443,
     [int]$KeepBackupCount = 3,
-    [switch]$AllowDowngrade
+    [switch]$AllowDowngrade,
+    [scriptblock]$ProgressCallback
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,6 +56,7 @@ if (-not (Test-Path -LiteralPath $ArtifactSecurityScript -PathType Leaf)) {
     throw "Artifact security helper not found: $ArtifactSecurityScript"
 }
 . $ArtifactSecurityScript
+. (Join-Path $PSScriptRoot 'DeploymentProgress.ps1')
 
 # Shared with Install-NodePilot.ps1: a service the SCM calls stopped can still have a live
 # process holding its own binaries, and waiting that out is this script's job, not the operator's.
@@ -72,7 +74,11 @@ if (-not (Test-Path -LiteralPath $PreflightScript -PathType Leaf)) {
 }
 . $PreflightScript
 
-function Write-Step { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Cyan }
+function Write-Step {
+    param([string]$Text, [string]$Phase = 'configure')
+    Write-Host "[update] $Text" -ForegroundColor Cyan
+    Send-NodePilotProgress -Callback $ProgressCallback -Phase $Phase -Message $Text
+}
 function Write-Info { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Gray }
 function Write-Ok   { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Green }
 function Write-Warn { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Yellow }
@@ -130,17 +136,6 @@ function Write-RestrictedSettings {
         -Content $Content `
         -ServiceAccount $ServiceAccount `
         -SkipServiceRule:($ServiceAccount -eq 'NT AUTHORITY\SYSTEM')
-}
-
-function Copy-DirectoryContents {
-    param(
-        [Parameter(Mandatory)][string]$Source,
-        [Parameter(Mandatory)][string]$Destination
-    )
-    Get-ChildItem -LiteralPath $Source -Force |
-        ForEach-Object {
-            Copy-Item -LiteralPath $_.FullName -Destination $Destination -Recurse -Force -ErrorAction Stop
-        }
 }
 
 function Stop-ServiceAndVerify {
@@ -384,7 +379,8 @@ try {
         Get-ChildItem -LiteralPath $InstallPath -Force |
             Sort-Object { $_.Name -eq 'appsettings.Production.json' } |
             Remove-Item -Recurse -Force -ErrorAction Stop
-        Copy-DirectoryContents -Source $artifactStage -Destination $InstallPath
+        Copy-NodePilotDirectoryWithProgress -Source $artifactStage -Destination $InstallPath -ProgressCallback $ProgressCallback
+        Send-NodePilotProgress -Callback $ProgressCallback -Phase 'verify' -Message 'Verifying copied files and permissions'
         Assert-NodePilotExtractedFiles -RootPath $InstallPath
         # An installation whose directory was never hardened keeps its inherited ACL, which lets a
         # non-administrator replace the binaries the service account then executes. No
@@ -412,6 +408,7 @@ try {
         if ($LASTEXITCODE -ne 0) { Write-Warn "  sc.exe config (start= auto) returned $LASTEXITCODE" }
 
         Write-Step "Starting service '$ServiceName'"
+        Send-NodePilotProgress -Callback $ProgressCallback -Phase 'service' -Message 'Starting the service and checking readiness' -Detail 'This can take up to one minute.'
         # Diagnostics before the rollback, not after: the catch block below wipes the new binaries,
         # and an operator who only gets "the service cannot be started" has nothing left to look at.
         try {
@@ -423,7 +420,7 @@ try {
 
         if (-not (Wait-NodePilotReady -Port $HttpsPort -TimeoutSeconds 60)) {
             Show-NodePilotServiceStartDiagnostics -DataPath $DataPath
-            throw 'Service did not become ready after upgrade. See diagnostics above.'
+            throw 'Service did not become ready after upgrade. Check the NodePilot and Windows Application logs for the startup error.'
         }
         Write-Ok '/healthz/ready returned 200 OK'
 
@@ -537,6 +534,7 @@ try {
         Write-Host "[update] FAILED: $($updateError.Exception.Message)" -ForegroundColor Red
         try {
             if ($installTouched) {
+                Send-NodePilotProgress -Callback $ProgressCallback -Phase 'rollback' -State 'rollback' -Message 'Restoring the previous installation'
                 Write-Host "[update] Rolling back from $($backup.Path)" -ForegroundColor Yellow
                 Stop-ServiceAndVerify -Name $ServiceName
                 # The SCM can report Stopped before the process releases mapped DLLs. Treat the

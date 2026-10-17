@@ -290,24 +290,34 @@ Es gibt zwei Wege zur selben Installation.
 ### Variante A: GUI-Setup
 
 `NodePilot-Server-Setup-<version>.exe` aus dem Release herunterladen und ausführen. Es bringt das
-signierte Artefakt und die ASP.NET-Core-Runtime mit, prüft sämtliche Voraussetzungen aus den
-Kapiteln 1 bis 4 **bevor** es etwas verändert, und zeigt jede als grün, gelb oder rot mit
-kopierbarer Anleitung. Auf Wunsch installiert es die Runtime, legt SQL-Login und Datenbank an oder
-erzeugt ein Laborzertifikat.
+signierte Artefakt und beide .NET-Runtimes mit. Die Prüfseite zeigt eine scrollbare Statusliste;
+vollständige Erklärungen und kopierbare Anleitungen stehen beim ausgewählten Eintrag.
+**Check again** prüft nur. **Apply selected fixes** richtet ausgewählte Voraussetzungen ein und
+prüft danach erneut. **Next** navigiert erst weiter, wenn keine blockierenden Fehler bestehen.
+Auf Wunsch installiert Setup die Runtimes, legt Datenbank und Login an, importiert eine PFX oder
+bereitet eine vorhandene gMSA lokal vor, einschließlich fehlender AD-PowerShell-Werkzeuge.
+Das Konto und seine Passwortabrufberechtigungen müssen bereits im AD existieren. Ein benötigter
+Neustart wird angezeigt und nicht automatisch ausgeführt. Bereits eingerichtete Voraussetzungen
+bleiben bei einem Abbruch des Wizards erhalten.
 
-Dazu gehört die Vertrauensfrage aus Kapitel 4 — allerdings als **gelbe, optionale** Zeile: Das
+Prüfung, Einrichtung und Installation zeigen die aktuelle Aktion, Laufzeit und einen Zugang zum
+Setup-Protokoll. Beim Kopieren werden echte Byte- und Dateizähler angezeigt. Vorgänge mit unbekannter
+Dauer erhalten eine Aktivitätsanzeige. Die Netzwerkseite zeigt die spätere URL und bietet geprüfte
+Portvorschläge an; deren Übernahme muss bestätigt werden.
+
+Dazu gehört die Vertrauensfrage aus Kapitel 4 als **optionaler Hinweis**: Das
 Setup nennt den Thumbprint des Herausgebers `CN=NodePilot Release Signing` und bietet den Import
 nach `LocalMachine\Root` an, angeboten und nicht vorangehakt. Die Installation braucht ihn nicht;
 sie verifiziert die Signatur gegen den einkompilierten Thumbprint. Der Import bewirkt nur, dass
-Windows die Authenticode-Signatur der Installer selbst validiert. **Rot** wird die Zeile dagegen
+Windows die Authenticode-Signatur der Installer selbst validiert. **Blockierend** wird die Zeile dagegen
 bei allem, was der Installer selbst ablehnt: falscher Thumbprint, abgelaufenes oder noch nicht
 gültiges Zertifikat, fehlende Codesignatur-Eignung.
 
-Für das Kestrel-Zertifikat verlangt es nur den Thumbprint — und bietet unter dem Eingabefeld die
-Zertifikate aus `Cert:\LocalMachine\My` zur Auswahl an, sortiert nach Ablauf. Das gilt für ein
-PKI-Zertifikat aus der eigenen CA genauso wie für ein selbstsigniertes: importieren, auswählen,
-fertig. Ein Zertifikat ohne privaten Schlüssel steht mit entsprechender Markierung in der Liste,
-statt kommentarlos zu fehlen.
+Die eigene HTTPS-Zertifikatseite bietet ein vorhandenes Zertifikat aus `Cert:\LocalMachine\My`,
+einen PFX-Import mit Dateiauswahl und Passwort oder die ausdrückliche Erzeugung eines Laborzertifikats.
+Vorhandene Zertifikate sind nach Ablauf sortiert; fehlende private Schlüssel werden gekennzeichnet.
+Der PFX-Import erfolgt erst über **Apply selected fixes**. Das Passwort wird über die geschützte
+Setup-Sitzung übergeben, nicht über die Kommandozeile. Es wird kein Stammzertifikat automatisch vertraut.
 
 Wer noch gar keins hat, lässt das Feld **leer**. Die Prüfseite meldet dann „No certificate
 selected" und bietet an, ein selbstsigniertes zu erzeugen — angeboten, nicht vorangehakt, denn ein
@@ -323,7 +333,7 @@ Unbeaufsichtigt entspricht das einem leeren `certificate.thumbprint` plus
 Die Abschlussseite zeigt alles, was für den ersten Zugriff nötig ist: Adresse, Setup-Token für die
 erste Anmeldung, External-Trigger-API-Key, Zertifikats-Thumbprint sowie Dienstname und Pfade. Der
 API-Key erscheint **nur dort** — er ist danach nicht mehr rekonstruierbar. Der Text ist markierbar,
-und „Save this summary…" legt ihn als Datei ab.
+und „Save this summary…" legt ihn als Datei ab. „Open NodePilot" öffnet die installierte Anwendung.
 
 **Schlüsselfertig ohne Token-Eingabe.** Zwei Wege, die sich gegenseitig ausschließen:
 

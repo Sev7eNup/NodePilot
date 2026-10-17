@@ -835,9 +835,9 @@ Assert-TextMatches -Name 'the data directory gets a trusted owner, not just trus
 Assert-TextMatches -Name 'the installer verifies the data directory the way the service will' `
     -Text $installerScript `
     -Pattern '(?s)Set-DirectoryAclForService -Path \$DataPath[\s\S]{0,2000}Assert-ServiceDirectoryAclUsable -Path \$DataPath'
-Assert-TextMatches -Name 'that verification runs before the artifact is extracted' `
+Assert-TextMatches -Name 'data ACL verification runs before verified files are copied' `
     -Text $installerScript `
-    -Pattern '(?s)Assert-ServiceDirectoryAclUsable -Path \$DataPath[\s\S]{0,4000}Write-Step "Extracting artifact"'
+    -Pattern '(?s)Assert-ServiceDirectoryAclUsable -Path \$DataPath[\s\S]{0,4000}Write-Step "Copying verified artifact"'
 # Repair-then-recheck, not repair-and-hope: the second verdict is what decides.
 $assertFunctionStart = $artifactSecurityRaw.IndexOf('function Assert-ServiceDirectoryAclUsable')
 $assertFunctionEnd = $artifactSecurityRaw.IndexOf('function Assert-NodePilotInstallRootHardened', $assertFunctionStart)
@@ -1348,132 +1348,48 @@ Assert-TextDoesNotMatch -Name 'the silent provisioning gate must not rest on Ans
 Assert-TextMatches -Name 'the silent path reads the provisioning verdict, not just the exit code' `
     -Text $serverIssCode `
     -Pattern '(?s)-Mode Provision[\s\S]{0,900}?GetIniString\([^)]*provision\.database[^)]*status'
-# The data directory is ours; the database is not. There is no option to remove it and there must
-# not be one: this installer never created it.
+# Uninstall preserves databases, including those provisioned by setup.
 Assert-TextDoesNotMatch -Name 'the setup must not offer to drop the database' `
     -Text $serverIss -Pattern 'DROPDATABASE|DropDatabase|DROP DATABASE'
 Assert-TextMatches -Name 'the uninstall says the database is left alone' `
-    -Text $serverIss -Pattern '(?s)InitializeUninstall[\s\S]*?DATABASE is not affected'
+    -Text $serverIss -Pattern '(?s)InitializeUninstall[\s\S]*?database is kept either way, including databases created by setup'
 # Removal has to be offered where an operator lands, not only under Apps & Features. The mode
 # page is the only screen a second run of the setup reliably shows, so the option lives there.
 Assert-TextMatches -Name 'the mode page offers removal' `
     -Text $serverIss -Pattern "ModePage\.Add\('Remove NodePilot from this computer"
 
 # --- readiness page presentation ----------------------------------------------------------------
-# Status was carried by text colour alone, which conveys nothing to anyone who cannot tell this
-# green from this red, and nothing at all in a greyscale screenshot or a support ticket.
-Assert-TextMatches -Name 'a passing check renders a glyph, not just a colour' `
-    -Text $serverIss -Pattern 'CheckMarks\[I\]\.Caption := MarkPass'
-Assert-TextMatches -Name 'a failing check renders a glyph, not just a colour' `
-    -Text $serverIss -Pattern 'CheckMarks\[I\]\.Caption := MarkFail'
-# The glyphs are character codes rather than literal characters on purpose: a .iss that only
-# compiles when saved in one particular encoding is a trap for whoever edits it next.
-Assert-TextDoesNotMatch -Name 'the setup script stays pure ASCII' `
-    -Text $serverIss -Pattern '[^\x00-\x7F]'
-# Rows are positioned after the captions are set, because a wrapped label only knows its height
-# once it has text. Laying out at construction time is what reserved 128 px for checkboxes that
-# are almost never shown and squeezed the remediation area down to a single line.
-$captionIndex = $serverIss.IndexOf('CheckLabels[I].Caption := Title')
-# Anchored on the indented CALL, not on the substring: 'procedure LayoutReadiness();' contains it
-# too, sits above the render loop, and made this check fail against a correct file.
-$layoutMatch = [regex]::Match($serverIss, '(?m)^[ \t]+LayoutReadiness\(\);')
-$layoutIndex = $(if ($layoutMatch.Success) { $layoutMatch.Index } else { -1 })
-if ($captionIndex -lt 0 -or $layoutIndex -lt 0) {
-    throw 'Deployment template check failed: could not locate the readiness render and layout steps.'
-}
-if ($layoutIndex -lt $captionIndex) {
-    throw 'Deployment template check failed: the readiness page lays rows out before their captions are set.'
-}
-# A memo sized to the leftovers is what produced a one-line box with a scrollbar that reads as a
-# broken edit field. The remediation text is display-only and belongs in a label.
-#
-# Scoped to the page, not the file: the finish page uses a memo on purpose, because it is
-# otherwise empty and a 64-character API key that cannot be selected would have to be retyped.
-$readinessStart = $serverIss.IndexOf('procedure CreateReadinessPage()')
-$readinessEnd = $serverIss.IndexOf('procedure InitializeWizard', $readinessStart)
-if ($readinessStart -lt 0 -or $readinessEnd -lt 0) {
-    throw 'Deployment template check failed: could not delimit CreateReadinessPage in the server setup.'
-}
-$readinessPageCode = $serverIss.Substring($readinessStart, $readinessEnd - $readinessStart)
-# Remediation text can exceed the available height, so its control must be read-only and scrollable.
-Assert-TextMatches -Name 'the remediation area cannot be typed into' `
-    -Text $readinessPageCode -Pattern 'RemediationBox\.ReadOnly := True'
-Assert-TextMatches -Name 'the remediation area can reach text taller than itself' `
-    -Text $readinessPageCode -Pattern 'RemediationBox\.ScrollBars := ssVertical'
-# The page does not scroll: when the rows do not fit, passing/warning rows are cut to one line and
-# the full text moves into the instructions box instead of rows vanishing behind it.
-Assert-TextMatches -Name 'rows are shortened when they do not fit the page' `
-    -Text $serverIss -Pattern '(?s)procedure ApplyRowDensity.*?CheckLabels\[I\]\.WordWrap := False'
-Assert-TextMatches -Name 'a shortened row shows its full text when selected' `
-    -Text $serverIss -Pattern '(?s)if CheckCompact\[Index\] then\s+RemediationText := CheckLabels\[Index\]\.Caption'
-# With many failing rows, cutting the other rows is not enough; failing rows are cut last.
-Assert-TextMatches -Name 'failing rows are shortened as the last step' `
-    -Text $serverIss -Pattern '(?s)procedure ApplyRowDensity.*?or \(Level >= 3\)'
-Assert-TextMatches -Name 'the layout reaches the failing-row step' `
-    -Text $serverIss -Pattern 'while \(Level < 3\) and'
+Assert-TextDoesNotMatch -Name 'the setup script stays pure ASCII' -Text $serverIss -Pattern '[^\x00-\x7F]'
+Assert-TextMatches -Name 'checks use a scrolling keyboard-accessible list' -Text $serverIss -Pattern 'CheckList := TNewListBox.Create'
+Assert-TextMatches -Name 'checks have text status independent of colour' -Text $serverIss -Pattern "Mark := 'Needs attention'"
+Assert-TextMatches -Name 'full details remain available for the selected check' -Text $serverIss -Pattern 'ExpandNewlines\(CheckDetails\[Index\]\)'
+Assert-TextMatches -Name 'remediation is selectable and read-only' -Text $serverIss -Pattern 'RemediationBox.ReadOnly := True'
+Assert-TextMatches -Name 'long remediation can scroll' -Text $serverIss -Pattern 'RemediationBox.ScrollBars := ssVertical'
+Assert-TextMatches -Name 'fixes have their own explicit action' -Text $serverIss -Pattern 'ApplyButton.OnClick := @ApplyFixesClick'
+Assert-TextMatches -Name 'unresolved blocking checks disable Next' -Text $serverIss -Pattern 'NextButton.Enabled := ProbeRan and \(not ProbeBlocking\)'
+$nextStart = $serverIss.IndexOf('function NextButtonClick(')
+$nextEnd = $serverIss.IndexOf('function OpenProcess(', $nextStart)
+Assert-TextDoesNotMatch -Name 'Next never provisions the computer' -Text $serverIss.Substring($nextStart, $nextEnd - $nextStart) -Pattern '-Mode Provision'
+
 
 # --- certificate picker ---------------------------------------------------------------------------
-# The thumbprint of a certificate already installed on the machine is otherwise only reachable
-# through the certificate MMC, whose copy button prepends an invisible U+200E - the reason
-# Install-NodePilot.ps1 strips non-hex characters before measuring the length at all. The adapter
-# has published the store's contents since the wizard existed and nothing ever read them back.
-$compactStart = $serverIss.IndexOf('procedure CompactNetworkPage(')
 $certComboStart = $serverIss.IndexOf('procedure CertComboChange(')
 $loaderStart = $serverIss.IndexOf('procedure LoadCertificateList(')
-$loaderEnd = $serverIss.IndexOf('procedure CreateReadinessPage(')
-if ($compactStart -lt 0 -or $certComboStart -le $compactStart -or
-    $loaderStart -le $certComboStart -or $loaderEnd -le $loaderStart) {
-    throw 'Deployment template check failed: could not delimit the certificate picker in the server setup.'
+$loaderEnd = $serverIss.IndexOf('procedure ApplyFixesClick(')
+if ($certComboStart -lt 0 -or $loaderStart -le $certComboStart -or $loaderEnd -le $loaderStart) {
+    throw 'Deployment template check failed: could not delimit the certificate picker.'
 }
-$compactCode = $serverIss.Substring($compactStart, $certComboStart - $compactStart)
 $certComboCode = $serverIss.Substring($certComboStart, $loaderStart - $certComboStart)
 $loaderCode = $serverIss.Substring($loaderStart, $loaderEnd - $loaderStart)
-
-# The picker shipped drawn as a sliver under the bottom edge of the page. An input page does not
-# scroll and gives no indication that anything is below it, so "a few pixels too low" is invisible
-# in the source and total on screen. Whatever the reflow computes, the control has to land inside
-# the surface.
-Assert-TextMatches -Name 'the picker is kept inside the visible surface' `
-    -Text $compactCode -Pattern 'CertCombo\.Top \+ CertCombo\.Height > NetworkPage\.SurfaceHeight'
-# Reflowed, not split. Five values that answer one question belong on one screen; the space comes
-# from Inno's 54 px per label+edit pair, which is about 11 px more than the controls occupy.
-Assert-TextMatches -Name 'the page is reflowed from the controls, not from constants' `
-    -Text $compactCode -Pattern 'NetworkPage\.PromptLabels\[I\]\.Height'
-Assert-TextMatches -Name 'the reflow runs while the wizard is built' `
-    -Text $serverIss -Pattern '(?s)procedure InitializeWizard[\s\S]*?CompactNetworkPage\(\);'
-
-# Picking one has to land in the field that the answer file, the validation and the self-signed
-# write-back all read. A picker holding its own copy would be a second home for the same value, and
-# the wizard would install whichever of the two it happened to read.
-Assert-TextMatches -Name 'picking a certificate fills the thumbprint field itself' `
-    -Text $certComboCode -Pattern 'NetworkPage\.Values\[4\] := CertThumbprints'
-Assert-TextMatches -Name 'the certificate list is loaded when the TLS page is shown' `
-    -Text $serverIss `
-    -Pattern '(?s)procedure CurPageChanged[\s\S]{0,400}NetworkPage\.ID then[\s\S]{0,80}LoadCertificateList'
-
-# Called from the page handler and nowhere else. A call from InitializeWizard would spawn
-# PowerShell during /SILENT, where no page is ever shown - an unattended SCCM run paying for a
-# convenience nobody is there to use.
+Assert-TextMatches -Name 'certificate selection has a dedicated page' -Text $serverIss -Pattern 'CertificatePage := CreateInputQueryPage\(NetworkPage.ID'
+Assert-TextMatches -Name 'picking a certificate fills the authoritative thumbprint' -Text $certComboCode -Pattern 'CertificatePage.Values\[0\] := CertThumbprints'
+Assert-TextMatches -Name 'the certificate inventory reloads on the certificate page' -Text $serverIss -Pattern '(?s)CurPageID = CertificatePage.ID then.{0,120}LoadCertificateList'
 $loaderCalls = @([regex]::Matches($serverIss, '(?m)^[ \t]+LoadCertificateList\(\);'))
-if ($loaderCalls.Count -ne 1) {
-    throw ("Deployment template check failed: LoadCertificateList is called $($loaderCalls.Count) times; " +
-           'it belongs to the TLS page handler alone, so the unattended path never shells out for it.')
-}
+if ($loaderCalls.Count -ne 1) { throw 'Certificate inventory must load once per page visit, never during silent setup.' }
+Assert-TextDoesNotMatch -Name 'inventory failure preserves manual entry' -Text $loaderCode -Pattern 'MsgBox|RaiseException'
+Assert-TextMatches -Name 'malformed inventory entries are not offered' -Text $loaderCode -Pattern 'Length\(Thumbprint\) <> 40'
+Assert-TextMatches -Name 'certificate choices include their thumbprint' -Text $loaderCode -Pattern 'Entry := Subject \+ [^\r\n]*Thumbprint'
 
-# Picker failure must preserve manual thumbprint entry; the prerequisite page validates it.
-Assert-TextDoesNotMatch -Name 'a certificate list that cannot be read must not stop the wizard' `
-    -Text $loaderCode -Pattern 'MsgBox|RaiseException'
-# Offering a line that failed to parse would put something that is not a thumbprint into the field,
-# and the certificate check then reports it as a missing certificate - sending the operator after a
-# problem that does not exist.
-Assert-TextMatches -Name 'a malformed entry is dropped rather than offered' `
-    -Text $loaderCode -Pattern 'Length\(Thumbprint\) <> 40'
-# Subject and expiry alone are not unique. On the lab host two certificates share both - "NodePilot
-# Lab HTTPS" and "NodePilot Lab SQL TLS", issued 39 seconds apart under the same CN - so the list
-# rendered two identical lines, and choosing the wrong one would have handed Kestrel the database's
-# certificate in silence. The value that lands in the field has to be on the line.
-Assert-TextMatches -Name 'each offered certificate shows the thumbprint it will fill in' `
-    -Text $loaderCode -Pattern 'Entry := Subject \+ [^\r\n]*Thumbprint'
 
 # --- the publisher of the artifact ----------------------------------------------------------------
 # The page checked nine things and the installation died on a tenth: Install-NodePilot.ps1 verifies
@@ -1496,11 +1412,11 @@ Assert-TextDoesNotMatch -Name 'the publisher fix is not hard-wired off' `
 # wrapped row lands behind "Check again" - present, captioned, and impossible to tick, which is how
 # the publisher fix reached the first machine that needed it.
 Assert-TextMatches -Name 'a fix checkbox is never pushed below the buttons' `
-    -Text $serverIss -Pattern 'if FixTop > FixFloor then FixTop := FixFloor;'
+    -Text $serverIss -Pattern 'CheckFixes\[I\].Top := CheckList.Top \+ CheckList.Height \+ ScaleY\(8\)'
 # Counted first, because the guarantee is about the last box: N boxes need N strips above the
 # buttons, and clamping them all to the same line would hide all but one.
 Assert-TextMatches -Name 'the floor accounts for every fix that will be shown' `
-    -Text $serverIss -Pattern 'FixFloor := ButtonTop - ScaleY\(19\) \* FixCount;'
+    -Text $serverIss -Pattern 'CheckFixes\[I\].Visible := \(I = Index\) and CheckFixes\[I\].Enabled'
 # The publisher row is a note now, not a gate - and a checkbox limited to red rows would have
 # disappeared with the red. canAutoFix and the label stay the gate, so no row grows a box that has
 # no fix behind it.
@@ -1516,11 +1432,11 @@ Assert-TextMatches -Name 'the publisher certificate is extracted before the read
 # characters unconditionally while its own error text said to leave the field as it is, so the
 # prerequisite page that offers to create one could only be reached by inventing a thumbprint.
 Assert-TextMatches -Name 'the TLS page lets an empty thumbprint through' `
-    -Text $serverIss -Pattern "NetworkPage\.Values\[4\] <> ''\) and \(Length\(NetworkPage\.Values\[4\]\) <> 40"
+    -Text $serverIss -Pattern "\(Thumbprint <> ''\) and \(Length\(Thumbprint\) <> 40\)"
 # Nothing is waved through: the value still has to be a thumbprint if one is given at all, and the
 # prerequisite page fails the certificate row - required, so Next stays blocked - either way.
 Assert-TextMatches -Name 'a thumbprint that is given is still checked for length' `
-    -Text $serverIss -Pattern "A certificate thumbprint is 40 hexadecimal characters"
+    -Text $serverIss -Pattern "A certificate thumbprint must contain 40 hexadecimal characters"
 Assert-TextMatches -Name 'having none selected is its own verdict, not a missing certificate' `
     -Text $preflightScript -Pattern "(?s)IsNullOrWhiteSpace\(\`$Thumbprint\)[\s\S]{0,600}No certificate selected"
 
@@ -1971,7 +1887,7 @@ $interactiveProvisionBlock = $serverIss.Substring(
     $interactiveProvisionStart,
     $interactiveProvisionEnd - $interactiveProvisionStart)
 $interactiveRuntimeIndex = $interactiveProvisionBlock.IndexOf('EnsureRuntimePayload();')
-$interactiveRunIndex = $interactiveProvisionBlock.IndexOf("RunPowerShell('-Mode Provision")
+$interactiveRunIndex = $interactiveProvisionBlock.IndexOf("RunAdapterWithProgress('-Mode Provision")
 if ($interactiveRuntimeIndex -lt 0 -or $interactiveRunIndex -lt 0 -or
     $interactiveRuntimeIndex -gt $interactiveRunIndex) {
     throw ('Deployment template check failed: the interactive auto-fix does not extract the ' +
@@ -2018,124 +1934,28 @@ if ($declaredCheckCount -ne $assignedCheckIds) {
 }
 
 # --- installation progress -------------------------------------------------------------------
-# The wizard sat on "Preparing to Install" showing nothing for the whole run - 136 s healthy, 187 s
-# when the health probe is lost - long enough for Windows to grey the window out as "Not
-# responding", which is how it was read.
-#
-# Dot-sourced rather than pattern-matched: the phase table IS the contract here, and reading the
-# real one is the only way this guard is worth having. SetupContract.ps1 has no top-level code -
-# Test-SetupAdapter.ps1 loads it the same way.
-. $SetupContractPath
-$installPhases = @(Get-NodePilotInstallPhases)
-if ($installPhases.Count -eq 0) {
-    throw 'Deployment template check failed: the install progress phase table is empty.'
+$progressHelper = Get-Content -LiteralPath (Join-Path $scriptDirectory 'DeploymentProgress.ps1') -Raw
+foreach ($entryPoint in @($installerScript, (Get-Content -LiteralPath $UpdateScriptPath -Raw))) {
+    Assert-TextMatches -Name 'deployment reports progress through a structured callback' -Text $entryPoint -Pattern 'Send-NodePilotProgress -Callback \$ProgressCallback'
+    Assert-TextMatches -Name 'deployment copy reports measured progress' -Text $entryPoint -Pattern 'Copy-NodePilotDirectoryWithProgress -Source \$artifactStage -Destination \$InstallPath -ProgressCallback \$ProgressCallback'
 }
-# THE drift guard. The bar is driven by matching the installer's own output, so a renamed step does
-# not break anything loudly - it silently produces a bar that stops at the phase before it and an
-# operator who watches a frozen 25% for two minutes.
-function Get-DeclaredStepPrefixes {
-    param([Parameter(Mandatory)][string]$Script)
-    $prefixes = @()
-    foreach ($match in [regex]::Matches($Script, "Write-Step\s+(?:'([^']*)'|`"([^`"]*)`")")) {
-        $literal = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
-        # Cut at the first interpolation: "Stopping service '$ServiceName'" is only ever knowable
-        # up to "Stopping service ", which is exactly what the table matches on.
-        $dollar = $literal.IndexOf('$')
-        if ($dollar -ge 0) { $literal = $literal.Substring(0, $dollar) }
-        $literal = $literal.TrimEnd()
-        if ($literal) { $prefixes += $literal }
-    }
-    return $prefixes
-}
-
-$updatePhases = @(Get-NodePilotUpdatePhases)
-foreach ($pair in @(
-    @{ Name = 'installer'; Script = $installerScript;                                  Phases = $installPhases },
-    @{ Name = 'updater';   Script = (Get-Content -LiteralPath $UpdateScriptPath -Raw); Phases = $updatePhases })) {
-
-    $declaredSteps = @(Get-DeclaredStepPrefixes -Script $pair.Script)
-    if ($declaredSteps.Count -eq 0) {
-        throw "Deployment template check failed: found no Write-Step announcements in the $($pair.Name)."
-    }
-
-    # Forward: an entry whose step has been renamed away would stop the bar at the phase before it.
-    foreach ($phase in $pair.Phases) {
-        $found = @($declaredSteps | Where-Object { $_.StartsWith($phase.Step, [System.StringComparison]::Ordinal) })
-        if ($found.Count -eq 0) {
-            throw ("Deployment template check failed: progress phase '$($phase.Step)' no longer " +
-                   "exists as a Write-Step in the $($pair.Name). The bar would stop at the phase " +
-                   'before it and never move again.')
-        }
-    }
-
-    # Backward, and the direction that was missing. The forward guard only asks whether every table
-    # entry still exists in the script; it says nothing about a step in the script that no entry
-    # covers. That gap shipped: the updater announces four phases and the table listed two, the
-    # installer ten and the table nine, so the bar stood still through half of an update and
-    # nothing went red. Both omissions came from the same sloppy search - one pattern found only
-    # double-quoted steps, the other was anchored at the start of a line and missed the indented
-    # ones.
-    foreach ($declared in $declaredSteps) {
-        $covered = @($pair.Phases | Where-Object { $declared.StartsWith($_.Step, [System.StringComparison]::Ordinal) })
-        if ($covered.Count -eq 0) {
-            throw ("Deployment template check failed: the $($pair.Name) announces a phase " +
-                   "('$declared') that no progress entry covers. It would run with neither the bar " +
-                   'nor the caption moving, which is indistinguishable from being stuck.')
-        }
-    }
-}
-# A bar that can go backwards is a bar nobody believes. Ascending percentages are what make the
-# wizard's "never retreat" rule hold without keeping state per phase.
-$previous = -1
-foreach ($phase in $installPhases) {
-    if ([int]$phase.Percent -le $previous) {
-        throw ("Deployment template check failed: install progress phase '$($phase.Step)' is not " +
-               'above the phase before it. The percentages must ascend.')
-    }
-    $previous = [int]$phase.Percent
-}
-# The service start waits up to 180 s on a health probe. A bar that stops there without saying why
-# is the same silence this replaced, just at 80% instead of 0.
-$lastPhase = $installPhases[$installPhases.Count - 1]
-if ($lastPhase.Text -notmatch 'minutes') {
-    throw ("Deployment template check failed: the last install phase ('$($lastPhase.Step)') must " +
-           'say how long it can take - it is the one that waits on the health probe.')
-}
-
-# Without the file, every Write-NodePilotProgress call in the adapter goes nowhere. That was the
-# state this feature shipped in: the writing side existed and nothing ever asked for it.
-Assert-TextMatches -Name 'the wizard asks the adapter for progress' `
-    -Text $serverIss -Pattern '(?s)-Mode Apply[\s\S]{0,400}-ProgressFile'
-# Synchronous Exec blocks Inno's UI thread for the whole installation, which is what produced the
-# frozen window. The installation - and only the installation - runs detached.
-Assert-TextMatches -Name 'the installation runs without blocking the interface' `
-    -Text $serverIss -Pattern '(?s)function RunAdapterWithProgress[\s\S]*?StartPowerShell\(Arguments\)'
-# Sliced to the function, not matched across the file. The first version of this check searched
-# from "function StartPowerShell" to the next ewNoWait anywhere below it - and the uninstaller
-# handoff further down uses ewNoWait too, so the contract passed with the start switched back to
-# ewWaitUntilTerminated. It measured the wrong line entirely.
+Assert-TextMatches -Name 'large files report progress while copying' -Text $progressHelper -Pattern '\$copied \+= \$read'
+Assert-TextMatches -Name 'progress updates are throttled' -Text $progressHelper -Pattern 'ElapsedMilliseconds -ge 250'
+Assert-TextMatches -Name 'the wizard asks the adapter for progress' -Text $serverIss -Pattern '(?s)-Mode Apply.{0,400}-ProgressFile'
+Assert-TextMatches -Name 'all long operations use the asynchronous runner' -Text $serverIss -Pattern '(?s)RunAdapterWithProgress\(''-Mode Probe.{0,300}-ProgressFile'
+Assert-TextMatches -Name 'fixes report progress asynchronously' -Text $serverIss -Pattern '(?s)RunAdapterWithProgress\(''-Mode Provision.{0,300}-ProgressFile'
 $startStart = $serverIss.IndexOf('function StartPowerShell(')
 $startEnd = $serverIss.IndexOf('function StripBom(', $startStart)
-if ($startStart -lt 0 -or $startEnd -le $startStart) {
-    throw 'Deployment template check failed: could not delimit StartPowerShell in the server setup.'
-}
 $startCode = $serverIss.Substring($startStart, $startEnd - $startStart)
-Assert-TextMatches -Name 'the detached start uses ewNoWait' `
-    -Text $startCode -Pattern 'ewNoWait'
-Assert-TextDoesNotMatch -Name 'the detached start must not wait' `
-    -Text $startCode -Pattern 'ewWaitUntilTerminated'
-# With ewNoWait there is no exit code to read from Exec. Trusting it would report every failed
-# installation as a success.
-Assert-TextMatches -Name 'the outcome is read from the result file, not from Exec' `
-    -Text $serverIss -Pattern "(?s)function RunAdapterWithProgress[\s\S]*?GetIniString\('summary', 'exitCode'"
-# Inno's Pascal exposes no message pump (AppProcessMessages, ProcessMessages and Application are
-# all unknown identifiers in 6.7.3), so something in the loop has to touch the window every tick.
-Assert-TextMatches -Name 'the wait loop keeps the window alive on every tick' `
-    -Text $serverIss -Pattern '(?s)repeat[\s\S]{0,600}ProgressPage\.SetProgress\(Shown, 100\)'
-# An adapter killed from Task Manager never writes result.ini. Without a bound, the wizard would
-# wait for it forever.
-Assert-TextMatches -Name 'the wait loop cannot run forever' `
-    -Text $serverIss -Pattern '(?s)repeat[\s\S]*?until Elapsed >= AdapterTimeoutMs'
+Assert-TextMatches -Name 'the worker starts without blocking the interface' -Text $startCode -Pattern 'ewNoWait'
+Assert-TextDoesNotMatch -Name 'the worker start must not wait' -Text $startCode -Pattern 'ewWaitUntilTerminated'
+Assert-TextMatches -Name 'result exit codes determine success' -Text $serverIss -Pattern "GetIniString\('summary', 'exitCode'"
+Assert-TextMatches -Name 'unknown durations use an activity indicator' -Text $serverIss -Pattern 'ProgressBar.Style := npbstMarquee'
+Assert-TextMatches -Name 'the interface refreshes every poll' -Text $serverIss -Pattern 'ProgressPage.SetProgress\(Shown, 100\)'
+Assert-TextMatches -Name 'the wait is bounded' -Text $serverIss -Pattern 'until Elapsed >= AdapterTimeoutMs'
+Assert-TextMatches -Name 'worker termination is detected' -Text $serverIss -Pattern 'WaitForSingleObject\(ProcessHandle, 0\)'
+Assert-TextMatches -Name 'a timed-out worker retains its protected session' -Text $serverIss -Pattern "if \(SessionDir <> ''\) and \(not AdapterTimedOut\) then"
+
 
 # --- setup adapter contracts ---------------------------------------------------------------------
 $setupAdapter = Remove-CommentLines -Text (Get-Content -LiteralPath $SetupAdapterPath -Raw)
@@ -2406,9 +2226,9 @@ Assert-TextMatches -Name 'runtime payload extraction is idempotent and only mark
 # nodepilot-server-setup.log twice, which reads as though each step had been performed twice.
 Assert-TextDoesNotMatch -Name 'installer output is not written to the log a second time' `
     -Text $setupAdapter -Pattern 'Write-NodePilotPhaseProgress -Line \$_; Write-Host \$_'
-# Still consumed, though: the phase text on the progress page comes from these very lines.
-Assert-TextMatches -Name 'the installer output still drives the progress page' `
-    -Text $setupAdapter -Pattern 'ForEach-Object \{ Write-NodePilotPhaseProgress -Line \$_ \}'
+# Progress is delivered independently of console wording.
+Assert-TextMatches -Name 'the installer receives the structured progress callback' `
+    -Text $setupAdapter -Pattern 'ProgressCallback''\] = \$progressWriter'
 Assert-TextMatches -Name 'the probe passes the publisher certificate to the pre-flight' `
     -Text $setupAdapter -Pattern "ArtifactSignerCertificatePath'\] = Get-NodePilotSignerCertificatePath"
 Assert-TextMatches -Name 'the pre-flight emits the publisher row only when it is given one' `

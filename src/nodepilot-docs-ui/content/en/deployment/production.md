@@ -295,22 +295,33 @@ There are two routes to the same installation.
 ### Variant A: the GUI setup
 
 Download `NodePilot-Server-Setup-<version>.exe` from the release and run it. It brings the signed
-artifact and both .NET runtimes with it, checks every prerequisite from chapters 1 to 4
-**before** it changes anything, and shows each as green, amber or red with copyable instructions. On
-request it installs the runtime, creates the SQL login and database, or generates a lab certificate.
+artifact and both .NET runtimes with it. The readiness page has a scrolling status list; selecting
+a check shows its full explanation and copyable instructions. **Check again** only checks.
+**Apply selected fixes** prepares the selected prerequisites and checks again afterwards.
+**Next** navigates only when no blocking failures remain. Setup can install runtimes, create the
+database and login, import a PFX, or prepare an existing gMSA locally, including missing AD
+PowerShell tools. The account and its password-retrieval permissions must already exist in AD.
+A required restart is reported, never performed automatically. Prerequisites already prepared
+remain installed if the wizard is cancelled.
 
-That includes the trust question from chapter 4 — but as an **amber, optional** row: the setup names
+Checks, provisioning and installation show the current operation, elapsed time and access to the
+setup log. Copying reports measured byte and file counts; operations of unknown duration use an
+activity indicator. The network page previews the URL and offers checked port suggestions that
+the operator explicitly accepts.
+
+That includes the trust question from chapter 4 as an **optional notice**: the setup names
 the thumbprint of the publisher `CN=NodePilot Release Signing` and offers the import into
 `LocalMachine\Root`, offered and not pre-ticked. The installation does not need it; it verifies the
 signature against the compiled-in thumbprint. The import only causes Windows to validate the
-Authenticode signature of the installers themselves. The row turns **red** for everything the
+Authenticode signature of the installers themselves. The row becomes **blocking** for everything the
 installer itself rejects: a wrong thumbprint, an expired or not-yet-valid certificate, missing
 code-signing suitability.
 
-For the Kestrel certificate it asks only for the thumbprint — and offers the certificates from
-`Cert:\LocalMachine\My` below the input field, sorted by expiry. That applies to a PKI certificate
-from your own CA just as much as to a self-signed one: import, select, done. A certificate without a
-private key appears in the list with a corresponding marking rather than silently missing.
+The separate HTTPS certificate page offers an existing certificate from `Cert:\LocalMachine\My`,
+a PFX import with file selection and password, or explicit lab-certificate generation. Existing
+certificates are sorted by expiry and missing private keys are named. The PFX is imported only
+through **Apply selected fixes**. Its password travels through the protected setup session, never
+the command line. Root certificates are not automatically trusted.
 
 If you have none at all, leave the field **empty**. The readiness page then reports "No certificate
 selected" and offers to generate a self-signed one — offered, not pre-ticked, because a lab
@@ -325,7 +336,7 @@ corresponds to an empty `certificate.thumbprint` plus
 The finish page shows everything needed for first access: the address, the setup token for the first
 sign-in, the external-trigger API key, the certificate thumbprint, and the service name and paths. The
 API key appears **only there** — it cannot be reconstructed afterwards. The text is selectable, and
-"Save this summary…" writes it to a file.
+"Save this summary…" writes it to a file. "Open NodePilot" opens the installed application.
 
 **Turnkey without typing a token.** Two mutually exclusive routes:
 

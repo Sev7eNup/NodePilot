@@ -80,6 +80,16 @@ the run *Succeeded* and no error entry. A failed run lists its failed steps in `
 Interactive pages (uninstall question, leftover-data page, the wizard itself) are not reachable over
 PowerShell Direct and are not covered.
 
+### Optional server installer acceptance (`server-ui/`)
+
+The [installer acceptance runbook](server-ui/README.md) adds reproducible native wizard tests to
+this matrix: navigation and full prerequisite hints, automatic repairs, certificate variants,
+PostgreSQL CRL/client failures, progress, real upgrade/rollback, silent commands, uninstall and
+DPI. Each case specifies its starting state, actions and pass criteria. Reusable synthetic-worker,
+CRL-generation and rollback fixtures are kept beside the runbook; no previous `out/` directory or
+chat history is required. This is an optional step, not a new release gate. Record Not run when
+omitted, and keep preview evidence separate from real candidate-installation evidence.
+
 ### Computer-Use UI acceptance (`computer-use/`, experimental)
 
 This run is experimental and not a release gate. After both setup matrices and the workflow suite

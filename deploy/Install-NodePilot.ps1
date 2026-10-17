@@ -206,7 +206,8 @@ param(
     [switch]$SkipSqlConnectivityCheck,
     [switch]$SkipGmsaCheck,
     [switch]$OmitSourceSnapshot,
-    [switch]$SuppressSecretOutput
+    [switch]$SuppressSecretOutput,
+    [scriptblock]$ProgressCallback
 )
 
 $ErrorActionPreference = 'Stop'
@@ -217,6 +218,7 @@ if (-not (Test-Path -LiteralPath $ArtifactSecurityScript -PathType Leaf)) {
     throw "Artifact security helper not found: $ArtifactSecurityScript"
 }
 . $ArtifactSecurityScript
+. (Join-Path $PSScriptRoot 'DeploymentProgress.ps1')
 
 # Readiness checks live in their own file because the setup wizard runs the same set behind a
 # re-check button. Because of that shared use, nothing in Preflight.ps1 may mutate anything.
@@ -334,7 +336,11 @@ if ($isLocalSystem) {
 # Helpers
 # ---------------------------------------------------------------------------
 
-function Write-Step { param([string]$Text) Write-Host "[install] $Text" -ForegroundColor Cyan }
+function Write-Step {
+    param([string]$Text, [string]$Phase = 'configure')
+    Write-Host "[install] $Text" -ForegroundColor Cyan
+    Send-NodePilotProgress -Callback $ProgressCallback -Phase $Phase -Message $Text
+}
 function Write-Info { param([string]$Text) Write-Host "[install] $Text" -ForegroundColor Gray }
 function Write-Ok   { param([string]$Text) Write-Host "[install] $Text" -ForegroundColor Green }
 function Write-Warn { param([string]$Text) Write-Host "[install] $Text" -ForegroundColor Yellow }
@@ -955,6 +961,7 @@ if (-not $SkipSqlConnectivityCheck -and $DbProvider -eq 'sqlserver') {
 # Install
 # ---------------------------------------------------------------------------
 
+Send-NodePilotProgress -Callback $ProgressCallback -Phase 'extract' -Message 'Extracting and verifying the signed artifact'
 $artifactStage = Expand-NodePilotArtifactToStaging -ArtifactPath $ArtifactPath
 Write-Info "  Artifact extracted and verified in restricted staging: $artifactStage"
 
@@ -996,6 +1003,7 @@ if (Test-Path -LiteralPath $previousSettingsPath -PathType Leaf) {
 
 if ((Test-Path -LiteralPath $InstallPath -PathType Container) -and
     @(Get-ChildItem -LiteralPath $InstallPath -Force).Count -gt 0) {
+    Write-Step 'Backing up the existing installation'
     $installRollback = New-NodePilotBinaryBackup -InstallPath $InstallPath -Kind 'rollback'
     Write-Info "  Existing binary-only install backed up to $($installRollback.Path)"
 }
@@ -1122,10 +1130,9 @@ if ($DbProvider -eq 'postgres') {
     }
 }
 
-Write-Step "Extracting artifact"
-Get-ChildItem -LiteralPath $artifactStage -Force | ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination $InstallPath -Recurse -Force
-}
+Write-Step "Copying verified artifact" -Phase 'copy'
+Copy-NodePilotDirectoryWithProgress -Source $artifactStage -Destination $InstallPath -ProgressCallback $ProgressCallback
+Send-NodePilotProgress -Callback $ProgressCallback -Phase 'verify' -Message 'Verifying copied files and permissions'
 Assert-NodePilotExtractedFiles -RootPath $InstallPath
 # The hash check above proves the files are the signed ones right now; this proves they cannot be
 # swapped before the service (LocalSystem/gMSA) executes them. Copy-Item into a freshly ACL'd
@@ -1410,7 +1417,8 @@ if ($isLocalSystem) {
     Grant-LogOnAsServiceRight -Account $ServiceAccount
 }
 
-Write-Step "Starting service"
+Write-Step "Starting service" -Phase 'service'
+Send-NodePilotProgress -Callback $ProgressCallback -Phase 'service' -Message 'Starting the service and checking readiness' -Detail 'This can take up to three minutes.'
 try {
     Start-Service -Name $ServiceName -ErrorAction Stop
 } catch {
@@ -1425,7 +1433,7 @@ $probeUrl = "https://localhost:$HttpsPort/healthz/ready"
 Write-Info "  Probing $probeUrl (up to 180s)..."
 if (-not (Invoke-HealthProbe -Url $probeUrl -TimeoutSeconds 180)) {
     Show-NodePilotServiceStartDiagnostics -DataPath $DataPath
-    throw "Service did not report /healthz/ready within 180s. See diagnostics above."
+    throw "Service did not report /healthz/ready within 180s. Check the NodePilot and Windows Application logs for the startup error."
 }
 Write-Ok "  /healthz/ready -> 200 OK"
 
@@ -1646,9 +1654,11 @@ catch {
             # them collapses the block to nothing.
             $hadPreviousInstallation = [bool]$previousService
             if ($hadPreviousInstallation) {
+                Send-NodePilotProgress -Callback $ProgressCallback -Phase 'rollback' -State 'rollback' -Message 'Restoring the previous installation'
                 Write-Host "[install] Restoring the previous installation..." -ForegroundColor Yellow
                 Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath
             } else {
+                Send-NodePilotProgress -Callback $ProgressCallback -Phase 'rollback' -State 'rollback' -Message 'Undoing this installation'
                 Write-Host "[install] Undoing this installation - nothing was here before..." -ForegroundColor Yellow
                 Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath `
                     -FoundMessage "Removing the service '$ServiceName' that this run registered."
