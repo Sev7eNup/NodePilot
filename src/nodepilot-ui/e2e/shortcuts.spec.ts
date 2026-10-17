@@ -79,6 +79,26 @@ async function fireClipboard(page: Page, key: string) {
   await page.keyboard.press(key);
 }
 
+/**
+ * The copy and paste events the browser fires on Ctrl+C and Ctrl+V, which the editor handles.
+ * Dispatched directly, so the test does not depend on the system clipboard of the machine.
+ */
+function copyEvent(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const data = new DataTransfer();
+    document.body.dispatchEvent(new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true }));
+    return data.getData('text/plain');
+  });
+}
+
+function pasteEvent(page: Page, text: string): Promise<void> {
+  return page.evaluate((pasted) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', pasted);
+    document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, text);
+}
+
 test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
   test.beforeEach(async ({ page }) => {
     await installDefaultMocks(page);
@@ -136,26 +156,58 @@ test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
     expect(ids.filter((x) => x && !seeded.includes(x)).length).toBeGreaterThanOrEqual(1);
   });
 
-  test('12.2b — Ctrl+C then Ctrl+V pastes a copy of the selected node', async ({ page }) => {
+  test('12.2b — Ctrl+C puts the selection with its edges on the clipboard as JSON; Ctrl+V pastes a copy', async ({ page }) => {
     await openEditor(page);
     await expect.poll(() => nodeCount(page)).toBe(3);
 
     await page.locator('.react-flow__node[data-id="step-aaaa1111"]').click();
-    await refitCanvas(page);
-    await expect(page.locator('.react-flow__node[data-id="step-aaaa1111"].selected')).toHaveCount(1);
-    await page.keyboard.press('Control+c');
-    await page.waitForTimeout(200);
-    // Paste (offset +40px, fresh id). See fireClipboard docstring for why a single Ctrl+V can be
-    // swallowed by the handler's post-mutation closure re-bind.
-    await fireClipboard(page, 'Control+v');
-    await expect.poll(() => nodeCount(page), { timeout: 10_000 }).toBeGreaterThan(3);
-    // Pasted node(s) carry new ids; the originals are untouched.
+    await page.keyboard.press('Control+a');
+    await expect(page.locator('.react-flow__node.selected')).toHaveCount(3);
+    const copiedText = await copyEvent(page);
+    const copied = JSON.parse(copiedText) as { nodes: { id: string }[]; edges: { id: string }[] };
+    expect(copied.nodes.map((n) => n.id).sort()).toEqual(['step-aaaa1111', 'step-bbbb2222', 'step-cccc3333']);
+    expect(copied.edges.map((e) => e.id)).toEqual(['e-ab']);
+
+    // The copy lands next to the original (offset +40px, fresh ids).
+    await pasteEvent(page, copiedText);
+    await expect.poll(() => nodeCount(page), { timeout: 10_000 }).toBe(6);
     await expect(page.locator('.react-flow__node[data-id="step-aaaa1111"]')).toHaveCount(1);
     const ids = await page.locator('.react-flow__node[data-id^="step-"]').evaluateAll(
       (els) => els.map((e) => e.getAttribute('data-id')),
     );
     const seeded = ['step-aaaa1111', 'step-bbbb2222', 'step-cccc3333'];
-    expect(ids.filter((x) => x && !seeded.includes(x)).length).toBeGreaterThanOrEqual(1);
+    expect(ids.filter((x) => x && !seeded.includes(x))).toHaveLength(3);
+  });
+
+  test('12.2c — Ctrl+V with workflow JSON from a text editor inserts nodes with fresh ids and a rewritten condition', async ({ page }) => {
+    await openEditor(page);
+    await expect.poll(() => nodeCount(page)).toBe(3);
+    // Registered after openEditor, so it takes precedence and sees the save.
+    let putBody: { definitionJson?: string } | null = null;
+    await page.route(`**/api/workflows/${WF_ID}`, (route) => {
+      if (route.request().method() === 'PUT') putBody = route.request().postDataJSON();
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflowJson(threeNodeDefinition())) });
+    });
+
+    await pasteEvent(page, JSON.stringify({
+      nodes: [
+        { id: 'step-x', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'X', activityType: 'log', config: { message: 'hi' } } },
+        { id: 'step-y', type: 'activity', position: { x: 180, y: 0 }, data: { label: 'Y', activityType: 'log', config: { message: '{{step-x.output}}' } } },
+      ],
+      edges: [{ id: 'e-xy', source: 'step-x', target: 'step-y', type: 'labeled', data: { label: 'On Success', condition: 'step-x.success' } }],
+    }));
+
+    await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
+    await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
+    const def = JSON.parse(putBody!.definitionJson as string) as {
+      nodes: { id: string; data: { config?: { message?: string } } }[];
+      edges: { source: string; target: string; data?: { condition?: string } }[];
+    };
+    expect(def.nodes).toHaveLength(5);
+    const pasted = def.edges.find((e) => e.data?.condition?.endsWith('.success'))!;
+    expect(pasted.source).not.toBe('step-x');
+    expect(pasted.data?.condition).toBe(`${pasted.source}.success`);
+    expect(def.nodes.find((n) => n.id === pasted.target)?.data.config?.message).toBe(`{{${pasted.source}.output}}`);
   });
 
   test('12.3 — Ctrl+A select-all then Ctrl+G groups the nodes into a labeled group', async ({ page }) => {

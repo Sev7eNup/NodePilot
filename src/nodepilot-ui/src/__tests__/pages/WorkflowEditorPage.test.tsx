@@ -2406,3 +2406,124 @@ describe('WorkflowEditorPage — run-dialog prefill from the last run', () => {
     });
   });
 });
+
+describe('WorkflowEditorPage — copy and paste', () => {
+  const canvasNode = (id: string) => document.querySelector(`.react-flow__node[data-id="${id}"]`)!;
+  const nodeCount = () => document.querySelectorAll('.react-flow__node').length;
+
+  /** The browser's copy or paste event on Ctrl+C / Ctrl+V; jsdom has no ClipboardEvent. */
+  function clipboardEvent(type: 'copy' | 'paste', pasted = ''): () => string | undefined {
+    const data = new Map<string, string>([['text/plain', pasted]]);
+    const ev = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'clipboardData', {
+      value: { getData: (f: string) => data.get(f) ?? '', setData: (f: string, v: string) => data.set(f, v) },
+    });
+    act(() => { document.body.dispatchEvent(ev); });
+    return () => data.get('text/plain');
+  }
+
+  function copyStepB(): string {
+    fireEvent.click(canvasNode('step-b'));
+    const copied = clipboardEvent('copy')();
+    if (!copied) throw new Error('nothing copied');
+    return copied;
+  }
+
+  const PASTED_TEXT = JSON.stringify({
+    nodes: [
+      { id: 'x', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'X', activityType: 'log', config: { message: 'hi' } } },
+      { id: 'y', type: 'activity', position: { x: 200, y: 0 }, data: { label: 'Y', activityType: 'log', config: { message: '{{x.output}}' } } },
+    ],
+    edges: [{ id: 'xy', source: 'x', target: 'y', type: 'labeled', data: { label: 'On Success', condition: 'x.success' } }],
+  });
+
+  it('Ctrl+C puts the selected nodes and the edge between them on the clipboard', async () => {
+    renderPage('Admin');
+    await waitForCanvasReady();
+
+    fireEvent.keyDown(window, { key: 'a', ctrlKey: true });
+    const copied = JSON.parse(clipboardEvent('copy')() ?? '{}');
+
+    expect(copied.nodes.map((n: { id: string }) => n.id).sort()).toEqual(['step-a', 'step-b']);
+    expect(copied.edges.map((e: { id: string }) => e.id)).toEqual(['e1']);
+    expect(copied.nodes.find((n: { id: string }) => n.id === 'step-b').data.config.script).toBe('Get-PSDrive C');
+    await waitFor(() => expect(useToastStore.getState().toasts.some((x) => x.kind === 'success')).toBe(true));
+  });
+
+  it('Ctrl+V pastes a copy with write access', async () => {
+    // Control case for the viewer test below: the same steps do paste for an editor.
+    renderPage('Admin');
+    await waitForCanvasReady();
+
+    clipboardEvent('paste', copyStepB());
+
+    await waitFor(() => expect(nodeCount()).toBe(3));
+  });
+
+  it('Ctrl+V changes nothing for a viewer', async () => {
+    renderPage('Viewer');
+    await waitForCanvasReady();
+
+    clipboardEvent('paste', copyStepB());
+
+    // Give a paste the chance to render before asserting it did not happen.
+    await act(async () => { await Promise.resolve(); });
+    expect(nodeCount()).toBe(2);
+  });
+
+  it('Ctrl+D duplicates nothing for a viewer', async () => {
+    renderPage('Viewer');
+    await waitForCanvasReady();
+
+    fireEvent.click(canvasNode('step-b'));
+    fireEvent.keyDown(window, { key: 'd', ctrlKey: true });
+
+    await act(async () => { await Promise.resolve(); });
+    expect(nodeCount()).toBe(2);
+  });
+
+  it('viewer gets no node context menu', async () => {
+    renderPage('Viewer');
+    await waitForCanvasReady();
+
+    fireEvent.contextMenu(canvasNode('step-b'));
+
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText('Duplicate')).not.toBeInTheDocument();
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+  });
+
+  it('Ctrl+V with JSON from elsewhere inserts the nodes with new ids and a rewritten condition', async () => {
+    let saved: {
+      nodes: { id: string; data: { config?: { message?: string } } }[];
+      edges: { source: string; target: string; data?: { condition?: string } }[];
+    } | null = null;
+    server.use(http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+      saved = JSON.parse((await request.json() as { definitionJson: string }).definitionJson);
+      return HttpResponse.json(MOCK_WORKFLOW);
+    }));
+    renderPage('Admin');
+    await waitForCanvasReady();
+
+    clipboardEvent('paste', PASTED_TEXT);
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    fireEvent.click(screen.getByTitle(/Save in place|Zwischen-Speichern/i));
+
+    await waitFor(() => expect(saved).not.toBeNull());
+    expect(saved!.nodes).toHaveLength(4);
+    const pastedEdge = saved!.edges.find((e) => e.data?.condition?.endsWith('.success'))!;
+    expect(pastedEdge.source).not.toBe('x');
+    expect(pastedEdge.data?.condition).toBe(`${pastedEdge.source}.success`);
+    expect(saved!.nodes.find((n) => n.id === pastedEdge.target)?.data.config?.message).toBe(`{{${pastedEdge.source}.output}}`);
+  });
+
+  it('Ctrl+V with broken JSON reports it and changes nothing', async () => {
+    renderPage('Admin');
+    await waitForCanvasReady();
+
+    clipboardEvent('paste', '{ "nodes": [');
+
+    await waitFor(() => expect(useToastStore.getState().toasts.some((x) => x.kind === 'error')).toBe(true));
+    expect(nodeCount()).toBe(2);
+  });
+});

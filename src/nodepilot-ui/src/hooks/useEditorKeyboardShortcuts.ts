@@ -7,8 +7,11 @@ interface EditorShortcutsOptions {
   designerMode: DesignerMode;
   undo: () => void;
   redo: () => void;
-  copySelection: () => void;
-  pasteBuffer: () => void;
+  /** Text for the system clipboard on Ctrl+C, or null to leave the browser's copy alone. */
+  copySelection: () => string | null;
+  /** Ctrl+V: text the browser read from the system clipboard. */
+  pasteText: (text: string) => void;
+  duplicateSelection: () => void;
   groupSelection: () => void;
   selectAll: () => void;
   zoomToSelection: () => void;
@@ -94,7 +97,7 @@ export function useEditorKeyboardShortcuts(options: EditorShortcutsOptions) {
 
       const {
         designerMode,
-        undo, redo, copySelection, pasteBuffer, groupSelection,
+        undo, redo, duplicateSelection, groupSelection,
         selectAll, zoomToSelection, navigateNode,
         searchOpen, setSearchOpen, setSearchInput,
         helpOpen, setHelpOpen,
@@ -310,11 +313,40 @@ export function useEditorKeyboardShortcuts(options: EditorShortcutsOptions) {
         e.preventDefault();
         return;
       }
-      if (e.key === 'c' || e.key === 'C') { copySelection(); }
-      else if (e.key === 'v' || e.key === 'V') { pasteBuffer(); e.preventDefault(); }
-      else if ((e.key === 'd' || e.key === 'D') && !e.shiftKey) { copySelection(); pasteBuffer(); e.preventDefault(); }
+      if ((e.key === 'd' || e.key === 'D') && !e.shiftKey) { duplicateSelection(); e.preventDefault(); }
     };
     globalThis.addEventListener('keydown', onKeyDown);
     return () => globalThis.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // Ctrl+C and Ctrl+V go through the browser's copy and paste events instead of keydown: only
+  // these carry the system clipboard without a permission prompt or a secure context. In text
+  // fields, in the script editor and over marked page text the browser keeps its own behaviour.
+  useEffect(() => {
+    const leaveToBrowser = (e: Event): boolean => {
+      if (document.querySelector(SCRIPT_EDITOR_DIALOG_SELECTOR)) return true;
+      const target = e.target as HTMLElement | null;
+      return target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || !!target?.isContentEditable;
+    };
+    const onCopy = (e: ClipboardEvent) => {
+      if (leaveToBrowser(e) || !e.clipboardData || globalThis.getSelection?.()?.toString()) return;
+      const text = optionsRef.current.copySelection();
+      if (!text) return;
+      e.clipboardData.setData('text/plain', text);
+      e.preventDefault();
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      if (leaveToBrowser(e) || !e.clipboardData) return;
+      const text = e.clipboardData.getData('text/plain');
+      if (!text) return;
+      optionsRef.current.pasteText(text);
+      e.preventDefault();
+    };
+    document.addEventListener('copy', onCopy);
+    document.addEventListener('paste', onPaste);
+    return () => {
+      document.removeEventListener('copy', onCopy);
+      document.removeEventListener('paste', onPaste);
+    };
   }, []);
 }

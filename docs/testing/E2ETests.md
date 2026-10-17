@@ -1575,19 +1575,39 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 ### Test 12.2 — Copy/Paste/Duplicate (Ctrl+C, Ctrl+V, Ctrl+D)
 
 **Schritte:**
-1. Wähle einen oder mehrere Nodes aus
-2. Drücke **Ctrl+C** (Copy)
-3. Drücke **Ctrl+V** (Paste) → neue Nodes erscheinen mit Offset (+40px)
+1. Wähle mehrere verbundene Nodes aus (Rahmen ziehen, Shift+Klick oder Ctrl+A)
+2. Drücke **Ctrl+C** (Copy) → Bestätigung „Als JSON in die Zwischenablage kopiert"
+3. Drücke **Ctrl+V** (Paste) → neue Nodes erscheinen mit Offset (+40px), bei jedem weiteren Paste weiter versetzt
 4. Wähle einen Node → **Ctrl+D** (Duplicate) → direktes Duplizieren
 
 **Prüfpunkte:**
-- [ ] Copy hält Nodes ausschließlich im In-Memory-Puffer des aktuellen Editors; `sessionStorage` enthält kein `np_clipboard`
+- [ ] Die Zwischenablage enthält `{ "nodes": [...], "edges": [...] }` mit den Nodes und den Edges zwischen ihnen, ohne `selected`/`measured` und ohne `__`-Laufzeitfelder; eine ausgewählte Gruppe bringt ihre Nodes mit
 - [ ] Paste fügt Nodes mit neuen IDs ein
-- [ ] Paste erhält Edges zwischen kopierten Nodes
-- [ ] Ctrl+D dupliziert inline
-- [ ] Reload, Tab-Schließen oder Editor-Unmount verwirft den Puffer; Cross-Tab-Paste ist nicht möglich
+- [ ] Paste erhält Edges zwischen kopierten Nodes; ihre Bedingungen (`step-….success`) zeigen auf die neuen Nodes
+- [ ] Ctrl+D dupliziert inline und lässt die Zwischenablage unverändert
+- [ ] In Textfeldern und im Skript-Editor kopieren und einfügen Ctrl+C/Ctrl+V weiter Text
+- [ ] `sessionStorage` enthält kein `np_clipboard`
+- [ ] Als Viewer kopiert Ctrl+C; Ctrl+V und Ctrl+D fügen nichts ein, Ctrl+G gruppiert nicht
 
 **Erwartung:** Clipboard-Operationen funktionieren
+
+---
+
+### Test 12.2c — Workflow-JSON aus einem Texteditor einfügen
+
+**Schritte:**
+1. Nodes mit Ctrl+C kopieren und in einen Texteditor (z. B. VS Code) einfügen
+2. Den Text dort bearbeiten (z. B. einen Wert ändern) und wieder kopieren
+3. Im Designer (auch in einem anderen Workflow) **Ctrl+V** drücken
+4. Speichern
+
+**Prüfpunkte:**
+- [ ] Die Nodes erscheinen in der Mitte der sichtbaren Fläche, mit der Änderung aus dem Texteditor
+- [ ] Die eingefügten Nodes haben neue IDs; Bedingung und `{{id.output}}`-Verweise zeigen auf die neuen Nodes
+- [ ] Ungültiges JSON (z. B. eine fehlende Klammer) meldet einen Fehler und ändert nichts; normaler Text wird ignoriert
+- [ ] Geschwärzte Werte (`***`, z. B. aus einem Workflow-Export) werden als Hinweis gemeldet
+
+**Erwartung:** Nodes lassen sich als Text aus dem Designer heraus- und wieder hineinbringen
 
 ---
 

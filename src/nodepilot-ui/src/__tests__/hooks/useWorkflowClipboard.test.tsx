@@ -4,8 +4,8 @@ import type { Node, Edge } from '@xyflow/react';
 
 /**
  * useWorkflowClipboard works on the editor's own graph state, which a small in-test store
- * stands in for. This keeps the tests on the hook's clipboard semantics: selection rules,
- * in-memory lifetime, paste offsets and group/parent re-mapping.
+ * stands in for. This keeps the tests on the hook's clipboard semantics: what a copy contains,
+ * where a paste lands, ID and reference re-mapping, and duplicating without the clipboard.
  */
 
 const store: { nodes: Node[]; edges: Edge[] } = { nodes: [], edges: [] };
@@ -25,6 +25,8 @@ const graphSource = {
 
 import { useWorkflowClipboard } from '../../hooks/useWorkflowClipboard';
 
+const ORIGIN = { x: 500, y: 300 };
+
 function makeNode(id: string, type: 'activity' | 'group' = 'activity', extra: Partial<Node> = {}): Node {
   return {
     id,
@@ -36,8 +38,8 @@ function makeNode(id: string, type: 'activity' | 'group' = 'activity', extra: Pa
   };
 }
 
-function makeEdge(id: string, source: string, target: string): Edge {
-  return { id, source, target, type: 'labeled', data: { label: 'On Success' }, selected: false };
+function makeEdge(id: string, source: string, target: string, data: Record<string, unknown> = { label: 'On Success' }): Edge {
+  return { id, source, target, type: 'labeled', data, selected: false };
 }
 
 function setup(initialNodes: Node[], initialEdges: Edge[]) {
@@ -56,6 +58,18 @@ function setup(initialNodes: Node[], initialEdges: Edge[]) {
   return { ...hook, commitHistory, markDirty };
 }
 
+/** Selects the given nodes and returns the copied text. */
+function copy(result: { current: ReturnType<typeof useWorkflowClipboard> }, nodeIds: string[]): string {
+  act(() => result.current.updateSelection({ nodeIds, edgeIds: [] }));
+  let text: string | null = null;
+  act(() => { text = result.current.copySelection(); });
+  if (!text) throw new Error('nothing copied');
+  return text;
+}
+
+const pastedNodes = () => store.nodes.filter((n) => n.selected);
+const pastedEdges = () => store.edges.filter((e) => e.selected);
+
 describe('useWorkflowClipboard', () => {
   beforeEach(() => {
     sessionStorage.clear();
@@ -63,192 +77,177 @@ describe('useWorkflowClipboard', () => {
     store.edges = [];
   });
 
-  it('copySelection_keepsSelectedNodesOutOfBrowserStorage', () => {
-    const a = makeNode('a');
-    const b = makeNode('b');
-    const c = makeNode('c');
-    const eAB = makeEdge('eAB', 'a', 'b');
-    const eBC = makeEdge('eBC', 'b', 'c');
-    const { result } = setup([a, b, c], [eAB, eBC]);
+  describe('copySelection', () => {
+    it('returnsSelectionWithEdgesBetweenItAsJson', () => {
+      const { result } = setup([makeNode('a'), makeNode('b'), makeNode('c')], [makeEdge('eAB', 'a', 'b'), makeEdge('eBC', 'b', 'c')]);
 
-    act(() => result.current.updateSelection({ nodeIds: ['a', 'b'], edgeIds: [] }));
-    act(() => result.current.copySelection());
+      const parsed = JSON.parse(copy(result, ['a', 'b']));
 
-    expect(sessionStorage.getItem('np_clipboard')).toBeNull();
+      expect(parsed.nodes.map((n: Node) => n.id)).toEqual(['a', 'b']);
+      expect(parsed.edges.map((e: Edge) => e.id)).toEqual(['eAB']);
+    });
 
-    act(() => result.current.pasteBuffer());
-    const pastedNodes = store.nodes.filter((n) => n.selected);
-    expect(pastedNodes).toHaveLength(2);
-    expect(store.edges.filter((e) => e.selected)).toHaveLength(1);
+    it('selectedGroup_includesTheNodesInside', () => {
+      const group = makeNode('g', 'group');
+      const child = makeNode('c', 'activity', { parentId: 'g' });
+      const { result } = setup([group, child, makeNode('other')], []);
+
+      const parsed = JSON.parse(copy(result, ['g']));
+
+      expect(parsed.nodes.map((n: Node) => n.id)).toEqual(['g', 'c']);
+    });
+
+    it('nothingSelected_returnsNull', () => {
+      const { result } = setup([makeNode('a')], []);
+
+      act(() => result.current.updateSelection({ nodeIds: [], edgeIds: [] }));
+
+      expect(result.current.copySelection()).toBeNull();
+    });
+
+    it('keepsNodesOutOfBrowserStorage', () => {
+      // Inline credentials must not end up in storage the next user of the tab could read.
+      const { result } = setup([makeNode('secret', 'activity', {
+        data: { activityType: 'restApi', config: { apiKey: 'inline-secret' } },
+      })], []);
+
+      copy(result, ['secret']);
+
+      expect(sessionStorage.length).toBe(0);
+      expect(localStorage.getItem('np_clipboard')).toBeNull();
+    });
   });
 
-  it('copySelection_dropsEdgesWithEndpointsOutsideSelection', () => {
-    // An edge is copied only when both endpoints are selected, so a paste cannot create
-    // a dangling edge pointing at a node outside the cloned subgraph.
-    const a = makeNode('a');
-    const b = makeNode('b');
-    const c = makeNode('c');
-    const eBC = makeEdge('eBC', 'b', 'c');
-    const { result } = setup([a, b, c], [eBC]);
+  describe('pasteText', () => {
+    it('ownCopy_landsNextToTheOriginal_andFurtherOnEachPaste', () => {
+      const a = makeNode('a', 'activity', { position: { x: 0, y: 0 } });
+      const { result } = setup([a], []);
+      const text = copy(result, ['a']);
 
-    act(() => result.current.updateSelection({ nodeIds: ['b'], edgeIds: ['eBC'] }));
-    act(() => result.current.copySelection());
+      act(() => { result.current.pasteText(text, ORIGIN); });
+      act(() => { result.current.pasteText(text, ORIGIN); });
 
-    act(() => result.current.pasteBuffer());
-    expect(store.edges).toHaveLength(1);
-    expect(store.edges.filter((edge) => edge.selected)).toHaveLength(0);
+      const offsets = store.nodes.filter((n) => n.id !== 'a').map((n) => n.position.x).sort((p, q) => p - q);
+      expect(offsets).toEqual([40, 80]);
+    });
+
+    it('ownCopyWithWindowsLineEndings_isStillRecognised', () => {
+      // The system clipboard may hand the text back with CRLF.
+      const a = makeNode('a', 'activity', { position: { x: 0, y: 0 } });
+      const { result } = setup([a], []);
+      const text = copy(result, ['a']);
+
+      act(() => { result.current.pasteText(text.replaceAll('\n', '\r\n'), ORIGIN); });
+
+      expect(pastedNodes()[0].position).toEqual({ x: 40, y: 40 });
+    });
+
+    it('resetPasteCount_restartsTheOffset', () => {
+      // The editor resets it when another workflow loads.
+      const a = makeNode('a', 'activity', { position: { x: 0, y: 0 } });
+      const { result } = setup([a], []);
+      const text = copy(result, ['a']);
+
+      act(() => { result.current.pasteText(text, ORIGIN); });
+      act(() => { result.current.pasteText(text, ORIGIN); });
+      act(() => result.current.resetPasteCount());
+      act(() => { result.current.pasteText(text, ORIGIN); });
+
+      expect(store.nodes.slice(-1)[0].position).toEqual({ x: 40, y: 40 });
+    });
+
+    it('textFromElsewhere_landsWithItsTopLeftNodeAtOrigin', () => {
+      const { result } = setup([makeNode('existing')], []);
+      const text = JSON.stringify({
+        nodes: [
+          makeNode('x', 'activity', { position: { x: 300, y: 200 } }),
+          makeNode('y', 'activity', { position: { x: 500, y: 260 } }),
+        ],
+        edges: [makeEdge('xy', 'x', 'y')],
+      });
+
+      act(() => { result.current.pasteText(text, ORIGIN); });
+
+      expect(pastedNodes().map((n) => n.position)).toEqual([{ x: 500, y: 300 }, { x: 700, y: 360 }]);
+      expect(pastedEdges()).toHaveLength(1);
+    });
+
+    it('givesFreshIds_commitsHistoryAndMarksDirty', () => {
+      const { result, commitHistory, markDirty } = setup([makeNode('a'), makeNode('b')], [makeEdge('eAB', 'a', 'b')]);
+      const text = copy(result, ['a', 'b']);
+      expect(markDirty).not.toHaveBeenCalled();
+
+      act(() => { result.current.pasteText(text, ORIGIN); });
+
+      expect(store.nodes).toHaveLength(4);
+      pastedNodes().forEach((n) => expect(n.id).toMatch(/^step-/));
+      expect(pastedEdges()[0].id).toMatch(/^edge-/);
+      // Paste writes through the setters, so onNodesChange never fires; without these the
+      // pasted nodes would reach neither undo nor save.
+      expect(commitHistory).toHaveBeenCalledWith('Paste');
+      expect(markDirty).toHaveBeenCalledOnce();
+    });
+
+    it('remapsTheConditionOfACopiedEdge', () => {
+      const { result } = setup(
+        [makeNode('step-a'), makeNode('step-b')],
+        [makeEdge('eAB', 'step-a', 'step-b', { label: 'On Success', condition: 'step-a.success' })],
+      );
+      const text = copy(result, ['step-a', 'step-b']);
+
+      act(() => { result.current.pasteText(text, ORIGIN); });
+
+      const edge = pastedEdges()[0];
+      expect(edge.source).not.toBe('step-a');
+      expect(edge.data?.condition).toBe(`${edge.source}.success`);
+    });
+
+    it('groupChild_followsTheNewGroup', () => {
+      const group = makeNode('group-1', 'group');
+      const child = makeNode('child-1', 'activity', { parentId: 'group-1' });
+      const { result } = setup([group, child], []);
+      const text = copy(result, ['group-1']);
+
+      act(() => { result.current.pasteText(text, ORIGIN); });
+
+      const pastedGroup = pastedNodes().find((n) => n.type === 'group')!;
+      const pastedChild = pastedNodes().find((n) => n.type === 'activity')!;
+      expect(pastedChild.parentId).toBe(pastedGroup.id);
+      expect(pastedChild.parentId).not.toBe('group-1');
+    });
+
+    it('textThatIsNoWorkflow_changesNothing', () => {
+      const { result, commitHistory } = setup([makeNode('a')], []);
+
+      let ok = true;
+      act(() => { ok = result.current.pasteText('hello world', ORIGIN).ok; });
+
+      expect(ok).toBe(false);
+      expect(store.nodes).toHaveLength(1);
+      expect(commitHistory).not.toHaveBeenCalled();
+    });
   });
 
-  it('copySelection_emptySelection_doesNotWrite', () => {
-    const a = makeNode('a');
-    const { result } = setup([a], []);
+  describe('duplicateSelection', () => {
+    it('insertsACopyNextToTheSelection', () => {
+      const a = makeNode('a', 'activity', { position: { x: 0, y: 0 } });
+      const { result, commitHistory } = setup([a], []);
+      act(() => result.current.updateSelection({ nodeIds: ['a'], edgeIds: [] }));
 
-    act(() => result.current.updateSelection({ nodeIds: [], edgeIds: [] }));
-    act(() => result.current.copySelection());
+      act(() => result.current.duplicateSelection());
 
-    expect(sessionStorage.getItem('np_clipboard')).toBeNull();
-  });
+      expect(pastedNodes()).toHaveLength(1);
+      expect(pastedNodes()[0].position).toEqual({ x: 40, y: 40 });
+      expect(commitHistory).toHaveBeenCalledOnce();
+    });
 
-  it('pasteBuffer_appendsClonedNodesWithFreshIds_andCommitsHistory', () => {
-    const a = makeNode('a');
-    const b = makeNode('b');
-    const eAB = makeEdge('eAB', 'a', 'b');
-    const { result, commitHistory } = setup([a, b], [eAB]);
+    it('nothingSelected_isNoOp', () => {
+      const { result, commitHistory } = setup([makeNode('a')], []);
 
-    act(() => result.current.updateSelection({ nodeIds: ['a', 'b'], edgeIds: [] }));
-    act(() => result.current.copySelection());
-    act(() => result.current.pasteBuffer());
+      act(() => result.current.duplicateSelection());
 
-    expect(commitHistory).toHaveBeenCalledOnce();
-
-    expect(store.nodes).toHaveLength(4); // 2 originals + 2 pasted
-    const pastedNodes = store.nodes.filter((n) => n.selected);
-    expect(pastedNodes).toHaveLength(2);
-    pastedNodes.forEach((n) => expect(n.id).toMatch(/^step-/));
-
-    const pastedEdges = store.edges.filter((e) => e.selected);
-    expect(pastedEdges).toHaveLength(1);
-    expect(pastedEdges[0].id).toMatch(/^edge-/);
-  });
-
-  it('pasteBuffer_repeatedPaste_offsetsEachCloneFurther', () => {
-    // Paste offsets accumulate: the first paste shifts by 40px, the second by 80px.
-    const a = makeNode('a', 'activity');
-    a.position = { x: 0, y: 0 };
-    const { result } = setup([a], []);
-
-    act(() => result.current.updateSelection({ nodeIds: ['a'], edgeIds: [] }));
-    act(() => result.current.copySelection());
-    act(() => result.current.pasteBuffer());
-    act(() => result.current.pasteBuffer());
-
-    const cloneOffsets = store.nodes
-      .filter((n) => n.id !== 'a')
-      .map((n) => n.position?.x ?? 0)
-      .sort((p, q) => p - q);
-
-    expect(cloneOffsets).toEqual([40, 80]);
-  });
-
-  it('pasteBuffer_resetsPasteCount_onCopy', () => {
-    const a = makeNode('a', 'activity');
-    a.position = { x: 0, y: 0 };
-    const { result } = setup([a], []);
-
-    act(() => result.current.updateSelection({ nodeIds: ['a'], edgeIds: [] }));
-    act(() => result.current.copySelection());
-    act(() => result.current.pasteBuffer());
-    act(() => result.current.pasteBuffer());
-
-    // Re-copy resets the offset baseline back to 40.
-    act(() => result.current.copySelection());
-    act(() => result.current.pasteBuffer());
-
-    const lastClone = store.nodes.slice(-1)[0];
-    expect(lastClone.position?.x).toBe(40);
-  });
-
-  it('pasteBuffer_emptyClipboard_isNoOp', () => {
-    const { result, commitHistory } = setup([makeNode('a')], []);
-
-    act(() => result.current.pasteBuffer());
-
-    expect(commitHistory).not.toHaveBeenCalled();
-    expect(store.nodes).toHaveLength(1);
-  });
-
-  it('clipboard_doesNotSurviveEditorUnmount', () => {
-    const first = setup([makeNode('secret-node', 'activity', {
-      data: { activityType: 'restApi', config: { apiKey: 'inline-secret' } },
-    })], []);
-    act(() => first.result.current.updateSelection({ nodeIds: ['secret-node'], edgeIds: [] }));
-    act(() => first.result.current.copySelection());
-    first.unmount();
-
-    const second = setup([makeNode('viewer-node')], []);
-    act(() => second.result.current.pasteBuffer());
-
-    expect(store.nodes).toHaveLength(1);
-    expect(sessionStorage.getItem('np_clipboard')).toBeNull();
-  });
-
-  it('pasteBuffer_groupNode_idMapPropagatesToChildParentId', () => {
-    // The child's parentId references the group, so after a paste it must point at the
-    // new group id. The hook sorts groups first so the id map is filled before children.
-    const group = makeNode('group-1', 'group');
-    const child = makeNode('child-1', 'activity', { parentId: 'group-1' });
-    const { result } = setup([group, child], []);
-
-    act(() => result.current.updateSelection({ nodeIds: ['group-1', 'child-1'], edgeIds: [] }));
-    act(() => result.current.copySelection());
-    act(() => result.current.pasteBuffer());
-
-    const pastedGroup = store.nodes.find((n) => n.selected && n.type === 'group');
-    const pastedChild = store.nodes.find((n) => n.selected && n.type === 'activity');
-    expect(pastedGroup).toBeDefined();
-    expect(pastedChild).toBeDefined();
-    expect(pastedChild!.parentId).toBe(pastedGroup!.id);
-    expect(pastedChild!.parentId).not.toBe('group-1');
-  });
-
-  it('pasteBuffer_marksDraftDirty', () => {
-    // Paste writes through the setters, so onNodesChange never fires. Without markDirty the
-    // pasted nodes would not reach save, autosave or the navigation guard.
-    const a = makeNode('a', 'activity');
-    const { result, markDirty } = setup([a], []);
-
-    act(() => result.current.updateSelection({ nodeIds: ['a'], edgeIds: [] }));
-    act(() => result.current.copySelection());
-    expect(markDirty).not.toHaveBeenCalled();
-
-    act(() => result.current.pasteBuffer());
-    expect(markDirty).toHaveBeenCalledTimes(1);
-  });
-
-  it('pasteBuffer_withEmptyClipboard_doesNotMarkDirty', () => {
-    const { result, markDirty } = setup([makeNode('a', 'activity')], []);
-
-    act(() => result.current.pasteBuffer());
-
-    expect(markDirty).not.toHaveBeenCalled();
-  });
-
-  it('resetPasteCount_makesNextPasteUseFreshOffset', () => {
-    // resetPasteCount() lets the editor clear the offset chain when a new workflow loads.
-    const a = makeNode('a', 'activity');
-    a.position = { x: 0, y: 0 };
-    const { result } = setup([a], []);
-
-    act(() => result.current.updateSelection({ nodeIds: ['a'], edgeIds: [] }));
-    act(() => result.current.copySelection());
-    act(() => result.current.pasteBuffer());
-    act(() => result.current.pasteBuffer()); // offset 80
-
-    act(() => result.current.resetPasteCount());
-    act(() => result.current.pasteBuffer());
-
-    // After resetPasteCount, the next paste restarts the offset chain at 40.
-    const lastClone = store.nodes.slice(-1)[0];
-    expect(lastClone.position?.x).toBe(40);
+      expect(store.nodes).toHaveLength(1);
+      expect(commitHistory).not.toHaveBeenCalled();
+    });
   });
 });

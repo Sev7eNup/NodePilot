@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { PaletteCommand } from '../../components/designer/overlays/CommandPalette';
 import {
   filterCommandsForDesignerMode,
@@ -38,6 +38,7 @@ function makeCtx(overrides: Partial<CommandPaletteContext> = {}): CommandPalette
     redo: noop,
     copySelection: noop,
     pasteBuffer: noop,
+    duplicateSelection: noop,
     groupSelection: noop,
     deleteSelected: noop,
     selectAll: noop,
@@ -235,6 +236,14 @@ describe('buildCommandPaletteCommands', () => {
         expect(byId(off, id).disabled).toBe(true);
         expect(byId(on, id).disabled).toBe(false);
       }
+    });
+    it('duplicate runs duplicateSelection, not copy and paste', () => {
+      // Copy and paste go through the system clipboard; duplicating must not overwrite it.
+      const duplicateSelection = vi.fn();
+      const copySelection = vi.fn();
+      byId(buildCommandPaletteCommands(makeCtx({ canWrite: true, duplicateSelection, copySelection })), 'duplicate').run();
+      expect(duplicateSelection).toHaveBeenCalledOnce();
+      expect(copySelection).not.toHaveBeenCalled();
     });
     it('undo / redo / select-all carry no disabled gate', () => {
       const cmds = buildCommandPaletteCommands(makeCtx());

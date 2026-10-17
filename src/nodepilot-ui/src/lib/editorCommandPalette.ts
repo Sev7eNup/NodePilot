@@ -51,6 +51,7 @@ export interface CommandPaletteContext {
   redo: () => void;
   copySelection: () => void;
   pasteBuffer: () => void;
+  duplicateSelection: () => void;
   groupSelection: () => void;
   deleteSelected: () => void;
   selectAll: () => void;
@@ -177,7 +178,7 @@ export function buildCommandPaletteCommands(ctx: CommandPaletteContext): Palette
     { id: 'redo', group: 'Edit', title: t('palette.redoTitle'), shortcut: 'Ctrl+Y', run: ctx.redo },
     { id: 'copy', group: 'Edit', title: t('palette.copyTitle'), subtitle: t('palette.copySubtitle'), shortcut: 'Ctrl+C', run: ctx.copySelection },
     { id: 'paste', group: 'Edit', title: t('palette.pasteTitle'), subtitle: t('palette.pasteSubtitle'), shortcut: 'Ctrl+V', disabled: !ctx.canWrite, run: ctx.pasteBuffer },
-    { id: 'duplicate', group: 'Edit', title: t('palette.duplicateTitle'), subtitle: t('palette.duplicateSubtitle'), shortcut: 'Ctrl+D', disabled: !ctx.canWrite, run: () => { ctx.copySelection(); ctx.pasteBuffer(); } },
+    { id: 'duplicate', group: 'Edit', title: t('palette.duplicateTitle'), subtitle: t('palette.duplicateSubtitle'), shortcut: 'Ctrl+D', disabled: !ctx.canWrite, run: ctx.duplicateSelection },
     { id: 'group', group: 'Edit', expertOnly: true, title: t('palette.groupTitle'), subtitle: t('palette.groupSubtitle'), shortcut: 'Ctrl+G', disabled: !ctx.canWrite, run: ctx.groupSelection },
     { id: 'select-all', group: 'Edit', title: t('palette.selectAllTitle'), shortcut: 'Ctrl+A', run: ctx.selectAll },
     { id: 'delete-sel', group: 'Edit', title: t('palette.deleteTitle'), subtitle: t('palette.deleteSubtitle'), shortcut: 'Del', disabled: !ctx.canWrite, run: ctx.deleteSelected },
