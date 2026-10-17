@@ -53,6 +53,9 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
     /// login path returns the JWT here and nowhere else.</summary>
     private const string AuthCookieName = "np_auth";
 
+    /// <summary>Error code of the 401 the API returns while no administrator exists.</summary>
+    private const string SetupTokenRequiredCode = "SETUP_TOKEN_REQUIRED";
+
     private readonly ConfigStore _config;
     private readonly TokenStore _tokens;
     private readonly ApiClientFactory _factory;
@@ -124,6 +127,16 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
             TlsNotices.WriteAfter(writer, presented);
             writer.Success($"Logged in as [bold]{response.Username}[/] ({response.Role}) → {server}");
             return ExitCodes.Success;
+        }
+        catch (ApiException ex) when (ex.IsUnauthorized && ex.Code == SetupTokenRequiredCode)
+        {
+            // The server has no administrator yet; the first login creates one with the setup token.
+            writer.Error(settings.SetupToken is null
+                ? "Login failed: this server has no administrator yet. Create one with --setup-token <token> "
+                  + "(shown on the setup's finish page and stored as admin-setup.token in the server's data "
+                  + $"directory), or sign in once in a browser at {Markup.Escape(server)}."
+                : "Login failed: the setup token was rejected.");
+            return ExitCodes.AuthRequired;
         }
         catch (ApiException ex) when (ex.IsUnauthorized)
         {
