@@ -965,7 +965,8 @@ try {
     # Says what it will cost, or an amber line reads as cosmetic. Not only the browser: every client
     # refuses it, which is how an install that "worked" ends in a support call about np.
     Assert-True -Name 'the warning says the install continues and what breaks meanwhile' `
-        -Condition ($expired.RemediationHint -match 'not blocked' -and $expired.RemediationHint -match 'np')
+        -Condition ($expired.RemediationHint -match 'not blocked' -and
+                    $expired.RemediationHint -match 'clients normally refuse the connection until it is replaced')
     # Still no auto-fix even though the generator exists: replacing a PKI certificate with a
     # self-signed one behind a tick is a worse outcome than an amber row.
     Assert-True -Name 'an expired certificate is not silently replaced by a self-signed one' `

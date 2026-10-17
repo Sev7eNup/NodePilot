@@ -973,7 +973,7 @@ Assert-TextMatches -Name 'the installer pre-flights the ports it is installing o
 # migrated - leaving "did not report /healthz/ready within 180s" as the only clue. Measured on a
 # lab host 2026-08-04, on an answer file that was correct in every other respect.
 Assert-TextMatches -Name 'the rendered AllowedHosts always admits localhost' `
-    -Text $installerScript -Pattern "(?s)-notcontains 'localhost'[\s\S]{0,120}AllowedHosts = "
+    -Text $installerScript -Pattern 'AllowedHosts = Resolve-NodePilotAllowedHosts -PublicHostname \$PublicHostname -AllowedHosts \$AllowedHosts'
 
 # --- changing the service identity ---------------------------------------------------------------
 # jwt-secret.key and admin-setup.token are written by the SERVICE, owned by whoever it was at the
@@ -1458,7 +1458,9 @@ Assert-TextMatches -Name 'the finish page shows the generated credentials' `
 # Word wrap is off so the labelled columns line up, which makes a 64-character API key wider than
 # the memo. Without a horizontal bar it is cut at the right edge and reads as a shorter key.
 Assert-TextMatches -Name 'the finish memo can scroll to the end of a long value' `
-    -Text $serverIss -Pattern 'FinishMemo\.ScrollBars := ssBoth'
+    -Text $serverIss -Pattern 'FinishMemo\.ScrollBars := ssVertical'
+Assert-TextMatches -Name 'the finish memo wraps long values without changing the saved summary' `
+    -Text $serverIss -Pattern 'FinishMemo\.WordWrap := True'
 # Measured, not assumed: a fixed offset below the label put the memo underneath the caption's last
 # line as soon as the caption wrapped one line further than the author had in mind.
 Assert-TextMatches -Name 'the finish memo is placed below the caption it follows' `

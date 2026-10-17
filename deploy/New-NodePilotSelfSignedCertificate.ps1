@@ -18,6 +18,8 @@
     The name clients will use. Becomes the subject and the first SAN entry.
 .PARAMETER ValidityYears
     Lifetime. Default 2.
+.PARAMETER HttpsPort
+    HTTPS port used in the printed client login command. Default 443.
 .OUTPUTS
     The thumbprint, so the caller can fill it into the installer's -CertThumbprint. The SHA-256
     pin for the np CLI and the MCP server is printed, not returned.
@@ -26,11 +28,13 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PublicHostname,
-    [int]$ValidityYears = 2
+    [int]$ValidityYears = 2,
+    [ValidateRange(1, 65535)][int]$HttpsPort = 443
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
+. (Join-Path $PSScriptRoot 'Preflight.ps1')
 
 if ([string]::IsNullOrWhiteSpace($PublicHostname)) {
     throw 'A public hostname is required; the certificate subject and SAN are built from it.'
@@ -38,9 +42,7 @@ if ([string]::IsNullOrWhiteSpace($PublicHostname)) {
 
 # localhost is included so the installer's own health probe against https://localhost:<port>
 # validates against the same certificate the service presents.
-$dnsNames = @($PublicHostname, $env:COMPUTERNAME, 'localhost') |
-    Where-Object { $_ } |
-    Select-Object -Unique
+$dnsNames = @(Get-NodePilotServerNames -PublicHostname $PublicHostname)
 
 Write-Host "[setup] Creating a self-signed certificate for $($dnsNames -join ', ')" -ForegroundColor Cyan
 Write-Host '[setup] LAB USE ONLY. Browsers and API clients will reject it until its public part' -ForegroundColor Yellow
@@ -73,7 +75,7 @@ Write-Host "    Export-Certificate -Cert Cert:\LocalMachine\My\$($certificate.Th
 Write-Host '    Import-Certificate -FilePath nodepilot-tls.cer -CertStoreLocation Cert:\LocalMachine\Root' -ForegroundColor Gray
 Write-Host ''
 Write-Host '  Or let the clients pin this one certificate instead (lab/pilot):' -ForegroundColor Yellow
-Write-Host "    np auth login --server https://$PublicHostname --tls-thumbprint $pin" -ForegroundColor Gray
+Write-Host ('    ' + (Get-NodePilotTlsLoginCommand -PublicHostname $PublicHostname -HttpsPort $HttpsPort -Sha256 $pin)) -ForegroundColor Gray
 Write-Host "    (MCP: NODEPILOT_MCP_TLS_THUMBPRINT=$pin)" -ForegroundColor Gray
 Write-Host ''
 

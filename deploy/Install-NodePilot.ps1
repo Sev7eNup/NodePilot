@@ -110,7 +110,8 @@
     JWT audience claim. Default: nodepilot:prod:<machine-name>.
 
 .PARAMETER AllowedHosts
-    ASP.NET Core AllowedHosts value. Default: the public hostname.
+    ASP.NET Core AllowedHosts value. Default: public hostname, short computer name and localhost.
+    Explicit lists retain their restrictions; localhost is appended for the health probe.
 
 .PARAMETER KnownProxyIps
     Transport IP address(es) of trusted reverse proxies. NodePilot accepts X-Forwarded-For
@@ -848,21 +849,12 @@ function Restore-ServiceRollbackSnapshot {
 # ---------------------------------------------------------------------------
 
 if (-not $PublicHostname) {
-    $PublicHostname = ([System.Net.Dns]::GetHostEntry($env:COMPUTERNAME)).HostName
+    $PublicHostname = Get-NodePilotDefaultPublicHostname
 }
 if (-not $JwtIssuer)   { $JwtIssuer   = "nodepilot:prod:$env:COMPUTERNAME" }
 if (-not $JwtAudience) { $JwtAudience = "nodepilot:prod:$env:COMPUTERNAME" }
-if (-not $AllowedHosts) { $AllowedHosts = $PublicHostname }
-# localhost is always added, whatever the operator asked for. Host filtering rejects any Host
-# header outside this list with a 400, and the health probe below requests
-# https://localhost:<port>/healthz/ready, so a list without localhost makes the installer fail its
-# own probe and roll back a working installation.
-#
-# It costs nothing: a Host header of "localhost" is not privileged, and host filtering exists to
-# control which host NodePilot echoes back, not to make loopback unreachable.
-if (@($AllowedHosts -split ';' | ForEach-Object { $_.Trim() }) -notcontains 'localhost') {
-    $AllowedHosts = "$AllowedHosts;localhost"
-}
+# Defaults match generated certificate names; explicit restrictions only gain the health-probe host.
+$AllowedHosts = Resolve-NodePilotAllowedHosts -PublicHostname $PublicHostname -AllowedHosts $AllowedHosts
 if (-not $ExternalTriggerApiKey) { $ExternalTriggerApiKey = New-NodePilotRandomBase64 -ByteCount 48 }
 
 $NormalizedThumbprint = ConvertTo-NormalizedThumbprint -Raw $CertThumbprint

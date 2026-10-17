@@ -2,7 +2,7 @@
 <# Synthetic adapter for Build-InstallerPreview.ps1. Never operates on an installation. #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('InitSession', 'Cleanup', 'Certificates', 'Ports', 'Probe', 'Provision', 'Apply')][string]$Mode,
+    [Parameter(Mandatory)][ValidateSet('InitSession', 'Cleanup', 'Certificates', 'Defaults', 'Ports', 'Probe', 'Provision', 'Apply')][string]$Mode,
     [string]$SessionPath, [string]$HandoffPath, [string]$AnswerFile, [string]$ArtifactPath,
     [string]$TrustedArtifactSignerThumbprint, [string]$OutFile, [string]$LogPath,
     [string]$ProgressFile, [string]$ProbeServiceName, [string]$PayloadRoot
@@ -19,6 +19,7 @@ if ($Mode -eq 'InitSession') {
     exit 0
 }
 $result = "[summary]`r`nexitCode=0`r`n"
+if ($Mode -eq 'Defaults') { $result += "[network]`r`npublicHostname=server.example.test`r`n" }
 if ($Mode -eq 'Certificates') {
     $expiry = (Get-Date).AddYears(1).ToString('yyyy-MM-dd')
     $result += "[certificates]`r`ncount=1`r`n0=1111111111111111111111111111111111111111|CN=server.example.test (SIMULATED)|1|$expiry`r`n"

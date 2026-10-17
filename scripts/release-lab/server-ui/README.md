@@ -439,6 +439,44 @@ footer navigation must remain accessible. Click mode/provider rows once to catch
 | DPI-04 | UI preview | 100%, 1024x768; B5 PG/administrator/certificate/review/prerequisite sweep. | Last prerequisite rows, full details and buttons reachable. |
 | DPI-05 | UI real | 200%, 1600x900; candidate page sweep, SQL/PG updates, SQL purge. | No clipped checkboxes, cut bottom admin field or AllowedHosts/URL overlap; first-click selection works; outer scroll preserves footer; full progress/completion/uninstall readable. |
 
+## Certificate guidance and hostname defaults
+
+These targeted cases can be selected on their own for a certificate-guidance change. Mark the rest
+of the optional matrix `Not run (outside targeted scope)`; this is not a complete acceptance run.
+Use a disposable installation/service and database on GW1, with separate program/data directories
+and HTTPS port 8443 (HTTP redirect disabled), preserving the original server. Record the actual
+FQDN, short computer name, selected certificate SHA-1, independently computed SHA-256 and SANs.
+Prepare certificates using the lab CA/store tooling: one current self-signed certificate, one
+current CA-issued certificate, one expired certificate and one not-yet-valid certificate, all
+with private keys. Do not alter the machine clock. Never trust a test certificate automatically
+on another client. Preserve and restore machine-wide setup metadata/shortcuts as described below.
+
+For each certificate detail and finish summary, apply the complete-scroll procedure above,
+including the final line and an additional scroll. Match the visible names, dates and pins to
+the selected certificate, not a prior cached result. Repeat finish checks after an update of the
+disposable installation so the saved configuration, rather than fresh wizard defaults, is used.
+
+| ID | Method | Actions | Expected result |
+|---|---|---|---|
+| TLS-01 | UI real | Start a fresh interactive install. On Network compare Public host name with `[Net.Dns]::GetHostEntry($env:COMPUTERNAME).HostName`. Edit it to a lab alias, advance and go Back. | FQDN is prefilled; explicit edits survive navigation. Allowed-hosts blank/default guidance is accurate. |
+| TLS-02 | UI real + probe | Keep Allowed hosts blank; generate a self-signed certificate using Apply selected fixes, then install with HTTPS 8443. Inspect SANs/config; request readiness from another lab client using both FQDN and short name with the certificate pinned. | SANs and default AllowedHosts include public name, short computer name and localhost, deduplicated. Both requests succeed without HTTP 400. |
+| TLS-03 | UI real + probe | Repeat a disposable installation with an explicit public-name-only Allowed hosts list and a certificate also containing the short name. | Explicit list remains restricted, plus localhost. Public name works; short name returns HTTP 400. Certificate SANs do not silently expand host policy. |
+| TLS-04 | UI real | Select current self-signed and CA-issued certificates in separate fresh checks; select HTTPS certificate row and read to the end. | Passing row shows every certificate name and both validity dates. Names agree with the selected certificate even without a mismatch. |
+| TLS-05 | UI real | Repeat with expired, not-yet-valid and hostname-mismatched certificates; Check again after each selection. | Notice, not a blocking certificate failure; all names and dates are visible. Guidance explains replacement/name correction. Any other blocking prerequisite is recorded separately. |
+| TLS-06 | UI real + CLI | Complete TLS-02. Read full finish summary, save it, open saved text and copy the entire login command to a separate lab client with np available. Independently hash certificate RawData using SHA-256 and authenticate a disposable user using the shown pin. | Names/dates and distinct SHA-1 store ID/SHA-256 pin are correct. Self-signed client-trust guidance is explicit. Command includes `:8443`, is one logical line when saved/copied and authenticates without globally trusting the certificate. Read certificate-rotation advice at the end. |
+| TLS-07 | UI real | Update the disposable installation using a CA-issued certificate and nonstandard port in its installed configuration. Read and save all finish text. | Actual installed certificate/port are shown. CA trust guidance replaces self-signed wording; normal login and optional pinned login are accurate. No automatic client-trust claim. |
+| TLS-08 | UI real | Inspect new Network fields, passing certificate details and the full finish summary at 100% and 200% guest scale. | No clipped fields/text/buttons; wrapped commands retain their complete copyable value. Scroll reaches the end. Restore baseline scale. |
+| TLS-09 | AUTO | `powershell.exe -NoProfile -File deploy/Test-CertificateGuidance.ps1`; `powershell.exe -NoProfile -File deploy/Test-SetupExperience.ps1`. Review expiry documentation in `deploy/README.md` and `docs/deployment-guide.md`. | Host/SAN defaults, explicit restrictions, SHA-256, nonstandard/default ports, INI transport, FQDN fallback and installed update summaries pass. HTTPS expiry is documented as a warning; publisher-signature rejection remains distinct. |
+
+For TLS-06 and TLS-07 also repeat the completion/save check with `/ANSWERFILE` on a host where
+setup detects an existing installation. The operation declared in that file controls the finish
+wording and saved filename: `nodepilot-setup-summary.txt` for install,
+`nodepilot-update-summary.txt` for update, regardless of the skipped mode page's default.
+When running the CLI check through WinRM, use a disposable password-logon scheduled task or an
+interactive lab session if DPAPI cannot persist the CLI session from the remoting logon. Keep the
+input credentials ACL-protected, remove the temporary task/input afterward and restore the client
+CLI configuration. A remoting/DPAPI failure is not evidence that the certificate pin is wrong.
+
 ## Automated corroboration
 
 Run from repository root using **Windows PowerShell 5.1**, not only PowerShell 7. Run ACL tests in

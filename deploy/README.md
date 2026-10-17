@@ -232,10 +232,10 @@ owner, or its ACL could not be verified"). Nothing is deleted: the JWT key signs
 the setup token is the only way into an instance that has not been provisioned yet. The
 data-protection key ring needs no special treatment — it inherits from the directory.
 
-The pre-flight checks the validity period and the name: an **expired or not-yet-valid certificate
-aborts the installation** (previously it ran through and was only noticed in the browser). If no SAN —
-or, without a SAN, the CN — matches `-PublicHostname`, there is a **warning**, not an abort: behind a
-reverse proxy or under an alias that is legitimate.
+The pre-flight reports the certificate names and validity dates. An **expired or not-yet-valid
+certificate produces a warning**; installation can continue, but clients normally reject it until
+it is replaced. A SAN (or CN fallback) mismatch with `-PublicHostname` also warns without blocking,
+since a reverse proxy or an alias can make that intentional.
 
 ### AD SSO Preview
 
@@ -459,7 +459,7 @@ After a successful install the console shows:
 | `-ExternalTriggerApiKey` | | Auto-generated legacy key (48 bytes, Base64); deny-all at first with an empty `AllowedWorkflowIds` list |
 | `-JwtIssuer` | | `nodepilot:prod:<machine>` |
 | `-JwtAudience` | | `nodepilot:prod:<machine>` |
-| `-AllowedHosts` | | PublicHostname. `localhost` is always appended — the installer's health probe goes to `https://localhost:<port>/healthz/ready`, and `UseHostFiltering` would otherwise reject it with 400 and roll back a finished installation |
+| `-AllowedHosts` | | Defaults to PublicHostname, the short computer name and `localhost`, matching the generated certificate names. An explicit list is preserved with `localhost` appended for the installer's health probe. Certificate SANs are not imported into this policy |
 | `-KnownProxyIps` | | Empty (only loopback is trusted); with HAProxy, list every direct transport IP |
 | `-SkipSqlConnectivityCheck` | | off |
 | `-SkipGmsaCheck` | | off |
@@ -621,7 +621,7 @@ overwritten. Settings are written last (a service restart may be needed for them
 | Update aborts with "Access to the path '…\*.dll' is denied" | A process is still running from the install directory (DLLs image-mapped), despite the service being stopped. `tasklist /m <dll>` names the holder; `Get-Process \| Where-Object { $_.Path -like 'C:\Program Files\NodePilot\*' } \| Stop-Process -Force`, then retry. Current builds abort with the PID before anything is deleted. |
 | "Processes are still running from … and could not be ended" | A process from the install directory survived the 30 s grace period **and** could not be terminated — in practice always missing permissions or a hung kernel call. The PID and name are in the message; the service and the files are untouched. Terminate the process or reboot, then retry. |
 | Browser shows `{"message":"Token is no longer valid"}` instead of the app | The session cookie has exceeded the absolute lifetime (`Authentication:SessionAbsoluteLifetimeHours`, 8 h). Artifacts before 2026-08-02 answered SPA navigations including `/login` with that too. Clear the site's cookies; permanently: deploy a current artifact. |
-| Browser shows **Bad Request - Invalid Hostname** (`HTTP Error 400. The request hostname is invalid.`) | The page imitates IIS but comes from ASP.NET Core's host filtering. `AllowedHosts` holds the `-PublicHostname` the installer was given plus `localhost`, and nothing else — a short name, an IP or a DNS alias is rejected. Use the exact name (the FQDN also matches the certificate); `install-report.txt` names the list. To add one, extend `AllowedHosts` semicolon-separated in `appsettings.Production.json` and restart the service — it is read once at boot. `"*"` is refused by `Security:StrictAllowedHosts`; `*.example.com` is accepted. |
+| Browser shows **Bad Request - Invalid Hostname** (`HTTP Error 400. The request hostname is invalid.`) | ASP.NET Core's host filter rejects names outside `AllowedHosts`. New installs default to the public hostname, short computer name and `localhost`; explicit lists and existing installations retain their configuration. `install-report.txt` names the list. To permit another name, extend `AllowedHosts` semicolon-separated in `appsettings.Production.json`, ensure the HTTPS certificate covers it, and restart the service. `"*"` is refused by `Security:StrictAllowedHosts`; `*.example.com` is accepted. |
 | Certificate not found / no private key | `Get-ChildItem Cert:\LocalMachine\My\<thumb>` — must show HasPrivateKey=True. On re-import use `-KeyStorageFlags MachineKeySet,PersistKeySet,Exportable`. |
 | Service stops right after a certificate swap | The service account has no read ACE on the new key file. The installer grants it (`Grant-CertPrivateKeyAccess`), a manual swap does not. Steps: [Replacing the HTTPS certificate](../src/nodepilot-docs-ui/content/en/deployment/production.md#replacing-the-https-certificate). Under `LocalSystem` this cannot be the cause — SYSTEM already reads `MachineKeys`. |
 | 503 on `/healthz/ready` | The database is not ready. State and reason are available without signing in at `/healthz/database` (always HTTP 200) or via `np health`. On SQL Server also check as the gMSA with `sqlcmd -S sql01 -E -d NodePilot -Q "SELECT 1"`. |

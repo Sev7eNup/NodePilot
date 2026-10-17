@@ -189,9 +189,21 @@ try {
             $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-SetupUpdate'
         }, $true)
         . ([scriptblock]::Create($updateFunction.Extent.Text))
+        $certificateFunction = $adapterAst.Find({ param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Add-NodePilotInstalledCertificateResult'
+        }, $true)
+        . ([scriptblock]::Create($certificateFunction.Extent.Text))
         function Write-NodePilotProgress { param($Step, $Text) }
         $scriptDirectory = Join-Path $fixture 'update-adapter'
         [void](New-Item -ItemType Directory -Path $scriptDirectory)
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Preflight.ps1') -Destination $scriptDirectory
+        function Get-Item {
+            param($LiteralPath, $ErrorAction)
+            if ($LiteralPath -ne ('Cert:\LocalMachine\My\' + ('A' * 40))) { throw 'Unexpected certificate lookup.' }
+            [pscustomobject]@{ Subject='CN=np.test'; Issuer='CN=np.test'; Thumbprint=('A' * 40)
+                DnsNameList=@([pscustomobject]@{Unicode='np.test'})
+                NotBefore=[datetime]'2026-01-01'; NotAfter=[datetime]'2027-01-01'; RawData=[byte[]](1,2,3,4) }
+        }
         [IO.File]::WriteAllText((Join-Path $scriptDirectory 'Update-NodePilot.ps1'),
             'param($ArtifactPath, $TrustedArtifactSignerThumbprint, $InstallPath, $ServiceName, $ProgressCallback, $DataPath)')
         $settingsPath = Join-Path $scriptDirectory 'appsettings.Production.json'
@@ -205,9 +217,12 @@ try {
         $progressWriter = $null
         $result = New-NodePilotResultBuffer
         $null = Invoke-SetupUpdate
+        Assert-Experience ($result['result']['mode'] -eq 'update') 'Completion identifies the applied operation independently of the skipped wizard mode page.'
         Assert-Experience ($result['result']['url'] -eq 'https://np.test:8443/') 'Update completion derives a usable address from installed allowed hosts without a nonexistent PublicHostname property.'
         Assert-Experience ($result['result']['certificateThumbprint'] -eq ('A' * 40) -and
             $result['result']['dataPath'] -eq 'D:\NodePilotData') 'Update completion retains the certificate and custom data directory.'
+        Assert-Experience ($result['result']['certificateSummary'] -match 'SHA-256' -and
+            $result['result']['certificateSummary'].Contains('np auth login --server "https://np.test:8443/" --tls-thumbprint')) 'Update completion reads certificate guidance from the installed configuration.'
         $settings.AllowedHosts = 'localhost;*'
         [IO.File]::WriteAllText($settingsPath, ($settings | ConvertTo-Json -Depth 5))
         $result = New-NodePilotResultBuffer
