@@ -161,6 +161,7 @@ test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
     await expect.poll(() => nodeCount(page)).toBe(3);
 
     await page.locator('.react-flow__node[data-id="step-aaaa1111"]').click();
+    await refitCanvas(page);
     await page.keyboard.press('Control+a');
     await expect(page.locator('.react-flow__node.selected')).toHaveCount(3);
     const copiedText = await copyEvent(page);
