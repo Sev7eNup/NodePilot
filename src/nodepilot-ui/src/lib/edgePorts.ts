@@ -70,6 +70,27 @@ export function getPortPoint(
   }
 }
 
+/** Screen distance, in px, within which a dragged connection snaps to a port. */
+const CONNECTION_RADIUS_PX = 24;
+
+/**
+ * Rounds the zoom to quarter-octave steps. The editor re-renders on every step change, so the
+ * steps keep that to a handful across the whole zoom range instead of one per wheel tick.
+ */
+export function quantizeZoom(zoom: number): number {
+  if (!(zoom > 0)) return 1;
+  return 2 ** (Math.round(Math.log2(zoom) * 4) / 4);
+}
+
+/**
+ * React Flow's `connectionRadius` in flow units for the given zoom. React Flow measures the
+ * radius in flow units, so a fixed value shrinks on screen when zoomed out; dividing by the
+ * zoom keeps the snap distance constant on screen.
+ */
+export function connectionRadiusForZoom(zoom: number): number {
+  return CONNECTION_RADIUS_PX / (zoom > 0 ? zoom : 1);
+}
+
 export interface PortPoint {
   port: EdgePortSide;
   x: number;

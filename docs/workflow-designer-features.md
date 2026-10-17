@@ -70,7 +70,7 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
 - **Shapes by category:** a pentagon bookend pair (trigger `◁` plus returnData `▷`, mirrored horizontally); **every action activity has its own clip-path silhouette** (the icon stays centred and unclipped); control flow has one shape each (decision = diamond, junction = hexLong, forEach = reel, startWorkflow = tagLeft) with an **indigo group frame** — all via clip-path.
 - **Display styles:** **classic** (compact, icon-centred) and **card/MD3** (header plus config summary). Toggle with `Ctrl+Shift+N`.
 - **Colours & icon:** per activity type from CSS variables (`--act-<type>-color/-bg/-border`) plus a Material Symbols icon.
-- **Handles/ports:** all four sides bidirectionally (the "flexible ports" toggle that used to gate the mouse is gone; all four handles are always connectable).
+- **Handles/ports:** all four sides bidirectionally (the "flexible ports" toggle that used to gate the mouse is gone; all four handles are always connectable). Each port has an invisible hit zone three times the size of the dot, and a dragged connection snaps to a port within about 24 screen pixels at every zoom level. The dot's size and position do not change. Because the hit zone covers the end of an unselected edge, a drag there starts a new connection; to move an edge end, select the edge first or use "Detach target".
 - **Status badges:**
   - **Disabled** (crossed-out eye) — the node is skipped but stays editable (50 % opacity, dashed).
   - **Breakpoint** (red dot; amber when conditional) — pulses while the debugger waits there.
@@ -115,7 +115,7 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
 - **Data-flow overlay:** chips show which variables travel across an edge.
 - **Context menu (right-click):** enable/disable, detach target, swap source↔target (Expert), reset shape (Expert), delete.
 - **Detach target:** the target end follows the cursor; clicking an activity node re-attaches it there, keeping label, condition and disabled state, and docking at whichever of the four ports the click was nearest. The edge's **current** target counts as a valid node — clicking it moves the connection point without touching anything else. Esc, a click on empty canvas or a right-click cancels without a trace.
-- **Validation:** duplicate connections are prevented. A non-Junction Activity may have only one
+- **Validation:** duplicate connections and self-loops (an edge from a node to itself) are prevented. A non-Junction Activity may have only one
   incoming edge. When a second branch is connected, the designer offers to insert a `waitAll`
   Junction, rewires the existing input through it, and selects the Junction so its mode can be
   changed. Existing invalid definitions are marked by lint and rejected by Save/Publish.
