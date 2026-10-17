@@ -141,6 +141,60 @@ public class CommandIntegrationTests
     }
 
     [Fact]
+    public void AuthLogin_SetupTokenRequiredWithoutToken_ExplainsFirstAdminSetup()
+    {
+        // A server without an administrator answers every login like this. "Invalid credentials"
+        // would send the user looking for a password problem.
+        using var h = new CommandTestHarness(authenticated: false);
+        StubSetupTokenRequired(h);
+
+        var result = h.Run("auth", "login", "--username", "admin", "--password", "secret");
+
+        result.ExitCode.Should().Be(ExitCodes.AuthRequired);
+        result.StdErr.Should().Contain("no administrator yet");
+        result.StdErr.Should().Contain("--setup-token");
+        result.StdErr.Should().Contain("admin-setup.token");
+        // The web UI is the alternative, at the address the CLI already knows.
+        result.StdErr.Should().Contain(h.Server.Url!);
+        result.StdErr.Should().NotContain("invalid credentials");
+    }
+
+    [Fact]
+    public void AuthLogin_UnauthorizedWithOtherCode_StillReportsInvalidCredentials()
+    {
+        // Only the bootstrap gate gets the setup explanation; any other 401 stays a credentials problem.
+        using var h = new CommandTestHarness(authenticated: false);
+        h.Server.Given(Request.Create().WithPath("/api/auth/login").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(401).WithBodyAsJson(new { code = "ACCOUNT_LOCKED" }));
+
+        var result = h.Run("auth", "login", "--username", "admin", "--password", "wrong");
+
+        result.ExitCode.Should().Be(ExitCodes.AuthRequired);
+        result.StdErr.Should().Contain("Login failed: invalid credentials.");
+    }
+
+    [Fact]
+    public void AuthLogin_SetupTokenRequiredWithToken_SaysTokenRejected()
+    {
+        // The server sends the same code for a wrong token.
+        using var h = new CommandTestHarness(authenticated: false);
+        StubSetupTokenRequired(h);
+
+        var result = h.Run("auth", "login", "--username", "admin", "--password", "secret", "--setup-token", "wrong");
+
+        result.ExitCode.Should().Be(ExitCodes.AuthRequired);
+        result.StdErr.Should().Contain("Login failed: the setup token was rejected.");
+    }
+
+    private static void StubSetupTokenRequired(CommandTestHarness h)
+        => h.Server.Given(Request.Create().WithPath("/api/auth/login").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(401).WithBodyAsJson(new
+            {
+                code = "SETUP_TOKEN_REQUIRED",
+                message = "Admin bootstrap required.",
+            }));
+
+    [Fact]
     public void AuthLogout_RevokesAndDeletesLocal()
     {
         using var h = new CommandTestHarness();

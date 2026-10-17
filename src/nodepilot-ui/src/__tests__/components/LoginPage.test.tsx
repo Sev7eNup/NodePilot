@@ -134,6 +134,8 @@ describe('LoginPage', () => {
     expect(await screen.findByText(/first-time setup/i)).toBeInTheDocument();
     const tokenInput = document.getElementById('np-login-setup-token') as HTMLElement;
     expect(tokenInput).toBeInTheDocument();
+    // The hint says where to find the token: the setup's finish page or the default data directory.
+    expect(screen.getByText(/finish page.*admin-setup\.token.*C:\\ProgramData\\NodePilot/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /sign in/i }));
     expect(document.activeElement).toBe(tokenInput);

@@ -236,7 +236,8 @@ public static class CommandRegistration
         });
 
         // -- stats / observability ----------------------------------------------
-        config.AddCommand<DashboardCommand>("dashboard").WithDescription("Show the dashboard summary.");
+        config.AddCommand<DashboardCommand>("dashboard")
+            .WithDescription("Show the dashboard summary in the terminal. The web UI is the server URL in a browser.");
         config.AddCommand<FailureCausesCommand>("failure-causes")
             .WithDescription("Recent failures grouped by cause over a window.");
         config.AddBranch("operations", o =>

@@ -26,7 +26,7 @@ public static class ApiResponseReader
     {
         if (res.IsSuccessStatusCode) return;
         var body = await res.Content.ReadAsStringAsync(ct);
-        string? title = null, detail = null;
+        string? title = null, detail = null, code = null;
         if (!string.IsNullOrWhiteSpace(body) && body.TrimStart().StartsWith('{'))
         {
             try
@@ -35,9 +35,11 @@ public static class ApiResponseReader
                 if (doc.RootElement.TryGetProperty("title", out var t)) title = t.GetString();
                 if (doc.RootElement.TryGetProperty("detail", out var d)) detail = d.GetString();
                 if (detail is null && doc.RootElement.TryGetProperty("error", out var e)) detail = e.GetString();
+                if (doc.RootElement.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String)
+                    code = c.GetString();
             }
             catch (JsonException) { /* leave body as raw */ }
         }
-        throw new ApiException(res.StatusCode, title, detail, body);
+        throw new ApiException(res.StatusCode, title, detail, body) { Code = code };
     }
 }
