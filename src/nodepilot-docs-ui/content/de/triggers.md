@@ -109,7 +109,7 @@ Die Dateiüberwachung reagiert auf Dateien in einem Verzeichnis.
 Konfigurierbar sind:
 
 - absoluter Verzeichnispfad
-- Dateifilter, zum Beispiel `*.csv`
+- Ein einzelnes Dateifilter-Muster, zum Beispiel `*.csv` (keine kommagetrennte Liste)
 - Ereignis: erstellt, geändert, gelöscht, umbenannt oder alle Änderungen
 - Einbeziehung von Unterverzeichnissen
 

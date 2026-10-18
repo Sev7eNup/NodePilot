@@ -486,7 +486,7 @@
     "manualTrigger": {
       "description": "Manual/API start trigger.",
       "promptNotes": [
-        "Parameter `type` is always the string literal \"string\" even for conceptually numeric values, and `default` must be a string or null — never a number or boolean."
+        "Use `type` \"string\" and a string or null `default` (e.g. \"80\", \"false\"), never a JSON number or boolean: parameter values are strings end to end (a non-string value in an execute body is a 400) and a non-string default is rendered inconsistently."
       ],
       "configKeys": [
         { "key": "parameters", "type": "array", "required": false, "description": "Declared inputs [{name,type,required,default}] → {{manual.<name>}}." }
@@ -517,7 +517,7 @@
       "configKeys": [
         { "key": "directory", "type": "string", "required": true, "description": "Directory to watch." },
         { "key": "watchType", "type": "string", "required": false, "description": "created (default) | changed | deleted | renamed | any." },
-        { "key": "filter", "type": "string", "required": false, "description": "Glob filter, e.g. *.csv." },
+        { "key": "filter", "type": "string", "required": false, "description": "Single glob pattern, e.g. *.csv (one watcher filter; a comma-separated list is not supported)." },
         { "key": "includeSubdirectories", "type": "boolean", "required": false, "description": "Recurse into subfolders." }
       ]
     },

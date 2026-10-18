@@ -109,7 +109,7 @@ The file watcher reacts to files in a directory.
 Configurable:
 
 - An absolute directory path
-- A file filter, for example `*.csv`
+- A single file filter pattern, for example `*.csv` (no comma-separated list)
 - The event: created, changed, deleted, renamed, or all changes
 - Whether subdirectories are included
 
