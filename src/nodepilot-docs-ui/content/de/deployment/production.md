@@ -293,7 +293,8 @@ Es gibt zwei Wege zur selben Installation.
 signierte Artefakt und beide .NET-Runtimes mit. Die Prüfseite zeigt eine scrollbare Statusliste;
 vollständige Erklärungen und kopierbare Anleitungen stehen beim ausgewählten Eintrag.
 **Check again** prüft nur. **Apply selected fixes** richtet ausgewählte Voraussetzungen ein und
-prüft danach erneut. **Next** navigiert erst weiter, wenn keine blockierenden Fehler bestehen.
+prüft danach erneut. **Next** navigiert erst weiter, wenn keine blockierenden Fehler bestehen
+und kein Fix mehr angehakt ist; angehakte Fixes werden entweder angewendet oder abgewählt.
 Auf Wunsch installiert Setup die Runtimes, legt Datenbank und Login an, importiert eine PFX oder
 bereitet eine vorhandene gMSA lokal vor, einschließlich fehlender AD-PowerShell-Werkzeuge.
 Das Konto und seine Passwortabrufberechtigungen müssen bereits im AD existieren. Ein benötigter

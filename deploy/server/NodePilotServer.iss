@@ -1903,7 +1903,21 @@ begin
       Result := False;
     end
     else if not ProbeRan then
-      Result := False;
+      Result := False
+    else
+    begin
+      // Next never provisions. A ticked fix would be dropped silently, so make the operator
+      // choose: apply it or clear it.
+      for I := 0 to CheckCount - 1 do
+        if CheckFixes[I].Enabled and CheckFixes[I].Checked then
+        begin
+          MsgBox('Apply the selected fixes first or clear them.' + #13#10#13#10 +
+                 'Choose "Apply selected fixes" to run them, or clear the checkboxes to continue without them.',
+                 mbInformation, MB_OK);
+          Result := False;
+          Exit;
+        end;
+    end;
     Exit;
   end;
 end;

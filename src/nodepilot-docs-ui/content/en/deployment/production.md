@@ -298,7 +298,8 @@ Download `NodePilot-Server-Setup-<version>.exe` from the release and run it. It 
 artifact and both .NET runtimes with it. The readiness page has a scrolling status list; selecting
 a check shows its full explanation and copyable instructions. **Check again** only checks.
 **Apply selected fixes** prepares the selected prerequisites and checks again afterwards.
-**Next** navigates only when no blocking failures remain. Setup can install runtimes, create the
+**Next** navigates only when no blocking failures remain and no fix is still ticked; apply the
+ticked fixes or clear them first. Setup can install runtimes, create the
 database and login, import a PFX, or prepare an existing gMSA locally, including missing AD
 PowerShell tools. The account and its password-retrieval permissions must already exist in AD.
 A required restart is reported, never performed automatically. Prerequisites already prepared

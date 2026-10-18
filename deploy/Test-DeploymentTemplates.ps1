@@ -1370,6 +1370,11 @@ Assert-TextMatches -Name 'unresolved blocking checks disable Next' -Text $server
 $nextStart = $serverIss.IndexOf('function NextButtonClick(')
 $nextEnd = $serverIss.IndexOf('function OpenProcess(', $nextStart)
 Assert-TextDoesNotMatch -Name 'Next never provisions the computer' -Text $serverIss.Substring($nextStart, $nextEnd - $nextStart) -Pattern '-Mode Provision'
+# A ticked fix that Next would drop silently must stop the wizard on the readiness page.
+$readinessNext = $serverIss.Substring($nextStart, $nextEnd - $nextStart)
+$readinessNext = $readinessNext.Substring($readinessNext.IndexOf('if CurPageID = ReadinessPage.ID then'))
+Assert-TextMatches -Name 'Next is blocked while an enabled fix is still ticked' -Text $readinessNext `
+    -Pattern '(?s)if CheckFixes\[I\]\.Enabled and CheckFixes\[I\]\.Checked then.*?Apply the selected fixes first or clear them.*?Result := False;'
 
 
 # --- certificate picker ---------------------------------------------------------------------------
