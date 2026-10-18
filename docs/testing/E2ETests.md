@@ -1582,6 +1582,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 **Prüfpunkte:**
 - [ ] Die Zwischenablage enthält `{ "nodes": [...], "edges": [...] }` mit den Nodes und den Edges zwischen ihnen, ohne `selected`/`measured` und ohne `__`-Laufzeitfelder; eine ausgewählte Gruppe bringt ihre Nodes mit
+- [ ] Werte von Secret-Schlüsseln (`password`, `apiKey`, `secret`, `connectionString`, `Authorization`) stehen als `***` in der Zwischenablage; Paste meldet die geschwärzten Werte
 - [ ] Paste fügt Nodes mit neuen IDs ein
 - [ ] Paste erhält Edges zwischen kopierten Nodes; ihre Bedingungen (`step-….success`) zeigen auf die neuen Nodes
 - [ ] Ctrl+D dupliziert inline und lässt die Zwischenablage unverändert
