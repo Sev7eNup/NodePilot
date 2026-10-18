@@ -1,6 +1,6 @@
 # NodePilot Prometheus Metrics — Validated Inventory
 
-**Stand:** 2026-05-07, Label-/Instrument-Abgleich gegen Source nachgezogen 2026-06-23; Dispatch-Claim-Metriken am 2026-09-16 gegen einen Live-Scrape ergänzt. Validiert gegen Live-`/metrics`-Output (siehe `RAW_METRICS_SAMPLE.txt`) und Source. Hinweis: Tags, die über `TelemetryConstants.Attributes.*`-Konstanten (`nodepilot.*`) gesetzt werden, exportieren mit `nodepilot_`-Präfix als Label (z.B. `nodepilot_llm_kind`); reine String-Tags (`result`, `status`, `source`, `operation`, …) nicht.
+**Stand:** 2026-05-07, Label-/Instrument-Abgleich gegen Source nachgezogen 2026-06-23; Dispatch-Claim-Metriken am 2026-09-16 gegen einen Live-Scrape ergänzt. Validiert gegen Live-`/metrics`-Output (siehe `RAW_METRICS_SAMPLE.txt`) und Source. Der Abschnitt „Standard OTel-Instrumentation“ ist am 2026-10-18 gegen einen Scrape mit den gepinnten 1.19-Paketen (`Directory.Packages.props`) nachgezogen; `RAW_METRICS_SAMPLE.txt` stammt noch vom 1.12-Stand (Scope-Version `1.12.0-beta.1`, Label `process_cpu_state`) und wird bei einem Live-Scrape neu erzeugt. Hinweis: Tags, die über `TelemetryConstants.Attributes.*`-Konstanten (`nodepilot.*`) gesetzt werden, exportieren mit `nodepilot_`-Präfix als Label (z.B. `nodepilot_llm_kind`); reine String-Tags (`result`, `status`, `source`, `operation`, …) nicht.
 
 ## Naming-Regel (OpenTelemetry .NET → Prometheus)
 
@@ -23,7 +23,8 @@
 |---|---|---|
 | `nodepilot_executions_started_total` | `workflow_id`, `workflow_name`, `trigger_type` | Workflow-Runs gestartet |
 | `nodepilot_executions_completed_total` | `workflow_id`, `workflow_name`, `status` (Succeeded/Failed/Cancelled) | Workflow-Runs in Terminal-State |
-| `nodepilot_execution_cancellations_total` | `workflow_id`, `workflow_name`, `reason` (user_or_token/junction_race) | Manuell gecancelt |
+| `nodepilot_execution_cancellations_total` | `reason`=`user_or_token`: `workflow_id`, `workflow_name`, `reason` | Execution per User/Token gecancelt (zählt Executions) |
+| `nodepilot_execution_cancellations_total` | `reason`=`junction_race`: nur `reason`, **keine** Workflow-Tags | zählt einen **Step** (nicht den Lauf), der nach erfüllter waitAny/waitNofM-Junction übersprungen wird; der Lauf läuft weiter. Für Cancel-Raten nach `reason` filtern (die Dashboards nutzen `reason!="junction_race"`) |
 | `nodepilot_executions_rejected_total` | `reason` (global_cap/per_user_cap) | Capacity-Cap-Rejections |
 | `nodepilot_steps_executed_total` | `activity_type`, `status` | Step-Executions |
 | `nodepilot_step_retry_attempts_total` | `activity_type` | Retry-Attempts (>0) |
@@ -117,7 +118,7 @@
 | Prometheus name | Tags |
 |---|---|
 | `nodepilot_triggers_fired_total` | `trigger_type`, `workflow_id` |
-| `nodepilot_trigger_orchestrator_sync_changes_total` | `change`, `trigger_type` |
+| `nodepilot_trigger_orchestrator_sync_changes_total` | `change` (add/update/remove/evict-unhealthy), `trigger_type` |
 | `nodepilot_trigger_orchestrator_sync_failures_total` | — |
 | `nodepilot_trigger_registration_failures_total` | `trigger_type` |
 | `nodepilot_trigger_poll_errors_total` | `trigger_type`, `error_class` |
@@ -174,8 +175,8 @@
 | `dotnet_gc_collections_total` | counter | Label `gc_heap_generation` ∈ {gen0,gen1,gen2} |
 | `dotnet_gc_heap_total_allocated_bytes_total` | counter | Allocations seit Start |
 | `dotnet_gc_pause_time_seconds_total` | counter | Akkumulierte GC-Pause-Zeit |
-| `dotnet_gc_last_collection_heap_size_bytes` | gauge | Heap-Size bei letzter Collection |
-| `dotnet_gc_last_collection_heap_fragmentation_size_bytes` | gauge | Fragmentation |
+| `dotnet_gc_last_collection_heap_size_bytes` | gauge | Heap-Size bei letzter Collection; Label `gc_heap_generation` ∈ {gen0,gen1,gen2,loh,poh} |
+| `dotnet_gc_last_collection_heap_fragmentation_size_bytes` | gauge | Fragmentation; Label `gc_heap_generation` wie oben |
 | `dotnet_gc_last_collection_memory_committed_size_bytes` | gauge | Commit-Size |
 | `dotnet_jit_compiled_methods_total` | counter | JIT-Methoden-Count |
 | `dotnet_jit_compilation_time_seconds_total` | counter | JIT-Compile-Zeit |
@@ -193,13 +194,13 @@
 | Prometheus name | Type |
 |---|---|
 | `process_cpu_time_seconds_total` | counter (Label `cpu_mode` für user/system) |
-| `process_cpu_count` | gauge |
 | `process_memory_usage_bytes` | gauge (RSS/Working Set) |
 | `process_memory_virtual_bytes` | gauge |
 | `process_thread_count` | gauge |
-| `dotnet_process_memory_working_set_bytes` | gauge (Duplikat aus runtime instrum.) |
-| `dotnet_process_cpu_time_seconds_total` | counter (Label `cpu_mode`) |
-| `dotnet_process_cpu_count` | gauge |
+| `process_uptime_seconds` | gauge |
+| `process_windows_handle_count` | gauge (nur Windows) |
+
+Die Runtime-Instrumentierung liefert dazu `dotnet_process_memory_working_set_bytes`, `dotnet_process_cpu_time_seconds_total` (Label `cpu_mode`) und `dotnet_process_cpu_count` (siehe oben); ein `process_cpu_count` gibt es nicht.
 
 ### ASP.NET Core (`OpenTelemetry.Instrumentation.AspNetCore`)
 
@@ -207,10 +208,22 @@
 |---|---|---|
 | `http_server_request_duration_seconds_*` | histogram | `http_request_method`, `http_response_status_code`, `http_route`, `network_protocol_version`, `url_scheme` |
 | `http_server_active_requests` | gauge | `http_request_method`, `url_scheme` |
-| `aspnetcore_routing_match_attempts_total` | counter | — |
-| `kestrel_connection_duration_seconds_*` | histogram | (protocol/transport tags) |
-| `kestrel_active_connections` | gauge | — |
-| `kestrel_queued_connections` | gauge | — |
+| `aspnetcore_routing_match_attempts_total` | counter | `http_route`, `aspnetcore_routing_match_status`, `aspnetcore_routing_is_fallback` |
+| `aspnetcore_memory_pool_{allocated,rented}_bytes_total`, `aspnetcore_memory_pool_pooled_bytes` | counter / gauge | `aspnetcore_memory_pool_owner` |
+| `kestrel_connection_duration_seconds_*` | histogram | `network_protocol_name`, `network_protocol_version`, `network_transport`, `network_type`, `server_address`, `server_port` |
+| `kestrel_active_connections` | gauge | `network_transport`, `network_type`, `server_address`, `server_port` |
+| `kestrel_queued_connections` | gauge | `network_transport`, `network_type`, `server_address`, `server_port` |
+
+### HTTP-Client (`OpenTelemetry.Instrumentation.Http`)
+
+Aus `AddHttpClientInstrumentation()` (alle ausgehenden `HttpClient`-Aufrufe des API-Prozesses). Die Serien entstehen mit dem ersten ausgehenden Request.
+
+| Prometheus name | Type | Tags |
+|---|---|---|
+| `http_client_request_duration_seconds_*` | histogram | `http_request_method`, `http_response_status_code`, `network_protocol_version`, `server_address`, `server_port`, `url_scheme` |
+| `http_client_request_time_in_queue_seconds_*` | histogram | `http_request_method`, `network_protocol_version`, `server_address`, `server_port`, `url_scheme` |
+| `http_client_active_requests` | gauge | `http_request_method`, `server_address`, `server_port`, `url_scheme` |
+| `http_client_open_connections` | gauge | `http_connection_state` (idle/active), `network_peer_address`, `network_protocol_version`, `server_address`, `server_port`, `url_scheme` |
 
 ---
 
@@ -248,7 +261,7 @@ Counter-Suffix:
 ## Lazy Creation
 
 OpenTelemetry erstellt Counter/Histogram-Time-Series erst beim **ersten Record**. Das heißt:
-- Frischer API-Start → nur Trigger-Metriken (Orchestrator pollt jede 5s) + Process/Runtime/HTTP sind sofort da
+- Frischer API-Start → Trigger-Orchestrator-Metriken (Sync-Pass alle 5 s), auf dem Leader die Dispatch-Claim-Metriken (`nodepilot_dispatch_claims_total{result="empty"}` pro Poll) sowie Process/Runtime sind sofort da; HTTP-Server-/Kestrel-Serien ab der ersten Anfrage, `http_client_*` ab dem ersten ausgehenden Request
 - Engine-/Step-/WinRM-Metriken erscheinen erst nach dem ersten Workflow-Run
 - Auth-/LLM-/Audit-Metriken erscheinen erst nach Login bzw. KI-Call
 

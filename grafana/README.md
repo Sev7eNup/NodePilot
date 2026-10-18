@@ -188,7 +188,7 @@ The full validated inventory — every metric, every label key, every unit — i
 |---|---|---|
 | Grafana → "datasource not found" on every panel | DB volume holds stale provisioning state | `docker compose down && docker volume rm grafana_grafana-data && docker compose up -d` |
 | Mission Control panels show "No data" | NodePilot exporter off | Check `OpenTelemetry:Enabled=true` and curl `http://localhost:5000/metrics` directly |
-| Prometheus target down | host.docker.internal not resolving on Linux | Set `NODEPILOT_HOST=<host-ip>` in `.env` and reference it in `prometheus/prometheus.yml` |
+| Prometheus target down | `host.docker.internal` is the Docker host, but NodePilot runs elsewhere (a Linux Docker host cannot run NodePilot; a remote server) | Edit the target in `prometheus/prometheus.yml` directly (e.g. `nodepilot-host:5000`) and restart Prometheus. Prometheus does not expand environment variables in its config, so `.env` has no effect there. `host-gateway` in `docker-compose.yml` only makes `host.docker.internal` resolve to the Docker host on Linux |
 | `nodepilot_*_milliseconds_bucket` not found | Old dashboard pre-OTel-1.10 used `_bucket` directly | All panels in this repo use the `_milliseconds_bucket` form already |
 | Stat card shows `__name__{label1=...}` | Target without `legendFormat` | Run `python3 grafana/fix-legend-formats.py` |
 
