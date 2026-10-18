@@ -4740,7 +4740,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 **Voraussetzung:** Workflow im Editor geöffnet, Expert-Modus.
 
-**Schritte:** EditorHeader → `Rows3`-Icon (`toggle-toolbar-layout`) klicken.
+**Schritte:** EditorHeader → `Row`-Icon (`toggle-toolbar-layout`) klicken.
 
 **Prüfpunkte:**
 - [ ] Umschalten kompakt → klassisch: die gruppierten Popovers (Darstellung `canvas-settings-trigger`, Overlays `view-overlays-trigger`) verschwinden; alle Toggles/Tools stehen als **einzelne Inline-Buttons** in einer Reihe, Overlay-Toggles inline (`toggle-dataflow-overlay` u. a. mit erhaltenen `data-testid`s), Run ist icon-only Play, Name rechtsbündig. Zurückschalten stellt das kompakte Layout wieder her.
