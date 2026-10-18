@@ -237,11 +237,27 @@
             }
           },
           {
-            "id": "ret",
+            "id": "jret",
             "type": "activity",
             "position": {
               "x": 640,
               "y": 2040
+            },
+            "data": {
+              "label": "junction: waitAny",
+              "activityType": "junction",
+              "outputVariable": "jret",
+              "config": {
+                "mode": "waitAny"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 640,
+              "y": 2240
             },
             "data": {
               "label": "returnData: Nightly report",
@@ -304,13 +320,13 @@
             },
             "style": {
               "width": 1040,
-              "height": 740
+              "height": 940
             },
             "data": {
               "label": "Note",
               "activityType": "note",
               "disabled": true,
-              "text": "Phase 3 · Triage & report (gather + verdict)\n\nThe junction waits for all probes, aggregation merges the findings, the decision routes to an alert or an all-green log, and the final step returns the nightly report."
+              "text": "Phase 3 · Triage & report (gather + verdict)\n\nThe junction waits for all probes, aggregation merges the findings, the decision routes to an alert or an all-green log, a junction merges both paths, and the final step returns the nightly report."
             }
           }
         ],
@@ -457,17 +473,26 @@
             }
           },
           {
-            "id": "e_alert_ret",
+            "id": "e_alert_jret",
             "source": "alert",
-            "target": "ret",
+            "target": "jret",
             "type": "labeled",
             "data": {
               "label": "Always"
             }
           },
           {
-            "id": "e_green_ret",
+            "id": "e_green_jret",
             "source": "green",
+            "target": "jret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_jret_ret",
+            "source": "jret",
             "target": "ret",
             "type": "labeled",
             "data": {
