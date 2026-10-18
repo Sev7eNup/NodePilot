@@ -171,7 +171,7 @@ Each scorecard row is clickable: click the workflow name to open the **Workflows
    - Header text panel + cross-link bar (copy from `00-mission-control.json`)
    - `schemaVersion: 39`, `refresh: "30s"`, `tags: ["nodepilot", ...]`
 3. Provisioner reloads every 10 s — no Grafana restart needed.
-4. Run `python3 grafana/fix-legend-formats.py` to ensure every stat target has a clean legend (idempotent — it's a guard, not an editor).
+4. Run `python3 grafana/fix-legend-formats.py` to ensure every stat target has a clean legend (idempotent — it fills in missing `legendFormat` values in place and leaves existing ones alone).
 
 ## Metric Naming Reference
 
@@ -202,6 +202,7 @@ grafana/
 ├── METRICS_INVENTORY.md        # validated metric catalogue
 ├── RAW_METRICS_SAMPLE.txt      # snapshot of /metrics for quick lookup
 ├── fix-legend-formats.py       # one-shot lint to ensure clean stat legends
+├── test_provisioning.py        # offline deployment contract checks (Python + PyYAML)
 ├── prometheus/
 │   └── prometheus.yml          # scrape config (15 s interval)
 └── grafana/

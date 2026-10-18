@@ -30,7 +30,7 @@
 | `nodepilot_db_save_changes_total` | `operation`, `status` | EF SaveChanges in Engine-Pfad |
 | `nodepilot_audit_writes_total` | `result`, `error_class` (nur bei `result="failure"`) | Audit-Log-Writes |
 | `nodepilot_output_redaction_hits_total` | `pattern_kind` | OutputRedactor-Treffer |
-| `nodepilot_debug_resume_commands_total` | `mode` (continue/stepOver/stop) | Debug-Resume-Calls |
+| `nodepilot_debug_resume_commands_total` | `mode` (Continue/StepOver/Stop) | Debug-Resume-Calls |
 | `nodepilot_subworkflow_invocations_total` | `wait_mode`, `depth_bucket` | Sub-Workflow-Aufrufe |
 | `nodepilot_subworkflow_depth_exceeded_total` | — | Max-Depth-Verletzungen |
 | `nodepilot_support_events_dropped_total` | `reason` | Support-Events verworfen (Buffer-Overflow etc.) |
@@ -41,8 +41,8 @@
 | Prometheus name | Tags | Unit |
 |---|---|---|
 | `nodepilot_execution_duration_milliseconds_*` | `workflow_id`, `workflow_name`, `status` | ms |
-| `nodepilot_execution_nodes_executed_*` | `workflow_id` | count |
-| `nodepilot_execution_nodes_skipped_*` | `workflow_id` | count |
+| `nodepilot_execution_nodes_executed_*` | `workflow_id`, `workflow_name` | count |
+| `nodepilot_execution_nodes_skipped_*` | `workflow_id`, `workflow_name` | count |
 | `nodepilot_step_duration_milliseconds_*` | `activity_type`, `status` | ms |
 | `nodepilot_step_retry_backoff_duration_milliseconds_*` | `backoff_kind` | ms |
 | `nodepilot_db_save_changes_duration_milliseconds_*` | `operation`, `status` | ms |
@@ -83,10 +83,14 @@
 | `nodepilot_dispatch_items_processed_total` | `result` |
 | `nodepilot_dispatch_claims_total` | `result` (`success`/`empty`, …) |
 | `nodepilot_security_revoked_tokens_deleted_total` | — |
-| `nodepilot_machine_test_connections_total` | `result` |
+| `nodepilot_machine_test_connections_total` | `result`, `source` (nur `exception`) |
 | `nodepilot_maintenance_window_crud_total` | `operation`, `result` |
 | `nodepilot_maintenance_window_api_blocks_total` | `source`, `scope` |
 | `nodepilot_maintenance_window_overrides_total` | — |
+| `nodepilot_dispatch_workflow_concurrency_deferrals_total` | `source` |
+| `nodepilot_database_requests_rejected_total` | — |
+| `nodepilot_database_outages_total` | — |
+| `nodepilot_database_probe_cleanup_timeouts_total` | `provider`, `operation` |
 
 ### Histograms
 
@@ -125,6 +129,8 @@
 | `nodepilot_audit_archive_verified_total` | — | Audit-Archiv-Segmente verifiziert (Hash OK) |
 | `nodepilot_audit_archive_hash_drift_total` | — | Audit-Archiv: SHA-256 weicht ab |
 | `nodepilot_audit_archive_sidecar_missing_total` | — | Audit-Archiv: Sidecar-Hashdatei fehlt |
+| `nodepilot_scheduler_triggers_admission_deferred_total` | `trigger_type` | Trigger-Admission zurückgestellt (Persistenz vorübergehend nicht verfügbar) |
+| `nodepilot_scheduler_triggers_fires_skipped_total` | `trigger_type` | Nach Neustart/Failover übersprungene Trigger-Signale |
 
 ### Histograms
 
@@ -155,7 +161,7 @@
 |---|---|---|
 | `nodepilot_credential_crypto_calls_total` | counter | `operation`, `result`, `provider` (Dpapi/AesGcm) |
 | `nodepilot_credential_crypto_duration_milliseconds_*` | histogram | `operation`, `provider` |
-| `nodepilot_credential_crypto_legacy_reads_total` | counter | `provider` (Provider-Rotation: Reads über den Legacy-Protector) |
+| `nodepilot_credential_crypto_legacy_reads_total` | counter | `legacy_provider` (Provider-Rotation: Reads über den Legacy-Protector) |
 
 ---
 
@@ -200,7 +206,7 @@
 | Prometheus name | Type | Tags |
 |---|---|---|
 | `http_server_request_duration_seconds_*` | histogram | `http_request_method`, `http_response_status_code`, `http_route`, `network_protocol_version`, `url_scheme` |
-| `http_server_active_requests` | gauge | (route, method) |
+| `http_server_active_requests` | gauge | `http_request_method`, `url_scheme` |
 | `aspnetcore_routing_match_attempts_total` | counter | — |
 | `kestrel_connection_duration_seconds_*` | histogram | (protocol/transport tags) |
 | `kestrel_active_connections` | gauge | — |
