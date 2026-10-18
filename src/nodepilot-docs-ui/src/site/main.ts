@@ -4,7 +4,7 @@ import { articleBySlug, isBlogPreview } from './blog'
    interaction stays in the page, apart from the links a visitor opens. */
 import { mountExperience } from './experience/controller'
 import appIconUrl from './images/logo-dark.webp'
-import { detectLang, isLang, persistLang } from '../i18n/languages'
+import { isLang, persistLang, readStoredLang } from '../i18n/languages'
 import {
   EDGES,
   ICON_OFFSET,
@@ -785,8 +785,9 @@ window.addEventListener('pagehide', () => {
 
 let route = resolveRoute(currentPath())
 const urlLang = routeLanguage(currentPath())
-// Explicit English links keep their language. Unprefixed entries use the shared preference.
-const preferredLang = urlLang === 'en' ? 'en' : detectLang()
+// Explicit English links keep their language. Unprefixed addresses stay German unless the visitor saved
+// a choice: redirecting by browser language would also send search engine crawlers to the English page.
+const preferredLang = urlLang === 'en' ? 'en' : (readStoredLang() ?? 'de')
 const preferredPath = localizedPath(route, preferredLang)
 if (route.page !== 'notfound' && routeLanguage(preferredPath) !== urlLang) {
   location.replace(`${basePath}${preferredPath}/${location.search}${location.hash}`)

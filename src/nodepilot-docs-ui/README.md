@@ -117,8 +117,11 @@ Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/
   gehören nicht ins gemeinsame JavaScript. Deutsche URLs bleiben bestehen, englische Fassungen
   liegen unter `/en/`, jeweils mit eigenem Canonical und gegenseitigem `hreflang`.
   Einstiege ohne Sprachsegment verwenden die bewusst gespeicherte Auswahl (`LANG_STORAGE_KEY`),
-  sonst die erste unterstützte Browsersprache (DE/EN), sonst Englisch. Das gilt für Website und
-  Docs gemeinsam; nur die Sprachschalter speichern eine Präferenz. Ausdrückliche Sprachsegmente
+  die Website und Docs teilen; nur die Sprachschalter speichern eine Präferenz. Ohne gespeicherte
+  Auswahl bleibt die Website auf der deutschen Adresse: Eine Weiterleitung nach Browsersprache
+  träfe auch Suchmaschinen-Crawler, die deutsche Seiten dann als englische sähen. Docs-Adressen
+  ohne Sprachsegment nehmen ohne gespeicherte Auswahl die erste unterstützte Browsersprache
+  (DE/EN), sonst Englisch. Ausdrückliche Sprachsegmente
   (`/en/` auf der Website, `/de/` und `/en/` in den Docs) bleiben maßgeblich und überschreiben
   die gespeicherte Wahl nicht. Impressum und Datenschutz bleiben ausschließlich deutsch.
   `NP_BLOG_PREVIEW=1` bindet Entwürfe nur zur lokalen Prüfung ein (`noindex`, ohne Sitemap-Eintrag).
@@ -163,8 +166,9 @@ Doku und serviert Website (Port 5176) und Doku (Port 5187) getrennt per `vite pr
   Beschreibung und Übersetzung je Seite, Adresse und Titel beim Navigieren, alte Hash-Adressen.
 - `experience.spec.ts`: geführter Einstieg mit beiden Aufgaben in der aktuellen Sprache und bei
   schmalen Breiten, Links bleiben nach Seitenwechseln korrekt.
-- `language-preference.spec.ts`: Browsersprache als Vorgabe für Website und Doku, nur die
-  Sprachschalter speichern eine Wahl, deutschsprachige Rechtsseiten bleiben erreichbar.
+- `language-preference.spec.ts`: Website-Adressen behalten ihre Sprache, die Doku nimmt die
+  Browsersprache als Vorgabe, nur die Sprachschalter speichern eine Wahl, deutschsprachige
+  Rechtsseiten bleiben erreichbar.
 - `pages-redirects.spec.ts`: alte GitHub-Pages-Links landen auf der passenden kanonischen Adresse,
   Doku-Seiten auch ohne JavaScript per Meta-Refresh.
 - `seo.spec.ts`: statischer Seiteninhalt, Canonical und Sprachverweise ohne JavaScript,

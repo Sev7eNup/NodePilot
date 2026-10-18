@@ -46,7 +46,7 @@ export function detectLang(): Lang {
 }
 
 /** The stored language, or null when none is stored or storage is blocked. */
-function readStoredLang(): Lang | null {
+export function readStoredLang(): Lang | null {
   try {
     // Blocked storage throws from the `localStorage` getter itself, so `?.` alone is not enough.
     const stored = window.localStorage?.getItem(LANG_STORAGE_KEY)
