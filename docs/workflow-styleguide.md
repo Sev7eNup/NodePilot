@@ -63,7 +63,7 @@ The fan-out/fan-in rule is the most important one: with 7 edges radiating from a
 
 Centre fan branches **symmetrically around the main lane** when their count is odd. With an even count, accept slight asymmetry but keep the span no larger than necessary — every extra y-pixel costs vertical scroll space.
 
-**Shape bonus for trigger nodes:** triggers render as octagons at 1.55× bounding box (see section 8). Plan **+80–100 px of extra x-headroom** right after a trigger, or the octagon edge overlaps the following node.
+**Node shapes need no extra headroom:** every silhouette is at most 1.30× the icon box (about 73 px at the default L preset, see section 8), so the regular column spacing already clears trigger, decision and the other shaped nodes.
 
 ## 3 — Node labels
 
@@ -105,7 +105,7 @@ A grouping that works well (from [test-master-all-activities.json](../scripts/te
 | Gotcha | Right | Wrong |
 |---|---|---|
 | `waitNofM` config | `"requiredCount": 2` | `"n": 2` (silently defaults to 1) — see [WorkflowScheduler.cs:418](../src/NodePilot.Engine/Execution/WorkflowScheduler.cs#L418) |
-| `manualTrigger` params | All `type: "string"`, defaults as strings (`"80"`, `"false"`) | `type: "number"` → the UI sends a number → 400 "cannot convert to System.String" on execute |
+| `manualTrigger` params | `type: "string"` with string defaults (`"80"`, `"false"`); parameter values in an execute/trigger body are strings too | A non-string value in the body (`{"parameters": {"limit": 80}}`) → 400, because the body binds to `Dictionary<string,string>`. A non-string `default` in the JSON is tolerated but rendered inconsistently (`true` becomes `"True"` at run time and `"true"` in the contract). The designer's `number`/`boolean`/`select` types are valid; their values still travel as strings |
 | `isTrue`/`isFalse` | Operates on strings: `""`, `"false"` (case-insensitive) and `"0"` are falsy | Everything else is truthy — `"False"` (PowerShell's `[string]$false`) is falsy ✓ |
 | `runScript` params | Variables the script **assigns** are captured as `param.*` — [PowerShellScriptWrapper.cs](../src/NodePilot.Engine/PowerShell/PowerShellScriptWrapper.cs) appends the capture block | An upstream param the script only reads is not its output; reference it on the step that produced it. Do not insert a `###NODEPILOT_PARAMS###` marker yourself |
 | `targetMachineId` | Empty or `"localhost"` → in-process bypass (runs engine-local; the script can remote **itself** via `Invoke-Command`/`New-PSSession`, SCOrch style — see [claude-reference.md](claude-reference.md#runscript--ausführungsort-local-vs-remote--self-managed-remoting)). A GUID → managed WinRM | Real machines need the GUID from the database |
@@ -191,7 +191,7 @@ Besides `type: "activity"` there are two annotation/grouping nodes ([StickyNoteN
 
 Two designer features that affect appearance but are **not encoded in the JSON**:
 
-- **The node shape system** ([shapes.ts](../src/nodepilot-ui/src/components/designer/nodes/shapes.ts)): derived from `activityType`. Triggers → octagon (1.55× bounding box), control-flow nodes (`junction`, `decision`, `forEach`, `waitForCondition`) → diamond (1.18×), `returnData` → pentagon flag (1.10×), everything else → square. **Layout impact**: plan more horizontal headroom after trigger nodes (typically 380–400 px instead of 300), and account for the diamond tips — otherwise the shapes overlap their neighbours.
+- **The node shape system** ([shapes.ts](../src/nodepilot-ui/src/components/designer/nodes/shapes.ts)): derived from `activityType` in the icon-centred (classic) node style. Triggers → `pennant` (1.25), `returnData` → `flag` (1.25), `decision` → diamond (1.25), `junction` → `hexLong` (1.10), `forEach` → `reel` (1.20), `startWorkflow` → `tagLeft` (1.24). Every action activity has its own silhouette (`runScript` hexagon, `sql` cylinder, `restApi` browser window, `log` shield, `waitForCondition` circle, `aiAgent` chip, `aiAgentTeam` stepped frame, and so on); `square` is only the fallback for an unknown type. The number is the silhouette's size multiplier on the icon box (`scale.iconBox`, 56 px at the default L preset), tuned so all shapes read equally large. **Layout impact**: none beyond the node's own box — the largest multiplier is 1.30 (`kite`), so the normal spacing from section 2 is enough.
 - **The coverage heatmap**: a toolbar toggle tints nodes by how often they ran over the last N days. "Never executed" → 40 % opacity plus grayscale, "rare" → 80 % opacity. For hand-built demo workflows meant to work as a tutorial, it pays to construct every path so it is reachable with the default trigger parameters — otherwise the heatmap shows a lot of grey after the first run.
 
 ## 9 — The living reference example
@@ -215,13 +215,12 @@ Before you push a hand-built workflow via `POST /api/workflows/import` or `POST 
 
 - [ ] **Total canvas size within budget** (see section 1.5): ≤ 3500×1800 for 16–30 activities, ≤ 4500×2200 for 31–50
 - [ ] Beyond 15 activities: snake layout rather than one enormous row
-- [ ] No two nodes overlap (bounding-box check, including the trigger octagon and the control-flow diamond)
+- [ ] No two nodes overlap (bounding-box check, using the shape's box: up to 1.30× the icon box)
 - [ ] No edge cuts through a node it is not meant to pass
 - [ ] Edge labels readable without zooming (no clusters, ≤ 30–50 characters)
 - [ ] Node labels carry the activity prefix and no operator redundancy with the edge labels
 - [ ] Flow direction is consistent within each region (loop-backs and retries may break out visually)
 - [ ] `sourceHandle`/`targetHandle` set only where the routing semantically needs it — otherwise omitted
-- [ ] Trigger nodes have +80–100 px of extra horizontal headroom for the octagon shape
 - [ ] All `position.x`/`position.y` aligned to steps of 20 (snap-grid feel)
 - [ ] Fan-out/fan-in with ≥ 5 branches has a +340 px x-gap to the next node
 - [ ] Trigger params (if `manualTrigger`) are all `type: "string"` with string defaults

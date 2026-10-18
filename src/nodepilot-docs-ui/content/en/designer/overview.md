@@ -17,7 +17,7 @@ Features that are only visible in expert mode are marked **(Expert)** on the fol
 - **Node library / palette** on the left (categories: triggers, actions, control flow, logic, annotations + snippets).
 - **Workflow browser** on the left (folder view or trigger view, search/filter, info card).
 - **Properties panel** on the right (context-sensitive per selected node/edge). The AI assistant shares this area: it overlays the properties and gives way again as soon as something is selected on the canvas.
-- **Header/toolbar** with seven clusters (history, layout, inspect, view, run, lifecycle, export) + an AI assistant button + a **colour skin switcher** (palette icon — a popover with 10 skins + `system`, in sync with the settings).
+- **Header/toolbar** in two layouts: the default compact one (history, inspect, run, lifecycle; view, overlays and tools sit in menus) or the classic inline row (seven sections). Both carry an AI assistant button and a **colour skin switcher** (palette icon — a popover with 10 skins + `system`, in sync with the settings).
 - **Live execution panel** at the bottom (tabs: live / history / output / watch).
 
 **Minimal Light** and **Minimal Dark** use neutral surfaces, a blue accent and clear outlines throughout the web UI, including the designer. Decorative gradients, sheen and shadows are removed; status colours, functionality, font sizes, spacing, layout and personal designer settings are preserved.
