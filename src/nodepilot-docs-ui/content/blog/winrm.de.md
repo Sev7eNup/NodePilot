@@ -10,7 +10,7 @@ Die Beispiele beziehen sich auf Windows mit Active Directory und PowerShell Remo
 
 ## Vom Client zur Identität der Gegenstelle
 
-Windows Remote Management ist Microsofts Implementierung von WS-Management. PowerShell Remoting nutzt diesen Verwaltungsdienst als Transport, während die Sitzung selbst in einem PowerShell-Endpunkt auf dem Zielsystem ausgeführt wird. Daraus ergeben sich mehrere unabhängig prüfbare Voraussetzungen. [Microsoft: Windows Remote Management](https://learn.microsoft.com/en-us/windows/win32/winrm/portal).
+Windows Remote Management ist Microsofts Implementierung von WS-Management. PowerShell Remoting, oft einfach Remote PowerShell genannt, nutzt diesen Verwaltungsdienst als Transport, während die Sitzung selbst in einem PowerShell-Endpunkt auf dem Zielsystem ausgeführt wird. Daraus ergeben sich mehrere unabhängig prüfbare Voraussetzungen. [Microsoft: Windows Remote Management](https://learn.microsoft.com/en-us/windows/win32/winrm/portal).
 
 | Ebene | Was vorhanden sein muss | Was ein Erfolg noch nicht belegt |
 |---|---|---|
@@ -19,6 +19,8 @@ Windows Remote Management ist Microsofts Implementierung von WS-Management. Powe
 | Authentifizierung | Akzeptierte Identität und passendes Verfahren | Dass der PowerShell-Endpunkt zugänglich ist |
 | Sitzungsendpunkt | Registrierte Konfiguration und Zugriffsrecht | Dass die gewünschte Fachoperation erlaubt ist |
 | Zielressource | Rechte auf Dienst, Datei oder Anwendung | Dass ein weiterer Rechner dieselbe Identität akzeptiert |
+
+### WinRM-Ports: TCP 5985 und 5986
 
 Die regulären Listener verwenden TCP 5985 für HTTP und TCP 5986 für HTTPS. Ein laufender Dienst allein sagt noch nichts über einen verwendbaren Listener aus. Lokal auf dem Zielsystem zeigen folgende Abfragen den tatsächlichen Stand, einschließlich der gebundenen Adressen. [Microsoft: Installation und Konfiguration von WinRM](https://learn.microsoft.com/en-us/windows/win32/winrm/installation-and-configuration-for-windows-remote-management).
 

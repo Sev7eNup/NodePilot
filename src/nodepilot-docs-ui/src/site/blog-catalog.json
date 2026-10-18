@@ -216,7 +216,7 @@
   },
   {
     "slug": "gmsa-service-accounts",
-    "status": "draft",
+    "status": "published",
     "next": false,
     "source": "gmsa-dienstkonten",
     "solution": "self-hosted-automation",
@@ -230,12 +230,12 @@
       "winrm",
       "winrm-https"
     ],
-    "publishedAt": null,
+    "publishedAt": "2026-10-18",
     "modifiedAt": null,
     "text": {
       "de": {
         "title": "gMSA: Dienstkonten ohne manuell verteilte Kennwörter",
-        "seoTitle": "gMSA einrichten und Dienstkonto-Rechte prüfen",
+        "seoTitle": "gMSA einrichten: gruppenverwaltetes Dienstkonto testen",
         "summary": "Gruppenverwaltete Dienstkonten (gMSA) einrichten: Voraussetzungen prüfen, Kennwortabruf und Zugriffsrechte trennen, die Umstellung im Dienst abnehmen.",
         "lead": "Wie prüfe ich gMSA-Dienstkonten und ihre tatsächlichen Zugriffsrechte?",
         "category": "PRAXIS",
@@ -244,7 +244,7 @@
       },
       "en": {
         "title": "gMSA: service accounts without manually distributed passwords",
-        "seoTitle": "Set up a gMSA and verify service account permissions",
+        "seoTitle": "gMSA: create and test a group managed service account",
         "summary": "Set up group managed service accounts (gMSA): check prerequisites, keep password retrieval and access rights apart, and verify the switch in the service.",
         "lead": "How do I verify gMSA service accounts and their actual permissions?",
         "category": "PRACTICE",
@@ -517,7 +517,7 @@
   },
   {
     "slug": "winrm",
-    "status": "draft",
+    "status": "published",
     "next": false,
     "source": "winrm-enterprise",
     "solution": "self-hosted-automation",
@@ -531,7 +531,7 @@
       "winrm-https",
       "gmsa-service-accounts"
     ],
-    "publishedAt": null,
+    "publishedAt": "2026-10-18",
     "modifiedAt": null,
     "text": {
       "de": {
@@ -560,7 +560,7 @@
   },
   {
     "slug": "winrm-https",
-    "status": "draft",
+    "status": "published",
     "next": false,
     "source": "winrm-https",
     "solution": "self-hosted-automation",
@@ -574,7 +574,7 @@
       "winrm",
       "gmsa-service-accounts"
     ],
-    "publishedAt": null,
+    "publishedAt": "2026-10-18",
     "modifiedAt": null,
     "text": {
       "de": {
@@ -685,6 +685,49 @@
     "docsTitle": {
       "de": "Import / Export & Backup",
       "en": "Import / export & backup"
+    }
+  },
+  {
+    "slug": "workflow-automation",
+    "status": "draft",
+    "next": false,
+    "source": "workflow-automation",
+    "solution": "powershell-automation",
+    "docs": "designer/overview",
+    "audience": "Windows-Administratoren und SCOrch-Anwender",
+    "question": {
+      "de": "Wie wird aus einem dokumentierten Runbook ein automatisierter Workflow?",
+      "en": "How does a documented runbook become an automated workflow?"
+    },
+    "related": [
+      "first-workflow",
+      "scorch-import"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Workflow-Automatisierung: vom Runbook zum ausführbaren Ablauf",
+        "seoTitle": "Workflow-Automatisierung für Windows: Low-Code und KI",
+        "summary": "Workflow-Automatisierung für Windows: wie aus einem Runbook ein Workflow wird, wo Low-Code hilft und wo KI unterstützt, ohne die Prüfung zu ersetzen.",
+        "lead": "Wie wird aus einem dokumentierten Runbook ein automatisierter Workflow?",
+        "category": "PRAXIS",
+        "indexTitle": "Workflow-Automatisierung: vom Runbook zum ausführbaren Ablauf",
+        "teaser": "Wie wird aus einem dokumentierten Runbook ein automatisierter Workflow?"
+      },
+      "en": {
+        "title": "Workflow automation: from runbook to executable flow",
+        "seoTitle": "Workflow automation for Windows: low-code and AI",
+        "summary": "Workflow automation for Windows: how a runbook becomes a workflow, where low-code helps and where AI supports you without replacing the review.",
+        "lead": "How does a documented runbook become an automated workflow?",
+        "category": "PRACTICE",
+        "indexTitle": "Workflow automation: from runbook to executable flow",
+        "teaser": "How does a documented runbook become an automated workflow?"
+      }
+    },
+    "docsTitle": {
+      "de": "Designer – Überblick",
+      "en": "Designer overview"
     }
   }
 ]
