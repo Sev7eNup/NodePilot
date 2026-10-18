@@ -2,6 +2,7 @@ import { articleBody } from '../../scripts/blog-content.mjs'
 import shell from './index.html?raw'
 import { parseHTML } from 'linkedom'
 import { describe, expect, it } from 'vitest'
+import { articles } from './blog'
 import { keepPage, routePages } from './prerender'
 import { localizedPath, resolveRoute, routeLanguage } from './router'
 import { renderSiteContent, renderSiteHead } from './seo'
@@ -87,6 +88,22 @@ describe('website SEO contract', () => {
     renderSiteHead(document, { page: 'notfound' }, 'de', origin)
     expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, follow')
     expect(document.querySelectorAll('link[rel="canonical"], link[hreflang], [data-site-schema]')).toHaveLength(0)
+  })
+
+  it('links the newest published articles from the home page', () => {
+    const { document } = parseHTML(shell)
+    keepPage(document, { page: 'home' })
+    renderSiteContent(document, { page: 'home' }, 'en', '/')
+    const linked = [...document.querySelectorAll('#home-page [data-related-articles] a[data-site-path^="blog/"]')]
+      .map(link => link.getAttribute('data-site-path')?.slice('blog/'.length))
+    const published = articles.filter(article => article.status === 'published' && article.publishedAt)
+    expect(linked).toHaveLength(Math.min(3, published.length))
+    const linkedDates = published.filter(article => linked.includes(article.slug)).map(article => article.publishedAt ?? '')
+    expect(linkedDates).toHaveLength(linked.length)
+    const oldestLinked = [...linkedDates].sort()[0]
+    for (const article of published.filter(article => !linked.includes(article.slug))) {
+      expect((article.publishedAt ?? '') <= oldestLinked, `${article.slug} is newer than a linked article`).toBe(true)
+    }
   })
 })
 

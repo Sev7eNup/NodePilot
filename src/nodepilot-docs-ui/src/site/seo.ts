@@ -109,8 +109,12 @@ export function renderSiteContent(doc: Document, route: SiteRoute, lang: Lang, b
     holder.innerHTML = `<h2>${lang === 'de' ? 'Automatisierung in der eigenen Umgebung' : 'Automation in your environment'}</h2><ul>` +
       SOLUTION_SLUGS.map(slug => `<li><a data-site-path="${slug}">${solutions[lang][slug].title}</a></li>`).join('') + '</ul>'
   }
+  // Pages without a topic of their own (the home page) link the newest articles, so new posts are reachable from there.
+  const newestFirst = [...available].sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''))
   for (const holder of doc.querySelectorAll('[data-related-articles]')) {
-    const related = available.filter(article => entry ? entry.related.includes(article.slug) : route.page === 'solution' ? article.solution === route.slug : true).slice(0, 3)
+    const related = (entry ? available.filter(article => entry.related.includes(article.slug))
+      : route.page === 'solution' ? available.filter(article => article.solution === route.slug)
+      : newestFirst).slice(0, 3)
     const docs = entry?.docs ?? 'getting-started/quickstart'
     holder.innerHTML = `<h2>${lang === 'de' ? 'Passende Beiträge und nächste Schritte' : 'Related articles and next steps'}</h2><ul>` +
       related.map(article => `<li><a data-site-path="blog/${article.slug}">${copy.articles[article.slug].title}</a></li>`).join('') +
