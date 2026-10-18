@@ -1,6 +1,6 @@
 # NodePilot Workflow Layout Styleguide
 
-Conventions for hand-laid-out workflow JSON (`nodes`/`edges`) that renders in the GUI without overlaps and with readable edge labels. Derived from the master test workflow [scripts/test-master-all-activities.json](../scripts/test-master-all-activities.json) — the living reference example there covers every activity, all 14 edge operators and all 3 junction modes.
+Conventions for hand-laid-out workflow JSON (`nodes`/`edges`) that renders in the GUI without overlaps and with readable edge labels. Derived from the master test workflow [scripts/test-master-all-activities.json](../scripts/test-master-all-activities.json) — the living reference example there covers most activity types (not `fileOperation`, `textFileEdit`, the AI activities or the non-schedule triggers), all 14 edge operators and all 3 junction modes.
 
 > Note: the UI has a Dagre auto-layout button ([autoLayout.ts](../src/nodepilot-ui/src/lib/autoLayout.ts), `rankdir:LR, ranksep:180, nodesep:80`). For hand-curated demo workflows with many condition labels, Dagre is not enough — the rules below are for those.
 
@@ -104,7 +104,7 @@ A grouping that works well (from [test-master-all-activities.json](../scripts/te
 
 | Gotcha | Right | Wrong |
 |---|---|---|
-| `waitNofM` config | `"requiredCount": 2` | `"n": 2` (silently defaults to 1) — see [WorkflowEngine.cs:535](../src/NodePilot.Engine/WorkflowEngine.cs#L535) |
+| `waitNofM` config | `"requiredCount": 2` | `"n": 2` (silently defaults to 1) — see [WorkflowScheduler.cs:418](../src/NodePilot.Engine/Execution/WorkflowScheduler.cs#L418) |
 | `manualTrigger` params | All `type: "string"`, defaults as strings (`"80"`, `"false"`) | `type: "number"` → the UI sends a number → 400 "cannot convert to System.String" on execute |
 | `isTrue`/`isFalse` | Operates on strings: `""`, `"false"` (case-insensitive) and `"0"` are falsy | Everything else is truthy — `"False"` (PowerShell's `[string]$false`) is falsy ✓ |
 | `runScript` params | Variables the script **assigns** are captured as `param.*` — [PowerShellScriptWrapper.cs](../src/NodePilot.Engine/PowerShell/PowerShellScriptWrapper.cs) appends the capture block | An upstream param the script only reads is not its output; reference it on the step that produced it. Do not insert a `###NODEPILOT_PARAMS###` marker yourself |
@@ -196,7 +196,7 @@ Two designer features that affect appearance but are **not encoded in the JSON**
 
 ## 9 — The living reference example
 
-[scripts/test-master-all-activities.json](../scripts/test-master-all-activities.json) — 45 nodes, 54 edges, roughly 7900 × 1320 px. Embedded identically in [workflow-example.json](../src/NodePilot.Ai/Prompts/workflow-example.json) as the few-shot example for AI workflow generation.
+[scripts/test-master-all-activities.json](../scripts/test-master-all-activities.json) — 45 nodes, 54 edges, roughly 7900 × 1320 px. Embedded, with one extra `llmQuery` node (46 nodes, 55 edges), in [workflow-example.json](../src/NodePilot.Ai/Prompts/workflow-example.json) as the few-shot example for AI workflow generation.
 
 - **Phase A** (trigger + init): x=0…600, y=600 — `scheduleTrigger` (cron `0 0/5 * * * ? *`) → `runScript` (init vars) → `log`. Plus a dead-end `log_fail` (legacy `.failed` edge).
 - **Phase B** (7-way condition-coverage fan): branch logs at x=1340, y=60/240/420/600/780/960/1140 (180 spread). Each of the 7 edges covers 2–4 operators — together all 14 plus AND/OR/NOT. Plus one disabled edge to `disabled_log` (y=1320). Junction `waitAll` at x=1680.

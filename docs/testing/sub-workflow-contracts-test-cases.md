@@ -2,7 +2,7 @@
 
 Manuelle Test-Cases für Feature **Sub-Workflow Contracts V1**.
 Branch: `feat/sub-workflow-contracts`.
-Code-Tests (xUnit + vitest): `tests/NodePilot.Api.Tests/Services/WorkflowContractDeriverTests.cs` (16), `tests/NodePilot.Api.Tests/Controllers/WorkflowsControllerTests.cs::GetContract*` (5), `src/nodepilot-ui/src/__tests__/hooks/useWorkflowContract.test.tsx` (5), `src/nodepilot-ui/src/__tests__/components/properties/ContractMappingTable.test.tsx` (9). Diese Datei deckt die End-to-End-UX ab, die Code-Tests nicht erreichen.
+Code-Tests (xUnit + vitest): `tests/NodePilot.Api.Tests/Services/WorkflowContractDeriverTests.cs` (16), `tests/NodePilot.Api.Tests/Controllers/WorkflowsControllerTests.cs::GetContract*` (7), `src/nodepilot-ui/src/__tests__/hooks/useWorkflowContract.test.tsx` (5), `src/nodepilot-ui/src/__tests__/components/properties/ContractMappingTable.test.tsx` (9). Diese Datei deckt die End-to-End-UX ab, die Code-Tests nicht erreichen.
 
 ## Setup
 
@@ -127,7 +127,7 @@ Zweistufiger Workflow mit Decision: bei Erfolg → returnData-A, bei Failure →
 - Hover-Tooltip: „Workflow hat mehrere returnData-Nodes. Pro Run gewinnt nur eine — Outputs sind „kann verfügbar sein", nicht garantiert."
 - Output-Keys haben `Source = "multiple"`, in der Spaltennamen-Farbe als amber markiert.
 
-### TC-7 — Workflow ohne manualTrigger fällt auf freie ParameterTable zurück (NICHT „nicht callable")
+### TC-7 — Workflow ohne manualTrigger zeigt Info-Banner statt Inputs-Tabelle (NICHT „nicht callable")
 
 **Setup:** Erstelle einen Workflow „SchedOnly" mit nur `scheduleTrigger` (kein manualTrigger), enabled.
 
@@ -160,7 +160,7 @@ Zweistufiger Workflow mit Decision: bei Erfolg → returnData-A, bei Failure →
 - Nach ~250ms: Amber-Banner „Workflow „does-not-exist" nicht gefunden — freie Parameter-Eingabe verfügbar".
 - Freie ParameterTable rendert darunter.
 
-### TC-10 — Case-Sensitivity (exact match)
+### TC-10 — Case-Insensitive Fallback (exact-case gewinnt)
 
 **Setup:** Workflow heißt exakt `Daily-Report`.
 
@@ -168,8 +168,8 @@ Zweistufiger Workflow mit Decision: bei Erfolg → returnData-A, bei Failure →
 1. Im Workflow-Feld `daily-report` (lowercase) eingeben.
 
 **Expected:**
-- TC-9-ähnliches Verhalten: not-found-Banner, kein Contract.
-- API direkt: `curl http://localhost:5000/api/workflows/by-name/daily-report/contract` → 404.
+- Contract von „Daily-Report" wird angezeigt (case-insensitive Fallback), kein not-found-Banner.
+- API direkt: `curl http://localhost:5000/api/workflows/by-name/daily-report/contract` → 200 + Body; existieren `Daily` und `DAILY` und wird `daily` gesucht → 409.
 - `curl http://localhost:5000/api/workflows/by-name/Daily-Report/contract` → 200 + Body.
 
 ### TC-11 — Multi-manualTrigger Conflict-Badge
