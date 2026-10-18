@@ -6,6 +6,7 @@ import {
   LANG_STORAGE_KEY,
   LANGUAGES,
   parseLocation,
+  readStoredLang,
 } from './languages'
 
 /** Minimal `window` stand-in: `detectLang` touches only these two members. */
@@ -128,5 +129,29 @@ describe('detectLang', () => {
       stubBlockedStorage(['fr-FR'])
       expect(detectLang()).toBe(DEFAULT_LANG)
     })
+  })
+})
+
+describe('readStoredLang', () => {
+  it('returns only an explicitly stored choice and ignores the browser language', () => {
+    stubWindow({ stored: 'en', languages: ['de-DE'] })
+    expect(readStoredLang()).toBe('en')
+    stubWindow({ stored: null, languages: ['en-US'] })
+    expect(readStoredLang()).toBeNull()
+  })
+
+  it('returns null for a stored value that is no longer a shipped language', () => {
+    stubWindow({ stored: 'fr', languages: ['de'] })
+    expect(readStoredLang()).toBeNull()
+  })
+
+  it('returns null when storage is blocked', () => {
+    vi.stubGlobal('window', {
+      get localStorage(): Storage {
+        throw new DOMException('The operation is insecure.', 'SecurityError')
+      },
+      navigator: { languages: ['en-US'] },
+    })
+    expect(readStoredLang()).toBeNull()
   })
 })

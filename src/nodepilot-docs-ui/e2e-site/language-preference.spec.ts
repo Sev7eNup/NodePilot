@@ -7,10 +7,13 @@ for (const [locale, lang] of [['de-AT', 'de'], ['de-CH', 'de'], ['en-US', 'en'],
   test.describe(locale, () => {
     test.use({ locale })
 
-    test('uses the browser default in website and docs without storing a choice', async ({ page }) => {
-      await page.goto('/')
-      await expect(page.locator('html')).toHaveAttribute('lang', lang)
-      await expect(page.locator('[data-nav="product"]')).toHaveAttribute('href', lang === 'en' ? '/en/product/' : '/product/')
+    test('keeps the website address language and uses the browser default only in the docs', async ({ page }) => {
+      // Unprefixed website addresses are German pages; a browser-language redirect would also move crawlers.
+      // Waiting for network idle lets a script redirect finish before the address is checked.
+      await page.goto('/product/?source=language#example', { waitUntil: 'networkidle' })
+      expect(new URL(page.url()).pathname).toBe('/product/')
+      await expect(page.locator('html')).toHaveAttribute('lang', 'de')
+      await expect(page.locator('[data-nav="product"]')).toHaveAttribute('href', '/product/')
       expect(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY)).toBeNull()
 
       await page.goto(`${DOCS}/?source=language#example`)
@@ -26,15 +29,21 @@ test.describe('explicit language choices', () => {
 
   test('remembers the website switch across reloads and new entries, preserving the page and URL suffix', async ({ page }) => {
     await page.goto('/product/?source=language#example')
+    await page.locator('.header-lang [data-lang="en"]').click()
     await expect(page).toHaveURL(/\/en\/product\/\?source=language#example$/)
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    expect(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY)).toBe('en')
+    await page.reload()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+
+    // A saved choice applies to unprefixed entries.
+    await page.goto('/')
+    await expect(page).toHaveURL(/\/en\/$/)
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+
     await page.locator('.header-lang [data-lang="de"]').click()
-    await expect(page).toHaveURL(/\/product\/\?source=language#example$/)
     await expect(page.locator('html')).toHaveAttribute('lang', 'de')
     expect(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY)).toBe('de')
-    await page.reload()
-    await expect(page.locator('html')).toHaveAttribute('lang', 'de')
-    await page.goto('/')
-    await expect(page.locator('html')).toHaveAttribute('lang', 'de')
 
     // A translated link displays its own language without replacing the saved preference.
     await page.goto('/en/product/')
