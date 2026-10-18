@@ -30,8 +30,8 @@ export const en = {
     description:
       'NodePilot connects PowerShell and Windows activities into visual workflows. Agentless, self-hosted, open source and free.',
     descriptions: {
-      home: 'NodePilot connects PowerShell and Windows activities into visual workflows. Agentless, self-hosted, open source and free.',
-      product: 'Designer, step debugger, Live Ops, triggers, alerting and AI support in one tool. 29 activity types from PowerShell to SQL.',
+      home: 'NodePilot connects PowerShell and Windows activities into visual low-code workflows with AI support. Agentless, self-hosted, open source and free.',
+      product: 'Low-code designer, step debugger, Live Ops, triggers, alerting and AI agents in one tool. 29 activity types from PowerShell to SQL.',
       experience: 'Try NodePilot in the browser: ten guided tasks from workflow design and Live Ops to maintenance windows. No sign-up or installation.',
       videos: 'NodePilot Media: 27 short video tutorials on PowerShell and Windows automation, the workflow designer, debugger, Live Ops, CLI and AI.',
       blog: 'Practical articles on PowerShell workflows, Windows automation and importing System Center Orchestrator runbooks into NodePilot.',
@@ -50,6 +50,7 @@ export const en = {
     context: 'Project',
     docs: 'Documentation',
     download: 'Download',
+    github: 'NodePilot on GitHub',
   },
   nav: {
     label: 'Website navigation',
@@ -86,7 +87,7 @@ export const en = {
   },
   titles: {
     experience: 'Try NodePilot in your browser: guided walkthrough',
-    home: 'Visual Windows and PowerShell automation',
+    home: 'Visual Windows automation with PowerShell and WinRM',
     product: 'Visual workflow designer for Windows and PowerShell',
     videos: 'Media: Windows automation videos and tutorials',
     blog: 'PowerShell, Windows automation and SCOrch migration',
@@ -108,11 +109,11 @@ export const en = {
     openSource: 'Open source',
     free: 'Free',
     noTiers: 'No license tiers',
-    capabilityDesigner: 'Visual designer',
+    capabilityDesigner: 'Low-code designer',
     capabilityLive: 'Live runs & logs',
     capabilityScorch: 'SCOrch import',
     capabilitySso: 'LDAP & SSO',
-    capabilityAi: 'AI support',
+    capabilityAi: 'AI automation',
     capabilityEnterprise: 'Enterprise ready',
     archKicker: 'ONE SERVICE, NO AGENT',
     archTitle: 'One service on your side. Nothing on the targets.',

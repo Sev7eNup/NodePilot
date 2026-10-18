@@ -34,8 +34,8 @@ export const de = {
     description:
       'NodePilot verbindet PowerShell und Windows-Aktivitäten zu visuellen Workflows. Agentenlos, selbst gehostet, quelloffen und kostenlos.',
     descriptions: {
-      home: 'NodePilot verbindet PowerShell und Windows-Aktivitäten zu visuellen Workflows. Agentenlos, selbst gehostet, quelloffen und kostenlos.',
-      product: 'Designer, Schritt-Debugger, Live Ops, Auslöser, Alarmierung und KI-Unterstützung in einem Werkzeug. 29 Aktivitätstypen von PowerShell bis SQL.',
+      home: 'NodePilot verbindet PowerShell und Windows-Aktivitäten zu visuellen Low-Code-Workflows mit KI-Unterstützung. Agentenlos, selbst gehostet, quelloffen und kostenlos.',
+      product: 'Low-Code-Designer, Schritt-Debugger, Live Ops, Auslöser, Alarmierung und KI-Agenten in einem Werkzeug. 29 Aktivitätstypen von PowerShell bis SQL.',
       experience: 'NodePilot im Browser ausprobieren: zehn geführte Aufgaben von Workflow-Design und Live Ops bis Wartungsfenster. Ohne Anmeldung oder Installation.',
       videos: 'NodePilot Media: 27 kurze Video-Tutorials zu PowerShell- und Windows-Automatisierung, Workflow-Designer, Debugger, Live Ops, CLI und KI.',
       blog: 'Praxis und Hintergründe zu PowerShell-Workflows, Windows-Automatisierung und dem Import von System Center Orchestrator in NodePilot.',
@@ -54,6 +54,7 @@ export const de = {
     context: 'Projekt',
     docs: 'Dokumentation',
     download: 'Download',
+    github: 'NodePilot auf GitHub',
   },
   nav: {
     label: 'Website-Navigation',
@@ -92,7 +93,7 @@ export const de = {
   /** Document titles; an article uses its own title. */
   titles: {
     experience: 'NodePilot im Browser ausprobieren: geführte Tour',
-    home: 'Visuelle Windows- und PowerShell-Automatisierung',
+    home: 'Visuelle Windows-Automatisierung mit PowerShell und WinRM',
     product: 'Visueller Workflow-Designer für Windows und PowerShell',
     videos: 'Media: Videos und Tutorials zur Windows-Automatisierung',
     blog: 'PowerShell, Windows-Automatisierung und SCOrch-Migration',
@@ -114,11 +115,11 @@ export const de = {
     openSource: 'Open Source',
     free: 'Kostenlos',
     noTiers: 'Keine Lizenzstufen',
-    capabilityDesigner: 'Visueller Designer',
+    capabilityDesigner: 'Low-Code-Designer',
     capabilityLive: 'Live-Ausführung & Logs',
     capabilityScorch: 'SCOrch-Import',
     capabilitySso: 'LDAP & SSO',
-    capabilityAi: 'AI Support',
+    capabilityAi: 'KI-Automatisierung',
     capabilityEnterprise: 'Enterprise ready',
     archKicker: 'EIN DIENST, KEIN AGENT',
     archTitle: 'Im eigenen Netz läuft ein Dienst. Auf den Zielsystemen nichts.',
