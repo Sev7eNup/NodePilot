@@ -20,7 +20,7 @@ export function FileWatcherTriggerConfig({ config, onUpdate, upstreamVars = [] }
             value={(config.filter as string) || '*.*'}
             onChange={(e) => onUpdate({ filter: e.target.value })}
             className="input-field"
-            placeholder="*.csv, *.xml, *.txt"
+            placeholder="*.csv"
           />
         </Field>
         <Field label={t('fileWatcherTrigger.watchType')}>
