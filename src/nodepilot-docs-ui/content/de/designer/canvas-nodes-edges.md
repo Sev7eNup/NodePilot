@@ -38,7 +38,7 @@ Die wichtigsten Node-Typen:
 - Mehrere Nodes mit `Ctrl` oder `Shift` auswählen.
 - `Ctrl+D` dupliziert die Auswahl.
 - `Delete` oder `Backspace` löscht die Auswahl.
-- `Ctrl+C` legt die ausgewählten Nodes samt der Edges zwischen ihnen als Workflow-JSON in die Zwischenablage, etwa zum Ansehen in VS Code. Bei einer ausgewählten Gruppe kommen ihre Nodes mit. Konfigurationswerte, auch Inline-Secrets, sind enthalten.
+- `Ctrl+C` legt die ausgewählten Nodes samt der Edges zwischen ihnen als Workflow-JSON in die Zwischenablage, etwa zum Ansehen in VS Code. Bei einer ausgewählten Gruppe kommen ihre Nodes mit. Konfigurationswerte sind enthalten, Werte von Secret-Schlüsseln (etwa `password`, `apiKey`, `secret`, `connectionString`, `Authorization`) stehen als `***` im Text, damit sie nicht in der Zwischenablage landen. Nach dem Einfügen müssen sie neu gesetzt werden.
 - `Ctrl+V` fügt solches JSON ein, auch aus einem anderen Workflow oder einem Texteditor. Die Nodes bekommen neue IDs, und Bedingungen und Verweise zwischen ihnen werden mitgezogen. Eine Kopie aus dem Designer landet versetzt neben dem Original, fremdes JSON in der Mitte der sichtbaren Fläche. Ungültiges JSON wird gemeldet.
 - Bei mehreren ausgewählten Nodes können gemeinsame Werte wie Machine, Timeout oder Aktivstatus zusammen geändert werden.
 

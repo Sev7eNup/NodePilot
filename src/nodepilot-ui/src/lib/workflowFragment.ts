@@ -20,6 +20,18 @@ const NODE_TYPES: ReadonlySet<string> = new Set(['activity', 'group', 'stickyNot
 const REDACTED = '***';
 
 /**
+ * Config keys whose values are secrets, lower-cased. Mirror of
+ * `WorkflowSecretKeys.SecretConfigKeys` (checked by `workflowFragment.test.ts`).
+ */
+export const SECRET_CONFIG_KEYS: ReadonlySet<string> = new Set([
+  'secret', 'apikey', 'password', 'authtoken', 'bearer', 'connectionstring',
+  'token', 'accesstoken', 'refreshtoken', 'sessiontoken', 'clientsecret', 'privatekey',
+  'accesskey', 'secretkey', 'apisecret', 'webhooksecret',
+  'authorization', 'proxy-authorization', 'cookie', 'set-cookie',
+  'x-api-key', 'x-auth-token', 'x-webhook-secret',
+]);
+
+/**
  * The given nodes, the nodes inside any given group, and every edge whose two ends are among
  * them. Node and edge data are copied, so later edits on the canvas do not reach into the
  * fragment.
@@ -38,11 +50,15 @@ export function selectFragment(nodes: Node[], edges: Edge[], nodeIds: Iterable<s
   };
 }
 
-/** The fragment as indented JSON text: the definition shape, without canvas-only state. */
+/**
+ * The fragment as indented JSON text: the definition shape, without canvas-only state. Values of
+ * secret config keys are written as `***`, as in a workflow export, because the text leaves the
+ * app through the system clipboard.
+ */
 export function serializeFragment(fragment: WorkflowFragment): string {
   const clean = stripRuntimeDefinition(fragment);
   return JSON.stringify({
-    nodes: clean.nodes.map(withoutViewProps),
+    nodes: clean.nodes.map(withoutViewProps).map((n) => ({ ...n, data: maskSecrets(n.data) as Node['data'] })),
     edges: clean.edges.map(withoutViewProps),
   }, null, 2);
 }
@@ -194,6 +210,18 @@ function withoutViewProps<T extends object>(element: T): T {
   const copy = { ...element } as Record<string, unknown>;
   for (const prop of VIEW_PROPS) delete copy[prop];
   return copy as T;
+}
+
+/** Copy of `value` with every non-empty value under a secret key replaced by the mask. */
+function maskSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(maskSecrets);
+  if (!isRecord(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(value)) {
+    const isSecretKey = SECRET_CONFIG_KEYS.has(key.toLowerCase());
+    out[key] = isSecretKey && v !== null && v !== undefined && v !== '' ? REDACTED : maskSecrets(v);
+  }
+  return out;
 }
 
 function countRedacted(values: unknown[]): number {

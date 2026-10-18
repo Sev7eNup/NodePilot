@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Edge, Node } from '@xyflow/react';
 import {
   parseFragment,
   remapConditionStep,
   remapFragment,
+  SECRET_CONFIG_KEYS,
   selectFragment,
   serializeFragment,
   type WorkflowFragment,
@@ -66,6 +70,80 @@ describe('serializeFragment', () => {
     });
     expect(parsed.edges[0]).not.toHaveProperty('selected');
     expect(parsed.edges[0]).not.toHaveProperty('animated');
+  });
+
+  it('secretConfigValues_areMasked', () => {
+    const fragment = selectFragment([node('a', {
+      data: {
+        label: 'A',
+        activityType: 'restApi',
+        config: {
+          url: 'https://example.test',
+          apiKey: 'k-123',
+          Password: 'pw',
+          connectionString: 'Server=x;Password=y',
+          secret: 'hmac',
+          timeoutSeconds: 30,
+          headers: { Authorization: 'Bearer abc', Accept: 'text/plain' },
+          nested: [{ token: 't-1', name: 'keep' }],
+        },
+      },
+    })], [], ['a']);
+
+    const config = JSON.parse(serializeFragment(fragment)).nodes[0].data.config;
+
+    expect(config).toEqual({
+      url: 'https://example.test',
+      apiKey: '***',
+      Password: '***',
+      connectionString: '***',
+      secret: '***',
+      timeoutSeconds: 30,
+      headers: { Authorization: '***', Accept: 'text/plain' },
+      nested: [{ token: '***', name: 'keep' }],
+    });
+  });
+
+  it('emptyAndNullSecretValues_stayAsTheyAre', () => {
+    const fragment = selectFragment([node('a', {
+      data: { label: 'A', activityType: 'restApi', config: { apiKey: '', password: null } },
+    })], [], ['a']);
+
+    const config = JSON.parse(serializeFragment(fragment)).nodes[0].data.config;
+
+    expect(config).toEqual({ apiKey: '', password: null });
+  });
+
+  it('serializing_doesNotChangeTheFragment', () => {
+    const fragment = selectFragment([node('a', {
+      data: { label: 'A', activityType: 'restApi', config: { apiKey: 'k-123' } },
+    })], [], ['a']);
+
+    serializeFragment(fragment);
+
+    expect((fragment.nodes[0].data as { config: { apiKey: string } }).config.apiKey).toBe('k-123');
+  });
+
+  it('maskedCopy_isFlaggedOnPaste', () => {
+    const fragment = selectFragment([node('a', {
+      data: { label: 'A', activityType: 'restApi', config: { apiKey: 'k-123', secret: 's', url: 'u' } },
+    })], [], ['a']);
+
+    const result = parseFragment(serializeFragment(fragment));
+
+    expect(result.ok && result.redactedValues).toBe(2);
+  });
+
+  it('secretKeyList_matchesBackendSecretConfigKeys', () => {
+    const csPath = join(
+      dirname(fileURLToPath(import.meta.url)),
+      '..', '..', '..', '..', '..', 'src', 'NodePilot.Core', 'WorkflowDefinitions', 'WorkflowSecretKeys.cs',
+    );
+    const source = readFileSync(csPath, 'utf8');
+    const block = source.slice(source.indexOf('SecretConfigKeys ='), source.indexOf('};', source.indexOf('SecretConfigKeys =')));
+    const backend = [...block.replace(/\/\/.*$/gm, '').matchAll(/"([^"]+)"/g)].map((m) => m[1].toLowerCase());
+
+    expect([...SECRET_CONFIG_KEYS].sort()).toEqual([...backend].sort());
   });
 
   it('roundTripsThroughParseFragment', () => {
