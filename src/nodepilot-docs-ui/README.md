@@ -111,6 +111,10 @@ Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/
   `SITE_ROUTE_SEGMENTS` aus `src/site/router.ts` (`walkthrough`, `product`, `blog`, `impressum`,
   `datenschutz`); dieselbe Liste steht wörtlich im Redirect-Script. Eine neue Route gehört in
   beide Listen und darf mit keinem Doku-Pfad und keiner Sprache kollidieren.
+- **Hell/Dunkel:** Die Website hat einen Umschalter im Header neben der Sprachwahl. `:root` trägt die
+  hellen Tokens (die der App), `html.dark` die dunklen; `src/site/public/theme-init.js` setzt die
+  Klasse vor dem ersten Paint aus `np-docs-theme` (sonst OS-Einstellung), derselbe Schlüssel wie in den
+  Docs. Neue Farben als Token in **beiden** Blöcken anlegen (`theme-tokens.test.mjs`).
 - **Texte und Sprache:** Website-Texte stehen in `src/site/i18n/de.ts` und `en.ts`.
   Blogtexte liegen separat in `content/blog/`; `src/site/blog-catalog.json` enthält Metadaten,
   Verlinkung und Veröffentlichungsstand. Sie werden als vollständiges HTML ausgeliefert und

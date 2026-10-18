@@ -41,7 +41,7 @@ RewriteRule ^(.*)$ https://www.nodepilot.run/$1 [R=301,L]
   <FilesMatch "-[A-Za-z0-9_-]{8,}\.(js|css|woff2?)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
-  <FilesMatch "^(legacy-docs-redirect|legacy-hash-redirect)\.js$">
+  <FilesMatch "^(legacy-docs-redirect|legacy-hash-redirect|theme-init)\.js$">
     Header set Cache-Control "public, max-age=0, must-revalidate"
   </FilesMatch>
   # Images and the video are not all content-hashed, so they expire rather than stick for a year.

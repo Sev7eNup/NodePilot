@@ -49,6 +49,10 @@ export const de = {
   lang: {
     group: 'Sprache',
   },
+  theme: {
+    toLight: 'Light-Modus',
+    toDark: 'Dark-Modus',
+  },
   header: {
     brandLabel: 'NodePilot – Startseite',
     context: 'Projekt',
@@ -232,7 +236,8 @@ export const de = {
     video: 'Produktvideo ansehen',
     enlarge: 'Produktbild vergrößern',
     caption: 'Original-Screenshot aus dem NodePilot-Repository',
-    captionTag: 'Dunkles Design',
+    captionTagDark: 'Dunkles Design',
+    captionTagLight: 'Helles Design',
     detailKicker: 'ORCHESTRIERUNG',
     detailTitle: 'Ein Workflow hält den Ablauf zusammen.',
     detailText:
