@@ -29,6 +29,36 @@
       2550
     ]
   },
+  "designer-light": {
+    "width": 2544,
+    "height": 1265,
+    "widths": [
+      480,
+      960,
+      1600,
+      2544
+    ]
+  },
+  "logs-light": {
+    "width": 2549,
+    "height": 1271,
+    "widths": [
+      480,
+      960,
+      1600,
+      2549
+    ]
+  },
+  "ai-light": {
+    "width": 2550,
+    "height": 1272,
+    "widths": [
+      480,
+      960,
+      1600,
+      2550
+    ]
+  },
   "dashboard": {
     "width": 2556,
     "height": 1273,

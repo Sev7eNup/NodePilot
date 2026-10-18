@@ -23,6 +23,13 @@ describe('website head', () => {
     expect(first).not.toMatch(/type\s*=\s*["']module["']/i)
   })
 
+  it('loads the theme script as a classic, non-deferred script from a file', () => {
+    // A deferred or module script runs after first paint, so light-mode visitors would see a dark flash.
+    const tag = head.match(/<script\b[^>]*\bsrc=["']\.\/theme-init\.js["'][^>]*>/i)?.[0]
+    expect(tag, 'theme-init.js must be loaded from <head>').toBeDefined()
+    expect(tag).not.toMatch(/\bdefer\b|\basync\b|type\s*=\s*["']module["']/i)
+  })
+
   it('links the documentation by address, not by fragment', () => {
     // A fragment link would make the website hand the documentation a second redirect, and the
     // address it lands on is the one a reader shares.

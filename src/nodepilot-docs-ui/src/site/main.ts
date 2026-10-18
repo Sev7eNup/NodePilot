@@ -1,4 +1,4 @@
-import { configureImage, imageAttributes } from './media'
+import { configureImage, imageAttributes, type ImageKey } from './media'
 import { articleBySlug, isBlogPreview } from './blog'
 /* NodePilot project website. No backend, analytics or real workflow execution: every
    interaction stays in the page, apart from the links a visitor opens. */
@@ -41,9 +41,9 @@ import { renderSiteContent, renderSiteHead } from './seo'
 
 const REPO = 'https://github.com/Sev7eNup/NodePilot'
 const SCREENSHOTS = {
-  designer: { file: 'designer-dark.png' },
-  logs: { file: 'log-dark.png' },
-  ai: { file: 'ai-dark.png' },
+  designer: { dark: 'designer-dark.png', light: 'designer-light.png' },
+  logs: { dark: 'log-dark.png', light: 'log-light.png' },
+  ai: { dark: 'ai-dark.png', light: 'ai-light.png' },
 }
 // German-only legal texts, supplied as files. A missing file leaves its page without text.
 const LEGAL_TEXTS = import.meta.glob<string>('./legal/*.de.html', { query: '?raw', import: 'default', eager: true })
@@ -141,6 +141,29 @@ function setMenu(open: boolean, restoreFocus = false): void {
 function renderMenuLabel(): void {
   menuButton.setAttribute('aria-label', sidebar.classList.contains('is-open') ? t().nav.close : t().nav.open)
 }
+
+// The documentation reads the same key, so the choice carries over between the two.
+const THEME_KEY = 'np-docs-theme'
+const themeToggle = $<HTMLButtonElement>('#theme-toggle')
+
+// The button names the mode a click switches to.
+function renderThemeToggle(): void {
+  const label = document.documentElement.classList.contains('dark') ? t().theme.toLight : t().theme.toDark
+  themeToggle.setAttribute('aria-label', label)
+  themeToggle.title = label
+}
+
+themeToggle.addEventListener('click', () => {
+  const dark = !document.documentElement.classList.contains('dark')
+  document.documentElement.classList.toggle('dark', dark)
+  try {
+    localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light')
+  } catch {
+    // Storage disabled; the mode still applies for this visit.
+  }
+  renderThemeToggle()
+  setProductTab(currentProductTab)
+})
 
 menuButton.addEventListener('click', () => setMenu(!sidebar.classList.contains('is-open'), true))
 backdrop.addEventListener('click', () => setMenu(false, true))
@@ -299,12 +322,19 @@ function loadOriginalImage(image: HTMLImageElement, holder: HTMLElement, key: Sc
     imageStates.set(holder, 'error')
     renderImageFallback(holder)
   }
-  configureImage(image, key, basePath)
+  configureImage(image, imageKey(key), basePath)
   image.loading = 'eager'
 }
 
+const isDark = (): boolean => document.documentElement.classList.contains('dark')
+
+// The screenshots exist in both modes; the key of the light one carries a suffix.
+function imageKey(key: ScreenKey): ImageKey {
+  return isDark() ? key : (`${key}-light` as const)
+}
+
 function sourceUrl(key: ScreenKey): string {
-  return `${REPO}/blob/main/docs/images/${SCREENSHOTS[key].file}`
+  return `${REPO}/blob/main/docs/images/${SCREENSHOTS[key][isDark() ? 'dark' : 'light']}`
 }
 
 function renderGalleryCaption(): void {
@@ -323,7 +353,7 @@ function setGallery(key: ScreenKey): void {
   $<HTMLAnchorElement>('#gallery-fallback-link').href = sourceUrl(key)
   // The bundled file, not GitHub: opening it shows the screenshot at its full 2544px, where the
   // UI text in it stays readable.
-  $<HTMLAnchorElement>('#gallery-full-size-link').href = imageAttributes(key, basePath, true).src
+  $<HTMLAnchorElement>('#gallery-full-size-link').href = imageAttributes(imageKey(key), basePath, true).src
   loadOriginalImage(galleryImage, $('#gallery-image-holder'), key)
 }
 
@@ -336,6 +366,7 @@ function setProductTab(key: ScreenKey): void {
     button.setAttribute('aria-pressed', String(active))
   }
   $('#product-screenshot-title').textContent = t().screens[key].title
+  $('#product-caption-tag').textContent = isDark() ? t().product.captionTagDark : t().product.captionTagLight
   $<HTMLAnchorElement>('#product-image-link').href = sourceUrl(key)
   loadOriginalImage(productImage, $('#product-image-holder'), key)
 }
@@ -794,6 +825,7 @@ if (route.page !== 'notfound' && routeLanguage(preferredPath) !== urlLang) {
 } else {
   setBasePrefix(basePrefix)
   applyLanguage(urlLang)
+  renderThemeToggle()
   if (route.page === 'article' && !isBlogPreview(document) && articleBySlug[route.slug].status !== 'published') route = { page: 'notfound' }
   // An address without a file of its own is answered with the 404 page, which carries only that section.
   if (!document.getElementById(`${route.page}-page`)) route = { page: 'notfound' }

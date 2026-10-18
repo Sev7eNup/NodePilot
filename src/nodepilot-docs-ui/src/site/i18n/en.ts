@@ -45,6 +45,10 @@ export const en = {
   lang: {
     group: 'Language',
   },
+  theme: {
+    toLight: 'Light mode',
+    toDark: 'Dark mode',
+  },
   header: {
     brandLabel: 'NodePilot – Home',
     context: 'Project',
@@ -226,7 +230,8 @@ export const en = {
     video: 'Watch the product video',
     enlarge: 'Enlarge product image',
     caption: 'Original screenshot from the NodePilot repository',
-    captionTag: 'Dark theme',
+    captionTagDark: 'Dark theme',
+    captionTagLight: 'Light theme',
     detailKicker: 'ORCHESTRATION',
     detailTitle: 'One workflow holds the run together.',
     detailText:
