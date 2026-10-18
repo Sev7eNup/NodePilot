@@ -10,7 +10,7 @@ These examples concern Windows with Active Directory and PowerShell remoting ove
 
 ## From the client to the remote system's identity
 
-Windows Remote Management is Microsoft's implementation of WS-Management. PowerShell remoting uses this management service as its transport, while the session itself executes within a PowerShell endpoint on the target. This creates several independently testable prerequisites. [Microsoft: Windows Remote Management](https://learn.microsoft.com/en-us/windows/win32/winrm/portal).
+Windows Remote Management is Microsoft's implementation of WS-Management. PowerShell remoting, often just called remote PowerShell, uses this management service as its transport, while the session itself executes within a PowerShell endpoint on the target. This creates several independently testable prerequisites. [Microsoft: Windows Remote Management](https://learn.microsoft.com/en-us/windows/win32/winrm/portal).
 
 | Layer | What must be present | What success does not yet establish |
 |---|---|---|
@@ -19,6 +19,8 @@ Windows Remote Management is Microsoft's implementation of WS-Management. PowerS
 | Authentication | An accepted identity and appropriate mechanism | That the PowerShell endpoint is accessible |
 | Session endpoint | A registered configuration and access permission | That the intended application operation is permitted |
 | Target resource | Permissions on the service, file, or application | That another computer accepts the same identity |
+
+### WinRM ports: TCP 5985 and 5986
 
 Regular listeners use TCP 5985 for HTTP and TCP 5986 for HTTPS. A running service alone says nothing about a usable listener. Run the following queries locally on the target to inspect the actual configuration, including bound addresses. [Microsoft: WinRM installation and configuration](https://learn.microsoft.com/en-us/windows/win32/winrm/installation-and-configuration-for-windows-remote-management).
 
