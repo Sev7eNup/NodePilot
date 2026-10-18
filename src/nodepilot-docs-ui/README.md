@@ -176,7 +176,8 @@ Doku und serviert Website (Port 5176) und Doku (Port 5187) getrennt per `vite pr
 - `pages-redirects.spec.ts`: alte GitHub-Pages-Links landen auf der passenden kanonischen Adresse,
   Doku-Seiten auch ohne JavaScript per Meta-Refresh.
 - `seo.spec.ts`: statischer Seiteninhalt, Canonical und Sprachverweise ohne JavaScript,
-  Artikel-Navigation, responsive Bilder und die Schulungsvideo-Dialoge.
+  Artikel-Navigation, responsive Bilder (hell und dunkel), der Hell/Dunkel-Umschalter und die
+  Schulungsvideo-Dialoge.
 
 ## Geführter Produkteinstieg
 

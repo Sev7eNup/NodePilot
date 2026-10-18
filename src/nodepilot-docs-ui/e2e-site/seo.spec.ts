@@ -128,16 +128,40 @@ test('article navigation loads only the selected body and keeps body text out of
   expect(docsBundle).not.toContain('Das folgende Migrationsbeispiel ist konstruiert.')
 })
 
-test('mobile product screenshot selects a small responsive image and switches tabs', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 900 })
-  await page.goto('/product/')
-  const image = page.locator('#product-image')
-  await image.scrollIntoViewIfNeeded()
-  await expect(image).toHaveAttribute('srcset', /480w, .*960w/)
-  await expect.poll(() => image.evaluate(img => (img as HTMLImageElement).currentSrc)).toMatch(/designer-480\.webp$/)
-  await page.locator('[data-product-tab="logs"]').click()
-  await expect(image).toHaveAttribute('data-media', 'logs')
-  await expect(image).toHaveAttribute('srcset', /logs-480\.webp/)
+for (const [scheme, suffix] of [['dark', ''], ['light', '-light']] as const) {
+  test.describe(`product screenshot in ${scheme} mode`, () => {
+    test.use({ colorScheme: scheme })
+
+    test('mobile screenshot selects a small responsive image and switches tabs', async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 900 })
+      await page.goto('/product/')
+      const image = page.locator('#product-image')
+      await image.scrollIntoViewIfNeeded()
+      await expect(image).toHaveAttribute('srcset', /480w, .*960w/)
+      await expect.poll(() => image.evaluate(img => (img as HTMLImageElement).currentSrc)).toMatch(new RegExp(`designer${suffix}-480\\.webp$`))
+      await page.locator('[data-product-tab="logs"]').click()
+      await expect(image).toHaveAttribute('data-media', `logs${suffix}`)
+      await expect(image).toHaveAttribute('srcset', new RegExp(`logs${suffix}-480\\.webp`))
+    })
+  })
+}
+
+test.describe('theme toggle', () => {
+  test.use({ colorScheme: 'dark' })
+
+  test('switches the mode, swaps the screenshot and remembers the choice', async ({ page }) => {
+    await page.goto('/product/')
+    const html = page.locator('html')
+    const image = page.locator('#product-image')
+    await expect(html).toHaveClass(/dark/)
+    await expect(image).toHaveAttribute('data-media', 'designer')
+    await page.locator('#theme-toggle').click()
+    await expect(html).not.toHaveClass(/dark/)
+    await expect(image).toHaveAttribute('data-media', 'designer-light')
+    expect(await page.evaluate(() => localStorage.getItem('np-docs-theme'))).toBe('light')
+    await page.reload()
+    await expect(html).not.toHaveClass(/dark/)
+  })
 })
 
 test.describe('training videos', () => {
