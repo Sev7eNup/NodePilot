@@ -92,7 +92,7 @@ test('language URLs, navigation metadata, history and article links stay consist
   await page.goForward()
   await expect(page.locator('#solution-page')).toBeVisible()
   await page.locator('[data-nav="blog"]').click()
-  await expect(page.locator('.blog-index-row:visible')).toHaveCount(16)
+  await expect(page.locator('.blog-index-row:visible')).toHaveCount(17)
   await page.locator('#blog-search').fill('first workflow')
   await expect(page.locator('.blog-index-row:visible')).toHaveCount(1)
   expect(errors).toEqual([])
