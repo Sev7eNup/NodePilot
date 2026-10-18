@@ -186,7 +186,7 @@ nodepilot_trigger_orchestrator_sync_duration_milliseconds_bucket{otel_scope_name
 nodepilot_trigger_orchestrator_sync_duration_milliseconds_sum{otel_scope_name="NodePilot.Scheduler",otel_scope_version="1.0.0"} 274.34529999999995 1778106956712
 nodepilot_trigger_orchestrator_sync_duration_milliseconds_count{otel_scope_name="NodePilot.Scheduler",otel_scope_version="1.0.0"} 4 1778106956712
 # TYPE nodepilot_trigger_orchestrator_sync_changes_total counter
-# HELP nodepilot_trigger_orchestrator_sync_changes_total Add/update/remove changes applied per orchestrator sync pass, tagged by change type.
+# HELP nodepilot_trigger_orchestrator_sync_changes_total Changes applied per orchestrator sync pass, tagged by change type (add/update/remove/evict-unhealthy) and trigger_type. 'evict-unhealthy' means a registered source reported itself dead and is being re-created.
 nodepilot_trigger_orchestrator_sync_changes_total{otel_scope_name="NodePilot.Scheduler",otel_scope_version="1.0.0",change="add",trigger_type="scheduleTrigger"} 4 1778106956712
 nodepilot_trigger_orchestrator_sync_changes_total{otel_scope_name="NodePilot.Scheduler",otel_scope_version="1.0.0",change="add",trigger_type="eventLogTrigger"} 2 1778106956712
 nodepilot_trigger_orchestrator_sync_changes_total{otel_scope_name="NodePilot.Scheduler",otel_scope_version="1.0.0",change="add",trigger_type="databaseTrigger"} 1 1778106956712
