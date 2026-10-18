@@ -70,13 +70,14 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
 - **Shapes by category:** a pentagon bookend pair (trigger `◁` plus returnData `▷`, mirrored horizontally); **every action activity has its own clip-path silhouette** (the icon stays centred and unclipped); control flow has one shape each (decision = diamond, junction = hexLong, forEach = reel, startWorkflow = tagLeft) with an **indigo group frame** — all via clip-path.
 - **Display styles:** **classic** (compact, icon-centred) and **card/MD3** (header plus config summary). Toggle with `Ctrl+Shift+N` (Expert).
 - **Colours & icon:** per activity type from CSS variables (`--act-<type>-color/-bg/-border`) plus a Material Symbols icon.
-- **Handles/ports:** all four sides bidirectionally (the "flexible ports" toggle that used to gate the mouse is gone; all four handles are always connectable). Each port has an invisible hit zone three times the size of the dot, and a dragged connection snaps to a port within about 24 screen pixels at every zoom level. The dot's size and position do not change. Because the hit zone covers the end of an unselected edge, a drag there starts a new connection; to move an edge end, select the edge first or use "Detach target".
+- **Handles/ports:** all four sides bidirectionally — except the `aiAgentTeam` node (see below) — (the "flexible ports" toggle that used to gate the mouse is gone; all four handles are always connectable). Each port has an invisible hit zone three times the size of the dot, and a dragged connection snaps to a port within about 24 screen pixels at every zoom level. The dot's size and position do not change. Because the hit zone covers the end of an unselected edge, a drag there starts a new connection; to move an edge end, select the edge first or use "Detach target".
 - **Status badges:**
   - **Disabled** (crossed-out eye) — the node is skipped but stays editable (50 % opacity, dashed).
   - **Breakpoint** (red dot; amber when conditional) — pulses while the debugger waits there.
   - **Fan-in** (the incoming edge count) colour-coded by junction mode (waitAll/waitAny/waitNofM/auto).
   - **Lint** (red = error, amber = warning, counter caps at 9+).
   - **Simulation** ("will run" / "skipped").
+- **Agent team node:** `aiAgentTeam` renders as its own wide card (`AgentTeamNode`) instead of a clip-path shape: the step label, then one clickable row per member (supervisor first, with role, tool count and live member status). It has a single target handle on the left and a single source handle on the right, so edges attach to those two sides only. Details: `docs/ai-agents.md`.
 - **Live status overlay:** Running (amber, pulsing ring), Succeeded (green), Failed (red), Skipped (grey, dashed), Paused (dark orange, pulsing).
 - **Heatmaps & paths:** failure tint (red, scaled by failure rate), critical-path glow (orange) plus slack badge, coverage greying (never/rare).
 - **Schedule preview:** for `scheduleTrigger`, the next fire time is shown (computed by the server's Quartz in the server time zone via `GET /api/triggers/schedule/next-fires`), "⏸ Paused" when the workflow is disabled.
@@ -191,6 +192,9 @@ Each activity type has its own config component (`properties/activities/`, regis
 | `forEach` | **items** (multiline), **itemsFormat** (auto/json/lines), **childWorkflowNameOrId** plus picker, **itemParameterName** (default "item"), **indexParameterName** (default "index"), **maxParallelism** (0–64), **timeoutSecondsPerItem**, **continueOnError**, additional **parameters** (ParameterTable) |
 | `decision` | **cases** (name plus ConditionBuilder, sortable via up/down, first match → `param.case`), **defaultCaseName** |
 | `returnData` | **data** (a freely extendable key/value table) |
+| `aiAgent` | **task** (required, supports `{{templates}}`), the agent block: **role**, **instructions**, **model** (empty = active LLM profile), **tools** (checkbox groups, plus MCP tools picked per server), **skills**; when a tool needs a target (file, shell, log collection): machine, credential or service identity, working directory. Result block: **resultFormat** (text/json) with **resultSchema** (JSON schema field, json only); collapsible **budgets** `maxModelCalls` / `maxToolCalls`. Needs `Llm:Enabled=true`; semantics in `docs/ai-agents.md` |
+| `aiAgentTeam` | The same **task** and result block (**resultFormat**/**resultSchema**), plus **members** (a tab list: create team, add/remove member) with a **team lead** (supervisor) and per member the same role/instructions/model/tools/target/skills editor as `aiAgent` and a **team function** (specialist/reviewer; the supervisor is fixed); an AI **team draft** button. Budgets add `maxDelegations` and `maxParallelMembers`. The node is drawn as `AgentTeamNode` (§3); semantics in `docs/ai-agents.md` |
+| `custom:<key>` | Custom activities have no hand-written component: `DynamicActivityConfig` renders one field per **input** declared in the definition (string/number/multiline fields with `{{` autocomplete, boolean checkbox, select), required inputs marked with `*`. A deleted or disabled definition shows a notice instead. The definition itself is managed under Custom Nodes; see `docs/custom-activities.md` |
 | `startWorkflow` | workflow picker plus preview button, **workflowNameOrId**, **waitForCompletion**; parameters via ContractMappingTable (with a known contract) otherwise ParameterTable; a timeout in synchronous mode |
 
 > Every remote activity additionally shows target machine, credential, test connection and, where applicable, a timeout.
@@ -203,7 +207,7 @@ Each activity type has its own config component (`properties/activities/`, regis
 | `manualTrigger` | **title**, **description**, **input parameters** (name plus **type** string/number/boolean/select plus required plus default); a live hint shows the access syntax |
 | `scheduleTrigger` | **cronExpression** plus 4 presets (`0 */5 * * * ?`, `0 0 * * * ?`, `0 0 6 * * ?`, `0 0 8 ? * MON-FRI`), a **live preview of the next 5 fire times** (server-side Quartz via `GET /api/triggers/schedule/next-fires`, relative times, red parse errors), description |
 | `webhookTrigger` | **HTTP method** (POST/PUT/GET), **webhook path** (template-capable), optional **secret** (password field), **signatureMode** (header/nodepilot-hmac-v2; legacy `hmac` cannot be selected) with **signatureHeader**/**signaturePrefix** (default `sha256=`) in hmac-v2 mode, **fieldMappings** (name + JSONPath → `manual.*`) |
-| `fileWatcherTrigger` | **directory**, **filter** (default `*.*`, comma-separated globs), **watchType** (created/changed/deleted/renamed/any), **includeSubdirectories** |
+| `fileWatcherTrigger` | **directory**, **filter** (default `*.*`; a single glob pattern, passed unsplit to one `FileSystemWatcher` filter, so comma-separated lists are not supported), **watchType** (created/changed/deleted/renamed/any), **includeSubdirectories** |
 | `databaseTrigger` | **connectionRef** (a reference into `Trigger:Database:Connections`), **pollingIntervalSeconds** (default 30, minimum 5; alias `intervalSeconds`), **query** (multiline, with an SQL template warning on `{{`) |
 | `eventLogTrigger` | **logName** (Application/System/Security/Setup), **entryType** (any/Error/Warning/Information/SuccessAudit/FailureAudit), **source** (optional), **eventId** (optional), **messagePattern** (optional, a regex against the message text), **lookbackMinutes** (default 5, applies to the manual test run only) |
 
@@ -273,18 +277,30 @@ Each activity type has its own config component (`properties/activities/`, regis
 ## 17. Editor chrome
 
 ### Header & toolbar
-Seven clusters with a proximity-driven colour glow (purely cosmetic, prefers-reduced-motion aware):
+Two header layouts exist; `designStore.toolbarLayout` picks one (default `compact`), and the toolbar layout switch below flips between them. Both put their controls in `ToolbarSection` groups on a proximity-driven colour glow (purely cosmetic, prefers-reduced-motion aware).
+
+**Compact (default)** — one row, three zones: identity on the left (back, brand, standard/expert toggle, AI assistant), the centred click-to-rename workflow name, and four toolbar sections on the right:
 1. **History:** undo, redo.
-2. **Layout** (with write permission): tidy (Expert shows the algorithm), restore original layout (Expert).
-3. **Inspect:** search, find & replace (Expert), zoom to selection (Expert), diff (Expert), simulation (Expert), shortcuts (Expert), hidden-types pill.
-4. **View** (Expert): the **"appearance" settings dialog** (settings icon, `role="dialog"`) — it gathers every canvas display option (node style, icon view, ports/auto-hide, edge animation/routing/width, node and label size, premium canvas, snap grid) as labelled card rows with a switch, segmented control or stepper; plus the activity type filter.
-5. **Run:** run, debug run (Expert), cancel, lint pill, and the **"view" popover** (Expert, an eye icon with an active counter): it gathers the overlay switches — machine colouring, failure heatmap, data flow, coverage, critical path — as switch rows.
-6. **Lifecycle** (with role write permission): edit-lock toggle, save (with a dirty dot), publish/disable/enable.
-7. **Export** (Expert): JSON, PNG. In standard mode these live in the more menu.
+2. **Inspect:** search in both modes. **Expert:** the **"appearance" settings dialog** (`ViewMenu`, `role="dialog"`: node style, icon view, ports/auto-hide, edge animation/routing/width, node and label size, premium canvas, snap grid, as labelled card rows with a switch, segmented control or stepper), the **"view" popover** (`OverlaysMenu`, an eye icon with an active counter: machine colouring, failure heatmap, data flow, coverage, critical path as switch rows), the activity type filter, and the **tools menu** (`ToolsMenu`: find & replace, zoom to selection, diff, simulation, shortcuts, tidy and restore original layout, JSON and PNG export). **Standard:** the hidden-types pill (only while activity types are hidden) and the more menu (`StandardMoreMenu`: diff, shortcuts, JSON, PNG).
+3. **Run:** the green run CTA, debug run (Expert), cancel and the lint pill.
+4. **Lifecycle** (with role write permission): edit-lock toggle, save (with a dirty dot), publish/disable/enable.
+
+The layout switch and the skin switcher trail after the sections.
+
+**Classic** — the inline row: the name is right-aligned, every toggle and tool is its own button, the run button is icon-only, and whole sections wrap onto further lines in narrow windows. Seven sections:
+1. **History:** undo, redo.
+2. **Layout** (with write permission): tidy (the algorithm is shown in the tooltip), restore original layout (Expert).
+3. **Inspect:** search; Expert adds find & replace, zoom to selection, diff, simulation and shortcuts; standard mode shows the hidden-types pill (only while types are hidden).
+4. **View** (Expert): the inline design toggles (`ClassicDesignToggles`) plus the activity type filter.
+5. **Run:** run, debug run (Expert), cancel and the lint pill; Expert adds the inline overlay toggles (`ClassicOverlayToggles`).
+6. **Lifecycle** (with role write permission): as in compact.
+7. **Export:** JSON and PNG buttons (Expert); in standard mode the more menu.
+
+**New workflow pill (both layouts, on the canvas):** a floating "New workflow" pill in the top right corner of the canvas, shown to Admin and Operator only (`NewWorkflowButton`). A name popover creates an empty workflow in the folder of the open workflow (so folder-scoped users do not hit the Root default) and opens it; it stacks below the exit pill in fullscreen.
 
 Back navigation (far left): the arrow goes to the workflow list. After switching from another workflow (sub-workflow link, breadcrumb, `Ctrl+P`) it steps back to that workflow instead, and a **list button** next to it leads straight to the workflow list. Unsaved changes ask for confirmation in both cases.
 
-Outside the seven clusters in the header (to the right of the standard/expert toggle):
+Besides the sections, the header carries (to the right of the standard/expert toggle):
 - **AI workflow assistant button** (primary-gradient pill, `ChatBot` icon; shown only when an LLM endpoint is usable) — opens the chat panel; described fully in § 15.
 - **Toolbar layout switch** (`Row` icon, `data-testid="toggle-toolbar-layout"`, to the left of the skin switcher, visible in **both** layouts): flips the header between the compact three-zone layout (the default; grouped view/overlays/tools popovers, a centred name, a green "run" CTA) and the classic inline row (every toggle and tool as an individual button, a right-aligned name, an icon-only play). Persisted in the `designStore` (`toolbarLayout`, default `compact`). Both layouts share `EditorIdentity`/`SkinSwitcher`/`RunControls`/`LifecycleControls`/`StandardMoreMenu` (so there is no double-maintenance drift); the `EditorHeader` dispatcher only reads `toolbarLayout` and renders `CompactEditorHeader` or `ClassicEditorHeader`. The classic row wraps whole clusters onto several lines in narrow windows and keeps the proximity glow trays.
 - **Colour skin switcher** (palette icon, icon only, at the far right after the toolbar layout switch): opens a popover with all 10 skins plus `system` from the `THEMES` registry. The selection syncs with the settings picker and the sidebar (a shared `useThemeStore`); the active skin gets a check icon; clicking outside closes the popover.

@@ -1,7 +1,6 @@
 # Sub-Workflow Contracts — Manual Test Cases
 
 Manuelle Test-Cases für Feature **Sub-Workflow Contracts V1**.
-Branch: `feat/sub-workflow-contracts`.
 Code-Tests (xUnit + vitest): `tests/NodePilot.Api.Tests/Services/WorkflowContractDeriverTests.cs` (16), `tests/NodePilot.Api.Tests/Controllers/WorkflowsControllerTests.cs::GetContract*` (7), `src/nodepilot-ui/src/__tests__/hooks/useWorkflowContract.test.tsx` (5), `src/nodepilot-ui/src/__tests__/components/properties/ContractMappingTable.test.tsx` (9). Diese Datei deckt die End-to-End-UX ab, die Code-Tests nicht erreichen.
 
 ## Setup
@@ -13,19 +12,19 @@ Code-Tests (xUnit + vitest): `tests/NodePilot.Api.Tests/Services/WorkflowContrac
 
 ## Vorbereitung — Test-Workflows
 
-Lege diese drei Workflows einmal an, sie werden in mehreren Cases referenziert:
+Lege diese drei Workflows einmal an, sie werden in mehreren Cases referenziert. Die Fixtures folgen der Designer-Ausgabe: jeder Knoten hat `type: "activity"` (Trigger sind Activity-Knoten mit `activityType: manualTrigger`), Parametertypen sind `string`/`number`/`boolean`/`select`.
 
 ### "Patch-Server" (Child mit komplettem Contract)
 
 ```json
 {
   "nodes": [
-    {"id":"trigger","type":"trigger","position":{"x":80,"y":120},"data":{
+    {"id":"trigger","type":"activity","position":{"x":80,"y":120},"data":{
       "activityType":"manualTrigger",
       "config":{"parameters":[
         {"name":"serverName","type":"string","required":true,"description":"Hostname or FQDN"},
         {"name":"reboot","type":"boolean","required":false,"default":"false"},
-        {"name":"maxDurationMin","type":"int","required":false,"default":"30"}
+        {"name":"maxDurationMin","type":"number","required":false,"default":"30"}
       ]}
     }},
     {"id":"return","type":"activity","position":{"x":480,"y":120},"data":{
@@ -42,7 +41,7 @@ Lege diese drei Workflows einmal an, sie werden in mehreren Cases referenziert:
 ```json
 {
   "nodes":[
-    {"id":"trigger","type":"trigger","position":{"x":80,"y":120},"data":{
+    {"id":"trigger","type":"activity","position":{"x":80,"y":120},"data":{
       "activityType":"manualTrigger",
       "config":{"parameters":[{"name":"path","type":"string","required":true}]}
     }}
@@ -176,7 +175,7 @@ Zweistufiger Workflow mit Decision: bei Erfolg → returnData-A, bei Failure →
 
 **Setup:** Child-Workflow mit zwei manualTrigger-Nodes:
 - Trigger A: `parameters: [{name:"x", type:"string"}]`
-- Trigger B: `parameters: [{name:"x", type:"int"}]`
+- Trigger B: `parameters: [{name:"x", type:"number"}]`
 
 **Steps:**
 1. Parent zeigt auf diesen Child.
@@ -252,7 +251,8 @@ Zweistufiger Workflow mit Decision: bei Erfolg → returnData-A, bei Failure →
 2. API direkt: `curl -b cookies.txt http://localhost:5000/api/workflows/<id>/contract`.
 
 **Expected:**
-- API liefert 200 + Contract-Body (`[Authorize]` ohne Rolle reicht).
+- API liefert 200 + Contract-Body, sofern der Viewer Folder-Read auf den Ordner des Child-Workflows hat; ohne Folder-Read antwortet sie 404.
+- Die Defaults der Inputs sind für Nicht-Editoren maskiert: jeder gesetzte Default erscheint als `***` (Inputs ohne Default bleiben leer). Ein Editor (Folder-Edit) sieht die echten Werte; der Hint „Default: false" aus TC-1 zeigt dem Viewer deshalb `***`.
 - UI zeigt ContractMappingTable, alle Inputs sind disabled (durch das fieldset-Wrap im Properties-Panel).
 - Stale-Keys-Remove-Button ist disabled.
 
