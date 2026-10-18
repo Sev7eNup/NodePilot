@@ -434,6 +434,8 @@ describe('contracts read through the real clients', () => {
   });
 
   it('reports coverage with the field names the heatmap reads', async () => {
+    // The handler windows against `Date.now()`; a world pinned to a fixed instant drifts out of the 30-day window.
+    configureWorld(() => buildWorld(Date.now()));
     const workflow = getWorld().workflows[0];
     const coverage = await api.get<WorkflowCoverageResponse>(`/workflows/${workflow.id}/coverage?windowDays=30`);
 
