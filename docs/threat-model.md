@@ -48,7 +48,7 @@ Supporting decisions: [security findings](security-findings.md),
 | Credential list/get exposes a password or protected blob | Only explicit metadata DTOs leave the API | `CredentialsControllerTests`; source review of DTO construction |
 | Agent selects an unknown target, omits credentials, or keeps using revoked service identity | Rejected without a target fallback or new execution | `AgentTargetTests` |
 | Prompt/tool output requests shell mutation, dynamic execution, write HTTP or a writing child workflow | Denied by host policy before external execution | `AgentPermissionPolicyTests`, `AgentReadCallsTests`, `AgentReadWorkflowTests` |
-| MCP server revision/contract changes after approval | Invocation rejected until administrator re-approval | `AgentReadCallsTests` |
+| MCP server revision/contract changes after approval | Invocation rejected until administrator re-approval | `AgentMcpTests`, `AgentReadCallsTests` |
 | WinRM setup disables required TLS or puts connection-error secrets in spans | Rejected / sanitized | `WinRmSessionFactoryGuardTests`, `WinRmSessionSpanRedactionTests` |
 
 Tests are evidence for these cases, not proof that every bypass is impossible. A focused
