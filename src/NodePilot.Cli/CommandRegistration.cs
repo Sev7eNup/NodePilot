@@ -259,6 +259,7 @@ public static class CommandRegistration
         {
             st.SetDescription("Inspect and edit runtime configuration (Admin only — /api/admin/settings).");
             st.AddCommand<SettingsStatusCommand>("status").WithDescription("Show overrides path + restart-required state.");
+            st.AddCommand<SettingsRestartServiceCommand>("restart-service").WithDescription("Restart the NodePilot Windows service (Admin).");
             st.AddCommand<SettingsSystemInfoCommand>("system-info").WithDescription("Read-only system info (DB provider, cluster, JWT issuer, ...).");
             st.AddCommand<SettingsEffectiveSizingCommand>("effective-sizing").WithDescription("Show the sizing actually in force and the constraint behind each value.");
             st.AddCommand<SettingsGetCommand>("get").WithDescription("GET the full snapshot or one section (use --etag-only for chained automation).");

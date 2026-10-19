@@ -413,6 +413,7 @@ A file round trip, not `set key=value`. `get [SECTION]` (with `--etag-only` for 
 
 ```bash
 np settings status
+np settings restart-service --yes                  # restart the Windows service (Admin)
 np settings system-info
 np settings get Smtp -o json
 ETAG=$(np settings get Smtp --etag-only)            # a weak validator, quotes/prefix stripped

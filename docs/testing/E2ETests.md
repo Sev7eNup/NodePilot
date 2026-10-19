@@ -4511,6 +4511,25 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ---
 
+### Test 76.3c — RestartBanner ohne Neustart-Button
+
+**Schritte:** `/status` mit `restartRequired:true` und `canRestartService:false` → System-Tab öffnen.
+
+**Prüfpunkte:**
+- [ ] Banner erscheint, aber ohne „Dienst jetzt neu starten" (Dev-Instanz, kein Windows-Dienst, Dienst ohne Restart-Recovery oder Server ohne die Fähigkeit).
+
+---
+
+### Test 76.3d — Dienst-Neustart aus dem Banner
+
+**Schritte:** `/status` mit `restartRequired:true` und `canRestartService:true` → Button klicken → Dialog abbrechen → Button erneut klicken → bestätigen.
+
+**Prüfpunkte:**
+- [ ] Abbrechen sendet nichts. Bestätigen sendet genau einen `POST /api/admin/settings/restart-service`.
+- [ ] Banner zeigt den Fortschrittstext und verschwindet, sobald `/status` den Marker nicht mehr meldet.
+
+---
+
 ### Test 76.4 — Support-Log Viewer (SupportEventsTable)
 
 **Schritte:** Support-Log öffnen → Plain-Text-Toggle klicken.

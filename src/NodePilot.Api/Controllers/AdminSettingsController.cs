@@ -8,6 +8,7 @@ using NodePilot.Ai;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Configuration;
 using NodePilot.Api.Dtos.Settings;
+using NodePilot.Api.Hosting;
 using NodePilot.Api.Security.Ldap;
 using NodePilot.Api.Services;
 using NodePilot.Core.Interfaces;
@@ -78,16 +79,48 @@ public sealed class AdminSettingsController : ControllerBase
     }
 
     [HttpGet("status")]
-    public ActionResult<SettingsStatusResponse> GetStatus()
+    public ActionResult<SettingsStatusResponse> GetStatus([FromServices] ServiceRestartCoordinator? restart = null)
     {
         var status = _writer.ReadStatus();
+        var capability = restart?.Capability ?? ServiceRestartCapability.No("NOT_A_WINDOWS_SERVICE");
         return Ok(new SettingsStatusResponse(
             OverridesPath: status.OverridesPath,
             RestartRequired: status.RestartRequired,
             RestartRequiredSince: status.RestartRequiredSince,
             RestartRequiredFor: status.RestartRequiredFor,
             LastSavedAt: status.LastSavedAt,
-            LastSavedBy: status.LastSavedBy));
+            LastSavedBy: status.LastSavedBy,
+            CanRestartService: capability.Available,
+            RestartUnavailableReason: capability.UnavailableReason));
+    }
+
+    /// <summary>
+    /// Restarts the Windows service so restart-required settings take effect. Answers 202 and
+    /// ends the process shortly after; the SCM recovery actions start it again.
+    /// </summary>
+    [HttpPost("restart-service")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RestartService([FromServices] ServiceRestartCoordinator restart)
+    {
+        var capability = restart.Capability;
+        if (!capability.Available)
+        {
+            return Conflict(new
+            {
+                code = "SERVICE_RESTART_UNAVAILABLE",
+                reason = capability.UnavailableReason,
+                message = "This process cannot restart itself: it must run as a Windows service with restart recovery actions.",
+            });
+        }
+
+        var username = User.Identity?.Name ?? "unknown";
+        // Audit before the restart is scheduled: the process ends right after the response.
+        await _audit.LogAsync(AuditActions.SettingsServiceRestartRequested, "Settings", null,
+            AuditDetails.Json(("requestedBy", username), ("node", _clusterState.NodeId)), CancellationToken.None);
+
+        restart.TryScheduleRestart(username);
+        return Accepted(new { code = "SERVICE_RESTART_SCHEDULED" });
     }
 
     [HttpGet]

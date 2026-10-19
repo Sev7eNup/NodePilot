@@ -38,7 +38,7 @@ Moderner, schlanker Ersatz fuer Microsoft System Center Orchestrator. Agentless 
 - **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` braucht `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`, sonst Boot-Abbruch). Lokale Nutzerskripte (`engine: auto`) laufen als Windows-PowerShell-5.1-Prozess wie remote; der In-Proc-Pool (WinPS-Kompatibilität bewusst aus) bedient die eingebauten Activities und `engine: runspace`: `docs/claude-reference.md`
 - **Real-time:** SignalR (`/hubs/execution`)
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
-- **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 112 Tools, HTTP-only gegen die REST-API
+- **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 113 Tools, HTTP-only gegen die REST-API
 - **Enterprise (opt-in):** Active/Passive HA (`Cluster:Enabled`), pluggable Secret-Provider (`Secrets:Provider` = `Dpapi`|`AesGcm`), LDAP/Windows-SSO, ECS-JSON-SIEM, Folder-RBAC
 
 ## Solution-Struktur
@@ -354,7 +354,7 @@ Parity-/Drift-Tests erzwingen Konsistenz zwischen weit auseinanderliegenden Date
 
 ## Clients (`np` CLI + `nodepilot-mcp`)
 
-Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad; der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (112 Tools, 3 Resources, stdio). Packaging, Anmeldewege, geteilte Client-Infrastruktur und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`.
+Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad; der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (113 Tools, 3 Resources, stdio). Packaging, Anmeldewege, geteilte Client-Infrastruktur und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`.
 
 **Jeder neue API-Endpoint braucht beide Clients** (Guard: `EndpointClientCoverageTests`).
 
@@ -394,6 +394,8 @@ Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pf
 ## Admin-Settings Hot-Reload
 
 Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker. 13 Sektionen sind hot-reloadable, 10 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed. Matrix: `docs/claude-reference.md` § Hot-Reload-Matrix.
+
+**Dienst-Neustart aus der UI** (`POST /api/admin/settings/restart-service`): Selbst-Exit mit Code 75 vor `SERVICE_STOPPED`, den Neustart macht die SCM-Recovery der Installer; nur verfügbar, wenn jede Recovery-Aktion ein Restart ist — `docs/claude-reference.md` § Dienst-Neustart.
 
 **Consumer-Regel:** hot-reloadable Werte via `IOptionsMonitor<T>.CurrentValue` bzw. rohes `IConfiguration` pro Use/Pass lesen — **nie** `IOptions<T>.Value`-Snapshot.
 

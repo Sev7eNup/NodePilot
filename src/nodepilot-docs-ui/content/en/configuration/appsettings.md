@@ -62,6 +62,8 @@ The entire `Authentication` section is fixed at boot. Saves through the admin se
 
 In a cluster, authentication is **config-as-code**: `PUT /api/admin/settings/Authentication` answers with `409 CLUSTER_CONFIG_AS_CODE_REQUIRED`. The configuration and secrets have to be rolled out identically to all nodes, after which a cluster restart is required. The shared data-protection key ring protects OIDC correlation, nonce and server-side tickets across node changes. The certificate can be separate from the Kestrel TLS certificate, but has to be available with its private key on every node.
 
+**Restarting from the UI.** When a save needs a restart, the banner on the settings page offers *Restart service now* (`POST /api/admin/settings/restart-service`, `np settings restart-service`, MCP `restart_service`). The process stops its host gracefully and then ends with exit code 75 *before* the service reports "stopped"; the Service Control Manager treats that as a crash and starts it again through the recovery actions the installers configure (`restart/5000/…`). No service-control rights are needed. The button only appears when the server runs as a Windows service **and** every configured recovery action is a restart — otherwise the endpoint answers `409 SERVICE_RESTART_UNAVAILABLE` (`NOT_A_WINDOWS_SERVICE`, `SERVICE_NOT_RESOLVED`, `RECOVERY_NOT_CONFIGURED`). Running executions are cancelled; the Windows event log records the restart as an unexpected service termination. Within the 24 h reset window the SCM delays the third restart by 60 s. In a cluster the restart only affects the node you are connected to and triggers a failover.
+
 Details: [AD SSO Preview](../enterprise/ldap-windows-sso), [Authentication](../api/authentication).
 
 ## Cluster / HA

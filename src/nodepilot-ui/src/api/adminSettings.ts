@@ -47,6 +47,9 @@ export type SettingsStatus = {
   restartRequiredFor: string[];
   lastSavedAt: string | null;
   lastSavedBy: string | null;
+  // False (or absent on a server that predates the capability) hides the restart button.
+  canRestartService?: boolean;
+  restartUnavailableReason?: string | null;
 };
 
 // What the process is actually sized to. `manualTuning` is the mode it booted in;
@@ -143,6 +146,11 @@ async function expectOk<T>(boundaryResponse: BoundaryResponse): Promise<T> {
 export const adminSettings = {
   async getStatus(): Promise<SettingsStatus> {
     return expectOk(await adminFetch('/admin/settings/status'));
+  },
+
+  // 202: the service ends itself shortly after answering and the SCM starts it again.
+  async restartService(): Promise<void> {
+    await expectOk(await adminFetch('/admin/settings/restart-service', { method: 'POST' }));
   },
 
   async getSnapshot(): Promise<SettingsSectionResponse<unknown>[]> {

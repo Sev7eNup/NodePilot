@@ -413,6 +413,7 @@ File-Roundtrip, kein `set key=value`. `get [SECTION]` (mit `--etag-only` für Ch
 
 ```bash
 np settings status
+np settings restart-service --yes                  # Windows-Dienst neu starten (Admin)
 np settings system-info
 np settings get Smtp -o json
 ETAG=$(np settings get Smtp --etag-only)            # schwacher Validator, Quotes/Prefix stripped

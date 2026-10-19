@@ -85,7 +85,7 @@ Destructive/admin tools are **not registered at all** unless `NODEPILOT_MCP_ALLO
 
 `delete_workflow`, `force_unlock_workflow`, `cancel_all_executions`, `test_step`, `delete_machine`,
 `delete_credential`, `delete_global_variable`, `delete_global_variable_folder`,
-`delete_alerting_rule`, `delete_system_alert_policy`.
+`delete_alerting_rule`, `delete_system_alert_policy`, `restart_service`.
 
 Every tool also carries MCP annotations: read tools are `readOnly`, the gated ones are
 `destructive`, and `enable`/`disable`/`lock`/`unlock`/`cancel` are `idempotent`.
@@ -116,7 +116,7 @@ Large free-text fields (stdout/stderr, return data, audit details, diagnostics) 
 
 ## Tool catalog
 
-100 default tools across 11 groups, plus 12 gated destructive tools (112 total). (Roles refer to the
+100 default tools across 11 groups, plus 13 gated destructive tools (113 total). (Roles refer to the
 authenticated user.)
 
 ### Discovery
@@ -219,7 +219,8 @@ replacement for database permissions against every provider extension.
 `delete_workflow` (Admin) · `force_unlock_workflow` (Admin) · `cancel_all_executions` ·
 `delete_machine` (Admin) · `delete_credential` (Admin) · `delete_global_variable` (Admin) ·
 `delete_global_variable_folder` (Admin, `recursive=true` nimmt Unterordner + Variablen mit) ·
-`delete_alerting_rule` (Admin) · `delete_system_alert_policy` (Admin)
+`delete_alerting_rule` (Admin) · `delete_system_alert_policy` (Admin) ·
+`restart_service` (Admin, `confirm=true`, restarts the Windows service; 409 when it cannot self-restart)
 
 ## Agent activities and registries
 

@@ -167,6 +167,48 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
         var status = await _client.GetSettingsStatusAsync(CancellationToken.None);
         status.OverridesPath.Should().Be("/srv/nodepilot/appsettings.runtime.json");
         status.RestartRequired.Should().BeFalse();
+        // A server that predates the restart capability omits both fields.
+        status.CanRestartService.Should().BeFalse();
+        status.RestartUnavailableReason.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetSettingsStatusAsync_RestartCapability_Parses()
+    {
+        _server.Given(Request.Create().WithPath("/api/admin/settings/status").UsingGet())
+               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+               {
+                   overridesPath = "/x", restartRequired = true,
+                   restartRequiredSince = (DateTimeOffset?)null,
+                   restartRequiredFor = new[] { "Smtp" },
+                   lastSavedAt = (DateTimeOffset?)null, lastSavedBy = (string?)null,
+                   canRestartService = false, restartUnavailableReason = "RECOVERY_NOT_CONFIGURED",
+               }));
+        var status = await _client.GetSettingsStatusAsync(CancellationToken.None);
+        status.CanRestartService.Should().BeFalse();
+        status.RestartUnavailableReason.Should().Be("RECOVERY_NOT_CONFIGURED");
+    }
+
+    [Fact]
+    public async Task RestartServiceAsync_Accepted_Completes()
+    {
+        _server.Given(Request.Create().WithPath("/api/admin/settings/restart-service").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(202).WithBodyAsJson(new { code = "SERVICE_RESTART_SCHEDULED" }));
+
+        await _client.RestartServiceAsync(CancellationToken.None);
+
+        _server.LogEntries.Should().ContainSingle(e => e.RequestMessage.Path == "/api/admin/settings/restart-service");
+    }
+
+    [Fact]
+    public async Task RestartServiceAsync_Unavailable_ThrowsApiException()
+    {
+        _server.Given(Request.Create().WithPath("/api/admin/settings/restart-service").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(409).WithBodyAsJson(
+                   new { code = "SERVICE_RESTART_UNAVAILABLE", reason = "NOT_A_WINDOWS_SERVICE" }));
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => _client.RestartServiceAsync(CancellationToken.None));
+        ex.StatusCode.Should().Be(System.Net.HttpStatusCode.Conflict);
     }
 
     [Fact]

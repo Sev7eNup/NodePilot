@@ -340,6 +340,19 @@ public class CommandIntegrationNewSurfaceTests
     }
 
     [Fact]
+    public void SettingsRestartService_WithYes_PostsRestart()
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/admin/settings/restart-service").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(202).WithBodyAsJson(new { code = "SERVICE_RESTART_SCHEDULED" }));
+
+        var result = h.Run("settings", "restart-service", "--yes");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        h.Server.LogEntries.Should().ContainSingle(e => e.RequestMessage.Path == "/api/admin/settings/restart-service");
+    }
+
+    [Fact]
     public void SettingsGet_EtagOnly_PrintsBareEtag()
     {
         using var h = new CommandTestHarness();

@@ -183,4 +183,31 @@ public sealed class SystemAlertingToolsTests
         api.Server.LogEntries.Should().Contain(e =>
             e.RequestMessage!.AbsolutePath == $"/api/alerting/system/policies/{id}" && e.RequestMessage!.Method == "DELETE");
     }
+
+    [Fact]
+    public async Task RestartService_Confirmed_PostsRestart()
+    {
+        using var api = new TestApi();
+        api.Server.Given(Request.Create().WithPath("/api/admin/settings/restart-service").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(202).WithBodyAsJson(new { code = "SERVICE_RESTART_SCHEDULED" }));
+
+        var tools = new DestructiveTools(api.Client());
+        var json = JsonSerializer.Serialize(await tools.RestartService(confirm: true));
+
+        json.Should().Contain("\"restartScheduled\":true");
+        api.Server.LogEntries.Should().Contain(e =>
+            e.RequestMessage!.AbsolutePath == "/api/admin/settings/restart-service" && e.RequestMessage!.Method == "POST");
+    }
+
+    [Fact]
+    public async Task RestartService_NotConfirmed_DoesNotCallApi()
+    {
+        using var api = new TestApi();
+
+        var tools = new DestructiveTools(api.Client());
+        var json = JsonSerializer.Serialize(await tools.RestartService(confirm: false));
+
+        json.Should().Contain("\"restartScheduled\":false");
+        api.Server.LogEntries.Should().BeEmpty();
+    }
 }
