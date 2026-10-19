@@ -62,7 +62,9 @@ const SYSTEM_INFO = {
   jwtAudience: 'nodepilot-ui',
 };
 
-function statusJson(opts: { restartRequired?: boolean; restartRequiredFor?: string[] } = {}) {
+function statusJson(
+  opts: { restartRequired?: boolean; restartRequiredFor?: string[]; canRestartService?: boolean } = {},
+) {
   return JSON.stringify({
     overridesPath: 'C:/NodePilot/overrides.json',
     restartRequired: opts.restartRequired ?? false,
@@ -70,6 +72,8 @@ function statusJson(opts: { restartRequired?: boolean; restartRequiredFor?: stri
     restartRequiredFor: opts.restartRequiredFor ?? [],
     lastSavedAt: null,
     lastSavedBy: null,
+    canRestartService: opts.canRestartService ?? false,
+    restartUnavailableReason: opts.canRestartService ? null : 'NOT_A_WINDOWS_SERVICE',
   });
 }
 
@@ -302,6 +306,63 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
 
     // RestartBanner (role=alert) is shown because /status said restart is pending.
     await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('76.3c — the RestartBanner offers no restart button when the server cannot restart itself', async ({ page }) => {
+    await page.route('**/api/admin/settings/status', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: statusJson({ restartRequired: true, restartRequiredFor: ['Logging'], canRestartService: false }),
+      }),
+    );
+
+    await openSystemTab(page);
+
+    await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: /restart service now|dienst jetzt neu starten/i })).toHaveCount(0);
+  });
+
+  test('76.3d — restarting the service needs a confirmation and then posts restart-service', async ({ page }) => {
+    let restartPosts = 0;
+    let restarted = false;
+    await page.route('**/api/admin/settings/status', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        // After the restart request the new process has cleared the marker, so the banner goes.
+        body: restarted
+          ? statusJson({ canRestartService: true })
+          : statusJson({ restartRequired: true, restartRequiredFor: ['Logging'], canRestartService: true }),
+      }),
+    );
+    await page.route('**/api/admin/settings/restart-service', (route) => {
+      restartPosts += 1;
+      restarted = true;
+      return route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'SERVICE_RESTART_SCHEDULED' }),
+      });
+    });
+
+    await openSystemTab(page);
+    const restartButton = page.getByRole('button', { name: /restart service now|dienst jetzt neu starten/i });
+    await expect(restartButton).toBeVisible({ timeout: 15_000 });
+
+    // Cancelling the confirmation sends nothing.
+    await restartButton.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: /^cancel$|^abbrechen$/i }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(restartPosts).toBe(0);
+
+    // Confirming posts once; the banner shows the progress line and goes once /status is clean.
+    await restartButton.click();
+    await dialog.getByRole('button', { name: /^restart$|^neu starten$/i }).click();
+    await expect.poll(() => restartPosts, { timeout: 10_000 }).toBe(1);
+    await expect(page.getByRole('alert')).toHaveCount(0, { timeout: 15_000 });
   });
 
   test('76.5 — System-Info shows live DB provider, app version and JWT issuer', async ({ page }) => {
