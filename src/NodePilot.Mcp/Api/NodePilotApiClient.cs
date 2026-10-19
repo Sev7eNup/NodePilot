@@ -340,6 +340,13 @@ public sealed partial class NodePilotApiClient
         return await ParseAsync<List<string>>(res, ct);
     }
 
+    public async Task RestartServiceAsync(CancellationToken ct)
+    {
+        EnsureReady();
+        using var res = await _http.PostAsync("api/admin/settings/restart-service", content: null, ct);
+        await EnsureSuccessAsync(res, ct);
+    }
+
     public async Task<CancelAllResponse> CancelAllAsync(Guid id, CancellationToken ct)
     {
         EnsureReady();

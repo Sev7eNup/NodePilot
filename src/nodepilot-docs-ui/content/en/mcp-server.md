@@ -3,7 +3,7 @@
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets an AI agent
 (Claude Desktop/Code or any MCP client) **control and edit NodePilot workflows** and **read data**.
 Like the `np` CLI it is a pure HTTP client against the existing REST API — **no new backend path**;
-every tool calls an existing endpoint or computes in-process against `NodePilot.Core`. 112 tools
+every tool calls an existing endpoint or computes in-process against `NodePilot.Core`. 113 tools
 across 11 groups, plus 3 MCP resources.
 
 ## Agent tools
@@ -72,7 +72,7 @@ The transport is **stdio** (streamable HTTP is planned as a later option). Windo
 
 ## Security
 
-- **Destructive gate:** `delete_*`, `force_unlock_workflow`, `cancel_all_executions` and `test_step` are
+- **Destructive gate:** `delete_*`, `force_unlock_workflow`, `cancel_all_executions`, `restart_service` and `test_step` are
   only **registered** with `NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true` — otherwise they do not even appear in
   `tools/list`. `get_safety_status` shows the mode.
 - **Secrets:** workflow definitions are redacted before tool output (`secret`/`apiKey`/`password`/

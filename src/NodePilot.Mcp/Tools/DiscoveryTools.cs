@@ -121,5 +121,6 @@ public sealed class DiscoveryTools
         "delete_system_alert_policy",
         "delete_agent_mcp_server",
         "delete_agent_skill",
+        "restart_service",
     ];
 }

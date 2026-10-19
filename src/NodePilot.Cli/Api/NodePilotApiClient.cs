@@ -841,6 +841,12 @@ public sealed partial class NodePilotApiClient
         return await ParseAsync<SettingsStatusResponse>(res, ct);
     }
 
+    public async Task RestartServiceAsync(CancellationToken ct)
+    {
+        using var res = await _http.PostAsync("api/admin/settings/restart-service", content: null, ct);
+        await EnsureSuccessAsync(res, ct);
+    }
+
     public async Task<SystemInfoResponse> GetSystemInfoAsync(CancellationToken ct)
     {
         using var res = await _http.GetAsync("api/admin/settings/system-info", ct);

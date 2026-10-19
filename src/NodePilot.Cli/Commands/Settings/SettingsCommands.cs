@@ -70,8 +70,46 @@ public sealed class SettingsStatusCommand : BaseCommand<GlobalSettings>
             }
             grid.AddRow("Last Saved At", value.LastSavedAt?.ToString("u") ?? "-");
             grid.AddRow("Last Saved By", value.LastSavedBy ?? "-");
+            grid.AddRow("Service Restart", value.CanRestartService
+                ? "[green]available[/]"
+                : $"unavailable ({Markup.Escape(value.RestartUnavailableReason ?? "unknown")})");
             console.Write(grid);
         });
+        return ExitCodes.Success;
+    }
+}
+
+// ---- np settings restart-service --------------------------------------------
+
+public sealed class SettingsRestartServiceSettings : GlobalSettings
+{
+    [CommandOption("--yes")]
+    [Description("Skip the interactive confirmation prompt.")]
+    public bool Yes { get; set; }
+}
+
+/// <summary>
+/// Restarts the NodePilot Windows service so restart-required settings take effect. Running
+/// executions are cancelled by the restart; the server answers 202 and is unreachable for a
+/// few seconds afterwards.
+/// </summary>
+[SupportedOSPlatform("windows")]
+public sealed class SettingsRestartServiceCommand : BaseCommand<SettingsRestartServiceSettings>
+{
+    public SettingsRestartServiceCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
+    protected override async Task<int> RunAsync(CommandContext _, SettingsRestartServiceSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
+    {
+        if (!settings.Yes && !Console.IsInputRedirected)
+        {
+            var ok = await AnsiConsole.ConfirmAsync(
+                "Restart the NodePilot service now?\n  [grey](Running executions are cancelled.)[/]",
+                defaultValue: false);
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
+        }
+
+        var api = ClientFactory.Create(session);
+        await api.RestartServiceAsync(ct);
+        writer.Info("Service restart scheduled. The server is unreachable for a few seconds.");
         return ExitCodes.Success;
     }
 }

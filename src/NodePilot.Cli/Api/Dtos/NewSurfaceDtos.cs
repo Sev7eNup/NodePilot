@@ -132,7 +132,9 @@ public sealed record SettingsStatusResponse(
     DateTimeOffset? RestartRequiredSince,
     IReadOnlyList<string> RestartRequiredFor,
     DateTimeOffset? LastSavedAt,
-    string? LastSavedBy);
+    string? LastSavedBy,
+    bool CanRestartService,
+    string? RestartUnavailableReason);
 
 public sealed record SystemInfoResponse(
     string AppVersion,

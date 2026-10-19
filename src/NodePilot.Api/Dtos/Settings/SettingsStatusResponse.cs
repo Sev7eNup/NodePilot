@@ -14,10 +14,16 @@ namespace NodePilot.Api.Dtos.Settings;
 /// <c>"Authentication:Ldap"</c>) waiting on a restart.</param>
 /// <param name="LastSavedAt">UTC instant of the most recent save through the Settings API.</param>
 /// <param name="LastSavedBy">Username of the most recent saver. Null on a fresh install.</param>
+/// <param name="CanRestartService">True when <c>POST /api/admin/settings/restart-service</c> can
+/// restart this process through the Service Control Manager.</param>
+/// <param name="RestartUnavailableReason">Why it cannot (<c>NOT_A_WINDOWS_SERVICE</c>,
+/// <c>SERVICE_NOT_RESOLVED</c>, <c>RECOVERY_NOT_CONFIGURED</c>); null when it can.</param>
 public sealed record SettingsStatusResponse(
     string OverridesPath,
     bool RestartRequired,
     DateTimeOffset? RestartRequiredSince,
     IReadOnlyList<string> RestartRequiredFor,
     DateTimeOffset? LastSavedAt,
-    string? LastSavedBy);
+    string? LastSavedBy,
+    bool CanRestartService,
+    string? RestartUnavailableReason);

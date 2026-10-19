@@ -40,6 +40,7 @@ public sealed class McpServerSmokeTests
         names.Should().Contain("get_safety_status");
         names.Should().NotContain("delete_workflow");
         names.Should().NotContain("force_unlock_workflow");
+        names.Should().NotContain("restart_service");
         names.Should().NotContain("test_step", "step tests execute real activities and are gated as destructive");
 
         // The real process must refuse the HTTP test backend before sending its bearer token.
@@ -78,6 +79,7 @@ public sealed class McpServerSmokeTests
         var names = (await client.ListToolsAsync(cancellationToken: cts.Token)).Select(t => t.Name).ToHashSet();
         names.Should().Contain("cancel_all_executions");   // gated tool now visible
         names.Should().Contain("test_step");              // real activity execution is gated too
+        names.Should().Contain("restart_service");
         names.Should().Contain("whoami");                   // safe tools still present
     }
 }

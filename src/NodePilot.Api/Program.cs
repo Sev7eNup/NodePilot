@@ -74,6 +74,10 @@ if (migratedRuntimeSecretFiles > 0)
         migratedRuntimeSecretFiles);
 }
 builder.Services.AddRuntimeOverridesWriter(runtimeOverridesPath);
+builder.Services.AddSingleton(sp => new NodePilot.Api.Hosting.ServiceRestartCoordinator(
+    sp.GetRequiredService<IHostApplicationLifetime>(),
+    sp.GetRequiredService<ILogger<NodePilot.Api.Hosting.ServiceRestartCoordinator>>(),
+    NodePilot.Api.Hosting.WindowsServiceRecovery.Probe));
 
 // Surface Serilog sink failures (file locked, disk full, flush error) to stderr instead
 // of swallowing them. Without this a broken rolling-file sink looks identical to "process

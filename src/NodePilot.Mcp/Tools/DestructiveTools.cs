@@ -36,6 +36,19 @@ public sealed class DestructiveTools
         return new { deleted = true };
     }
 
+    [McpServerTool(Name = "restart_service", Destructive = true)]
+    [Description("DESTRUCTIVE (Admin): restart the NodePilot Windows service so restart-required settings take effect. Running executions are cancelled and the API is unreachable for a few seconds. Fails with 409 when the server does not run as a Windows service with restart recovery actions. Audited. Only available when NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true.")]
+    public async Task<object> RestartService(
+        [Description("Must be true; guards against an accidental restart.")] bool confirm,
+        CancellationToken cancellationToken = default)
+    {
+        if (!confirm)
+            return new { restartScheduled = false, reason = "Pass confirm=true to restart the service." };
+
+        await ApiErrorMapper.Guard(() => _api.RestartServiceAsync(cancellationToken));
+        return new { restartScheduled = true };
+    }
+
     [McpServerTool(Name = "cancel_all_executions", Destructive = true)]
     [Description("DESTRUCTIVE incident kill-switch: cancel ALL running executions of a workflow at once (Admin/Operator). Returns how many were signalled. Only available when NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true.")]
     public async Task<object> CancelAllExecutions(

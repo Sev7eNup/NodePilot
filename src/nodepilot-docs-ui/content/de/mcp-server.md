@@ -4,7 +4,7 @@ Ein [Model-Context-Protocol](https://modelcontextprotocol.io)-Server, mit dem ei
 (Claude Desktop/Code oder ein beliebiger MCP-Client) **NodePilot-Workflows steuern und bearbeiten**
 sowie **Daten auslesen** kann. Wie die `np`-CLI ist er ein reiner HTTP-Client gegen die bestehende
 REST-API — **kein neuer Backend-Pfad**; jedes Tool ruft einen vorhandenen Endpoint auf oder rechnet
-in-proc gegen `NodePilot.Core`. 112 Tools über 11 Gruppen, plus 3 MCP-Resources.
+in-proc gegen `NodePilot.Core`. 113 Tools über 11 Gruppen, plus 3 MCP-Resources.
 
 ## Agentenwerkzeuge
 
@@ -75,7 +75,7 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
 
 ## Sicherheit
 
-- **Destructive-Gate:** `delete_*`, `force_unlock_workflow`, `cancel_all_executions`, `test_step` werden nur bei
+- **Destructive-Gate:** `delete_*`, `force_unlock_workflow`, `cancel_all_executions`, `restart_service`, `test_step` werden nur bei
   `NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true` **registriert** — sonst tauchen sie nicht einmal in
   `tools/list` auf. `get_safety_status` zeigt den Modus.
 - **Secrets:** Workflow-Definitionen werden vor Tool-Output redigiert (`secret`/`apiKey`/`password`/

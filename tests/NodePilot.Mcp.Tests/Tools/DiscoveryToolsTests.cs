@@ -67,6 +67,7 @@ public sealed class DiscoveryToolsTests
             json.Should().Contain("test_step");
             json.Should().Contain("delete_workflow");
             json.Should().Contain("force_unlock_workflow");
+            json.Should().Contain("restart_service");
         }
         finally
         {

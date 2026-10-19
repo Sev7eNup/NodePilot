@@ -125,6 +125,8 @@ export const settingsRoutes: Route[] = [
       restartRequiredFor: [],
       lastSavedAt: null,
       lastSavedBy: null,
+      canRestartService: false,
+      restartUnavailableReason: 'NOT_A_WINDOWS_SERVICE',
     })),
 
   route('GET', '/admin/settings/system-info', () =>
