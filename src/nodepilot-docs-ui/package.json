@@ -32,10 +32,10 @@
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
-    "i18next": "^26.4.2",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "react-i18next": "^17.0.16",
+    "i18next": "^26.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-i18next": "^17.0.18",
     "react-markdown": "^10.1.0",
     "react-router": "^8.4.0",
     "rehype-highlight": "^7.0.2",
@@ -44,7 +44,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.2.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -57,8 +57,8 @@
     "sharp": "^0.35.5",
     "tailwindcss": "^4.2.2",
     "typescript": "~6.0.2",
-    "typescript-eslint": "^8.71.1",
+    "typescript-eslint": "^8.71.2",
     "vite": "^8.3.4",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }
