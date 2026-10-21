@@ -167,8 +167,8 @@ UX-Flow und Button-State-Matrix: `docs/claude-reference.md`. Kurz: `canWrite = r
 "Remote" = `targetMachineId`/WinRM. "Engine-local" = im API-Prozess. `(controlFlow)` = Kategorie `ControlFlow` im backend `ActivityCatalog` (Palette-Achse, unabhängig vom Scope).
 
 - **Remote:** `fileOperation`, `folderOperation`, `textFileEdit`, `serviceManagement`, `registryOperation`, `wmiQuery`, `startProgram`, `powerManagement`, `scheduledTask`, `fileHash`, `zipOperation`
-- **Engine-local:** `restApi`, `sql`, `emailNotification`, `delay`, `xmlQuery`, `jsonQuery`, `log`, `generateText`, `llmQuery`, `aiAgent`, `aiAgentTeam` + controlFlow: `junction`, `forEach`, `decision`, `startWorkflow`, `returnData`
-- **Hybrid:** `runScript`, `waitForCondition`
+- **Engine-local:** `restApi`, `sql`, `emailNotification`, `delay`, `log`, `generateText`, `llmQuery`, `aiAgent`, `aiAgentTeam` + controlFlow: `junction`, `forEach`, `decision`, `startWorkflow`, `returnData`
+- **Hybrid:** `runScript`, `waitForCondition`, `xmlQuery`, `jsonQuery`
 
 Config-Keys & Output-Semantik pro Activity sowie Prozess-Isolation (`config.isolated: true`, nur lokal, No-Op auf dem WinRM-Pfad): `docs/claude-reference.md`.
 

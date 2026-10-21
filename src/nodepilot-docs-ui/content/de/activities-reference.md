@@ -267,9 +267,10 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 ## `xmlQuery`
 
-**Engine-local.**
+**Hybrid.** Mit Zielmaschine werden Datei und XPath dort über WinRM verarbeitet.
+Ohne Ziel läuft die Abfrage auf dem NodePilot-Server. Auch Inline-Inhalte werden auf dem gewählten Ziel ausgewertet.
 
-- **Config:** `source`, `path`/`content`, `xpath`, `namespaces`, `resultMode`
+- **Config:** `source`, `path`/`content`, `xpath`, `namespaces`, `resultMode`, `timeoutSeconds`
 - **Outputs:** `param.result`, `param.count`
 - `resultMode` schaltet nur die Kardinalität. Beide Modi liefern den Elementtext, `all` als
   JSON-Array. Numerische XPath-Ergebnisse verwenden einen invarianten Dezimalpunkt — ein
@@ -277,9 +278,11 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 ## `jsonQuery`
 
-**Engine-local.**
+**Hybrid.** Mit Zielmaschine werden Datei und JSONPath dort über WinRM verarbeitet.
+Ohne Ziel läuft die Abfrage auf dem NodePilot-Server. Auch Inline-Inhalte werden auf dem gewählten Ziel ausgewertet.
+Die JSONPath-Bibliothek wird im Speicher bereitgestellt; auf dem Ziel ist keine zusätzliche Installation nötig.
 
-- **Config:** `source`, `path`/`content`, `jsonPath`, `resultMode`
+- **Config:** `source`, `path`/`content`, `jsonPath`, `resultMode`, `timeoutSeconds`
 - **Outputs:** `param.result`, `param.count`
 - Skalare werden invariant veröffentlicht: `9.99`, Booleans klein geschrieben. Ein
   ISO-8601-Zeitstempel bleibt der Originaltext — er wird nie in ein host-formatiertes Datum
