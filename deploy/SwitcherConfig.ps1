@@ -35,6 +35,25 @@ function Get-NodePilotSwitcherServerUrl {
 
 <#
 .SYNOPSIS
+    Returns $true when Windows PowerShell can parse the file as JSON.
+.DESCRIPTION
+    The Switcher reads more than this: comments, trailing commas and single backslashes in path
+    values all load there. A $false therefore means "do not touch the file", not "broken".
+#>
+function Test-NodePilotSwitcherConfigParses {
+    [OutputType([bool])]
+    param([Parameter(Mandatory)][string]$ConfigPath)
+
+    try {
+        $null = (Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8) | ConvertFrom-Json -ErrorAction Stop
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
     Writes $ServerUrl into the configuration and returns $true when the file changed.
 .DESCRIPTION
     Rewritten in place rather than round-tripped through ConvertTo-Json: the file is documented as

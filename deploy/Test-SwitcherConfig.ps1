@@ -103,7 +103,8 @@ try {
     if (@($restoreBytes).Count -ne 1) { throw 'Updater must restore the operator file in its transactional body.' }
     $restoreBytes = [scriptblock]::Create($restoreBytes.Extent.Text)
     function Write-Info { param([string]$Text) }
-    function Write-Warn { param([string]$Text) throw $Text }
+    $script:warnings = [System.Collections.Generic.List[string]]::new()
+    function Write-Warn { param([string]$Text) $script:warnings.Add($Text) }
     $InstallPath = Join-Path $workingDirectory 'installed'
     $configDirectory = Join-Path $InstallPath 'tools\switcher'
     [void](New-Item -ItemType Directory -Path $configDirectory -Force)
@@ -121,22 +122,64 @@ try {
     . $restore
     Assert-Equal 'an update preserves every operator configuration field and its bytes' `
         $beforeUpdate ([Convert]::ToBase64String([IO.File]::ReadAllBytes($installedConfig)))
+    Assert-Equal 'a configured operator file produces no warning' '0' $script:warnings.Count
 
-    [IO.File]::WriteAllText($installedConfig, '{broken')
-    $invalidRefused = $false
-    try { . $snapshot } catch { $invalidRefused = $_.Exception.Message -like '*Existing Switcher configuration is invalid*' }
-    Assert-True 'an invalid operator file aborts before the wipe' $invalidRefused
-    Assert-Equal 'the invalid operator file remains available for repair' '{broken' ([IO.File]::ReadAllText($installedConfig))
+    # The Switcher loads all of these; Windows PowerShell's strict parser rejects them. None may stop
+    # the update, and the file has to come back byte for byte.
+    $settingsBytes = [Text.Encoding]::UTF8.GetBytes('{"AllowedHosts":"localhost;fallback.example.test"}')
+    $HttpsPort = 8443
+    $utf8 = [Text.UTF8Encoding]::new($false)
+    $hardToParse = [ordered]@{
+        'a line comment'                    = $utf8.GetBytes("{`n  // operator note`n  `"nodePilot`": { `"serverUrl`": null }`n}")
+        'a block comment'                   = $utf8.GetBytes('{ /* note */ "nodePilot": { "serverUrl": null } }')
+        'a trailing comma'                  = $utf8.GetBytes('{ "nodePilot": { "serverUrl": null, } }')
+        'single backslashes in a path'      = $utf8.GetBytes('{ "nodePilot": { "serverUrl": null, "workflowAllowListPath": "C:\ProgramData\NodePilot\x.txt" } }')
+        'a UNC path with single backslashes' = $utf8.GetBytes('{ "nodePilot": { "serverUrl": null }, "systemCenterOrchestrator": { "runbookAllowListPath": "\\server\share\r.txt" } }')
+        'an empty file'                     = [byte[]]@()
+        'binary content'                    = [byte[]](0, 1, 2, 255, 254, 0, 7)
+        'a truncated file'                  = $utf8.GetBytes('{ "nodePilot": { "serverUrl": ')
+    }
+    foreach ($case in $hardToParse.Keys) {
+        [IO.File]::WriteAllBytes($installedConfig, $hardToParse[$case])
+        $script:warnings.Clear()
+        $snapshotThrew = $false
+        try { . $snapshot } catch { $snapshotThrew = $true }
+        Assert-True "$case does not abort the update before the wipe" (-not $snapshotThrew)
+        Copy-Item -LiteralPath $SwitcherTemplatePath -Destination $installedConfig -Force
+        . $restoreBytes
+        . $restore
+        Assert-Equal "$case comes back byte for byte" `
+            ([Convert]::ToBase64String($hardToParse[$case])) `
+            ([Convert]::ToBase64String([IO.File]::ReadAllBytes($installedConfig)))
+        Assert-Equal "$case is reported with one warning" '1' $script:warnings.Count
+    }
+
+    # UTF-16 with a byte order mark is read correctly by Windows PowerShell, so it is an ordinary
+    # file for the updater: it must not abort, and the unset URL is seeded like in any other file.
+    [IO.File]::WriteAllBytes($installedConfig, [Text.Encoding]::Unicode.GetPreamble() +
+        [Text.Encoding]::Unicode.GetBytes('{ "nodePilot": { "serverUrl": null, "profile": "operator-profile" } }'))
+    $script:warnings.Clear()
+    $utf16Threw = $false
+    try { . $snapshot } catch { $utf16Threw = $true }
+    Assert-True 'a UTF-16 file does not abort the update before the wipe' (-not $utf16Threw)
+    Copy-Item -LiteralPath $SwitcherTemplatePath -Destination $installedConfig -Force
+    . $restoreBytes
+    . $restore
+    Assert-Equal 'a UTF-16 file keeps its operator fields' 'operator-profile' `
+        (((Get-Content -LiteralPath $installedConfig -Raw -Encoding UTF8) | ConvertFrom-Json).nodePilot.profile)
+    Assert-Equal 'a UTF-16 file gets the installed-host fallback' 'https://fallback.example.test:8443' `
+        (Get-NodePilotSwitcherServerUrl -ConfigPath $installedConfig)
+    Assert-Equal 'a UTF-16 file produces no warning' '0' $script:warnings.Count
 
     Copy-Item -LiteralPath $SwitcherTemplatePath -Destination $installedConfig -Force
     . $snapshot
     Copy-Item -LiteralPath $SwitcherTemplatePath -Destination $installedConfig -Force
     . $restoreBytes
-    $settingsBytes = [Text.Encoding]::UTF8.GetBytes('{"AllowedHosts":"localhost;fallback.example.test"}')
-    $HttpsPort = 8443
+    $script:warnings.Clear()
     . $restore
     Assert-Equal 'an unset URL retains the existing installed-host fallback' 'https://fallback.example.test:8443' `
         (Get-NodePilotSwitcherServerUrl -ConfigPath $installedConfig)
+    Assert-Equal 'the installed-host fallback produces no warning' '0' $script:warnings.Count
 
     # Read failure must not silently replace an operator file with the template.
     $locked = [IO.File]::Open($installedConfig, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
@@ -145,6 +188,16 @@ try {
         try { . $snapshot } catch { $readRefused = $true }
         Assert-True 'an unreadable operator file aborts before the wipe' $readRefused
     } finally { $locked.Dispose() }
+
+    Write-Host 'SwitcherConfig: parse check' -ForegroundColor Cyan
+    Assert-True 'the shipped template parses' `
+        (Test-NodePilotSwitcherConfigParses -ConfigPath (New-SwitcherConfigCopy))
+    Assert-True 'a missing file does not parse' `
+        (-not (Test-NodePilotSwitcherConfigParses -ConfigPath (Join-Path $workingDirectory 'absent.json')))
+    Assert-True 'a file with a comment does not parse' `
+        (-not (Test-NodePilotSwitcherConfigParses -ConfigPath (New-JsonFile -Content '{ // note' -Name 'comment.json')))
+    Assert-True 'a file with a UTF-8 byte order mark parses' `
+        (Test-NodePilotSwitcherConfigParses -ConfigPath (New-JsonFile -Content ([string][char]0xFEFF + '{ "a": 1 }') -Name 'bom.json'))
 
     Write-Host 'SwitcherConfig: URL construction' -ForegroundColor Cyan
     Assert-Equal 'the default HTTPS port is left out of the URL' `
