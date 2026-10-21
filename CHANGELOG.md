@@ -14,6 +14,49 @@ exhaustive.
 
 Planned version: **1.5.2**.
 
+### Added
+
+- XML and JSON queries can read files and evaluate XPath/JSONPath on a WinRM target, including
+  inline content, target credentials and execution timeouts. Without a target they run locally.
+- **Restart the service from the settings banner.** When a saved setting needs a restart, an
+  administrator can restart the Windows service from the "restart required" banner. The button only
+  shows when the server runs as a Windows service whose recovery actions all restart it
+  (`canRestartService` in `GET /api/admin/settings/status`); otherwise
+  `POST /api/admin/settings/restart-service` answers `409 SERVICE_RESTART_UNAVAILABLE`. Running
+  executions are cancelled. The request is audited as `SETTINGS_SERVICE_RESTART_REQUESTED`. Also
+  available as `np settings restart-service` and the destructive MCP tool `restart_service`.
+- Designer: Ctrl+C puts the selected nodes, the nodes of selected groups and the edges between them on
+  the system clipboard as workflow JSON, and Ctrl+V inserts such JSON with fresh IDs, also from a text
+  editor. Ctrl+D duplicates without the clipboard. Inline secrets are copied as `***`.
+- `np auth login` says that the server needs its first administrator when none exists, and points to
+  `--setup-token` and where the token is found. A wrong token is reported as rejected. The login page
+  names the setup's finish page and the default token path.
+- The project website has a light mode, a GitHub link in the header, and articles on WinRM and gMSA.
+
+### Changed
+
+- `xmlQuery` and `jsonQuery` run on a step's target machine when one is set. A target left on such a
+  node from before (for example through bulk edit or imported JSON) used to be ignored; the query now
+  runs on that machine and reads files from there. Nodes without a target, or with a loopback
+  machine and no credential, behave as before.
+- Designer connection ports are easier to hit: each handle has an invisible hit zone three times the
+  size of its dot, and a dragged edge snaps to a port within about 24 screen pixels at any zoom.
+  Dropping on another port of the same node no longer creates a self-loop. To move the end of an
+  edge, select the edge first or use "Detach target".
+- Viewers can no longer paste, duplicate or group with the keyboard in the designer and get no node
+  context menu.
+- The server setup wizard was reworked: readiness page, certificate guidance and host defaults. The
+  release acceptance checks for the setup are reproducible scripts under `scripts/release-lab/`.
+- The desktop app moves to Electron 44.7.0; minor and patch updates of the UI, documentation site and
+  desktop dependencies.
+- German website pages are no longer redirected to English by the browser language, only by a language
+  the visitor saved with the switch.
+
+### Fixed
+
+- The server setup's "Next" on the readiness page refuses to continue while a fix is still ticked
+  instead of dropping it silently (#536).
+
 ## [1.5.1] - 2026-10-16
 
 ### Added
