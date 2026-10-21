@@ -141,6 +141,9 @@ try {
     }
     foreach ($case in $hardToParse.Keys) {
         [IO.File]::WriteAllBytes($installedConfig, $hardToParse[$case])
+        # PowerShell 7 parses comments and trailing commas; Windows PowerShell 5.1 (the updater's
+        # real host) does not. The file is only left alone where this host cannot parse it.
+        $parsesHere = Test-NodePilotSwitcherConfigParses -ConfigPath $installedConfig
         $script:warnings.Clear()
         $snapshotThrew = $false
         try { . $snapshot } catch { $snapshotThrew = $true }
@@ -148,10 +151,14 @@ try {
         Copy-Item -LiteralPath $SwitcherTemplatePath -Destination $installedConfig -Force
         . $restoreBytes
         . $restore
-        Assert-Equal "$case comes back byte for byte" `
-            ([Convert]::ToBase64String($hardToParse[$case])) `
-            ([Convert]::ToBase64String([IO.File]::ReadAllBytes($installedConfig)))
-        Assert-Equal "$case is reported with one warning" '1' $script:warnings.Count
+        if ($parsesHere) {
+            Assert-Equal "$case produces no warning where the host can parse it" '0' $script:warnings.Count
+        } else {
+            Assert-Equal "$case comes back byte for byte" `
+                ([Convert]::ToBase64String($hardToParse[$case])) `
+                ([Convert]::ToBase64String([IO.File]::ReadAllBytes($installedConfig)))
+            Assert-Equal "$case is reported with one warning" '1' $script:warnings.Count
+        }
     }
 
     # UTF-16 with a byte order mark is read correctly by Windows PowerShell, so it is an ordinary
@@ -196,6 +203,10 @@ try {
         (-not (Test-NodePilotSwitcherConfigParses -ConfigPath (Join-Path $workingDirectory 'absent.json')))
     Assert-True 'a file with a comment does not parse' `
         (-not (Test-NodePilotSwitcherConfigParses -ConfigPath (New-JsonFile -Content '{ // note' -Name 'comment.json')))
+    $emptyConfig = Join-Path $workingDirectory 'empty.json'
+    [System.IO.File]::WriteAllBytes($emptyConfig, [byte[]]@())
+    Assert-True 'an empty file does not parse' `
+        (-not (Test-NodePilotSwitcherConfigParses -ConfigPath $emptyConfig))
     Assert-True 'a file with a UTF-8 byte order mark parses' `
         (Test-NodePilotSwitcherConfigParses -ConfigPath (New-JsonFile -Content ([string][char]0xFEFF + '{ "a": 1 }') -Name 'bom.json'))
 

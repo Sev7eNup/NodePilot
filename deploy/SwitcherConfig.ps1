@@ -45,7 +45,10 @@ function Test-NodePilotSwitcherConfigParses {
     param([Parameter(Mandatory)][string]$ConfigPath)
 
     try {
-        $null = (Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8) | ConvertFrom-Json -ErrorAction Stop
+        # An empty file reads as $null, which ConvertFrom-Json would swallow without an error.
+        $raw = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8
+        if ([string]::IsNullOrWhiteSpace($raw)) { return $false }
+        $null = $raw | ConvertFrom-Json -ErrorAction Stop
         return $true
     } catch {
         return $false
