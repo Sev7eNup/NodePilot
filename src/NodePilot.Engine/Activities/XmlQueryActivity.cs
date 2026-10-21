@@ -9,7 +9,7 @@ using NodePilot.Engine.Security;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Engine-local XPath query over an XML payload. Source is either a file on the engine host
+/// XPath query over an XML payload. Source is either a file on the execution host
 /// (<c>source=file</c>, <c>path=…</c>) or an inline string (<c>source=inline</c>,
 /// <c>content=…</c> — typically fed by <c>{{prev.output}}</c>).
 ///
@@ -34,10 +34,12 @@ public class XmlQueryActivity : IActivityExecutor
     private const int MaxXmlBytes = 8 * 1024 * 1024;
 
     private readonly IConfiguration? _config;
+    private readonly RemoteStructuredQuery? _remote;
 
-    public XmlQueryActivity(IConfiguration? config = null)
+    public XmlQueryActivity(IConfiguration? config = null, RemoteStructuredQuery? remote = null)
     {
         _config = config;
+        _remote = remote;
     }
 
     public string ActivityType => "xmlQuery";
@@ -51,6 +53,13 @@ public class XmlQueryActivity : IActivityExecutor
 
             if (string.IsNullOrWhiteSpace(xpath))
                 return Fail("'xpath' is required");
+
+            if (context.ResolvedMachine is not null || context.TargetMachineId is not null)
+            {
+                if (_remote is null) return Fail("Remote query executor is unavailable");
+                var remoteResult = await _remote.ExecuteAsync(context, config, ActivityType, ct);
+                if (remoteResult is not null) return remoteResult;
+            }
 
             var loaded = await LoadXmlAsync(source, config, ct);
             if (loaded.Error is not null) return loaded.Error;
