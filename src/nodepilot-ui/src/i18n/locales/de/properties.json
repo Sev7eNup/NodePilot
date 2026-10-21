@@ -159,7 +159,8 @@
     "structuredQuery": {
       "source": "Quelle",
       "sourceInline": "Inline-Content",
-      "sourceFile": "Datei-Pfad (Engine-Host)",
+      "sourceFile": "Datei-Pfad (Ausführungshost)",
+      "executionHint": "Mit Zielmaschine werden Datei und Abfrage dort über WinRM verarbeitet. Ohne Ziel laufen beide auf dem NodePilot-Server.",
       "resultMode": "Ergebnis-Modus",
       "resultModeSingle": "Einzeln (erster Treffer)",
       "resultModeAll": "Alle (JSON-Array)",
