@@ -78,8 +78,8 @@ public static class WorkflowAnalyzer
         {
             if (doc.DisabledNodeIds.Contains(node.Id)) continue;
 
-            // runScript and waitForCondition are hybrid: without a target machine they run locally
-            // in the API process (localhost bypass), so a missing targetMachineId is not an error.
+            // The hybrid types run locally in the API process without a target machine, so a
+            // missing targetMachineId is not an error.
             if (ActivityCatalog.RemoteTypes.Contains(node.Type)
                 && !HybridLocalTypes.Contains(node.Type)
                 && !CustomActivityType.IsCustomType(node.Type)
@@ -370,7 +370,7 @@ public static class WorkflowAnalyzer
 
     // Mirrors the UI lint's HYBRID_LOCAL_ACTIVITY_TYPES: remote-capable but valid locally.
     private static readonly HashSet<string> HybridLocalTypes =
-        new(StringComparer.Ordinal) { "runScript", "waitForCondition" };
+        new(StringComparer.Ordinal) { "runScript", "waitForCondition", "xmlQuery", "jsonQuery" };
 
     private sealed record HostedIncompatiblePattern(Regex Pattern, string CmdletName);
 

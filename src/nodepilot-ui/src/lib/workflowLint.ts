@@ -9,7 +9,7 @@ import { authoredParamNames, typeDerivedParamNames } from './upstreamVariables';
 // Hybrid activities: without a target machine they run locally in the API process
 // (RunScriptActivity / WaitForConditionActivity). They stay listed in REMOTE_ACTIVITY_TYPES
 // so the UI still shows the machine and credential fields; lint does not require them.
-const HYBRID_LOCAL_ACTIVITY_TYPES = new Set(['runScript', 'waitForCondition']);
+const HYBRID_LOCAL_ACTIVITY_TYPES = new Set(['runScript', 'waitForCondition', 'xmlQuery', 'jsonQuery']);
 
 // Cmdlets and patterns that internally spawn `Start-Job` or another background-job worker.
 // The in-process runspace (engine: "runspace") has no co-located pwsh.exe, so

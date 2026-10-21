@@ -113,13 +113,15 @@ public class WorkflowAnalyzerTests
     }
 
     /// <summary>
-    /// runScript and waitForCondition are hybrid: without a target machine they run in-process
-    /// under the Localhost bypass, which is a product feature. The chat's former analyzer flagged
-    /// exactly this and told authors to "fix" a correct workflow.
+    /// runScript, waitForCondition, xmlQuery and jsonQuery are hybrid: without a target machine
+    /// they run in-process under the Localhost bypass, which is a product feature. The chat's
+    /// former analyzer flagged exactly this and told authors to "fix" a correct workflow.
     /// </summary>
     [Theory]
     [InlineData("runScript")]
     [InlineData("waitForCondition")]
+    [InlineData("xmlQuery")]
+    [InlineData("jsonQuery")]
     public void Analyze_HybridActivityWithoutMachine_IsNotFlagged(string activityType)
     {
         var r = Analyze("""

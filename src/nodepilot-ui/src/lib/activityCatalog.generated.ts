@@ -224,9 +224,9 @@ export const ACTIVITY_CATALOG = [
     "category": "action",
     "labelKey": "xmlQuery",
     "icon": "code",
-    "isRemote": false,
+    "isRemote": true,
     "isExternalTrigger": false,
-    "timeout": "none",
+    "timeout": "always",
     "outputParameters": [
       { "name": "result", "type": "string" },
       { "name": "count", "type": "number" }
@@ -238,9 +238,9 @@ export const ACTIVITY_CATALOG = [
     "category": "action",
     "labelKey": "jsonQuery",
     "icon": "curly_braces",
-    "isRemote": false,
+    "isRemote": true,
     "isExternalTrigger": false,
-    "timeout": "none",
+    "timeout": "always",
     "outputParameters": [
       { "name": "result", "type": "string" },
       { "name": "count", "type": "number" }
