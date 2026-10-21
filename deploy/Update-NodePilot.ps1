@@ -362,15 +362,15 @@ try {
         Write-Step 'Installing verified artifact'
         # The executable-adjacent configuration is an operator-supported source, not merely
         # a URL cache. Preserve all bytes (allowlists, SCOrch endpoints, profiles and future
-        # fields) before the wipe, and fail here if the existing file cannot be read/parsed.
+        # fields) before the wipe, and fail here if the existing file cannot be read. The content
+        # is not parsed: the Switcher accepts more than Windows PowerShell's strict parser (comments,
+        # trailing commas, single backslashes in paths), and a file the Switcher alone has to judge
+        # must not block a server update.
         . (Join-Path $PSScriptRoot 'SwitcherConfig.ps1')
         $switcherConfigPath = Join-Path $InstallPath 'tools\switcher\switcher.json'
         $previousSwitcherConfigBytes = $null
         if (Test-Path -LiteralPath $switcherConfigPath) {
             $previousSwitcherConfigBytes = [IO.File]::ReadAllBytes($switcherConfigPath)
-            try {
-                $null = [Text.Encoding]::UTF8.GetString($previousSwitcherConfigBytes).TrimStart([char]0xFEFF) | ConvertFrom-Json
-            } catch { throw "Existing Switcher configuration is invalid; nothing was replaced: $switcherConfigPath. $($_.Exception.Message)" }
         }
         $installTouched = $true
         # appsettings.Production.json last: if the wipe aborts midway (locked file, antivirus)
@@ -502,7 +502,12 @@ try {
         # Restore the operator file only after signed artifact verification. An unset URL still
         # receives the existing AllowedHosts/port fallback; configured files remain byte-identical.
         try {
-            if (Test-Path -LiteralPath $switcherConfigPath) {
+            if ((Test-Path -LiteralPath $switcherConfigPath) -and
+                -not (Test-NodePilotSwitcherConfigParses -ConfigPath $switcherConfigPath)) {
+                Write-Warn ('The Switcher configuration is not strict JSON, so its server URL was not ' +
+                            "checked or set. The file was kept unchanged: $switcherConfigPath")
+            }
+            elseif (Test-Path -LiteralPath $switcherConfigPath) {
                 $serverUrl = Get-NodePilotSwitcherServerUrl -ConfigPath $switcherConfigPath
                 $hadSwitcherServerUrl = -not [string]::IsNullOrWhiteSpace($serverUrl)
                 if (-not $serverUrl) {

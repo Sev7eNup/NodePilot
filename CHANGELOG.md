@@ -54,6 +54,10 @@ Planned version: **1.5.2**.
 
 ### Fixed
 
+- The server update no longer aborts because of the Switcher configuration. It used to refuse an
+  existing `switcher.json` that Windows PowerShell could not parse, although the Switcher itself loads
+  comments, trailing commas and single backslashes in paths. The file is now carried across unchanged
+  and a warning replaces the abort; the server URL is only filled in when the file parses.
 - The server setup's "Next" on the readiness page refuses to continue while a fix is still ticked
   instead of dropping it silently (#536).
 
