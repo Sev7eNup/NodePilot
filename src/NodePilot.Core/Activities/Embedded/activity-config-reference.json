@@ -403,24 +403,26 @@
       ]
     },
     "xmlQuery": {
-      "description": "XPath query over XML (engine-local).",
+      "description": "XPath query over XML, on the WinRM target or locally without a target.",
       "configKeys": [
         { "key": "source", "type": "string", "required": false, "description": "inline (default) | file — where the XML comes from." },
         { "key": "path", "type": "string", "required": false, "description": "XML file path (required for source=file)." },
         { "key": "content", "type": "string", "required": false, "description": "Inline XML (required for source=inline)." },
         { "key": "xpath", "type": "string", "required": true, "description": "XPath expression." },
         { "key": "namespaces", "type": "object", "required": false, "description": "Prefix → namespace URI map." },
-        { "key": "resultMode", "type": "string", "required": false, "description": "single (default) | all. 'all' returns a JSON array of every match; 'single' fails when the XPath matches more than one node." }
+        { "key": "resultMode", "type": "string", "required": false, "description": "single (default) | all. 'all' returns a JSON array of every match; 'single' returns the first matching node." },
+        { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Remote execution timeout; omitted or 0 means unlimited." }
       ]
     },
     "jsonQuery": {
-      "description": "JSONPath query over JSON (engine-local).",
+      "description": "JSONPath query over JSON, on the WinRM target or locally without a target.",
       "configKeys": [
         { "key": "source", "type": "string", "required": false, "description": "inline (default) | file — where the JSON comes from." },
         { "key": "path", "type": "string", "required": false, "description": "JSON file path (required for source=file)." },
         { "key": "content", "type": "string", "required": false, "description": "Inline JSON (required for source=inline)." },
         { "key": "jsonPath", "type": "string", "required": true, "description": "JSONPath expression." },
-        { "key": "resultMode", "type": "string", "required": false, "description": "single (default) | all. 'all' returns a JSON array of every match; 'single' fails when the JSONPath matches more than one token." }
+        { "key": "resultMode", "type": "string", "required": false, "description": "single (default) | all. 'all' returns a JSON array of every match; 'single' fails when the JSONPath matches more than one token." },
+        { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Remote execution timeout; omitted or 0 means unlimited." }
       ]
     },
     "log": {

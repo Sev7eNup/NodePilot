@@ -42,6 +42,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<Agents.AgentExternalReadPolicy>();
         services.AddScoped<Agents.AgentTargetFactory>();
         services.AddScoped<Agents.AgentMcpClientFactory>();
+        services.AddScoped<RemoteStructuredQuery>();
 
         var executorInterface = typeof(IActivityExecutor);
         var assembly = typeof(WorkflowEngine).Assembly;

@@ -156,6 +156,8 @@ ws-snapshot.md
 *.png
 *.yml
 tmp_*
+# Throwaway Vite configs for a second dev server on another port
+vite.tmp-*.config.ts
 !docker-compose.yml
 !prometheus.yml
 !grafana/grafana/provisioning/dashboards/dashboards.yml

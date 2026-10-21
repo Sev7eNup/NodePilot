@@ -31,8 +31,8 @@ Eine Activity ist ein ausführbarer Arbeitsschritt. Der Scope legt den Ausführu
 | `decision` | Engine-local (controlFlow) |
 | `startWorkflow` | Engine-local (controlFlow) |
 | `returnData` | Engine-local (controlFlow) |
-| `xmlQuery` | Engine-local |
-| `jsonQuery` | Engine-local |
+| `xmlQuery` | Hybrid (WinRM-Ziel oder Engine-local) |
+| `jsonQuery` | Hybrid (WinRM-Ziel oder Engine-local) |
 | `log` | Engine-local |
 | `generateText` | Engine-local |
 | `llmQuery` | Engine-local |

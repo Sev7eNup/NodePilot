@@ -174,6 +174,8 @@ public static class ActivityCatalog
             ],
             telemetry: ["rowCount", "rowsAffected", "provider"]),
         Action("xmlQuery", "xmlQuery", "code",
+            isRemote: true,
+            timeout: ActivityTimeoutKind.Always,
             outputs:
             [
                 Output("result", "string"),
@@ -181,6 +183,8 @@ public static class ActivityCatalog
             ],
             telemetry: ["count"]),
         Action("jsonQuery", "jsonQuery", "curly_braces",
+            isRemote: true,
+            timeout: ActivityTimeoutKind.Always,
             outputs:
             [
                 Output("result", "string"),

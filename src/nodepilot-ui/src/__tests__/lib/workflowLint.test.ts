@@ -373,6 +373,18 @@ describe('lintWorkflow - runScript execution target', () => {
 
     expect(errors.some((e) => e.code === 'missing-target-machine' && e.nodeId === 'wait')).toBe(false);
   });
+
+  it.each(['xmlQuery', 'jsonQuery'])('does not require a target machine for %s (hybrid)', (activityType) => {
+    const nodes: Node[] = [
+      node('trig', 0, 0, { activityType: 'manualTrigger' }),
+      node('query', 250, 0, { activityType, config: { source: 'inline' } }),
+    ];
+    const edges: Edge[] = [edge('e1', 'trig', 'query')];
+
+    const { errors } = lintWorkflow(nodes, edges);
+
+    expect(errors.some((e) => e.code === 'missing-target-machine' && e.nodeId === 'query')).toBe(false);
+  });
 });
 
 describe('lintWorkflow — startjob-in-runspace', () => {

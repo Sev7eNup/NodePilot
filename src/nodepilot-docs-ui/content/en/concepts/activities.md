@@ -31,8 +31,8 @@ An activity is an executable work step. The scope determines where it runs:
 | `decision` | Engine-local (controlFlow) |
 | `startWorkflow` | Engine-local (controlFlow) |
 | `returnData` | Engine-local (controlFlow) |
-| `xmlQuery` | Engine-local |
-| `jsonQuery` | Engine-local |
+| `xmlQuery` | Hybrid (WinRM target or engine-local) |
+| `jsonQuery` | Hybrid (WinRM target or engine-local) |
 | `log` | Engine-local |
 | `generateText` | Engine-local |
 | `llmQuery` | Engine-local |

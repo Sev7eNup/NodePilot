@@ -262,9 +262,10 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 ## `xmlQuery`
 
-**Engine-local.**
+**Hybrid.** With a target machine, reads the file and evaluates XPath on that machine via WinRM.
+Without a target, runs on the NodePilot server. Inline content also runs on the selected target.
 
-- **Config:** `source`, `path`/`content`, `xpath`, `namespaces`, `resultMode`
+- **Config:** `source`, `path`/`content`, `xpath`, `namespaces`, `resultMode`, `timeoutSeconds`
 - **Outputs:** `param.result`, `param.count`
 - `resultMode` switches cardinality only. Both modes publish the element text; `all` returns it
   as a JSON array. Numeric XPath results use an invariant decimal point, so a comparison means
@@ -272,9 +273,11 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 ## `jsonQuery`
 
-**Engine-local.**
+**Hybrid.** With a target machine, reads the file and evaluates JSONPath on that machine via WinRM.
+Without a target, runs on the NodePilot server. Inline content also runs on the selected target.
+The JSONPath library is supplied in memory; no additional installation is needed on the target.
 
-- **Config:** `source`, `path`/`content`, `jsonPath`, `resultMode`
+- **Config:** `source`, `path`/`content`, `jsonPath`, `resultMode`, `timeoutSeconds`
 - **Outputs:** `param.result`, `param.count`
 - Scalars are published invariantly: `9.99`, and `true`/`false` in lower case. An ISO-8601
   timestamp is passed through as the original text — it is never re-parsed into a

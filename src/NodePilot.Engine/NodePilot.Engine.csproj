@@ -19,7 +19,7 @@
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.PowerShell.SDK" />
-    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Newtonsoft.Json" GeneratePathProperty="true" />
     <PackageReference Include="Npgsql" />
     <!-- Security floor over Markdig.Signed's transitive System.Security.Cryptography.Xml
          (pulled via Microsoft.PowerShell.SDK); version + rationale in Directory.Packages.props. -->
@@ -35,6 +35,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="NodePilot.Engine.Tests" />
+    <!-- WinRM targets run Windows PowerShell 5.1; ship the framework build of the same package. -->
+    <EmbeddedResource Include="$(PkgNewtonsoft_Json)/lib/net45/Newtonsoft.Json.dll"
+                      LogicalName="NodePilot.RemoteQuery.Newtonsoft.Json.dll" />
   </ItemGroup>
 
   <!-- Microsoft.PowerShell.Archive 1.2.5 (MIT, unmodified — see PowerShell/Modules/NOTICE.md).

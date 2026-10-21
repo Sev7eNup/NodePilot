@@ -9,7 +9,7 @@ using NodePilot.Engine.Security;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Engine-local JSONPath query over a JSON payload, read from a file on the engine host
+/// JSONPath query over a JSON payload, read from a file on the execution host
 /// (<c>source=file</c>) or an inline string (<c>source=inline</c>, e.g. <c>{{prev.output}}</c>).
 /// <c>resultMode</c> "single" returns the first match, "all" returns a JSON array; both also
 /// land in <c>OutputParameters["result"]</c>/<c>["count"]</c>. Payload size is capped at 8 MiB
@@ -22,10 +22,12 @@ public class JsonQueryActivity : IActivityExecutor
     private const int MaxJsonDepth = 64;
 
     private readonly IConfiguration? _config;
+    private readonly RemoteStructuredQuery? _remote;
 
-    public JsonQueryActivity(IConfiguration? config = null)
+    public JsonQueryActivity(IConfiguration? config = null, RemoteStructuredQuery? remote = null)
     {
         _config = config;
+        _remote = remote;
     }
 
     public string ActivityType => "jsonQuery";
@@ -39,6 +41,13 @@ public class JsonQueryActivity : IActivityExecutor
 
             if (string.IsNullOrWhiteSpace(jsonPath))
                 return Fail("'jsonPath' is required");
+
+            if (context.ResolvedMachine is not null || context.TargetMachineId is not null)
+            {
+                if (_remote is null) return Fail("Remote query executor is unavailable");
+                var remoteResult = await _remote.ExecuteAsync(context, config, ActivityType, ct);
+                if (remoteResult is not null) return remoteResult;
+            }
 
             var loaded = await LoadJsonAsync(source, config, ct);
             if (loaded.Error is not null) return loaded.Error;

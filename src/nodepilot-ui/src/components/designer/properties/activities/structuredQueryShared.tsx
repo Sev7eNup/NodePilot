@@ -34,6 +34,7 @@ export function StructuredQueryConfig({
   const source = (config.source as string) || 'inline';
   return (
     <>
+      <p className="text-xs text-on-surface-variant">{t('config.structuredQuery.executionHint')}</p>
       <FieldGrid>
         <Field label={t('config.structuredQuery.source')}>
           <select value={source} onChange={(e) => onUpdate({ source: e.target.value })} className="input-field">
