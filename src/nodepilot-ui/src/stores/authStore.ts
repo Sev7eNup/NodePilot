@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api, ApiError } from '../api/client';
+import { readCsrfToken } from '../api/csrf';
 import type { LoginResponse } from '../types/api';
 import { useAiChatStore } from './aiChatStore';
 import { useDbHealthStore } from './dbHealthStore';
@@ -14,6 +15,7 @@ import {
   clearLocalAuthBoundary,
   isAuthBoundaryGenerationCurrent,
   publishAuthenticatedIdentity,
+  publishObservedSession,
   publishLogoutBoundary,
   registerAuthBoundaryIdentityReprober,
   registerAuthBoundaryLiveStateClearer,
@@ -21,6 +23,9 @@ import {
 } from '../security/authBoundary';
 
 const LEGACY_WORKFLOW_CLIPBOARD_KEY = 'np_clipboard';
+// The readable companion cookie rotates with every issued session, including OIDC redirects.
+// Keep it in this tab's memory only; observations never transmit or persist its value.
+let acceptedCsrfToken: string | null = null;
 
 function clearLegacyWorkflowClipboard(): void {
   // A legacy key that can hold complete workflow nodes, including inline credentials, in
@@ -38,6 +43,8 @@ function clearLegacyWorkflowClipboard(): void {
 interface AcceptIdentityOptions {
   /** Remote re-probes suppress this to avoid echoing a cross-tab event back to its sender. */
   broadcastIdentity?: boolean;
+  /** Cookie probes only observed a session; explicit login/refresh calls establish one. */
+  observedSession?: boolean;
   /** Explicit sign-in endpoints are boundaries even if they return the same stable user id. */
   forceBoundary?: boolean;
   /** Internal guard: a response from an older remote probe must never restore stale auth. */
@@ -128,7 +135,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       role: identity.role,
       isAuthenticated: true,
     });
-    if (options?.broadcastIdentity !== false) publishAuthenticatedIdentity(identity.userId);
+    acceptedCsrfToken = readCsrfToken();
+    if (options?.broadcastIdentity !== false) {
+      if (options?.observedSession) publishObservedSession(identity);
+      else publishAuthenticatedIdentity(identity.userId);
+    }
   },
 
   logout: async () => {
@@ -159,6 +170,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       ?? captureAuthBoundaryGeneration();
     const commitOptions: AcceptIdentityOptions = {
       ...options,
+      observedSession: true,
       expectedBoundaryGeneration,
     };
     clearLegacyWorkflowClipboard();
@@ -224,6 +236,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 // The API client can observe a 401 without importing this store (which would create a module
 // cycle). Register the in-memory half here; the boundary coordinator owns browser + query cleanup.
 registerAuthBoundaryLiveStateClearer(() => {
+  acceptedCsrfToken = null;
   useAuthStore.setState({
     userId: null,
     username: null,
@@ -241,6 +254,7 @@ let stopCookieIdentityReprober: (() => void) | null = null;
 let remoteProbeInFlight: Promise<void> | null = null;
 let remoteProbeQueued = false;
 let remoteLogoutPending = false;
+let remoteLogoutCsrfToken: string | null = null;
 
 function reProbeRemoteIdentity(): void {
   if (remoteProbeInFlight) {
@@ -275,6 +289,23 @@ function reProbeRemoteIdentity(): void {
 }
 
 function handleRemoteAuthBoundary(event: AuthBoundaryEvent): void {
+  if (event.type === 'identity' && event.observation) {
+    const csrfToken = readCsrfToken();
+    if (remoteLogoutPending && remoteLogoutCsrfToken === csrfToken) return;
+    // A new OIDC session supersedes a logout whose originating tab may already be closed.
+    remoteLogoutPending = false;
+    const current = useAuthStore.getState();
+    if (current.isAuthenticated === true
+      && current.userId === event.userId
+      && current.username === event.observation.username
+      && current.role === event.observation.role
+      && acceptedCsrfToken === csrfToken) return;
+    // A redirect-based login also arrives through /auth/me. Changed cookies or claims still
+    // invalidate protected state; the event itself never grants authentication.
+    clearLocalAuthBoundary();
+    reProbeRemoteIdentity();
+    return;
+  }
   if (event.type === 'identity') {
     // Always treat a successful login as a boundary, even for the same user id: roles and the
     // server-side security stamp may have changed. Clear synchronously, then trust only /auth/me.
@@ -286,6 +317,7 @@ function handleRemoteAuthBoundary(event: AuthBoundaryEvent): void {
 
   if (event.type === 'logout' && event.phase === 'started') {
     remoteLogoutPending = true;
+    remoteLogoutCsrfToken = readCsrfToken();
     clearLocalAuthBoundary();
     return;
   }
@@ -333,6 +365,7 @@ export function startAuthBoundarySynchronization(): () => void {
       stopCookieIdentityReprober = null;
       remoteProbeQueued = false;
       remoteLogoutPending = false;
+      remoteLogoutCsrfToken = null;
     }
   };
 }

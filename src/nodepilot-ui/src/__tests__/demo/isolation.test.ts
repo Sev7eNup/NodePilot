@@ -1,9 +1,9 @@
 /**
  * Guards for the three boundaries the demo depends on.
  *
- * 1. Tab isolation. The app synchronises identity across tabs; opening or reloading a second
- *    tab makes every other tab clear its caches and remount, discarding unsaved editor state.
- *    An in-memory backend does not prevent that, because the channel is purely client-side.
+ * 1. Tab isolation. The app synchronises real identity/session changes across tabs, clearing
+ *    protected state. Independent demo worlds must not share those boundaries even though
+ *    their client-side transport runs on the same origin.
  * 2. Dependency direction. `src/` must never import from `demo/`. That is what makes the
  *    product build unable to reach the demo, and the hub and docs seams are injected for
  *    exactly this reason.

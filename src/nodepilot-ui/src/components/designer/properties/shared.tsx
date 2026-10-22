@@ -76,6 +76,8 @@ export interface ConfigProps {
   // currently only the Run button in RunScriptConfig's script editor.
   workflowId?: string;
   stepId?: string;
+  /** Full editor node data; required to offer an inline step test. */
+  liveStep?: Record<string, unknown>;
   outputVariableName?: string;
   lastStepsByStepId?: Map<string, import('../../../types/api').StepExecution>;
   /**

@@ -6,6 +6,7 @@ import {
   handleStaleAuthCookieResponseBoundary,
   isAuthBoundaryGenerationCurrent,
   publishAuthenticatedIdentity,
+  publishObservedSession,
   registerAuthBoundaryIdentityReprober,
   registerAuthBoundaryLiveStateClearer,
   registerAuthBoundaryQueryCacheClearer,
@@ -35,7 +36,7 @@ class FakeBroadcastChannel {
     if (type === 'message') this.messageListeners.delete(listener as (event: MessageEvent<unknown>) => void);
   }
 
-  emitRemote(data: AuthBoundaryEvent): void {
+  emitRemote(data: unknown): void {
     for (const listener of this.messageListeners) listener({ data } as MessageEvent<unknown>);
   }
 }
@@ -102,6 +103,27 @@ describe('authBoundary', () => {
     }));
 
     expect(listener).toHaveBeenCalledWith(remote);
+    unsubscribe();
+  });
+
+  it('transportsSessionObservationsAndRejectsMalformedClaims', () => {
+    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+    const listener = vi.fn();
+    const unsubscribe = subscribeToAuthBoundaryEvents(listener);
+    const channel = FakeBroadcastChannel.instances[0];
+    const observed: AuthBoundaryEvent = {
+      version: 1, type: 'identity', userId: 'u-1', observation: { username: 'alice', role: 'Admin' },
+      sourceId: 'another-tab', eventId: 'observed-valid',
+    };
+    channel.emitRemote(observed);
+    channel.emitRemote({ ...observed, eventId: 'observed-invalid', userId: '' });
+    channel.emitRemote({ ...observed, eventId: 'observed-missing-name', observation: { role: 'Admin' } });
+    channel.emitRemote({ ...observed, eventId: 'observed-invalid-role', observation: { username: 'alice', role: null } });
+    expect(listener).toHaveBeenCalledExactlyOnceWith(observed);
+    publishObservedSession({ userId: 'u-1', username: 'alice', role: 'Admin' });
+    expect(channel.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'identity', userId: 'u-1', observation: { username: 'alice', role: 'Admin' },
+    }));
     unsubscribe();
   });
 

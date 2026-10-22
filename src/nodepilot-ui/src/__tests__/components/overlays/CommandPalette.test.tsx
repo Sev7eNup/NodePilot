@@ -109,6 +109,24 @@ describe('CommandPalette', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('enterAfterHoverInvokesTheVisibleCommandAcrossInterleavedGroups', () => {
+    const publish = vi.fn();
+    const exportPng = vi.fn();
+    render(<CommandPalette onClose={vi.fn()} commands={[
+      makeCmd('save', 'Save', { group: 'Edit' }),
+      makeCmd('publish', 'Publish workflow', { group: 'Run', run: publish }),
+      makeCmd('export-png', 'Export canvas as PNG', { group: 'Edit', run: exportPng }),
+    ]} />);
+
+    const exportButton = screen.getByRole('button', { name: 'Export canvas as PNG' });
+    fireEvent.mouseEnter(exportButton);
+    expect(exportButton).toHaveClass('bg-primary/10');
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+
+    expect(exportPng).toHaveBeenCalledOnce();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it('escapeKeyClosesWithoutInvoking', () => {
     const onClose = vi.fn();
     const run = vi.fn();
@@ -145,6 +163,46 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
 
     expect(runA).toHaveBeenCalledOnce();
+  });
+
+  it('arrowKeysFollowVisibleGroupedOrderAndKeepSelectionWhenCommandsReorder', () => {
+    const first = makeCmd('first', 'First edit', { group: 'Edit' });
+    const run = makeCmd('run', 'Run workflow', { group: 'Run' });
+    const second = makeCmd('second', 'Second edit', { group: 'Edit' });
+    const { rerender } = render(<CommandPalette commands={[first, run, second]} onClose={vi.fn()} />);
+    const input = screen.getByRole('textbox');
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(screen.getByRole('button', { name: 'Second edit' })).toHaveClass('bg-primary/10');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(screen.getByRole('button', { name: 'Run workflow' })).toHaveClass('bg-primary/10');
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+
+    rerender(<CommandPalette commands={[run, second, first]} onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Second edit' })).toHaveClass('bg-primary/10');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(second.run).toHaveBeenCalledOnce();
+    expect(first.run).not.toHaveBeenCalled();
+    expect(run.run).not.toHaveBeenCalled();
+  });
+
+  it('queryChangesSelectTheFirstVisibleResultAndNeverInvokeDisabledOrMissingResults', () => {
+    const save = makeCmd('save', 'Save');
+    const disabled = makeCmd('publish', 'Publish', { disabled: true });
+    render(<CommandPalette commands={[save, disabled]} onClose={vi.fn()} />);
+    const input = screen.getByRole('textbox');
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.change(input, { target: { value: 'zzz' } });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(disabled.run).not.toHaveBeenCalled();
+    expect(save.run).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: 'save' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(save.run).toHaveBeenCalledOnce();
   });
 
   it('clickOnBackdropClosesPalette', () => {

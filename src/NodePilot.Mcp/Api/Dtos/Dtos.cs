@@ -153,7 +153,8 @@ public sealed record NextFiresResponse(List<DateTime> Fires);
 // ConfigOverride is executable unsaved editor state; the API requires Edit + the caller's lock.
 public sealed record StepTestRequest(
     Dictionary<string, string>? MockVariables = null,
-    JsonElement? ConfigOverride = null);
+    JsonElement? ConfigOverride = null,
+    JsonElement? StepOverride = null);
 
 public sealed record StepTestResponse(
     bool Success,

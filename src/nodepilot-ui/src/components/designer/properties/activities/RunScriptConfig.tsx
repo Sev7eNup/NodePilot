@@ -13,7 +13,7 @@ const ScriptEditorDialog = lazy(() => import('../../ScriptEditorDialog'));
 
 const CODE_HINT = 'bg-amber-100/80 dark:bg-amber-900/40 px-1 rounded';
 
-export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowId, stepId, outputVariableName, isLocalTarget = true }: Readonly<ConfigProps>) {
+export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowId, stepId, liveStep, outputVariableName, isLocalTarget = true }: Readonly<ConfigProps>) {
   const { t } = useTranslation('properties');
   const [showEditor, setShowEditor] = useState(false);
   const script = (config.script as string) || '';
@@ -29,18 +29,15 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
 
   const upstreamRefs = upstreamVars.map(v => ({ expression: v.expression, label: v.label }));
 
-  // Wire the in-editor Run button to the existing step-test endpoint. We send the live
-  // config as ConfigOverride so the test reflects whatever the user is editing right now,
-  // even if they haven't saved the workflow yet.
-  const canRun = !!workflowId && !!stepId;
+  const canRun = !!workflowId && !!stepId && !!liveStep;
   const runStepTest = useCallback(async (currentScript: string): Promise<StepTestResult> => {
-    if (!workflowId || !stepId) {
+    if (!workflowId || !stepId || !liveStep) {
       return { success: false, output: null, errorOutput: null, outputParameters: {}, durationMs: 0, errorMessage: t('config.runScript.stepNotIdentifiable') };
     }
     return api.post<StepTestResult>(`/workflows/${workflowId}/steps/${stepId}/test`, {
-      configOverride: { ...config, script: currentScript },
+      stepOverride: { ...liveStep, config: { ...config, script: currentScript } },
     });
-  }, [workflowId, stepId, config, t]);
+  }, [workflowId, stepId, liveStep, config, t]);
 
   // AI script generation (streaming): the script types itself out live in the Monaco editor.
   const aiScript = useAiScriptStream({ workflowId, stepId, upstreamVars });

@@ -49,9 +49,10 @@ Server, keine DB — der Zustand lebt pro Tab und ein Reload stellt den Seed wie
   die Demo-Startdatei aus; Assets nutzen `/demo/`. Alte Hash-Links normalisiert der Demo-Entry. In `vite.config.ts` **und**
   `vitest.config.ts` auf `'false'` definiert — fehlt das zweite, bricht jeder Test, der `App`
   importiert, mit einem `ReferenceError`, der nach etwas anderem aussieht.
-- **Tab-Isolation ist nicht gratis.** Ein zweiter Tab publiziert ein Identitäts-Ereignis, und jeder
-  andere Tab beantwortet es mit Cache-Leeren und Remount — ungespeicherte Designer-Änderungen sind
-  weg. Deshalb legt der Entry den Transport beidseitig still.
+- **Tab-Isolation ist nicht gratis.** Echte Anmelde-, Abmelde- und Sitzungswechsel leeren in anderen
+  Tabs die Caches und bauen geschützte Komponenten neu auf. Reines Beobachten derselben Sitzung
+  beim Öffnen eines Tabs erhält Entwürfe. Die unabhängigen Demo-Welten dürfen auch echte
+  Auth-Wechsel nicht teilen; deshalb legt der Entry den Transport beidseitig still.
 - **Seed:** die Workflow-JSONs aus `demo/seed/fixtures/` und `scripts/` — im Demo-Paket entsteht **kein**
   Graph. Nodes mit mehreren eingehenden Kanten bekommen beim Laden eine `waitAll`-Junction (wie
   Designer und SCOrch-Import), sonst blockiert der Pre-Publish-Check. Die Reihenfolge in

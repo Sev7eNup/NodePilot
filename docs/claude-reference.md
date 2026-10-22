@@ -111,8 +111,12 @@ Bei mehreren Fehlern entscheidet die Reihenfolge aus `StartedAt` und `Id`.
 
 `POST /api/workflows/{id}/steps/{stepId}/test` führt eine einzelne Activity aus,
 ohne eine WorkflowExecution anzulegen. `mockVariables` liefert künstliche
-Step-Ergebnisse. `configOverride` ersetzt nur `data.config`, während Maschine,
-Credential und Output-Variable aus dem gespeicherten Node stammen.
+Step-Ergebnisse. `stepOverride` übergibt den vollständigen aktuellen `node.data`-Stand
+einschließlich Activity-Typ, Konfiguration, Maschine, Credential und Output-Variable.
+Die drei Testaktionen im Designer verwenden diesen konsistenten Snapshot.
+Alternativ ersetzt `configOverride` ausschließlich `data.config` des gespeicherten
+Nodes. Beide Overrides sind gegenseitig exklusiv und verlangen eine eigene aktive
+Edit-Sperre. Ein nicht mehr vorhandenes ausgewähltes Maschinenziel wird abgelehnt.
 
 `test-context` liefert Vorgängerwerte aus einem gewählten oder dem letzten terminalen
 Lauf. Bei nicht ausgeführten Vorgängern bleibt nur das Schema. Globals kommen aus
