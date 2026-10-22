@@ -32,6 +32,12 @@ public class DashboardController : ControllerBase
     private readonly DashboardAggregateCache? _aggregates;
     private readonly FolderTreeMutationLock _folderTree;
 
+    /// <summary>
+    /// Raw runs returned for the Recent Executions table. The UI folds child runs of one workflow
+    /// into a single row and then shows the first 10 rows, so it needs more raw runs than rows.
+    /// </summary>
+    private const int RecentExecutionRows = 50;
+
     /// <summary>Named so the per-action audit queries can be merged in memory before projection.</summary>
     private sealed record AuditRow(
         DateTime Timestamp, Guid? UserId, string Action, string? ResourceType, Guid? ResourceId);
@@ -288,7 +294,7 @@ public class DashboardController : ControllerBase
 
         var recent = await execQuery
             .OrderByDescending(e => e.StartedAt)
-            .Take(10)
+            .Take(RecentExecutionRows)
             .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.TriggeredBy, e.StartedByUserId })
             .ToListAsync(ct);
 

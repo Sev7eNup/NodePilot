@@ -479,6 +479,27 @@ public class DashboardControllerExtendedTests
     }
 
     [Fact]
+    public async Task Get_RecentExecutions_ReturnsNewest50RunsNewestFirst()
+    {
+        var db = TestDbFactory.Create();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Nightly", UpdatedAt = DateTime.UtcNow, DefinitionJson = "{}" };
+        db.Workflows.Add(workflow);
+        var now = DateTime.UtcNow;
+        var executions = Enumerable.Range(0, 60).Select(n => new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Succeeded,
+            StartedAt = now.AddMinutes(-n), CompletedAt = now.AddMinutes(-n).AddSeconds(5),
+        }).ToList();
+        db.WorkflowExecutions.AddRange(executions);
+        await db.SaveChangesAsync();
+
+        var stats = Unwrap(await NewController(db).Get(CancellationToken.None));
+
+        stats.Recent.Should().HaveCount(50);
+        stats.Recent.Select(r => r.Id).Should().Equal(executions.Take(50).Select(e => e.Id));
+    }
+
+    [Fact]
     public async Task Get_AsViewer_OmitsRecentAudit_Null()
     {
         var db = TestDbFactory.Create();
