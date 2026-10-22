@@ -151,6 +151,33 @@ describe('DashboardPage', () => {
     expect(within(group).getByText('6/6')).toBeInTheDocument();
   });
 
+  it('fills the recent executions table with 10 rows after grouping', async () => {
+    const now = Date.now();
+    const child = (n: number) => ({
+      id: `c${n}`, workflowId: 'wf-child', workflowName: 'Child: Echo Item', status: 'Succeeded',
+      startedAt: new Date(now - n * 1000).toISOString(), completedAt: new Date(now - n * 1000 + 500).toISOString(),
+      durationMs: 500, triggeredBy: `forEach:v1[${n}]`, startedByUsername: null, stepsTotal: 1, stepsCompleted: 1,
+    });
+    const plain = (n: number) => ({
+      id: `p${n}`, workflowId: `wf-${n}`, workflowName: `Plain run ${n}`, status: 'Succeeded',
+      startedAt: new Date(now - (100 + n) * 1000).toISOString(), completedAt: new Date(now - (99 + n) * 1000).toISOString(),
+      durationMs: 1000, triggeredBy: 'scheduleTrigger', startedByUsername: null, stepsTotal: 1, stepsCompleted: 1,
+    });
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS,
+      recent: [
+        ...Array.from({ length: 30 }, (_, n) => child(n)),
+        ...Array.from({ length: 12 }, (_, n) => plain(n)),
+      ],
+    })));
+    renderPage();
+    const group = (await screen.findByText('Child: Echo Item')).closest('tr')!;
+    expect(within(group).getByText('×30')).toBeInTheDocument();
+    expect(group.closest('tbody')!.querySelectorAll('tr')).toHaveLength(10);
+    expect(screen.getByText('Plain run 8')).toBeInTheDocument();
+    expect(screen.queryByText('Plain run 9')).not.toBeInTheDocument();
+  });
+
   it('shows trigger badge, count and pending marker in the running list', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
       ...BASE_STATS,
