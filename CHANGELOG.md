@@ -59,6 +59,8 @@ Planned version: **1.5.2**.
 
 ### Fixed
 
+- The dashboard's Recent Executions table shows 10 rows again when child runs of one workflow are
+  grouped. The API returns the latest 50 runs, and the table shows the first 10 rows after grouping.
 - The server update no longer aborts because of the Switcher configuration. It used to refuse an
   existing `switcher.json` that Windows PowerShell could not parse, although the Switcher itself loads
   comments, trailing commas and single backslashes in paths. The file is now carried across unchanged
