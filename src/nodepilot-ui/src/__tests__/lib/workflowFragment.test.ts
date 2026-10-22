@@ -52,6 +52,65 @@ describe('selectFragment', () => {
 });
 
 describe('serializeFragment', () => {
+  it.each([
+    ['Authorization: Bearer literal-token', '***'],
+    ['Accept: application/json\r\nX-Custom-Auth: x', '***'],
+    ['X-Custom-Auth: x\r\nAccept: application/json', '***'],
+    ['Authorization: Bearer {{globals.Token}}', 'Authorization: Bearer {{globals.Token}}'],
+    ['X-Custom-Auth: {{globals.Token}}-literal', '***'],
+    ['Accept: application/json\nContent-Type: text/plain', 'Accept: application/json\nContent-Type: text/plain'],
+  ])('headerString_%s_isRedactedLikeExport', (headers, expected) => {
+    const fragment = { nodes: [node('a', { data: { activityType: 'restApi', config: { headers } } })], edges: [] };
+    expect(JSON.parse(serializeFragment(fragment)).nodes[0].data.config.headers).toBe(expected);
+    expect(fragment.nodes[0].data.config).toEqual({ headers });
+  });
+
+  it('headerObjects_preserveReferencesAndMaskCustomLiteralCredentials', () => {
+    const headers = { Authorization: 'Bearer {{globals.Token}}', 'X-Custom-Auth': 'x', Accept: 'application/json' };
+    const fragment = { nodes: [node('a', { data: { config: { headers } } })], edges: [] };
+    expect(JSON.parse(serializeFragment(fragment)).nodes[0].data.config.headers).toEqual({
+      Authorization: 'Bearer {{globals.Token}}', 'X-Custom-Auth': '***', Accept: 'application/json',
+    });
+  });
+
+  it.each([
+    'sk_' + 'test_' + 'a'.repeat(16),
+    'AKIA' + 'A'.repeat(16),
+    'ghp_' + 'a'.repeat(20),
+    'glpat-' + 'a'.repeat(20),
+    'xoxb-' + 'a'.repeat(10),
+    'eyJ' + 'a'.repeat(10) + '.' + 'b'.repeat(10) + '.' + 'c'.repeat(10),
+    '-----BEGIN RSA PRIVATE KEY-----',
+  ])('providerTokenInFreeText_isMasked (%s)', (token) => {
+    const fragment = { nodes: [node('a', { data: { config: { body: `prefix ${token} suffix` } } })], edges: [] };
+    expect(JSON.parse(serializeFragment(fragment)).nodes[0].data.config.body).toBe('***');
+  });
+
+  it('backendHeaderPolicy_isRespectedForEveryDeclaredHeader', () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)),
+      '../../../../../src/NodePilot.Core/WorkflowDefinitions/WorkflowSecretContent.cs'), 'utf8');
+    for (const [field, expected] of [['PublicHttpHeaderNames', 'literal'], ['CredentialHeaderNames', '***']]) {
+      const start = source.indexOf(`${field} =`);
+      const names = [...source.slice(start, source.indexOf('};', start)).matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+      expect(names.length).toBeGreaterThan(0);
+      for (const name of names) {
+        const headers = { [name.toLowerCase()]: 'literal' };
+        const fragment = { nodes: [node('a', { data: { config: { headers } } })], edges: [] };
+        expect(JSON.parse(serializeFragment(fragment)).nodes[0].data.config.headers[name.toLowerCase()]).toBe(expected);
+      }
+    }
+  });
+
+  it.each([
+    ['body', '{"password":"literal-secret"}', '***'],
+    ['script', '$token = "literal-secret"', '***'],
+    ['content', 'Authorization: Bearer literal-token', '***'],
+    ['body', '{"password":"{{globals.Password}}"}', '{"password":"{{globals.Password}}"}'],
+  ])('contentUnder_%s_isRedactedLikeExport', (key, value, expected) => {
+    const fragment = { nodes: [node('a', { data: { config: { [key]: value } } })], edges: [] };
+    expect(JSON.parse(serializeFragment(fragment)).nodes[0].data.config[key]).toBe(expected);
+  });
+
   it('dropsCanvasStateAndRuntimeData', () => {
     const fragment: WorkflowFragment = {
       nodes: [node('a', {

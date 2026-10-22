@@ -212,14 +212,60 @@ function withoutViewProps<T extends object>(element: T): T {
   return copy as T;
 }
 
-/** Copy of `value` with every non-empty value under a secret key replaced by the mask. */
-function maskSecrets(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(maskSecrets);
+const PUBLIC_HTTP_HEADERS = new Set(['accept', 'content-type', 'user-agent']);
+const CREDENTIAL_HEADERS = new Set([
+  'authorization', 'proxy-authorization', 'cookie', 'set-cookie',
+  'x-api-key', 'x-auth-token', 'x-webhook-secret',
+]);
+const HEADER_LINE = /^\s*([!#$%&'*+.^_`|~A-Za-z0-9-]+)\s*:\s*([^\n]+)$/;
+const SCHEME_PREFIX = /^(?:Bearer|Basic|Digest|Negotiate|Token|ApiKey)\s+/i;
+const TOKEN_SHAPES = [
+  /sk_(?:live|test)_[A-Za-z0-9]{16,}/,
+  /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/,
+  /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
+  /\bglpat-[A-Za-z0-9_-]{20,}\b/,
+  /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
+  /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/,
+  /-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----/,
+];
+const QUOTED_SECRET = /(?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth[_-]?token|refresh[_-]?token|session[_-]?key|webhook[_-]?secret)["']?\s*[=:]\s*["'][^"']{6,}["']/i;
+
+function withoutTemplates(value: string): string {
+  return value.replace(/\{\{[^}]*\}\}/g, ' ');
+}
+
+function isLiteralSecretHeader(name: string, value: string): boolean {
+  return !PUBLIC_HTTP_HEADERS.has(name.toLowerCase())
+    && withoutTemplates(value).replace(SCHEME_PREFIX, '').trim().length > 0;
+}
+
+/** Mirrors WorkflowSecretContent.LooksSecret, including references inside arbitrary fields. */
+function looksSecret(value: string): boolean {
+  const scrubbed = withoutTemplates(value);
+  return scrubbed.split('\n').some((line) => {
+    const match = HEADER_LINE.exec(line);
+    return match !== null && CREDENTIAL_HEADERS.has(match[1].toLowerCase())
+      && match[2].replace(SCHEME_PREFIX, '').trim().length >= 3;
+  }) || TOKEN_SHAPES.some((pattern) => pattern.test(scrubbed)) || QUOTED_SECRET.test(scrubbed);
+}
+
+/** Copy with export-style secret detection; header objects preserve template references. */
+function maskSecrets(value: unknown, isHeaderObject = false): unknown {
+  if (Array.isArray(value)) return value.map((item) => maskSecrets(item));
   if (!isRecord(value)) return value;
   const out: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(value)) {
-    const isSecretKey = SECRET_CONFIG_KEYS.has(key.toLowerCase());
-    out[key] = isSecretKey && v !== null && v !== undefined && v !== '' ? REDACTED : maskSecrets(v);
+    const lowerKey = key.toLowerCase();
+    const isHeaders = lowerKey === 'headers';
+    let secret = SECRET_CONFIG_KEYS.has(lowerKey) && v !== null && v !== undefined && v !== '';
+    if (typeof v === 'string') {
+      secret = isHeaderObject ? isLiteralSecretHeader(key, v) : secret || looksSecret(v)
+        || (isHeaders && v.split('\n').some((line) => {
+          const match = HEADER_LINE.exec(line);
+          return match !== null && isLiteralSecretHeader(match[1], match[2]);
+        }));
+    }
+    out[key] = secret ? REDACTED : maskSecrets(v, isHeaders);
   }
   return out;
 }

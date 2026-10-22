@@ -3,5 +3,8 @@
 # identical on every checkout.
 *.ois_export -text
 
+# Keep the validated skill source byte-identical to its packaged Markdown on every OS.
+samples/agent-skills/sccm-troubleshooting/** text eol=lf
+
 # Marketing media is published only by the Pages workflow, never in knowledge/source.
 src/nodepilot-docs-ui/pages-media export-ignore

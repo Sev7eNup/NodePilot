@@ -1,6 +1,6 @@
 # NodePilot Prometheus Metrics — Validated Inventory
 
-**Stand:** 2026-05-07, Label-/Instrument-Abgleich gegen Source nachgezogen 2026-06-23; Dispatch-Claim-Metriken am 2026-09-16 gegen einen Live-Scrape ergänzt. Validiert gegen Live-`/metrics`-Output (siehe `RAW_METRICS_SAMPLE.txt`) und Source. Der Abschnitt „Standard OTel-Instrumentation“ ist am 2026-10-18 gegen einen Scrape mit den gepinnten 1.19-Paketen (`Directory.Packages.props`) nachgezogen; `RAW_METRICS_SAMPLE.txt` stammt noch vom 1.12-Stand (Scope-Version `1.12.0-beta.1`, Label `process_cpu_state`) und wird bei einem Live-Scrape neu erzeugt. Hinweis: Tags, die über `TelemetryConstants.Attributes.*`-Konstanten (`nodepilot.*`) gesetzt werden, exportieren mit `nodepilot_`-Präfix als Label (z.B. `nodepilot_llm_kind`); reine String-Tags (`result`, `status`, `source`, `operation`, …) nicht.
+**Stand:** 2026-10-22. Standard-Instrumentierung und `RAW_METRICS_SAMPLE.txt` gegen einen Live-Scrape der Windows-Dev-API abgeglichen: OpenTelemetry SDK 1.19.1, Process-Instrumentierung 1.19.0-rc.1; `process_cpu_time_seconds_total` trägt `cpu_mode`. Workflow-Namen/-IDs, Instanz-ID und externe Host-/DNS-Adressen im Sample sind pseudonymisiert; Messwerte und übrige Labels stammen aus dem Scrape. Das Sample zeigt die auf dieser Instanz entstandenen Serien, nicht jeden möglichen Ausführungspfad. Hinweis: Tags, die über `TelemetryConstants.Attributes.*`-Konstanten (`nodepilot.*`) gesetzt werden, exportieren mit `nodepilot_`-Präfix als Label (z.B. `nodepilot_llm_kind`); reine String-Tags (`result`, `status`, `source`, `operation`, …) nicht.
 
 ## Naming-Regel (OpenTelemetry .NET → Prometheus)
 
@@ -188,6 +188,9 @@
 | `dotnet_exceptions_total` | counter | Geworfene Exceptions |
 | `dotnet_assembly_count` | gauge | Geladene Assemblies |
 | `dotnet_timer_count` | gauge | Aktive Timers |
+| `dotnet_process_memory_working_set_bytes` | gauge | Working Set |
+| `dotnet_process_cpu_time_seconds_total` | counter | Label `cpu_mode` für user/system |
+| `dotnet_process_cpu_count` | gauge | Verfügbare Prozessoren |
 
 ### Process (`OpenTelemetry.Instrumentation.Process`)
 
@@ -224,6 +227,7 @@ Aus `AddHttpClientInstrumentation()` (alle ausgehenden `HttpClient`-Aufrufe des 
 | `http_client_request_time_in_queue_seconds_*` | histogram | `http_request_method`, `network_protocol_version`, `server_address`, `server_port`, `url_scheme` |
 | `http_client_active_requests` | gauge | `http_request_method`, `server_address`, `server_port`, `url_scheme` |
 | `http_client_open_connections` | gauge | `http_connection_state` (idle/active), `network_peer_address`, `network_protocol_version`, `server_address`, `server_port`, `url_scheme` |
+| `http_client_connection_duration_seconds_*` | histogram | `network_peer_address`, `network_protocol_version`, `server_address`, `server_port`, `url_scheme` |
 
 ---
 
