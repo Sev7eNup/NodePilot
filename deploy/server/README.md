@@ -64,7 +64,7 @@ private key is handled by the installer.
 | 7 | Network | Public hostname, ports, URL preview; allowed hosts under Advanced; checked port suggestions |
 | 8 | HTTPS certificate | Existing certificate, PFX import or explicit lab certificate generation |
 | 9 | Review configuration | Address, paths and optional product source code (~27 MB, selected by default) |
-| 10 | Prerequisites | Scrolling status list and details; Apply selected fixes and Check again; Next only navigates |
+| 10 | Prerequisites | Scrolling status list and details; Apply selected fixes and Check again; Next only navigates and refuses while a fix is still ticked |
 | 11 | Installation | Measured copy progress, activity indicator for unknown durations, elapsed time and log access |
 | 12 | Finish | Open NodePilot, save credentials/setup token and the **external-trigger API key, which appears only here** |
 
@@ -168,7 +168,8 @@ selected rows are marked in the list and counted on **Apply selected fixes**.
 
 **Check again** only reads the machine state. **Apply selected fixes** performs the selected changes,
 reports each operation, consumes the selections and runs the checks again. **Next** only navigates and
-is disabled until the check succeeds without required failures. Prerequisites already installed are
+is disabled until the check succeeds without required failures; while a fix is still ticked it refuses
+with a message, so apply the ticked fixes or clear them first. Prerequisites already installed are
 retained if the operator cancels the wizard.
 
 Available actions:
