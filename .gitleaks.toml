@@ -11,7 +11,7 @@ description = "WebSocket handshake nonce in the deployment probe"
 targetRules = ["generic-api-key"]
 condition = "AND"
 regexTarget = "line"
-paths = ['''^docs/deployment-guide\.md$''']
+paths = ['''^docs/deployment-(?:guide|troubleshooting)\.md$''']
 regexes = ['''Sec-WebSocket-Key:''']
 
 [[allowlists]]
