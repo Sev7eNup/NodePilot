@@ -45,6 +45,9 @@ updates:
         versions: [">0.55.0"]
       - dependency-name: "WireMock.Net"
         versions: [">=2.16.0"]
+      # Move the stable core and prerelease instrumentation/exporters together manually.
+      # OpenTelemetryVersionParityTests pins the exporter's exact core release.
+      - dependency-name: "OpenTelemetry*"
     groups:
       nuget-minor-patch:
         patterns:
@@ -120,6 +123,8 @@ updates:
     open-pull-requests-limit: 1
     # vitest moves as a family across all three roots; see the note on the nodepilot-ui block.
     ignore:
+      # Runtime updates also require verified embedded-Node metadata and contract pins.
+      - dependency-name: "electron"
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
       - dependency-name: "vitest"
