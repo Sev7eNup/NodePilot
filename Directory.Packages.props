@@ -72,12 +72,12 @@
   <!-- Remote execution / scheduling -->
   <ItemGroup>
     <!-- SDK and System.Management.Automation are one release train — never split them. -->
-    <PackageVersion Include="Microsoft.PowerShell.SDK" Version="7.6.6" />
-    <PackageVersion Include="System.Management.Automation" Version="7.6.6" />
+    <PackageVersion Include="Microsoft.PowerShell.SDK" Version="7.6.7" />
+    <PackageVersion Include="System.Management.Automation" Version="7.6.7" />
     <!-- Quartz + Quartz.Extensions.Hosting pinned to the same version so the Cron evaluator
          (Data, maintenance windows) and the scheduler host (Scheduler) never drift. -->
-    <PackageVersion Include="Quartz" Version="4.3.0" />
-    <PackageVersion Include="Quartz.Extensions.Hosting" Version="4.3.0" />
+    <PackageVersion Include="Quartz" Version="4.6.0" />
+    <PackageVersion Include="Quartz.Extensions.Hosting" Version="4.6.0" />
   </ItemGroup>
 
   <!-- Serilog logging -->
@@ -130,7 +130,7 @@
 
   <!-- OpenAPI / API tooling -->
   <ItemGroup>
-    <PackageVersion Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="10.3.1" />
     <!-- Pin Microsoft.OpenApi above Swashbuckle 10.2.3's transitive 2.7.5
          (GHSA-v5pm-xwqc-g5wc, HIGH, uncontrolled-recursion DoS via circular schema refs).
          2.9.0 is still 2.x so Swashbuckle's Models namespace stays compatible — do NOT take
@@ -169,10 +169,10 @@
     <PackageVersion Include="Spectre.Console.Cli.Testing" Version="0.55.0" />
     <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
     <PackageVersion Include="ModelContextProtocol.Core" Version="2.2.0" />
-    <PackageVersion Include="Microsoft.Agents.AI" Version="1.21.0" />
-    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
+    <PackageVersion Include="Microsoft.Agents.AI" Version="1.25.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.11.0" />
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.10.0" />
-    <PackageVersion Include="JsonSchema.Net" Version="9.4.0" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.4.1" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <!-- JsonSchema.Net uses Humanizer.Core 3.x; align WireMock's localization family. -->
     <PackageVersion Include="Humanizer" Version="3.0.10" />
