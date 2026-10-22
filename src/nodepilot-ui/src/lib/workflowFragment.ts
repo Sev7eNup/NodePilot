@@ -217,7 +217,7 @@ const CREDENTIAL_HEADERS = new Set([
   'authorization', 'proxy-authorization', 'cookie', 'set-cookie',
   'x-api-key', 'x-auth-token', 'x-webhook-secret',
 ]);
-const HEADER_LINE = /^\s*([!#$%&'*+.^_`|~A-Za-z0-9-]+)\s*:\s*(.+)$/;
+const HEADER_LINE = /^\s*([!#$%&'*+.^_`|~A-Za-z0-9-]+)\s*:\s*([^\n]+)$/;
 const SCHEME_PREFIX = /^(?:Bearer|Basic|Digest|Negotiate|Token|ApiKey)\s+/i;
 const TOKEN_SHAPES = [
   /sk_(?:live|test)_[A-Za-z0-9]{16,}/,

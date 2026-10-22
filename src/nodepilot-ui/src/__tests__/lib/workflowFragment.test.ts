@@ -55,6 +55,7 @@ describe('serializeFragment', () => {
   it.each([
     ['Authorization: Bearer literal-token', '***'],
     ['Accept: application/json\r\nX-Custom-Auth: x', '***'],
+    ['X-Custom-Auth: x\r\nAccept: application/json', '***'],
     ['Authorization: Bearer {{globals.Token}}', 'Authorization: Bearer {{globals.Token}}'],
     ['X-Custom-Auth: {{globals.Token}}-literal', '***'],
     ['Accept: application/json\nContent-Type: text/plain', 'Accept: application/json\nContent-Type: text/plain'],
