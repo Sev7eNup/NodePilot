@@ -2,7 +2,7 @@
 
 ## NodePilot
 
-Paketname `sccm-troubleshooting`, Version `1.0.0`. Das ZIP enthält SKILL.md im Root
+Paketname `sccm-troubleshooting`, Version `1.0.2`. Das ZIP enthält SKILL.md im Root
 und das Verzeichnis references. In Einstellungen → KI-Agenten → Skills importieren
 und beim Einzelagenten oder gewünschten Teammitglied auswählen. Import schaltet
 den Skill nicht automatisch in bestehenden Workflows frei und erteilt keine Werkzeuge.

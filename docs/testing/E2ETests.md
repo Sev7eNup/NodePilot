@@ -413,21 +413,29 @@ Für jeden Activity-Typ: **Node hinzufügen → Properties setzen → Speichern 
 **Schritte:**
 1. Add Node: `jsonQuery`
 2. Properties:
-   - **Source:** `step`
-   - **Path:** `previousStep`
-   - **JSONPath:** `$.data.property`
-   - **Result Mode:** `first`
+   - **Source:** `inline`
+   - **Content:** `{"data":[{"name":"first"},{"name":"second"}]}`
+   - **JSONPath:** `$.data[*].name`
+   - **Result Mode:** `single`
    - **Output Variable:** `jsonExtracted`
-3. Speichern
-4. Ändere **Result Mode** zu `all`
-5. Speichern
+3. Ohne Zielmaschine speichern, veröffentlichen und ausführen: Ausgabe `first` prüfen.
+4. **Result Mode** auf `all` ändern und erneut ausführen: beide Namen prüfen.
+5. **Source** auf `file` stellen; dieselbe JSON-Datei auf dem NodePilot-Server
+   anlegen und ihren absoluten **File Path** eintragen. Speichern und ausführen.
+6. Eine WinRM-Zielmaschine mit Credential und Timeout auswählen. Die Datei unter
+   einem nur dort vorhandenen Pfad bereitstellen, den Pfad eintragen und ausführen.
+   Anschließend `inline` mit demselben Inhalt auch auf dem Ziel ausführen.
+7. Speichern, Designer neu laden und Source, Query, Result Mode, Ziel, Credential,
+   Timeout und Output Variable auf Persistenz prüfen.
 
 **Prüfpunkte:**
-- [ ] Source-Dropdown: step, literal
+- [ ] Source-Dropdown: inline, file; nur file zeigt File Path
 - [ ] JSONPath wird akzeptiert (z.B. `$.data[0].name`)
-- [ ] Result Mode: first, all
+- [ ] Result Mode: single, all; beide Varianten liefern die erwarteten Werte
 - [ ] Output Variable wird gespeichert
-- [ ] Kein Validation-Error bei leerer JSONPath
+- [ ] Ausführungshinweis erklärt Server-Ausführung ohne Ziel und WinRM mit Ziel
+- [ ] Zielmaschine, Credential und Timeout sind sichtbar und werden gespeichert
+- [ ] Datei wird am Ausführungsort gelesen; fehlende Datei meldet einen Step-Fehler
 
 **Erwartung:** JSON-Query funktioniert
 
@@ -438,19 +446,32 @@ Für jeden Activity-Typ: **Node hinzufügen → Properties setzen → Speichern 
 **Schritte:**
 1. Add Node: `xmlQuery`
 2. Properties:
-   - **Source:** `literal`
-   - **Content:** `<root><item>test</item></root>`
+   - **Source:** `inline`
+   - **Content:** `<root><item>first</item><item>second</item></root>`
    - **XPath:** `/root/item`
-   - **Result Mode:** `first`
-   - **Namespaces:** (leer lassen oder optionales Format)
-3. Speichern
+   - **Result Mode:** `single`
+   - **Namespaces:** zunächst leer; für Namespace-XML JSON-Mapping wie `{"n":"urn:test"}`
+   - **Output Variable:** `xmlExtracted`
+3. Ohne Zielmaschine speichern, veröffentlichen und ausführen: Ausgabe `first` prüfen.
+4. **Result Mode** auf `all` ändern und beide Werte prüfen. Mit
+   `<root xmlns="urn:test"><item>first</item></root>`, Namespace-Mapping und
+   XPath `/n:root/n:item` die Namespace-Auflösung prüfen.
+5. **Source** auf `file` stellen und dieselbe XML-Datei über ihren absoluten
+   **File Path** zuerst auf dem NodePilot-Server ausführen.
+6. WinRM-Zielmaschine, Credential und Timeout auswählen. Eine Datei unter einem
+   nur auf dem Ziel vorhandenen Pfad abfragen; danach `inline` auf dem Ziel ausführen.
+7. Speichern und neu laden; Query, Namespaces, Result Mode, Ziel, Credential,
+   Timeout und Output Variable müssen erhalten bleiben.
 
 **Prüfpunkte:**
-- [ ] Source-Dropdown: step, literal
+- [ ] Source-Dropdown: inline, file; nur file zeigt File Path
 - [ ] Content Textarea zeigt XML
 - [ ] XPath wird akzeptiert
-- [ ] Result Mode: first, all
+- [ ] Result Mode: single, all; beide Varianten liefern die erwarteten Werte
 - [ ] Output Variable wird gespeichert
+- [ ] Ausführungshinweis, Zielmaschine, Credential und Timeout sind sichtbar
+- [ ] Lokale und WinRM-Ausführung lesen am jeweiligen Ausführungsort
+- [ ] Fehlende Datei oder ungültiges XML meldet einen Step-Fehler
 
 **Erwartung:** XML-Query funktioniert
 

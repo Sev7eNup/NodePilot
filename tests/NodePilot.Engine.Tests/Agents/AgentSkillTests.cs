@@ -147,8 +147,12 @@ public sealed class AgentSkillTests
         while (root is not null && !Directory.Exists(Path.Combine(root.FullName, "samples", "agent-skills"))) root = root.Parent;
         Assert.NotNull(root);
         var directory = Path.Combine(root.FullName, "samples", "agent-skills");
-        var skill = AgentSkillArchive.Read(File.ReadAllBytes(Path.Combine(directory, "sccm-troubleshooting-1.0.1.zip")));
+        var archive = File.ReadAllBytes(Path.Combine(directory, "sccm-troubleshooting-1.0.2.zip"));
+        Assert.Equal(archive, File.ReadAllBytes(Path.Combine(directory, "sccm-troubleshooting-1.0.2.txt")));
+        var skill = AgentSkillArchive.Read(archive);
         Assert.Equal("sccm-troubleshooting", skill.Name);
+        Assert.Contains("version: \"1.0.2\"", System.Text.Encoding.UTF8.GetString(skill.Files["SKILL.md"]));
+        Assert.Contains("Version `1.0.2`", System.Text.Encoding.UTF8.GetString(skill.Files["references/integration.md"]));
         var source = Path.Combine(directory, "sccm-troubleshooting");
         var files = Directory.GetFiles(source, "*", SearchOption.AllDirectories);
         Assert.Equal(files.Length, skill.Files.Count);
