@@ -14,6 +14,11 @@ exhaustive.
 
 Planned version: **1.5.2**.
 
+### Changed
+
+- Desktop runtime updated to Electron 44.9.0 (embedded Node 24.22.0), with matching
+  manifest, lockfile and runtime contract pins.
+
 ### Added
 
 - XML and JSON queries can read files and evaluate XPath/JSONPath on a WinRM target, including
