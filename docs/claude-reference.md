@@ -1,1269 +1,189 @@
-# Claude Reference — Detail-Doku ausgelagert aus CLAUDE.md
+# Technische Referenz
 
-Diese Datei enthält die detaillierten Referenzen, die für die tägliche Code-Arbeit nicht
-in den Kontext-Window geladen werden müssen, aber bei Bedarf nachschlagbar sind.
+Diese Referenz hält die Laufzeitverträge fest, die beim Ändern von NodePilot zu
+beachten sind. Arbeitsregeln stehen in [CLAUDE.md](../CLAUDE.md), Entscheidungen in
+den [ADRs](adr/) und die Bedienung im [Designer-Überblick](workflow-designer-features.md).
 
----
+## Activities und Skriptausführung
 
-## Activity-Typen — Config-Keys & Output-Semantik
+Activity-Typen und ihre Eingaben sind im [Konfigurationskatalog](../src/NodePilot.Core/Activities/Embedded/activity-config-reference.json)
+definiert. Die [Activity-Referenz](../src/nodepilot-docs-ui/content/en/activities-reference.md)
+beschreibt die Verwendung. Neue Typen werden über `IActivityExecutor` erkannt.
 
-| Type | Scope | Config-Keys | Outputs |
-|---|---|---|---|
-| `runScript` | Hybrid | `script`, `engine` (`auto` = Windows PowerShell 5.1 wie remote / `powershell` / `pwsh` / `runspace` = In-Process-Pool, nicht mit `isolated` kombinierbar), `timeoutSeconds`, `isolated` (bool, local-only — separate process in a Windows Job Object) + caps `memoryLimitMb`/`maxProcesses`, `successExitCodes` (comma-sep, opt-in exit-code gate) | `output`, `error`, `param.exitCode` (always, native command **of this script**), `param.*` (variables the script itself assigns, also when it ends early via `exit`/`return`/`throw` — not passed-through upstream params, not PS automatics/preference vars) |
-| `fileOperation` | Remote | `operation` (copy/move/delete/exists/create/rename), `path`, `destination`, `newName`. Asserts `-PathType Leaf` bei destruktiven Ops. `create` legt leere Datei an (truncated mit `-Force`). | `param.operation`, `param.path`, `param.destination`, `param.exists`, `param.fullName`, `param.creationTime`, `param.newPath`/`param.newName` (op-abhängig) |
-| `folderOperation` | Remote | `operation` (copy/move/delete/exists/list/create/rename), `path`, `destination`, `newName`. Asserts `-PathType Container`. `list` enumeriert direkte Children. | `param.operation`, `param.path`, `param.exists`, `param.fullName`, `param.creationTime`, `param.newPath`/`param.newName`; `list` → `param.items`+`param.count`+`param.truncated` |
-| `serviceManagement` | Remote | `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; create/setStartType nehmen `binaryPath`/`displayName`/`description`/`startupType`). `delete` und `AutomaticDelayedStart` laufen über `sc.exe`; bei diesen schreibenden Aufrufen wird der Exit-Code geprüft und ein Fehlschlag als terminierender Fehler geworfen — sc.exe meldet Fehler auf stdout und lässt den Error-Stream leer, ohne die Prüfung bliebe ein abgelehnter Delete/Config grün. Der abschließende `sc.exe qc`-Read-back bei `setStartType` ist bewusst ungeprüft. `serviceName` folgt den Windows-Regeln (≤256 Zeichen, kein `/`/`\`) und darf zusätzlich kein `"` und keine Steuerzeichen enthalten (natives `sc.exe`-Argument unter PS 5.1). | `param.name`, `param.status`, `param.startType` |
-| `registryOperation` | Remote | `operation` (read/write/deleteValue/deleteKey/createKey/exists/listSubKeys/listValues), `keyPath`, `valueName`, `value`, `valueType` (String/ExpandString/Binary/DWord/MultiString/QWord). `read`+`exists` arbeiten je nach `valueName` auf Key- oder Value-Ebene. | `param.value`+`param.type` (single-read), `param.values`+`param.count` (listValues), `param.subKeys`+`param.count` (listSubKeys), `param.exists`, `param.created` |
-| `wmiQuery` | Remote | `className`, `namespace`, `filter`, `mode` (`query`/`wql`/`invokeMethod`), `captureProperties` (optional `string[]`). Mit `captureProperties` → erste Zeile in `param.<Name>` + `param.count`. Ohne → Legacy-Text-`output`. Property-Namen müssen CIM-konform (`^[A-Za-z_][A-Za-z0-9_]*$`). | `param.*`, `param.count`, `output` |
-| `startProgram` | Remote | `filePath` (gespeichert: absoluter lokaler Pfad; kein UNC/PATH-Lookup), `arguments`, `workingDirectory`, `useShellExecute` (durch `StartProgram:DisallowShellExecute` gesperrt, wenn aktiviert), `waitForExit`, `timeoutSeconds`, `successExitCodes`. Der Designer ergänzt `cmd`, `powershell`, `cscript`, `wscript` (jeweils auch mit `.exe`) beim Verlassen des Felds zum absoluten Pfad; API/MCP und generierte Definitionen müssen ihn selbst liefern. Ausgabe wird nur bei `waitForExit: true` **und** `useShellExecute: false` erfasst — `waitForExit: false` startet feuern-und-vergessen und richtet keine Umleitung ein. `timeoutSeconds` begrenzt das Warten auf den **laufenden** Prozess. Nach dessen Ende begrenzt `Engine:IsolatedDrainGraceSeconds` (default 5 s) das Warten ohne neu erfasste Bytes; verworfene Ausgabe oberhalb des Limits verlängert diese Frist nicht. Insgesamt gilt Prozess-Timeout plus Nachlesefrist als Obergrenze. Nicht vollständig gelesene Pipes werden in der Meta-Zeile gemeldet. Das gestartete Programm bekommt `PSModulePath` aus der Registry (lokal wie remote, dort die des Ziels), damit eine gestartete Windows PowerShell ihre eigenen Kernmodule lädt. Lokal läuft das Startskript im In-Process-Pool und setzt die Variable am `ProcessStartInfo`; mit `useShellExecute` (nimmt keine eigene Umgebung an) läuft es stattdessen in einem Windows-PowerShell-5.1-Prozess mit sauberer Umgebung (`StartProgramActivity.SelectLocalEngine`). | `param.exitCode`, `param.processId`, `param.stdout`, `param.stderr` (leer, wenn nicht erfasst), `param.stdoutTruncated`, `param.stderrTruncated`, `param.waited` |
-| `powerManagement` | Remote | `action` (shutdown/restart/logoff/abort/hibernate), `delaySeconds`, `force`, `message` | — (kein OutputParameter) |
-| `textFileEdit` | Remote | `operation` (append/prepend/insert/delete/replace/replaceLine), `path`, `content`, `lineNumber`, `matchPattern`, `replace`, `useRegex`, `ignoreCase`, `occurrences`, `encoding` (auto/utf8/utf8-bom/utf16le/utf16be/ascii), `lineEnding` (preserve/crlf/lf), `createIfMissing`, `dryRun`, `backupSuffix`, `appendIfMissing`(Exact), `maxFileSizeMB` (default 50). BOM-aware, atomarer Write (tmp + `Move-Item -Force`). | `param.operation`, `param.path`, `param.linesBefore`/`linesAfter`/`linesChanged`, `param.encoding`, `param.lineEnding`, `param.backupPath`, `param.dryRun` |
-| `scheduledTask` | Remote | `action` (get/start/stop/enable/disable/unregister/register, default `get`), `taskName`, `taskPath` (default `\`). Register-only: `program`, `arguments`, `workingDirectory`, `triggerType` (once/daily/weekly/atLogon/atStartup), `startTime`, `daysOfWeek[]`, `weeksInterval`, `daysInterval`, `runAsUser` (default SYSTEM), `runLevel` (limited/highest), `description`, `force`. Braucht i.d.R. Admin auf dem Target. Existing-task actions sind Cmdlet-first; ausschließlich bei CIM-Fehler `0x80041318` folgt ein lokaler Task-Scheduler-Automation-Fallback innerhalb derselben PowerShell-/WinRM-Session. `register` bleibt Cmdlet-only. | `param.taskName`, `param.state`, `param.lastRunTime`, `param.lastTaskResult`, `param.nextRunTime` |
-| `fileHash` | Remote | `path`, `algorithm` (MD5/SHA1/SHA256/SHA384/SHA512, default SHA256), `expected` (optional — verifiziert; Mismatch ⇒ Step schlägt fehl). | `param.hash`, `param.algorithm`, `param.match` |
-| `zipOperation` | Remote | `operation` (compress/extract, default `compress`), `source` (Wildcards bei compress nur im letzten Segment; `[]` literal), `destination`, `compressionLevel` (Optimal/Fastest/NoCompression — nur compress), `force`. Compress schreibt ein kontrolliert validiertes Manifest direkt mit `ZipArchive`; Extract validiert und schreibt jeden Entry einzeln, blockiert Zip-Slip und vorhandene Reparse Points und öffnet Output-Dateien mit `CreateNew`. | `param.destination`, `param.sizeBytes` (extract ⇒ 0) |
-| `restApi` | Engine-local | `url`, `method`, `body`, `headers` (ein hier gesetzter `Content-Type` wandert bei einem Request **mit Body** auf die Entity; ein unparsbarer Wert bleibt unbeachtet und der Body geht weiter als `application/json` raus. Bei GET/HEAD oder leerem Body entsteht keine Entity — der Header wird dann verworfen), `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy` | `param.statusCode` (Response-Body steht im `output`-Stdout als `HTTP {code}\n{body}`; Header werden nicht als `param` exponiert) |
-| `sql` | Engine-local | `provider` (sqlserver/sqlite/postgres), `query`, `timeoutSeconds`. Verbindung: (a) Builder-Felder (SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode` (default `VerifyFull` + `Trust Server Certificate=false`; schwächere Modi nur für literale Loopback-Hosts); SQLite: `dataSource`), (b) raw `connectionString`, (c) named `connectionRef` aus `SqlActivity:ConnectionStrings:{name}`. Reihenfolge: `connectionRef` > Builder > raw; die Postgres-TLS-Policy gilt für alle drei Pfade. | SELECT: `param.rowCount` + erste-Zeile-Spalten als `param.<col>` + `param.row{i}_{col}` (erste 20 Zeilen) + `param.truncated`/`param.flatKeysTruncated`. DML/DDL: `param.rowsAffected` + `param.rowCount`. **Die Verzweigung haengt am Statement, nicht an der Trefferzahl:** ein SELECT ohne Treffer liefert `[]` und die SELECT-Form, kein `rowsAffected`. Skalare werden **invariant** formatiert (`1.5`, nicht `1,5`) |
-| `emailNotification` | Engine-local | `to`, `subject`, `body`, `isHtml`. Single-Recipient. SMTP via `Smtp:*` Config. | — |
-| `delay` | Engine-local | `seconds` | — |
-| `junction` | Engine-local | `mode` (waitAll/waitAny/waitNofM), `requiredCount` (bei waitNofM) | — |
-| `forEach` | Engine-local (controlFlow) | `items` (Template → JSON-Array oder Zeilenliste), `itemsFormat` (auto/json/lines), `childWorkflowNameOrId`, `itemParameterName` (default `item`), `indexParameterName` (default `index`), `parameters` (statisch, an jedes Child), `maxParallelism` (default 1, Hard-Cap 64), `continueOnError`, `timeoutSecondsPerItem` (default 3600). Teilt `ISubWorkflowGate` mit `startWorkflow`. | `param.total`, `param.succeeded`, `param.failed`, `param.skipped`, `param.firstError`, `param.results` (JSON-Array) |
-| `decision` | Engine-local (controlFlow) | `cases` (Array, je `{name, condition}`; `condition` nutzt dieselbe AST wie Edge-`conditionExpression`, `type` ist hier Pflicht), `defaultCaseName` (default `default`). Routing dann per `step.param.case == "name"`-Edge-Conditions. | `param.case`, `param.matched`, `param.reason` |
-| `startWorkflow` | Engine-local | `workflowNameOrId`, `parameters`, `waitForCompletion`, `timeoutSeconds` | sync: `param.*` (gespiegelt aus Child-`returnData`) + immer `param.__executionId`/`__status`/`__workflowId`/`__workflowName`. fire-and-forget: `param.workflowId`/`param.workflowName`/`param.waited` |
-| `returnData` | Engine-local | `data` (obj mit `{{template}}`-Werten) | `param.*` (Keys aus `data`) |
-| `xmlQuery` | Hybrid | `source`, `path`/`content`, `xpath`, `namespaces`, `resultMode`, `timeoutSeconds` | `param.result`, `param.count`. Datei und XPath auf dem WinRM-Ziel, ohne Ziel lokal. Beide Modi liefern den Elementtext (`InnerText`), `all` als JSON-Array. Numerische XPath-Ergebnisse invariant formatiert |
-| `jsonQuery` | Hybrid | `source`, `path`/`content`, `jsonPath`, `resultMode`, `timeoutSeconds` | `param.result`, `param.count`. Datei und JSONPath auf dem WinRM-Ziel, ohne Ziel lokal. Skalare invariant (`9.99`, `true`/`false`); ISO-Zeitstempel bleiben der Originaltext (kein Date-Parsing). Die mitgelieferte Framework-Bibliothek wird auf dem Ziel im Speicher geladen |
-| `log` | Engine-local | `level` (info/warning/error), `message` | — |
-| `generateText` | Engine-local | `mode` (`alphanumeric` default/`alphabetic`/`numeric`/`hex`/`guid`/`password`/`custom`), `length` (1–1024, default 16; bei `guid` ignoriert), `customCharset` (Pflicht bei `mode=custom`), `excludeAmbiguous` (entfernt verwechselbare Zeichen 0/O, 1/l/I …). Entropie aus `RandomNumberGenerator`, rejection-sampled (keine Modulo-Bias). `password` = nur Zeichensatz-Preset (keine Policy-Garantie). Generierter Wert wird **nicht** redigiert. | `output` (generierter String), `param.text` |
-| `llmQuery` | Engine-local | `prompt` (Pflicht; `{{templates}}` erlaubt), `systemPrompt` (optional; leer = Passthrough, kein synthetischer Default), `jsonMode` (bool → `response_format:json_object`; Antwort wird **nicht** validiert). **Per-Node-Overrides** (leer → das aktive LLM-Profil): `baseUrl` (absolutes HTTPS; HTTP nur für literales `localhost`/Loopback; via `LlmEndpointGuard` validiert, Cloud-Metadata blockiert), `model`, `apiKey` (Secret, auto-redigiert; zeigt `baseUrl` auf einen anderen Origin als das Profil, geht der Profil-Key **nicht** mit, nur ein am Node gesetzter `apiKey`), `maxTokens` (>0), `temperature` (0..2, per-Node-only — kein globaler Knopf; leer = Provider-Default), `timeoutSeconds` (>0). **`Llm:Enabled=true` + auflösbares aktives Profil Pflicht** (sonst sauberer Step-Fehler). `output` = Antworttext (roh, füttert Downstream-Databus; `OutputRedactor` scrubbt nur Persistenz/SignalR). Token-Keys **immer** gesetzt, `""` wenn Server keine `usage` liefert (`type:"number"` ist nur UI-/Databus-Hint). Transiente Fehler (RateLimited/Unreachable) via `config.retry` wiederholbar. | `output` (Antwort), `param.model`, `param.promptTokens`, `param.completionTokens`, `param.totalTokens`, `param.finishReason` |
-| `waitForCondition` | Hybrid | `conditionType` (`script` default / `pathExists` / `serviceRunning` / `portOpen` / `httpOk`), `intervalSeconds`, `timeoutSeconds`. Mode-spezifisch: `script` → `script` (PowerShell-Expr, **keine** `{{...}}`-Templates) + optional `engine` (wie `runScript`, nur lokal, Standard 5.1-Prozess; getypte Modi immer Pool), `pathExists` → `path`, `serviceRunning` → `serviceName`, `portOpen` → `host`+`port`, `httpOk` → `url`. Getypten Modi nehmen `{{upstream.param.x}}` an — Engine quotet Werte sicher. | `param.attempts`, `param.elapsedSeconds`, `param.lastResult` |
+`runScript`, `waitForCondition`, `xmlQuery` und `jsonQuery` sind hybrid: Ohne Zielmaschine laufen sie
+auf dem API-Host, mit Zielmaschine über WinRM. Bei `xmlQuery` und `jsonQuery` wird die Datei am
+Ausführungsort gelesen; UNC-Pfade bleiben überall abgelehnt.
 
-### Prozess-Isolation (`runScript`, nur lokal)
+<a id="runscript--ausführungsort-local-vs-remote--self-managed-remoting"></a>
 
-`config.isolated: true` startet das Script als eigenen Prozess race-frei in einem Windows Job Object (`KILL_ON_JOB_CLOSE` → keine verwaisten Prozesse bei Host-Crash/Restart + Crash-/Leak-Containment). Opt-in Caps: `memoryLimitMb` (JOB_MEMORY, aggregat über alle Prozesse des Jobs — lässt Allokationen fehlschlagen, terminiert nicht) + `maxProcesses`. Erzwingt einen Prozess-Engine (nie Runspace-Pool); No-Op auf dem Remote/WinRM-Pfad. Impl: `IsolatedProcessLauncher` (STARTUPINFOEX + `PROC_THREAD_ATTRIBUTE_JOB_LIST` — Prozess startet direkt im Job, kein Assign-after-Spawn-Race).
+### runScript: Ausführungsort
 
-**Handle-Inheritance-Hardening (fixt „Execution hängt in Running obwohl alle Nodes fertig sind"):** Die stdout/stderr-Anonymous-Pipes des isolierten Childs sind kurzzeitig *inheritable* im API-Prozess offen. Ein *anderer* gleichzeitiger `CreateProcess`/`Process.Start` mit `bInheritHandles:true` ohne `HANDLE_LIST` (non-isolated runScript, `startProgram`, user-`Start-Job`) konnte diese Write-Handles erben und die Pipe offenhalten → `ReadToEndAsync` erreicht nie EOF → der Step-Task terminiert nie → Execution bleibt ewig `Running`. Zwei Gegenmaßnahmen: (1) **`ProcessSpawnCoordinator`** serialisiert *alle* NodePilot-eigenen inheritable-handle-Spawns (Launcher-Fenster + non-isolated `Process.Start` + Executable-Probe) hinter einem Prozess-globalen Lock, sodass sich kein Vererbungsfenster mit einem anderen Spawn überschneidet. (2) **Bounded Drain:** nach `WaitForExit` + `TerminateJobObject` existiert kein legitimer Pipe-Writer mehr, daher wird der stdout/stderr-Drain auf `Engine:IsolatedDrainGraceSeconds` (default 5 s) begrenzt — bleibt ein Read nach dieser Frist offen (geleaktes Handle in einem Fremdprozess), gibt der Step das bereits gepufferte Output zurück, loggt eine Warnung und terminiert (statt ewig zu hängen). `DrainReadsAsync` observiert die abgebrochenen Reads, sodass kein `UnobservedTaskException` entsteht.
+Mit einer nicht lokalen Maschine oder einem Credential verwendet `runScript` den
+verwalteten WinRM-Pfad. Ohne Maschine beziehungsweise bei Loopback ohne Credential
+läuft es lokal auf dem API-Host. `engine: auto` startet Nutzerskripte in Windows
+PowerShell 5.1. Eingebaute Activities verwenden lokal den In-Process-Pool.
 
-**Nicht-isolierter Prozesspfad (Standard für lokale Nutzerskripte):** `ProcessExecutionEngine` wartet auf das Ende des Skriptprozesses (`Exited`), **nicht** auf Pipe-EOF wie `WaitForExitAsync`, und sammelt danach höchstens `Engine:IsolatedDrainGraceSeconds` lang zeilenweise weiter. Grund: ein Hintergrundprogramm, das das Skript ohne neues Fenster startet (`Start-Process -NoNewWindow`, `cmd /c start`, `Process.Start` ohne Shell), erbt die Pipes und hielte den Step sonst bis zu seinem eigenen Ende fest. Die bis dahin gesammelte Ausgabe (inkl. Marker) bleibt erhalten — deshalb zeilenweise statt `ReadToEndAsync`.
+Selbst aufgebautes Remoting innerhalb eines lokalen Skripts liegt außerhalb der
+verwalteten WinRM-Verbindung. Dabei entfallen deren Credential-Anbindung,
+Target-Zuordnung, Telemetrie und Transport-Hardening. Das Skript muss seine
+Verbindungen selbst verwalten und aufräumen.
 
-**Prozess-Bootstrap (beide Prozesspfade, `ProcessExecutionEngine.BootstrapArguments`):** Der Host startet mit `-EncodedCommand`, nicht `-File`. Der Bootstrap liest das Temp-Skript, löscht es sofort und führt den Text als Scriptblock aus — damit greift keine Execution-Policy (`AllSigned` per GPO) und Secrets liegen nur Millisekunden auf der Platte (Waisen > 1 h räumt der Factory-Ctor weg). Er spiegelt die WinRM-Semantik: jeder `ErrorRecord` → `ERROR`-Marker + Klartext auf stderr (= `!HadErrors`), Ausgabe als `psobject.ToString()`, Streams 3/6 verworfen, `$ProgressPreference` aus; CLIXML-Reste auf stderr entfernt `StripSerializedStreams`. Arbeitsverzeichnis = das des Hosts (Dienst: `System32`), wie im Pool.
+Der In-Process-Pool verwendet das PowerShell-SDK mit gebündelten Modulen.
+Implizite Windows-PowerShell-Kompatibilität ist deaktiviert. Explizit aufgebaute
+Kompatibilitätssessions gehören dem Skript. Bei `engine: runspace` können über
+`cmd`, `Start-Process` oder `Process` gestartete PowerShell-Prozesse den vom SDK
+veränderten Modulpfad erben. Der direkte Aufruf `& powershell.exe` behandelt diesen Pfad selbst.
 
-### runScript — Ausführungsort (local vs. remote & Self-Managed-Remoting)
+`config.isolated: true` führt lokale Skripte in einem eigenen Prozess mit Windows
+Job Object aus. `memoryLimitMb` und `maxProcesses` begrenzen dessen Ressourcen.
+Remote-Ausführung verwendet diese lokale Isolation nicht.
 
-`runScript` ist *hybrid*; der Dispatch entscheidet allein anhand der gesetzten Maschine ([RunScriptActivity.cs:88-91](../src/NodePilot.Engine/Activities/RunScriptActivity.cs#L88-L91)):
+Fehlereinträge bestimmen den Skripterfolg. `successExitCodes` aktiviert zusätzlich
+eine Exit-Code-Prüfung. Ein skripteigenes `exit N` ist im Prozesspfad beobachtbar,
+im Runspace-Pool nicht. Parse-Fehler bleiben in beiden Fällen Fehler.
 
-- **Maschine gesetzt** (non-loopback bzw. + Credential) → NodePilot baut die WinRM-Session über die gepoolte `WinRmSessionFactory` (`ExecuteRemoteAsync`). Das Script läuft auf dem Ziel, **kein** Session-Management im Script nötig.
-- **Keine Maschine** (bzw. loopback ohne Credential) → der Node läuft **engine-local im API-Host** (`ExecuteLocalAsync`, standardmäßig ein Windows-PowerShell-5.1-Prozess, optional isoliert). Von dort kann das Script die Remote-Verbindung **selbst** herstellen — SCOrch-Stil: `Invoke-Command -ComputerName SRV01 -Credential $c { … }` / `New-PSSession`. Sinnvoll für dynamische Ziellisten, Fan-out auf N Maschinen in **einem** Node oder Jump-Host-Ketten.
+## Variablen und Kontrollfluss
 
-**Welche PowerShell lokal läuft:** Nutzerskripte (`runScript`, Custom Activities, `waitForCondition` mit `conditionType: script`) laufen bei `engine: auto` in Windows PowerShell 5.1 als eigener Prozess — dieselbe PowerShell, die ein Remote-Step über WinRM auf dem Ziel bekommt, mit denselben Modulen. Skripte, die NodePilot selbst erzeugt (Localhost-Pfad der eingebauten Activities, getypte `waitForCondition`-Probes), laufen über `PowerShellEngineFactory.GetBuiltInEngine()` im In-Process-Pool. Prozess-Kinder bekommen `PSModulePath` aus der Registry (`ChildProcessEnvironment`): das SDK schreibt beim Öffnen des Pools den prozessweiten Wert um und stellt seine PS-7-Kernmodule voran, woraufhin Windows PowerShell deren Manifest lädt und `New-Guid`, `Get-FileHash` & Co. verliert. Temp-Skripte werden mit BOM geschrieben und setzen zuerst `[Console]::OutputEncoding` auf UTF-8, weil 5.1 sonst ANSI liest und OEM schreibt. **Grenze von `engine: runspace`:** Startet Nutzercode im Pool selbst eine Windows PowerShell, bekommt nur der direkte Aufruf `& powershell.exe` den richtigen Modulpfad (PowerShell setzt ihn dafür selbst, Test `RunspaceUserCodeChildProcessTests`); über `cmd /c`, `Start-Process` oder `[Diagnostics.Process]` gestartete Prozesse erben den umgeschriebenen Pfad (gemessen), denn die Prozessumgebung gehört dem Host und lässt sich pro Skript nicht ohne Rennen korrigieren.
+Ein Step sieht ausschließlich Ergebnisse seiner Graph-Vorgänger. Fehlende Ergebnisse
+bleiben unaufgelöst, auch wenn ein anderer paralleler Zweig bereits fertig ist.
+Ein neuer Variablen-Namespace braucht eigene Parser- und Resolver-Unterstützung.
 
-**In-Process-Pool = PowerShell-SDK, nicht volles pwsh:** Der In-Process-Pool shippt nur die acht Core-Module plus das gebündelte `Microsoft.PowerShell.Archive` (eager importiert, `PSModules\` im Output — Grund: WinPSCompat-Session-Leak 2026-07-30, siehe `docs/performance-improvements.md`). **Implizite Windows-PowerShell-Kompatibilität ist deaktiviert** (`powershell.config.json` mit `DisableImplicitWinCompat` neben der SDK-DLL, platziert via `Directory.Build.targets`): Ein Desktop-only-Modul (z. B. die System32-Kopien ohne Core-Flag) schlägt im Pool (`engine: runspace`, eingebaute Activities) **laut** fehl statt still einen `powershell.exe -s`-Kindprozess pro Pool-Runspace zu akkumulieren. CDXML-Module (ScheduledTasks, NetTCPIP, Defender, …) laden weiterhin nativ; bewusstes `Import-Module -UseWindowsPowerShell` bleibt möglich (die so erzeugte Session gehört dann dem Script — inkl. Aufräumen). `pwsh`/`powershell.exe`-Prozess-Engines und der WinRM-Pfad sind nicht betroffen (eigenes `$PSHOME` bzw. Remote-Seite).
-
-**Trade-offs beim Self-Managen** (bewusst außerhalb des managed WinRM-Pfads):
-
-1. Läuft auf dem **API-Host**, nicht auf dem Ziel — der Host braucht Netz-/WinRM-Client-Zugriff (TrustedHosts/Kerberos/SSL) selbst.
-2. Der DPAPI-**Credential-Store ist nicht verdrahtet** → `PSCredential` im Script selbst bauen; Secret via `{{globals.NAME}}` (im Output redigiert), nie hardcoden.
-3. **Kein** Machine-Targeting/-Test (`POST /{id}/test`), keine `StepExecution.TargetMachine`-Zuordnung, keine per-Machine-Telemetrie/-Health.
-4. Hardening (`Remote:RequireWinRmSsl`, SSL-Enforcement, Session-Pool) **greift nicht** — es hängt am Factory-Pfad.
-
----
-
-## Trigger — Injected-Params
-
-Trigger-Sources seeden ihre Event-Daten als `manual.*`-Variablen in den Run (`VariableResolver` schreibt `manual.<key>`), referenzierbar als `{{manual.<name>}}`. Jeder Trigger-Node spiegelt dieselben Keys zusätzlich als eigene `param.*`-Outputs (`{{<triggerVar>.param.<name>}}`). Es gibt **kein** `trigger.*`-Namespace — ein `{{trigger.file.path}}` bleibt unaufgelöstes Literal. `manual.*` hat ein **eigenes Regex-Muster** (`VariableResolver.ManualPattern`), weil der Tail ein frei gewählter Name ist und `StepPattern` ihn nie treffen könnte; ein Name, den der Lauf nicht führt, lässt den Step mit „Unknown trigger input(s)" scheitern statt still als Literal durchzulaufen. Deklarierte `manualTrigger`-Parameter mit `default` zählen als geführt: die Engine seedet sie beim Laufstart (vor dem Schreiben der Execution-Zeile) in `manual.*`, sofern der Aufrufer sie weglässt — mehrfach mit abweichendem Default deklarierte Namen bleiben ausgespart, weil dort kein Default eindeutig ist.
-
-> **Häufigster Autorenfehler:** `{{trigger.doctorEmail}}` statt `{{trigger.param.doctorEmail}}`. Das `param.` fehlt, damit ist der Tail keiner der vier gültigen — die Referenz bleibt wörtlich stehen und wandert unbemerkt in die Config (z.B. als E-Mail-Empfänger). Im Muster-Workflow-Set steckten 9 solcher Referenzen in 3 Workflows.
-
-| Trigger | Injected Keys |
+| Ausdruck | Bedeutung |
 |---|---|
-| `manualTrigger` | user-deklarierte Parameter-Namen → `{{manual.<name>}}` |
-| `scheduleTrigger` | `firedAt`, `nextFireAt` (ISO-8601 UTC) |
-| `fileWatcherTrigger` | `fileAction` (created/changed/deleted/renamed), `filePath`, `fileOldPath` (nur rename), `fileName`, `fileNameWithoutExtension`, `fileDirectory` |
-| `databaseTrigger` | `dbSentinel` (neuer Sentinel-Wert), `dbPrevious` |
-| `eventLogTrigger` | `eventSource`, `eventEntryType`, `eventId`, `eventMessage`, `eventTimeWritten` |
-| `webhookTrigger` | `webhookBody`, `webhookMethod`, `webhookPath`, `webhookQuery_<key>`, `webhookHeader_<key>` + pro `fieldMappings`-Eintrag der gemappte Name (JSONPath aus dem JSON-Body, Dialekt wie `jsonQuery`) |
+| `{{step.output}}`, `{{step.error}}` | Standard- und Fehlerausgabe. |
+| `{{step.success}}` | Erfolg als String. |
+| `{{step.param.name}}` | Veröffentlichter Parameter dieses Steps. |
+| `{{globals.NAME}}` | Globale Variable. |
+| `{{manual.NAME}}` | Trigger- oder Aufrufparameter. |
 
-**webhookTrigger-Verifizierung:** Default = Shared-Secret-Header (`X-Webhook-Secret` == `secret`). Der explizit versionierte Modus `signatureMode: "nodepilot-hmac-v2"` verlangt ein per CSPRNG erzeugtes Secret mit mindestens 32 UTF-8-Bytes, `X-NodePilot-Timestamp` (UNIX-Sekunden) und eine eindeutige `X-NodePilot-Delivery-Id`. Signiert wird `"NodePilot-HMAC-v2\n" + timestamp + "\n" + deliveryId + "\n" + METHOD + "\n" + escapedPath + "\n" + canonicalQuery + "\n" + rawBody` mit HMAC-SHA256. Query-Kanonisierung: jedes Key/Value-Paar separat, UTF-8/RFC3986-Percent-Encoding, ordinal nach encodetem Key sortiert; die Reihenfolge doppelter Werte bleibt erhalten; mit `&` verbunden. `{signaturePrefix}{hex}` (Default `sha256=…`) steht im `signatureHeader` (Default `X-NodePilot-Signature`). Freshness-Fenster = fünf Minuten; Delivery-IDs werden über den gemeinsamen DB-Unique-Guard clusterweit nur einmal akzeptiert. V2 übernimmt keine beliebigen Request-Header in Execution-Parameter, weil sie nicht signiert sind. **Breaking:** Legacy-`signatureMode: "hmac"` und Provider-native Body-only-HMACs werden abgelehnt; GitHub/GitLab/Alertmanager sind nicht direkt wire-kompatibel und benötigen einen verifizierenden Adapter. Constant-time-Vergleich; Fehlversuche kollabieren ins uniforme 404. `fieldMappings` (`[{name, path}]`, max 32, Werte auf 4096 Zeichen gekappt) extrahiert Body-Felder als eigene Params (`{{manual.<name>}}`); non-JSON-Body/nicht-matchende Pfade degradieren zu Leerstring statt Reject; `__`-Prefix + `webhook*`-Systemkeys sind reserviert.
+`outputVariable` kann die Step-ID ersetzen. Ein unqualifiziertes `$name` im Skript
+wird nur bei einem eindeutigen Publisher gebunden. Selbst zugewiesene Skriptvariablen
+erscheinen als `param.*`, durchgereichte Variablen und PowerShell-Automatiken nicht.
+Templates werden im Skript bereits gequotet: `$x = {{step.output}}` verwenden.
 
-### Trigger-Config-Vertrag — eine Vokabel, zwei Laufzeiten
+Nur aktive Trigger sind Workflow-Roots. Fehlende Trigger lassen die Ausführung
+scheitern. Mehrere Eingänge erfordern eine Junction. Ungültige Bedingungen werden
+beim Speichern und Veröffentlichen abgelehnt. Ein fehlender Variablenwert erfüllt
+auch unter NOT keine Bedingung. Details: [ADR 0006](adr/0006-trigger-only-workflow-roots.md),
+[ADR 0013](adr/0013-explicit-junction-fan-in.md) und [ADR 0015](adr/0015-fail-closed-edge-conditions.md).
 
-Ein Trigger-Node wird von **zwei** unabhängigen Laufzeiten gelesen: dem Node-Executor in
-`NodePilot.Engine/Triggers/` (manueller Lauf — Diagnose-Sample) und der Hintergrundquelle in
-`NodePilot.Scheduler/Sources/` (was den Workflow tatsächlich feuert). Beide parsen dieselbe Config
-über die geteilte Schicht **`NodePilot.Core/Triggers/`** (`EventLogTriggerSettings`,
-`DatabaseTriggerSettings`): Key-Namen, Defaults, Validierung, Filter-Matching und
-Connection-Auflösung liegen dort **einmal**.
+## Trigger und Kind-Workflows
 
-Der Grund ist gemessene Drift: Die Quelle las nie `eventLogTrigger.eventId` (ein im Designer
-gesetzter Ereignis-ID-Filter wurde ignoriert → der Workflow feuerte bei *jedem* Eintrag des
-Protokolls), und der Poll-Loop las `intervalSeconds`, während Designer, Doku und Node-Executor
-`pollingIntervalSeconds` schrieben → das konfigurierte Intervall war tot. Beides passierte den
-alten Key-Guard, weil der nur die Engine-Datei ansah.
+Trigger-Konfiguration wird in Core definiert und von Engine und Scheduler gemeinsam
+verwendet. Ereignisdaten erscheinen unter `manual.*` sowie als Parameter des Triggers.
+`databaseTrigger` reagiert auf eine Änderung des Sentinel-Werts. Der Trigger-Scan läuft
+alle 5 Sekunden. Ausfallzeiten werden nicht nachträglich als Ereignisse eingespielt.
 
-**Nichts wurde dabei abgeschaltet.** `intervalSeconds` bleibt ein dokumentierter Alias und wird von
-beiden Pfaden gelesen (exakter Key gewinnt) — dasselbe Muster wie `level` → `entryType`; eine
-handgeschriebene oder importierte Definition verliert ihre Taktung nicht. Der Default bleibt bei den
-real wirksamen **30 s**: der Designer *zeigte* für einen fehlenden Key 60 an, während der Loop mit 30
-lief — korrigiert wurde die Anzeige, nicht das Intervall.
+`startWorkflow` kann jeden aktivierten Workflow aufrufen. `parameters` werden zu
+`manual.*`. Bei `waitForCompletion=true` wartet der Aufrufer und übernimmt die
+`returnData`-Ausgabe. Die maximale Aufruftiefe beträgt 10, einschließlich `forEach`.
+Die gemeinsame Slot-Verwaltung ist in [ADR 0018](adr/0018-active-subworkflow-capacity.md) beschrieben.
 
-**Regel für neue Trigger-Keys:** Key in die geteilte Settings-Klasse, Eintrag in
-`activity-config-reference.json`, Feld im Designer. Zwei Guards halten das zusammen —
-`ActivityConfigReferenceTests` (jeder dokumentierte Key wird gelesen) und
-`TriggerContractParityTests` (kein Laufzeitpfad liest einen *un*dokumentierten Key; beide
-Laufzeiten parsen über die geteilte Klasse).
+Der abgeleitete Vertrag berücksichtigt aktive `manualTrigger`- und `returnData`-Nodes.
+Mehrere Return-Nodes garantieren nicht sämtliche deklarierten Outputs: der zuletzt
+geschriebene vollständige JSON-Wert gewinnt. Konflikte zwischen Input-Deklarationen
+werden markiert, `required` wird zusammengeführt. Reservierte Outputs wie
+`__executionId` und `__status` setzt die Engine selbst.
 
-Zwei bewusste Asymmetrien: `lookbackMinutes` gilt nur für den manuellen Lauf (ein Startup-Replay
-würde bei jedem Source-Rebuild dieselben Ereignisse erneut feuern), und die Zeilenliste des
-manuellen `databaseTrigger`-Laufs ist eine Vorschau — gefeuert wird bei **Sentinel-Änderung**
-(erste Spalte der ersten Zeile), nicht pro Zeile.
+Ohne Folder-Edit sind Input-Defaults in der Vertragsanzeige maskiert, zur Laufzeit
+gelten die echten Werte. Namensauflösung bevorzugt exakte Groß-/Kleinschreibung,
+danach einen eindeutigen Vergleich ohne diese Unterscheidung. Mehrdeutige Namen
+werden abgelehnt. Sicherheitsgeschützte externe Routen können diese Ablehnung als 404 verbergen.
 
-### Trigger-Liveness — was passiert, wenn eine Quelle im Betrieb stirbt
+## Ausführung und Parallelität
 
-Der Orchestrator hielt eine Quelle für gesund, solange ihr Config-Hash passte. Ein
-`fileWatcherTrigger`, dessen UNC-Freigabe zur Laufzeit verschwindet, blieb damit als Leiche in
-`_active` liegen: die Remove-Schleife greift nur bei gelöscht/disabled/Hash-Änderung, die
-Add-Schleife steigt bei `_active.ContainsKey(key)` aus. Der Trigger feuerte nie wieder — auch nicht,
-wenn die Freigabe zurückkam. Sichtbar war das praktisch nicht: der Heartbeat schrieb weiter `ok`
-(der Sync-Pass gelingt ja), das Dashboard zeigte „Armed" (aus `TriggerTypesJson`, nicht aus
-Laufzeit-State), und es gab genau eine `LogError`-Zeile.
+`Workflow.MaxConcurrentExecutions` erlaubt 1 bis 1000 oder `null` für unbegrenzt.
+Alle Startpfade teilen den Zähler. Dispatch-Aufträge bleiben am Limit `Pending`,
+synchrone Kind-Aufrufe warten. `PUT /concurrency-limit` benötigt das Feld
+`maxConcurrentExecutions`, auch wenn es `null` ist. Das Limit gehört weder zum
+Graph-Save noch zur Versionierung und ändert sich nicht durch einen Graph-Rollback.
 
-**Mechanik heute:** `ITriggerSource.Health` liefert `TriggerHealth` (`IsHealthy` + `Reason`).
-Meldet eine registrierte Quelle `unhealthy`, evictet die Remove-Schleife sie (Metrik
-`nodepilot.trigger.orchestrator.sync.changes` mit `change=evict-unhealthy`), und der **bestehende**
-Add-Pfad baut sie im selben Pass neu auf. Scheitert das, greift der vorhandene Backoff (5→10→…→300 s,
-unbegrenzt) — genau der Pfad, der eine beim Start fehlende Freigabe schon immer korrekt geheilt hat.
-`_backoff` brauchte dafür keine Änderung: es wird bei jeder erfolgreichen Registrierung geleert, ein
-`_active`-Eintrag kann also nie einen lebenden Backoff-Eintrag haben.
+Eine Step-Zeile wird vor der Activity-Ausführung persistiert. Terminale Executions
+beenden verbleibende laufende oder pausierte Steps. `StepsTotal` zählt die bereits
+materialisierten Zeilen und ist bei laufenden Workflows kein verlässlicher
+Fortschrittsnenner. Loops und spätere Zweige können weitere Steps erzeugen.
 
-**Vertrag:** `Health` ist ein reiner In-Memory-Read. Der Orchestrator fragt sequenziell jeden
-Trigger im 5-s-Pass ab; ein blockierender Probe dort (`Directory.Exists` auf totem UNC-Pfad hängt
-bis zum SMB-Timeout) stoppt die Reconciliation **aller** Workflows. Quellen, die echtes I/O
-brauchen, laufen auf eigenem Timer und cachen das Urteil.
+`WorkflowExecution.ErrorMessage` ist eine maskierte, begrenzte Zusammenfassung für
+Listen und Benachrichtigungen. Fehlerauswertung verwendet `StepExecution.ErrorOutput`.
+Bei mehreren Fehlern entscheidet die Reihenfolge aus `StartedAt` und `Id`.
 
-**FileSystemWatcher-Spezifika** (gegen die Runtime-Quelle verifiziert):
+## Step-Test
 
-- **Nicht in-place re-armbar.** Im `Monitor()`-Re-Issue-Fehlerpfad disposed die Runtime den
-  Directory-Handle, ohne `_enabled` zu löschen → `EnableRaisingEvents` liest auf der Leiche noch
-  `true`, und der Setter steigt bei unverändertem Wert aus. Nur eine frische Instanz hilft — deshalb
-  Fault-Flag + Dispose/Recreate statt lokalem Re-Arm. `EnableRaisingEvents` taugt **nicht** als
-  Health-Check.
-- **Buffer-Overflow ist kein Fault.** Bei `InternalBufferOverflowException` stellt die Runtime den
-  Read neu aus, der Watcher lebt weiter. NodePilot scannt den persistenten Dateisnapshot sofort
-  und rekonstruiert bleibende Create/Change/Delete-Zustände; eindeutige Old/New-Stempel werden als
-  Rename gepaart. Evicten würde unter Dauerlast flappen und mehr Events kosten als der Overflow.
-  Klassifizierung in `FileWatcherTriggerSource.ClassifyWatcherError`.
-- **Nicht feuernde Roh-Events schreiben nichts in die DB.** Sie aktualisieren nur den
-  In-Memory-Snapshot; der persistente Snapshot wird mit dem nächsten Fire (in dessen
-  Admit-Transaktion) oder im Reconcile-Scan geschrieben. Gelesen wird er nur beim Neustart für den
-  Skip-Zähler.
-- **Gemessen:** sowohl eine verschwindende Freigabe als auch ein gelöschtes lokales Verzeichnis
-  feuern normalerweise `Error` (`Win32Exception`), der Fault steht also in Millisekunden fest.
-- **Backstop-Probe** für den Fall, dass gar kein `Error` kommt (Host hart weg → ausstehende
-  Change-Notification wird nie completed): eigener Timer pro Quelle, zwei aufeinanderfolgende
-  Fehlschläge = Fault. **Bekannte Lücke:** eine SMB-Session, die reconnected ohne die serverseitige
-  Notification neu zu armen, liefert `Directory.Exists == true` — das erkennt die Probe nicht;
-  dafür bräuchte es eine Sentinel-Datei im Nutzerverzeichnis, die selbst den Trigger auslöst.
-- **Registrierung ist gedeckelt.** Konstruktor, `Directory.Exists` und das Armen blockieren alle
-  drei auf einem toten Redirector; sie laufen unter `Trigger:FileWatcher:PathTimeoutSeconds`. Ein
-  abgehängter Build wird disposed (sonst feuerte ein herrenloser Watcher ewig weiter), und ein
-  Identitäts-Guard in `HandleEvent` lässt nur die publizierte Instanz feuern.
+`POST /api/workflows/{id}/steps/{stepId}/test` führt eine einzelne Activity aus,
+ohne eine WorkflowExecution anzulegen. `mockVariables` liefert künstliche
+Step-Ergebnisse. `configOverride` ersetzt nur `data.config`, während Maschine,
+Credential und Output-Variable aus dem gespeicherten Node stammen.
 
-**Andere Quellen:** `databaseTrigger` meldet ein beendetes Poll-Loop als Fault. `scheduleTrigger`
-meldet konstant gesund (Quartz besitzt Job-Liveness prozessweit). `eventLogTrigger` besitzt nun
-eine eigene Reconciliation-Schleife; endet sie unerwartet, wird die Quelle als faulted neu gebaut.
+`test-context` liefert Vorgängerwerte aus einem gewählten oder dem letzten terminalen
+Lauf. Bei nicht ausgeführten Vorgängern bleibt nur das Schema. Globals kommen aus
+dem GlobalVariableStore und dürfen nicht als Mock zurückgesendet werden.
+Implementierung: [StepTester.cs](../src/NodePilot.Engine/StepTester.cs).
 
-**Config (`Trigger:FileWatcher:*`, keine `SettingsSchema`-Sektion → keine Admin-UI, kein
-Hot-Reload, keine Zeile in der Hardening-Tabelle):**
+## SCOrch-Import
 
-| Key | Default | Wirkung |
-|---|---|---|
-| `PathTimeoutSeconds` | `5` | Deadline für die Filesystem-Calls bei der Registrierung. Überschreitung → `TimeoutException` → Backoff. |
-| `HealthProbeSeconds` | `60` | Intervall der Backstop-Probe. `0` schaltet sie ab. |
+`POST /api/workflows/import-scorch` erzeugt deaktivierte Workflows und liefert ihre
+IDs im Importreport. Erst nach fachlicher Prüfung aktivieren. Das Limit beträgt
+300 MiB pro Request und 500 importierte Workflows und Variablen zusammen.
+Große XML-Dateien benötigen beim Parsen deutlich mehr Speicher als ihre Dateigröße.
 
-### Durable Trigger-Zustellung und Reconciliation
+`MaxParallelRequests` wird als Workflow-Limit übernommen, einschließlich `1`.
+Fehlende Werte bedeuten kein Limit, unbrauchbare Werte erzeugen eine Warnung.
+Runbooks ohne Trigger erhalten einen manuellen Trigger. Zielnamen werden über den
+MachineResolver aufgelöst. Connection Strings werden nicht übernommen.
 
-Für `scheduleTrigger`, `fileWatcherTrigger`, `databaseTrigger` und `eventLogTrigger` persistiert der
-Orchestrator pro Workflow/Trigger-Node einen Quell-Cursor und deduplizierte Delivery-Receipts. Ein
-Signal gilt erst als angenommen, wenn Receipt, Cursor, Pending Execution und Dispatch-Outbox in
-derselben DB-Transaktion committed sind. DB-Ausfall oder Leadership-Verlust liefert der Quelle
-`false`; sie hält das Signal fest und wiederholt, bis es angenommen ist. Ein Replay desselben
-`EventKey` wird quittiert, erzeugt aber keine zweite Execution.
+Der Import muss Ausführungsabsicht und Datenfluss erhalten. Nicht abbildbare Semantik
+im Report ausweisen, statt einen scheinbar funktionierenden Ersatz zu erzeugen.
+`Run Program` bleibt `startProgram`, eingebettete Skripte werden gesondert abgebildet.
+Kind-Verweise verwenden Ordnerpfad und Namen, damit Umbenennungen beim Import nicht
+auf einen falschen Workflow zeigen. Externe oder mehrdeutige Referenzen werden gemeldet.
 
-**Nichts wird über Neustart oder Failover hinweg nachgeholt.** Der Cursor dient der Deduplizierung
-und der Diagnose, nicht dem Backfill: Beim Start spult jede Quelle ihren Cursor auf den aktuellen
-Stand vor, ohne zu feuern, und schreibt **eine** Log-Zeile über die Größe des übersprungenen Fensters
-plus den Zähler `nodepilot.scheduler.triggers.fires_skipped`. Ohne diese Regel produziert ein
-Minutentakt 60 Läufe je Stunde Stillstand — und zwar je Workflow.
+Formatbehandlung und synthetische Fixtures stehen in
+[ScorchImporter.cs](../src/NodePilot.Engine/Scorch/ScorchImporter.cs),
+[ScorchActivityMapper.cs](../src/NodePilot.Engine/Scorch/ScorchActivityMapper.cs) und
+[den Importtests](../tests/NodePilot.Engine.Tests/Scorch/).
+Reale Kundendaten gehören nicht in Fixtures.
 
-Das Vorspulen läuft über `SaveCheckpointAsync`, nicht über den Seed-Pfad:
-`InitializeCheckpointAsync` kehrt bei vorhandener Zeile mit passendem `ConfigurationHash` sofort
-zurück, ohne `Position` zu setzen, und ließe den alten Cursor stehen. Schlägt das Vorspulen fehl,
-wird die Quelle **nicht** aktiv — sonst liefert sie Live-Ereignisse, während der Cursor noch in der
-Vergangenheit steht.
+## Settings, Statistik und Betrieb
 
-| Quelle | Was der Start tut | Was im Betrieb weiterhin nachgeholt wird |
-|---|---|---|
-| `scheduleTrigger` | Cursor auf jetzt; verpasste Cron-Takte werden gezählt und verworfen. Quartz überspringt Misfires ohnehin (`DoNothing`) | nichts — ein Takt trägt keine Daten |
-| `fileWatcherTrigger` | Frischer Verzeichnis-Snapshot wird zur neuen Basislinie; Differenz zum alten Snapshot wird gezählt und verworfen | Scan alle `Trigger:FileWatcher:HealthProbeSeconds` (60 s) und nach Buffer-Overflow — Benachrichtigungen, die der **laufenden** Quelle entgehen |
-| `eventLogTrigger` | Cursor auf den höchsten Index im Log; Einträge darüber werden gezählt und verworfen. Nach Log-Clear beginnt eine neue Generation, damit wiederverwendete Indizes nicht mit alten Receipts kollidieren | Scan alle `Trigger:EventLog:ReconcileSeconds` (30 s) — `EntryWritten`-Benachrichtigungen, die der **laufenden** Quelle entgehen |
-| `databaseTrigger` | Der erste erfolgreiche Poll nimmt den aktuellen Sentinel als Basislinie, ohne zu feuern | eine nicht angenommene Zustellung lässt den Cursor stehen; der nächste erfolgreiche Poll feuert |
+Settings-Saves schreiben atomar nach `appsettings.runtime.json`. Das
+`IsHotReloadable`-Flag in [SettingsSchema.cs](../src/NodePilot.Api/Configuration/SettingsSchema.cs)
+bestimmt den Restart-Hinweis. Gemischte Sektionen bleiben restart-pflichtig,
+wenn ein Teil ihrer Werte beim Boot gebunden wird.
 
-Die Grenze verläuft also zwischen **Fenster, in denen die Quelle nicht lief** (verworfen) und
-**Signalen, die die laufende Quelle in der Hand hat** (wiederholt, bis angenommen). Der Preis ist
-ausdrücklich in Kauf genommen: Dateien und EventLog-Einträge aus einem Stillstandsfenster werden
-nicht verarbeitet.
-
-Die Garantie lautet damit: **at least once für Signale, die eine laufende Quelle beobachtet hat,
-genau eine persistierte Execution pro EventKey**. Eine pollende Quelle ist ohnehin kein Journal:
-mehrere DB-Sentinel-Zwischenwerte zwischen zwei Polls, bereits gelöschte EventLog-Einträge sowie ein
-File-Create-und-Delete vollständig während Watcher-Ausfall/Overflow sind nicht rekonstruierbar.
-Solche Anforderungen brauchen eine externe durable Eventquelle (Queue/Outbox/Journal).
-
-**Receipts werden getrimmt, Checkpoints nicht.** Je beobachtetem Signal entsteht eine
-`TriggerDeliveryReceipt`-Zeile — die am schnellsten wachsende Tabelle der Retention-Familie.
-`TriggerReceiptRetentionService` räumt sie nach `Retention:TriggerReceipts:MaxAgeDays` (default 7)
-ab. Ein Receipt muss nur das Fenster überleben, in dem dieselbe Quelle dasselbe Signal erneut melden
-und wiederholen kann — das sind Minuten; die Woche existiert, damit ein Betreiber einen Lauf noch
-nachvollziehen kann. `TriggerDeliveryCheckpoints` bleibt unangetastet: eine Zeile je Trigger-Node,
-in-place aktualisiert; ein Löschen ließe die Quelle beim nächsten Start neu seeden.
-
-**Sichtbarkeit:** Der Heartbeat meldet `degraded: N trigger(s) retrying` statt `ok`, solange
-irgendein Trigger im Backoff ist (erreicht `/api/dashboard`, wird von der UI aber nicht gerendert).
-Der operative Weg ist die System-Policy `trigger-unhealthy` — siehe `docs/alerting.md`.
-
----
-
-## Edit-Lifecycle — UX-Flow & Button-States
-
-### UX-Flow im Editor
-
-1. Workflow ist Productive (Enabled, kein Lock) → Designer read-only, Banner „läuft produktiv". Toolbar zeigt **„Bearbeiten"** (Lock-Entry) und **„Disable"** (Kill-Switch). Save bleibt versteckt.
-2. „Bearbeiten" → `lock` → Workflow ist Locked-by-Me + Disabled. Save wird sichtbar, Disable-Slot wechselt auf **„Publish"**.
-3. „Save" speichert Zwischen-Stand (PUT, kein Status-Wechsel). Mehrfach OK.
-4. „Publish" → atomar Save + Enable + Unlock. Workflow ist wieder Productive, Toolbar springt zurück zu „Bearbeiten" + „Disable".
-5. Alternative aus Schritt 2: „Beenden" → `unlock`. Workflow bleibt Disabled, kein Auto-Enable. „Publish"-Slot ist weiterhin sichtbar und ruft jetzt `/enable` (statt `/publish`) — ein Klick reaktiviert ohne Edit-Roundtrip.
-
-### Publish/Disable-Toggle (ein Button-Slot, vier States)
-
-| Workflow-State | Label | Endpoint |
-|---|---|---|
-| `IsEnabled=true`, kein Lock | „Disable" (rot) | `/disable` |
-| `IsEnabled=false`, lock-by-me | „Publish" (primary) | `/publish` (atomar Save+Enable+Unlock) |
-| `IsEnabled=false`, kein Lock | „Publish" (primary) | `/enable` (nur scharfschalten) |
-| `IsEnabled=false`, lock-by-other | „Publish" disabled | (keiner — Tooltip nennt Lock-Owner) |
-
-**`/enable` setzt den effektiven Principal, wenn keiner gesetzt ist.** Jeder automatische Dispatch löst seinen Principal aus `Workflow.PublishedByUserId`; ein Workflow, der über den `/enable`-Slot statt über `/publish` live geht, hätte sonst keinen und jeder Trigger-Lauf würde dauerhaft als `missing_effective_principal` gecancelt. `/enable` füllt die Spalte deshalb in derselben UPDATE-Anweisung wie den `IsEnabled`-Flip mit dem scharfschaltenden Benutzer — **nur wenn sie leer ist**, nie überschreibend (ein Re-Enable verschiebt die Autorität nicht vom Publisher weg). Hat der Aufrufer keine User-Id und ist die Spalte noch leer, antwortet `/enable` `401` statt einen nie feuernden Workflow scharfzuschalten. `/disable` schreibt die Spalte nie.
-
-**Nicht repariert:** `SetEnabled` liefert `204` zurück, wenn der Workflow bereits im Zielzustand ist. Ein **bereits aktiver** Workflow ohne Principal (Altbestand, `ProvisioningSeeder`-Restore) wird durch einen Enable-Klick also nicht geheilt — er braucht Disable-dann-Enable (in dieser Reihenfolge) oder einmal Publish. Ebenso ungeheilt bleibt ein deaktivierter Publisher (`effective_principal_inactive`). Die Spalte wird in keinem DTO und keiner UI-Fläche exponiert; welche Workflows betroffen sind, ist von außen nicht sichtbar.
-
-Sichtbarkeit gegated durch `roleCanWrite` (Admin/Operator) — nicht durch Lock-by-Me. Viewer sehen den Slot nicht.
-
-`canWrite` im Frontend = `role !== 'Viewer' && checkedOutByUserId === currentUserId`. Sämtliche `nodesDraggable`/`nodesConnectable`/Save/Tidy-Affordances greifen automatisch — kein zusätzlicher Edit-Mode-Toggle.
-
-Lock, Unlock, Publish, Force-Unlock und Enable/Disable refetchen den Workflow; der Effekt in `WorkflowEditorPage.tsx` übernimmt den Server-Graph neu. Die Selektion (und damit das offene Properties-Panel) bleibt dabei erhalten — `carrySelection` in `lib/editorGraphHelpers.ts` setzt `selected` anhand der vorherigen Ids, ein im gespeicherten JSON mitgelieferter `selected`-Wert zählt nach dem ersten Laden nicht.
-
-`currentUserId` wird über `/auth/me` und `LoginResponse.userId` exponiert (JWT ist httpOnly-Cookie, SPA kann ihn nicht decodieren).
-
----
-
-## Edge-Reshape — Implementierungsdetails
-
-- [smartEdgePath.ts](../src/nodepilot-ui/src/components/designer/edges/smartEdgePath.ts) — `controlPoints`-Branch + `defaultControlPoints()` (port-aware: Right→+x, Left→-x, Bottom→+y, Top→-y)
-- [EdgeReshapeHandles.tsx](../src/nodepilot-ui/src/components/designer/edges/EdgeReshapeHandles.tsx) — 2 SVG-Handles + 2 Hint-Lines, Drag via `pointerdown/move/up` mit `setPointerCapture`, zoom-safe via `screenToFlowPosition`
-- [edgeEditingContext.ts](../src/nodepilot-ui/src/components/designer/edges/edgeEditingContext.ts) — Parent-owned Actions (`beginEdgeReshape`, `updateEdgeShape`, `resetEdgeShape`); History+Dirty zentral in WorkflowEditorPage. **Wichtig**: `commitHistory()` + `setIsDirty(true)` müssen **vor** `setEdges` feuern (siehe Delete-Handler-Pattern), sonst snapshottet `useWorkflowHistory` den bereits mutierten State und Undo ist kaputt.
-- Sichtbar nur bei `selected=true` (nicht beim Hover) und nur auf Single-Segment-Edges (Backward-U-Loop hat 2 Segmente → `cubic Bezier` kann das nicht repräsentieren).
-- Reset über das Edge-Context-Menu: „Edge-Form zurücksetzen" — entfernt nur `controlPoints` aus `data`, der Rest bleibt.
-- Round-Trip: `data.controlPoints` läuft 1:1 durch Save/Load/Export/Import (Backend strippt nichts).
-
----
-
-## Edge-Detach — Implementierungsdetails
-
-Kontextmenü-Eintrag „Ziel lösen": das Zielende hängt am Cursor, der nächste Klick auf einen Activity-Node hängt es dort wieder an — mit unveränderter Bedingung, Label, `disabled`, `controlPoints` und `targetHandle`. **Nicht** expert-gegated (anders als Swap/Reset-Shape): Umhängen ist eine primäre Editier-Operation.
-
-- **Existiert zusätzlich zum Drag-Weg, ersetzt ihn nicht.** `edgesReconnectable={canWrite}` + `onReconnect` (React Flow nativ) sind seit jeher verdrahtet; der Drag verlangt aber einen präzisen Griff auf den Endpunkt und wird unbrauchbar, sobald Quelle und neues Ziel nicht gleichzeitig auf den Schirm passen.
-- [edgeDetach.ts](../src/nodepilot-ui/src/lib/edgeDetach.ts) — `classifyReattachTarget` (Verdikte `ok`/`cancel`/`selfLoop`/`duplicate`/`invalidTarget`; Reihenfolge ist bedeutungstragend) + `detachedSourcePoint` (Anker über das vorhandene `getPortPoint`). Bewusst React-Flow-frei, damit ohne Canvas testbar.
-- **Die Ziel-Port-Seite folgt der Klickposition** — `resolveDockTarget` (ebenda) ist der **einzige** Auflösungspfad für Vorschau *und* Klick; nur deshalb kann die Linie nicht etwas anderes zeigen, als der Klick erzeugt. Die vier Punkte kommen aus dem **DOM** (`.react-flow__handle` mit `data-handleid`/`data-nodeid`, `getBoundingClientRect`), **nicht** aus dem Node-Rechteck: im Classic-Layout hängen die Handles am inneren Icon-Wrapper, das äußere Rechteck umfasst zusätzlich das Label, und `handleInset` schiebt Seiten je nach Shape weiter nach innen — eine Rechnung aus `width`/`height` wählt nachweislich den falschen Port (gepinnt in `edgeDetach.dock.test.ts`). Auswahl per `nearestPortPoint` in `edgePorts.ts`; Scan-Reihenfolge `left,right,top,bottom`, damit ein Klick exakt in der Mitte zur Horizontalen auflöst.
-- Der Hervorhebungs-Ring hängt an `data`-loser Node-`className` `np-dock-target` aus der Projektion — **nicht** an `:hover`. Sonst würden Quell-Node, Sticky-Notes und Duplikat-Ziele eine Verbindung versprechen, die der Klick ablehnt.
-- **Der bisherige Ziel-Node ist ein gültiges Ziel** (`classifyReattachTarget` kennt kein `cancel`-Verdikt): dort erneut anzudocken ist der einzige Weg, nur die Port-Seite zu wechseln, ohne die Edge samt Bedingung zu löschen und neu zu ziehen. Der Duplikat-Check schließt die bewegte Edge über `e.id !== edgeId` aus, sonst sähe sie sich dort selbst als Duplikat. Gleicher Node **und** gleicher Port ist ein No-Op: `cancelEdgeDetach()` ohne History-Eintrag und ohne Dirty-Flag — sonst erzeugte jedes Zurücklegen einen leeren Undo-Schritt.
-- **Der Rohgraph trägt nur Autorendaten.** Alles, was der Canvas zusätzlich zeigt, entsteht in `useDisplayedGraph` aus dem Rohgraphen plus Maps: Lint, Simulation, Failure-Tint, Critical Path, `__detached`, `__flowingVars`, und die Laufzeit-Annotationen aus `useNodeAnnotations` (`__liveStatus`, `__health`, `__stats`, `__machineColorIdx`, `__varFlowRole`, `__workflowEnabled`, Kanten-`__varFlowHighlighted`) sowie `useCoverageHeatmap` (`__coverage`). Kein Hook schreibt sie per `setNodes` zurück. Undo, Save und Dirty-Tracking sehen sie dadurch nie, und ein aus dem Server neu aufgebauter Graph zeigt sie sofort wieder. Ein in den Rohgraphen geratener Projektions-Key wird beim Projizieren verworfen, damit er nie als aktuell erscheint. Regression: `useDisplayedGraph.test.tsx`, `WorkflowEditorPage.test.tsx` (Laufstatus über den Lock-Refetch, Save ohne `__`-Keys) + E2E 4.8.
-- [EdgeDetachPreview.tsx](../src/nodepilot-ui/src/components/designer/edges/EdgeDetachPreview.tsx) — Vorschau-Linie in `<ViewportPortal>`, also in **Flow**-Koordinaten (Screen-Koordinaten würden ohne Mausbewegung beim Pannen veralten). Eigener rAF-gedrosselter `pointermove` auf der Canvas; der geteilte `pointerFlowPositionStore` scheidet aus, er ist an `autoHidePorts` gekoppelt. Optik über `ConnectionPreviewPath` aus `NpConnectionLine.tsx` — Drag- und Klick-Weg sehen identisch aus.
-- **Zustand ist transient.** `useEdgeDetach` hält nur die Edge-ID; die Edge wird erst beim erfolgreichen Klick angefasst. Abbruch (Esc → erster Zweig im Escape-Handler, Pane-Klick, Rechtsklick, Verlust von `canWrite`, gelöschte Edge) heißt schlicht State auf `null`. Der **Rechtsklick** läuft über `consumeContextMenuAsDetachCancel`, das an allen drei Kontextmenü-Flächen hängt (`onPaneContextMenu` — sonst passierte auf leerer Fläche gar nichts —, `onNodeContextMenu` **vor** dessen Node-Typ-Prüfung, `onEdgeContextMenu`) und den Klick **verbraucht**: kein Kontextmenü, auch nicht das des Browsers. Ohne laufendes Detach ist es ein No-Op, das Browser-Menü auf der leeren Fläche bleibt also erhalten — **kein** History-Eintrag, **kein** `isDirty`. Erfolg committet `'Move edge'`, dieselbe Marke wie der Drag-Reconnect.
-- Ablehnungen (Self-Loop / Duplikat / Gruppe+Sticky-Note) melden über die Notice-Pille und **lassen das Detach aktiv** — ein Fehlklick darf die Aktion nicht wegwerfen.
-- Der Geist der alten Route kommt über `data.__detached` aus der `useDisplayedGraph`-Projektion (gleiche Mechanik wie `__flowingVars`; `__`-Keys strippt `stripRuntimeDefinition` beim Speichern). `LabeledEdge` dimmt daraufhin die Pfad-`<g>` und unterdrückt `+`-Button und Reshape-Griffe; das Label-Pill bleibt voll deckend und benennt die Edge, die gerade umzieht.
-
----
-
-## Contract-Derivation — Semantik-Notizen
-
-- `HasManualTrigger=false` heißt **nicht** „nicht callable" — `startWorkflow` ruft jeden enabled Workflow. Heißt nur: kein deklarierter Input-Vertrag, UI fällt auf freie ParameterTable zurück.
-- **Mehrere returnData-Nodes:** `HasMultipleReturnDataNodes=true`. Pro Run gewinnt nur einer (last-write-wins auf dem **gesamten** JSON, nicht per-Key). Outputs sind „kann verfügbar sein", nicht garantiert. UI zeigt Warning-Badge.
-- **Mehrere manualTrigger**: Parameter werden per Name dedupliziert. Bei divergierendem `type`/`default` zwischen zwei Triggers gewinnt die erste Deklaration, `HasConflict=true` wird gesetzt — UI rendert Warning, kein Hard-Fail. `Required` wird OR-aggregiert.
-- **Reserved Output-Keys** (`__executionId`, `__status`, `__workflowId`, `__workflowName`) werden aus user-deklarierten `returnData.data` stillschweigend gefiltert und vom Engine separat injiziert.
-- **Disabled Nodes** (manualTrigger / returnData mit `data.disabled=true`) werden ignoriert — matcht Engine-Skip-Verhalten.
-- **Defaults sind für Nicht-Editoren maskiert:** ohne Edit auf den Ordner liefern `GET /{id}/contract` und `GET /by-name/{name}/contract` bei jedem Input mit Default `"***"` (`WorkflowsController.ScopedContractAsync`). Reine Anzeige — ein ungesetzter Parameter bekommt zur Laufzeit den echten Default; `null` bleibt `null`.
-- **By-name-Lookup:** exact-case gewinnt, sonst case-insensitive; mehrdeutige Namen (Name ist nicht unique) → `409 Conflict` statt stillem Zufallstreffer. Geteilte Semantik über `NodePilot.Data.WorkflowNameResolver` — identisch in `GET /by-name/{name}`, `GET /by-name/{name}/contract`, `POST /api/trigger/{name}` (Ambiguität kollabiert dort ins uniforme 404, M-29), Webhook-Route und Engine (`startWorkflow`/`forEach`, Ambiguität = Step-Fehler). UI zeigt damit nie einen Contract, den die Runtime nicht findet.
-
-UI: [ContractMappingTable.tsx](../src/nodepilot-ui/src/components/designer/properties/ContractMappingTable.tsx) ersetzt die freie `ParameterTable` in [StartWorkflowConfig.tsx](../src/nodepilot-ui/src/components/designer/properties/activities/StartWorkflowConfig.tsx) wenn ein Contract derive-bar ist; bei Variable-Expression / unbekanntem Workflow / Loading bleibt die alte ParameterTable als Fallback. Required-Validation: red-border + Error nur wenn `required && !default && !value`. Empty-out eines Felds **entfernt** den Key (statt ihn auf `""` zu setzen) damit der Child-Default greift. Stale-Keys (im Parameter-Dict, nicht im Contract) werden mit Warning + Remove-Button gerendert, nicht still gepflegt.
-
----
-
-## SCOrch-Import — Format-Fallen & Degradations-Regel
-
-`POST /api/workflows/import-scorch` → [ScorchImporter.cs](../src/NodePilot.Engine/Scorch/ScorchImporter.cs)
-+ [ScorchActivityMapper.cs](../src/NodePilot.Engine/Scorch/ScorchActivityMapper.cs). Fixture:
-`tests/NodePilot.Engine.Tests/Scorch/Fixtures/realistic-runbook.ois_export` (synthetisch, aber
-strukturtreu — echte Exports enthalten Kundendaten und gehören nicht ins öffentliche Repo).
-
-JSON- und SCOrch-Importe erzeugen Workflows ausnahmslos disabled, liefern aber jede erzeugte ID in
-`workflows[].id`. Nach fachlicher Prüfung ist die Aktivierung ausdrücklich über
-`POST /api/workflows/{id}/enable` oder `np workflow enable <id>` möglich. `np workflow import` und
-`import-scorch` schreiben mit `-o json` den vollständigen Importreport auf stdout, damit CI die ID
-ohne Namenssuche an den separaten Aktivierungsschritt weiterreichen kann; Status-, Warn- und
-Fehlertexte bleiben auf stderr.
-
-**Job-Concurrency wird übernommen.** `<MaxParallelRequests>` ist ein direktes Kind von `<Policy>`
-(neben `PolicyTimeout`/`RunInPipelineMode`) und trägt die Job-Concurrency des Runbooks. Der Import
-setzt daraus `Workflow.MaxConcurrentExecutions` — **originalgetreu, inklusive `1`**, was in
-Orchestrator „ein Lauf zur Zeit" heißt und dort der Default ist. Ein importiertes Runbook behält
-damit sein Verhalten, statt still unbegrenzt zu werden. Fehlt das Element, ist es
-`datatype="null"` oder liegt der Wert außerhalb von 1..1000, wird ohne Limit importiert (bei einem
-unbrauchbaren Wert mit Warnung). Weil der Orchestrator-Default 1 ist, kommen die meisten Runbooks
-limitiert an — der Importreport nennt deshalb die Anzahl, sonst serialisieren Workflows nach einer
-Migration unbemerkt.
-
-**Was am echten Format anders ist als es aussieht.** Jede dieser Annahmen war einmal falsch im Code
-und wurde erst an einem echten 2016-Export sichtbar:
-
-| Erwartung | Realität |
+| Verhalten | Sektionen |
 |---|---|
-| Published-Data-Marker beginnt mit Backtick | **Backslash-Backtick** (`\`d.T.~Ed/{GUID}.Feld\`d.T.~Ed/`, Bytes `5c 60`) |
-| Aktivität heißt `Invoke Runbook` | `Trigger Policy`; Argumente im verschachtelten `TRIGGER_POLICY_PARAMETERS` |
-| `Run Program` hat `FilePath`/`Arguments`/`WorkingDirectory` | `Program`/`Parameters`/`StartupDir`/`ComputerName` |
-| `Compare Values` hat `ValueA`/`Operator`/`ValueB` | `StringToCompare`/`StringTestOption`/`StringToCompareTo` |
-| Link-Bedingung ist `does not equal` | `doesnotequal` — ohne Leerzeichen |
-| Erfolgs-Link hat `Data = {GUID}.feld` | `Data` = **blanke** GUID, Ausgang in `Value` |
-| `Value` ist ein Status | eine **Menge**, `#`-getrennt (`warning#failed`) |
-| `GroupID` trägt AND/OR | ist leer; die Absicht steckt im `<And>` des Links |
-| `Monitor File` hat einen Filter-String | `Filters` ist verschachteltes XML; Ereignisse als vier `NotifyIf*`-Booleans |
-| Published-Data-Feldname ist punktfrei | `Compare Values` publiziert `Compare.CompareResult` — ein Muster, das am ersten Punkt stoppt, kürzt still |
-| `Compare Values` ist ein Logik-Knoten ohne Gegenstück | wird `decision`; die Links lesen sein Ergebnis, ein `log` hätte jeden Zweig dahinter getötet |
-| Positionen sind 1:1 übernehmbar | 75-px-Raster, oft negativ — NodePilot-Karten sind bis 280×110; verbatim kopiert überlappt fast alles |
+| Hot-Reload | `Smtp`, `Llm`, `AiKnowledge`, `Retention`, `Stats`, `Threading`, `FileSystemOperation`, `WaitForCondition`, `SqlActivity`, `StartProgram`, `Webhook`, `ExternalTrigger`, `DbAdmin` |
+| Neustart | `Authentication`, `Logging`, `OpenTelemetry`, `Security`, `RestApi`, `Remote`, `Performance`, `Engine`, `ExecutionDispatch`, `Agents` |
 
-**`Run Program` wird immer `startProgram` — der Wert entscheidet den Knotentyp nicht.** Der Export
-unterscheidet den externen Aufruf (`Run Program`) bereits vom eingebetteten Skript
-(`Run .Net Script`); `BuildRunProgram` übernimmt das und kennt **keinen** `runScript`-Zweig mehr.
-Zwei Anläufe hatten den Typ am Inhalt festgemacht und beide gingen schief: erst ein **Leerzeichen**
-(damit wurde jeder Pfad unter `C:\Program Files\` zum Script-Knoten), dann ein **Shell-Metazeichen** —
-das traf das `&` eines gewöhnlichen `powershell.exe -Command "& 'x.ps1'"` **und** SCOrchs eigenen
-Feldtrenner. Bei einem Import fällt beides als „alle Programmaufrufe sind runScript" auf.
+`Threading` übernimmt Änderungen nur bei manuell gestarteter Dimensionierung.
+`Agents` enthält trotz einzelner live gelesener Werte eine beim Boot gebundene
+Run-Grenze. Effektive Dimensionierung: [Performance](performance-improvements.md).
+Der Dienstneustart aus der UI benötigt SCM-Recovery mit ausschließlich Restart-Aktionen.
 
-Was bleibt, ist Feldübersetzung, nicht Typerkennung: `startProgram` hat `filePath` **und**
-`arguments` getrennt, SCOrch legt sie bei `ProgramMode=1` in *ein* Feld. Reihenfolge in
-`AsProgramCall`: (1) **Feldtrenner** `|` entfernen — nur bei genau einem `|`, dessen linke Seite aus
-nichts als einem bekannten Launcher plus höchstens einem Switch besteht (`cmd /C | attrib …`); eine
-echte Pipe sieht nie so aus. (2) Zerlegen an quotiertem Kopf, an der ersten `.exe`/`.cmd`/`.bat`/
-`.com`-Endung, die ein Token beendet, oder an einem ersten Token mit switch-förmigem Rest
-(`cmd /c dir`). (3) Braucht der Rest eine Shell — unquotiertes `|`, `&`, `>`, `<`, **außer** hinter
-`cmd /c` — läuft alles über `cmd.exe /C <Wert>`, wie SCOrch eine Kommandozeile selbst ausführt.
-Dieses Auffangnetz ist der Grund, warum „immer `startProgram`" gefahrlos ist: es gibt keine Eingabe,
-die den Typ verfälscht, und keine, die den Befehl verliert. Ein bekannter Launcher ohne Pfad
-(`cmd`, `powershell`, `cscript`, `wscript`) wird auf seinen absoluten Pfad vervollständigt, sonst
-bliebe ein Knoten stehen, den die Engine ablehnt (`PATH` wird nicht durchsucht). `filePath` verträgt
-Leerzeichen (PowerShell-Literal an `$psi.FileName`); verlangt ist Absolutheit.
+Dashboard und Workflow-Listen lesen vorberechnete Statistikwerte. Standardmäßig
+aktualisiert `WorkflowStatsRefresher` alle 5 Minuten ein 7-Tage-Fenster und verwendet
+höchstens 1000 Dauer-Samples je Workflow. Live-Ops hält laufende Executions unabhängig
+vom gewählten Historienfenster sichtbar. Gedeckelte Aggregate kennzeichnen fehlende
+Abdeckung, sie dürfen nicht als vollständige Summen dargestellt werden.
 
-**Dieselbe Vervollständigung greift beim Autoren im Designer.** Die Launcher-Liste liegt einmal in
-`NodePilot.Core.Activities.KnownProgramLaunchers` (Spiegel `lib/knownProgramLaunchers.ts`, Guard
-`KnownProgramLaunchersFrontendSyncTests`); das `filePath`-Feld ersetzt einen blanken Namen **beim
-Verlassen des Feldes**, nicht beim Tippen, und alles andere Nicht-Absolute meldet
-`checkRequiredActivityConfig` sofort statt erst zur Laufzeit — UNC mit eigener Begründung, weil
-`PathGuard` es unabhängig von der Absolutheit ablehnt. Der Engine-Vertrag bleibt unverändert: die
-gespeicherte Definition trägt weiterhin ausschließlich absolute Pfade.
+Der Support-Log liegt als Datei und als `SupportEvents`-Projektion vor. Beide haben
+standardmäßig 90 Tage Retention. Der vollständige Diagnoselog rotiert täglich und
+bei 100 MB, mit höchstens 7 Dateien. Für einen Vorfall deshalb frühzeitig sichern.
 
-**Zwei Fallen im Zerlegen, beide behoben.** (1) Die Endungssuche lief **typ-weise** — erst `.exe`
-über den ganzen String, dann `.cmd` —, also schlug ein `.exe` irgendwo hinten ein früheres `.cmd`:
-`C:\Tools\wrapper.cmd C:\Payload\setup.exe /S` trennte am Payload. Jetzt positionsweise, und eine
-Endung zählt nur, wenn **vor** ihr kein Switch-Token steht; sonst trifft das `.com` eines Hostnamens
-am Zeilenende (`python … --domain contoso.com`) und der ganze Befehl landet still in `filePath`.
-(2) Ein **Skript** im Programmfeld ergab einen toten Knoten: die Engine startet über `CreateProcess`
-(`useShellExecute` ist per Default hart gesperrt), das eine `.ps1`/`.vbs` nicht ausführen kann
-(Win32 193). `ResolveScriptHead` setzt darum den echten Interpreter in `filePath` — `.ps1` →
-`powershell.exe -NoProfile -File "<script>"`, WSH-Endungen → `cscript.exe //nologo //B`. Bewusst
-`cscript` statt der Dateizuordnung: die zeigt auf `wscript.exe`, den **fenster**basierten Host, der
-kein stdout liefert und aus einem `WScript.Echo` einen Dialog macht, den keine unbeaufsichtigte
-Sitzung beantwortet. Ebenso bewusst **ohne** `-ExecutionPolicy Bypass` — einen Interpreter zu
-ergänzen ist der kleinste ehrliche Schritt, die Policy still zu lockern wäre ein zweiter. Eine
-Endung ohne bekannten Interpreter bleibt stehen und wird gemeldet.
+## Weitere Referenzen
 
-**`<ProgramMode>` wird bewusst nicht gelesen** (`1` = Kommandozeilen-Modus, `0` = getrennte Felder).
-Es steht in Exporten, ist aber undokumentiert und bislang nur in wenigen Dateien gesehen; die
-strukturelle Prüfung erkennt die Form ohnehin selbst. Ein Signal, das nur bestätigt, was die Form
-schon sagt, brächte eine Abhängigkeit ohne Gewinn — und läge es falsch, kostete es eine echte Pipe.
-
-**Datenbus: Namen ≠ Namen.** Die Marker-Syntax zu übersetzen ist nicht dasselbe wie die *Daten* zu
-übersetzen. `PublishedFieldRenames` bildet nur die belegten 1:1-Fälle ab (`Query XML.queryResult` →
-`xmlQuery.result`, `Generate Random Text.stringResult` → `generateText.text`, und für
-`Monitor File`: `FileNameExt` → `fileName`, `FileName` (Name **ohne** Endung) →
-`fileNameWithoutExtension`, `Path` (der überwachte **Ordner**) → `fileDirectory`). Die letzten
-beiden gehen erst, seit `fileWatcherTrigger` diese Teile selbst publiziert — sie aus `filePath`
-abzuleiten geht in einem `{{…}}`-Template nicht, dort gibt es keine Ausdruckssprache. Alles ohne
-exaktes Gegenstück wird gemeldet statt auf den nächstbesten Namen gebogen. Beide Lesepfade — Templates in der
-Config **und** Variablen-Operanden in Link-Bedingungen — gehen durch dieselbe `FieldTranslation`,
-sonst löst derselbe Wert an einer Stelle auf und an der anderen nicht.
-
-**Was ein Step publiziert**, kommt von `WorkflowDataBusAnalyzer.PublishedParameters`, nie vom
-statischen Katalog allein: die echten Outputs eines `runScript` sind die Variablen, die sein Skript
-zuweist — der Katalog kennt nur `exitCode`. Gegen den Katalog geprüft meldete der Import sechs
-einwandfreie Referenzen des Referenz-Runbooks als kaputt.
-
-**`Compare Values` → `decision`:** ein Case namens `true`, `defaultCaseName` `false` — damit trägt
-`param.case` exakt die Werte, gegen die SCOrchs Link-Filter ohnehin vergleichen. Vom Test-Enum sind
-nur **2 = equals** und **7 = matches-pattern** belegt (letzteres ein Glob, der nach Regex übersetzt
-werden muss — `V9*` hieße als Regex „V, dann beliebig viele 9"). Jede andere Option kommt mit
-gefüllten Operanden, aber **disabled** an: ein geratener Operator dreht einen Zweig um, ohne dass
-irgendwo etwas falsch aussieht.
-
-**Degradations-Regel (trägt den Rest).** Property-Namen bleiben Vermutungen, also darf ein Mapping
-nur entstehen, wenn alle laut `activity-config-reference.json` `required`-Keys gefüllt sind — sonst
-Rückstufung auf einen **deaktivierten** `log`-Platzhalter. Zwei Guard-Tests erzwingen das über
-*jeden* unterstützten Typ (`ScorchMappingContractTests`): jeder emittierte Key existiert im Schema,
-und ohne Properties entsteht nie ein lauffähig aussehender Node. Platzhalter sind disabled, weil
-`LogActivity` immer `Success = true` liefert — ein enabled Platzhalter ließ ein halb übersetztes
-Runbook grün durchlaufen.
-
-**Layout — Original erhalten, nicht neu erfinden.** `WorkflowLayoutEngine.TryPreserveGeometry`
-skaliert den Graphen **gleichmäßig**, bis keine zwei Knoten mehr überlappen, und schiebt ihn auf den
-Rand. Eine gleichmäßige Skalierung ist eine Ähnlichkeitsabbildung: alle Abstandsverhältnisse
-bleiben, das Bild ist dasselbe, nur größer — und genau die Anordnung macht ein importiertes Runbook
-für seinen Autor wiedererkennbar. Der nötige Faktor ergibt sich aus dem engsten Paar.
-
-**Die angesetzte Knotengröße entscheidet, wie luftig das Ergebnis wird**, und die Vorgabe zielt auf
-die **Default-Darstellung des Designers**: Icon-Ansicht (`nodeStyle: 'classic'`) im Default-Schritt
-`lg` (`nodeScaleIndex: 3`), wo die **Label-Spalte mit 108 px** breiter ist als das Glyph und damit
-den Platzbedarf setzt — nicht die 220–280 px der Kartenansicht. Gegen 280 px gerechnet kam am
-Referenz-Export Faktor 4 und ein 6900 × 3000-Canvas heraus, mit 192 px Luft zwischen Knoten von
-108 px Breite. Mit 108 × 100 plus `MinGap` 40 fällt **Faktor 2** und ein **3460 × 1500**-Canvas
-heraus (Lücken 32/40 px) — der ganze Workflow passt bei 54 % Zoom auf einen 1920er-Schirm.
-`MinGap` deckt zugleich das Snapping ab und muss deshalb über `GridSnap` liegen; der Faktor wird auf
-Viertelschritte aufgerundet, weil ganze Zahlen einen 2,1er-Bedarf auf 3 hochgezogen hätten.
-In der Kartenansicht überlappt so ein Import — dafür gibt es „Tidy".
-
-**Kanten-Pass danach — der Grund, warum x keine reine Ähnlichkeit mehr ist.** Die Skalierung erhält
-die Richtung jeder Kante, und „dieselbe Richtung" schließt *rückwärts* ein: der Designer zeichnet
-eine Right→Left-Kante als rechteckigen U-Bogen unter beiden Knoten, sobald der Ziel-Port mehr als
-`BACKWARD_THRESHOLD` = 60 px hinter dem Quell-Port liegt (`designer/edges/smartEdgePath.ts`).
-Gemessen wird zwischen **Ports** — ein Paar in derselben Spalte reißt die Schwelle also allein
-dadurch, dass ein Knoten breit ist. Am Referenz-Export waren das 15 eckige Kanten, 13 davon
-Knotenpaare mit identischem x, weil SCOrch gern vertikal stapelt.
-
-`MakeEdgesReadable` räumt das in dieser Reihenfolge auf, billigster Hebel zuerst:
-
-1. **Rückkanten eines Zyklus** (DFS-Färbung über *alle* Kanten, von jedem Knoten aus geseedet — nicht
-   nur von Roots, sonst bleibt ein abgehängter Zyklus ungefärbt und die Relaxation läuft ewig) sind
-   ausgenommen. Ein echter Zyklus kann nicht komplett vorwärts laufen, und der Styleguide will, dass
-   ein Loop-Back auffällt.
-2. **Gestapeltes Paar** (`|dx| < NodeWidth` **und** `|dy| >= NodeHeight`) → `sourceHandle`/
-   `targetHandle` auf `bottom`/`top` (bzw. `top`/`bottom`). Der U-Bogen hängt am Port-Paar, also
-   verschwindet er, **ohne dass sich ein Knoten bewegt** — und die Anordnung ist das, was erhalten
-   werden soll. Am Referenz-Export deckt das 16 Kanten ab.
-3. **Alles andere** wird horizontal auseinandergezogen: `x(target) >= x(source) + MinForwardGap`,
-   danach Entzerren auf `NodeWidth + MinGap`, beides im selben Fixpunkt bis nichts mehr wandert.
-   Nur das Ziel bewegt sich, nur nach rechts, **y wird nie angefasst**.
-
-Drei Fallen, die alle drei einmal zugeschlagen haben:
-
-- **`MinForwardGap` ist 68, nicht 148.** Es spiegelt die Render-Schwelle (`NodeWidth − 60`) plus
-  einen Rasterschritt, **nicht** die Knotenbreite. Kollidierende Knoten sind Aufgabe von `MinGap` im
-  selben Pass; die Knotenbreite hier zu fordern hat Graphen hunderte Pixel breiter gezogen, als
-  irgendetwas auf dem Schirm gebraucht hätte.
-- **Jeder Zug rastet mit `SnapUp` (Ceiling), nicht mit `Snap` (`Math.Round`).** 68 bzw. 148 sind
-  keine Vielfachen von `GridSnap` 20, und kaufmännisches Runden landet *unter* der Forderung — die
-  Bedingung feuert im nächsten Pass erneut, die Schleife dreht bis zum Cap und das Ergebnis erfüllt
-  die Zusicherung trotzdem nicht.
-- **Danach wird auf den Rand zurücktranslatiert.** Der Zug schiebt nur nach rechts, also wandert der
-  linkeste Knoten weg vom Margin, sobald er selbst Ziel einer Kante ist.
-
-**Constraint-Menge sind *alle* Kanten, auch deaktivierte** — die werden weiterhin gezeichnet
-(gestrichelt, ausgegraut) und wären sonst weiterhin eckig. Der Pass läuft **nur** auf dem
-Erhaltungspfad; `Reflow` (und damit MCP `suggest_layout`) ist unberührt und schreibt weiterhin
-ausschließlich `node.position`.
-
-`null` — und damit Rückfall auf `Reflow`/`WorkflowLayoutOptions.Imported` **mit Warnung** — bei
-deckungsgleichen Knoten (kein Faktor trennt die je), wenn der nötige Faktor `MaxScale` reißt, oder
-wenn Zug und Entzerren sich in `placed.Count + 4` Durchläufen nicht einigen.
-
-**Ordnerbäume — zwei, nicht einer.** Ein Export trägt sein eigenes Layout mit: Runbooks unter
-`<Policies>`, globale Variablen unter `<GlobalSettings>/<Variables>`, beide in einem
-`<Folder>`-Baum. `ScorchImporter.FolderPathOf` liest den Pfad aus den Vorfahren; **der äußerste
-`<Folder>` fällt weg** — er ist der Wurzelcontainer der Sektion, für den das gewählte Importziel
-steht. Leere Namen fallen ebenfalls weg (SCOrch schreibt sie, NodePilot kann sie nicht speichern).
-
-Der Controller (`WorkflowImportExportController.PlanFolderTree`) legt daraus beide Bäume an —
-`SharedWorkflowFolder` unter dem Ziel, `GlobalVariableFolder` unter dessen Root. Die beiden Entitäten
-sind strukturgleich (selbstreferenzierender Parent + materialisierter `Path` + `Depth`, ein
-Singleton-Root) und unterscheiden sich nur darin, ob RBAC daran hängt, deshalb **ein** Planer für
-beide. Punkte, die nicht offensichtlich sind:
-
-- **RBAC: eine Prüfung reicht.** Alles Erzeugte hängt unter `targetFolderId`, auf dem der Caller
-  schon `Edit` hat, und ein neuer Ordner erbt die Grants seines Parents — dieselbe Begründung, die
-  der Create-Endpoint nennt („creating a child is a parent-edit"). Danach **`_authz.InvalidateAll()`**,
-  sonst läuft ein Capability-Lookup über eine Ahnenkette, die die neuen Zeilen noch nicht enthält.
-- **Ids werden vor der Transaktion vergeben** (`PlannedFolder`), genau wie die Workflow-Zeilen: die
-  Execution-Strategy darf den Versuch wiederholen, und ein Replay mit frischen Guids könnte „meine
-  Ordner sind schon da" nicht von „fremde sind da" unterscheiden. Die Verify-Callback zählt sie mit.
-- **Variablen-Ordner werden vor den Variablen committed** (eigener `SaveChanges`), weil
-  `IGlobalVariableStore.CreateAsync` die Folder-Id sofort schreibt.
-- **Wiederverwendung matcht case-insensitiv**, sonst entsteht `SCCM` neben `sccm`. Namen > 120
-  Zeichen werden gekürzt, Pfade tiefer als `MaxDepth` (5) in die tiefste passende Ebene gefaltet —
-  beides mit Warnung, nie still.
-- **Geplant wird nur für das, was wirklich entsteht** — eine wegen Namenskollision übersprungene
-  Variable darf keinen leeren Ordner hinterlassen.
-- **Audit:** jeder neue `SharedWorkflowFolder` bekommt ein eigenes `FOLDER_CREATED`
-  (`source: scorch-import`) — er ist eine RBAC-Grenze und muss im Audit auffindbar sein.
-  Variablen-Ordner sind kosmetisch und bleiben in den Zählern des Import-Eintrags.
-
-**Sub-Runbook-Aufrufe bei Massenimport.** SCOrch vergibt Runbook-Namen **pro Ordner** eindeutig,
-NodePilot **global** — ein Gesamtexport enthält also regelmäßig zwei Runbooks gleichen Namens in
-verschiedenen Ordnern, von denen eines beim Import umbenannt wird (`" (Imported 2)"`). Der Aufruf
-zeigt danach weiter auf den alten Namen und landet **auf dem falschen Runbook** oder auf `Ambiguous`
-— still, zur Laufzeit, in einem Workflow der korrekt aussieht.
-
-Deshalb trägt `ScorchRunbook.ChildReferences` pro `startWorkflow`-Node den **vollen** `PolicyPath`
-mit (`ScorchChildReference`), nicht nur das letzte Segment, das im Config landet. Der Controller
-ordnet damit Aufruf→Kind über Ordnerpfad **plus** Name zu (pfadlose Altexporte: nur über den Namen,
-und nur wenn der eindeutig ist), und biegt nach der Namensvergabe die betroffenen Nodes per
-`ScorchImporter.RewriteChildWorkflowNames` um — mit Warnung, damit die Umbenennung sichtbar bleibt.
-Zeigt ein Aufruf auf ein Runbook, das **weder im Export noch schon in NodePilot** ist, wird auch das
-gemeldet; erst der Controller kennt beide Hälften.
-
-**Request-Größe:** `[RequestSizeLimit]` liegt bei **300 MiB** (vorher 50, H-16). Ein Gesamtexport ist
-eine einzige Datei, und bei gemessenen ~6,5 KiB pro Aktivität war bei rund 160 Runbooks Schluss. Der
-Body wird komplett gepuffert und dann zu einem `XDocument` geparst, dessen Baum ein Mehrfaches der
-Dateigröße belegt — ein 300-MiB-Import ist für die Dauer des Calls ein Working Set im Gigabyte-
-Bereich. Praktisch bindet ohnehin früher der **`MaxImportItems = 500`**-Cap (Workflows + Variablen
-zusammen), der begrenzt, was ein Body beliebiger Größe schreiben kann.
-
-**Weitere Eigenheiten:** importierte Runbooks ohne Trigger bekommen einen synthetischen
-`manualTrigger` (0 Roots ⇒ Execution `Failed`) — platziert **in den Quellkoordinaten** links vom
-Graphen, weil ein Knoten auf (0,0) sonst zufällig deckungsgleich läge und damit die Erhaltung der
-Original-Anordnung kippen würde; `ComputerName` wandert **wörtlich** in `targetMachineId`
-(`MachineResolver` matcht Name/Hostname und synthetisiert sonst ad-hoc); `connectionString` wird
-bewusst **nicht** übernommen (Passwort im Klartext + `RequireConnectionRef` ist default-an).
-
----
-
-## Step-Test mit Kontext — API-Details
-
-`POST /api/workflows/{id}/steps/{stepId}/test` führt einen einzelnen Step in Isolation aus, ohne `WorkflowExecution`-Row zu erzeugen. Body:
-
-| Feld | Zweck |
+| Thema | Verbindliche Quelle |
 |---|---|
-| `mockVariables` | Flat-Map `stepName.field → value` (z.B. `"checkDisk.output": "7"`, `"checkDisk.param.freeGb": "7"`). Wird vor JSON-Config-Resolution als künstliche `ActivityResult`-Lookup-Tabelle aufgebaut. |
-| `configOverride` | Optional. Live-Editor-Stand der `data.config`-Subtree. Wenn gesetzt, ersetzt es die DB-persistierte Config — der Test reflektiert was der User gerade tippt, nicht den letzten Save. `targetMachineId`/`credentialId`/`outputVariable` bleiben aus der DB. |
-
-Companion-Endpoints für die UI-„Mit letztem Run-Kontext"-Workflows:
-
-- `GET /api/workflows/{id}/steps/{stepId}/test-context?executionId={guid}` — BFS durchs reverse Adjacency, joint gegen `StepExecutions` der gewählten Execution (oder der aktuellsten terminalen, wenn ohne Param). Liefert Schema-only (Werte=null) wenn die Ancestor in dieser Execution nicht gelaufen ist. Globals werden immer mitgeliefert. UI darf Globals **nicht** als `mockVariables` zurücksenden — die Engine pulled sie direkt aus `IGlobalVariableStore`.
-- `GET /api/workflows/{id}/steps/{stepId}/test-context/runs?limit=10` — Dropdown-Quelle. `stepRan: false` markiert Runs, die diesen Step nicht ausgeführt haben (UI zeigt sie ausgegraut).
-
-Implementierung: [StepTestContextProvider.cs](../src/NodePilot.Engine/StepTester.cs), Frontend in [StepTestPanel.tsx](../src/nodepilot-ui/src/components/designer/properties/StepTestPanel.tsx).
-
----
-
-## Per-Workflow-Parallelität (`Workflow.MaxConcurrentExecutions`)
-
-SCOrch-Parität zu „maximum number of running instances": ein optionales Limit (1..1000, `null` =
-unbegrenzt) pro Workflow. Ist es erreicht, wird **eingereiht, nicht abgelehnt**.
-
-**Ein Zähler, zwei Zugriffsarten.** `IWorkflowConcurrencyGate` (Core, In-Memory-Implementierung
-`InMemoryWorkflowConcurrencyGate` in der Engine, Singleton via `AddNodePilotActivities` — Vorbild
-`ISubWorkflowGate`). Die Startpfade zerfallen in zwei Gruppen, die sich denselben Zähler teilen
-müssen, sonst gälte das Limit je Gruppe getrennt:
-
-- **Einreihbar** — alles über die Dispatch-Outbox (manuell, Retry, Webhook, External-Trigger inkl.
-  Idempotency-Pfad, `TriggerOrchestrator`, `startWorkflow` ohne Warten). `TryAcquire` ist
-  nicht blockierend; ein abgewiesener Lauf bleibt `Pending`.
-- **Nicht einreihbar** — `StartWorkflowActivity` mit `waitForCompletion:true` und `ForEachActivity`
-  rufen die Engine direkt auf und legen die Zeile sofort als `Running` an. Sie **warten**
-  (`AcquireAsync`, FIFO).
-
-**Der Gate-Aufruf sitzt vor `engineStarted = true`** in `ExecutionDispatchService`. Das ist keine
-Stilfrage: eine Exception *aus* `engine.ExecuteAsync` landet im generischen `catch` dahinter und
-markiert den Lauf **`Failed`**. Ein werfendes Limit (wie `CheckCapacityCaps`) würde eingereihte
-Läufe also fehlschlagen lassen. Stattdessen `ExecutionDispatchOutcome.DeferredByConcurrencyLimit`
-— eigener Metrik-Tag und eigener Backoff (5 s statt 1 s), und `AttemptCount` wird auf diesem Pfad
-zurückgerollt, damit die Zahl ein Handoff-Fehlersignal bleibt.
-
-**Release dekrementiert zuerst, dann weckt es.** Ein „Slot direkt an den nächsten Wartenden
-durchreichen" würde `Active` beim Absenken des Limits nie fallen lassen, solange jemand wartet —
-der Überhang liefe nie aus. Dieselbe Wake-Routine ist der Pfad einer Anhebung und gibt deshalb
-mehrere Wartende auf einmal frei, nicht einen pro abgeschlossenem Lauf.
-
-**Limit-Aktualität hat drei Schreiber.** Der Claim-Filter überspringt blockierte Workflows *bevor*
-ein Acquire stattfindet — ohne Gegenmaßnahme bliebe eine Anhebung bis zum Ende des laufenden Laufs
-unsichtbar. Deshalb: (1) der Dispatcher beobachtet die ohnehin geladene Zeile, (2) `ForEachActivity`
-liest **pro Item** frisch nach (`ResolveChildWorkflowAsync` läuft nur einmal für die ganze
-Schleife), (3) die drei Schreibpfade (Endpoint, Import, Restore) pushen nach dem Commit per
-`SetLimit`. Ein gepushter Wert schlägt Beobachtungen, solange der Eintrag lebt — sonst könnte ein
-Lesevorgang von *vor* der Änderung den alten Wert zurückschreiben. Der Push ist HA-sicher, weil
-`LeaderRequiredMiddleware` jeden nicht-lesenden `/api`-Request auf einem Follower mit 503 abweist.
-Zusätzlich verfallen Blocked-Einträge nach 10 s als Absicherung gegen einen künftigen Schreibpfad,
-der den Push vergisst.
-
-**Head-of-line-Blocking:** `TryClaimAsync` nimmt `Take(max(4, WorkerCount))` Kandidaten in
-`Priority`/`CreatedAt`-Reihenfolge und prüft sie seriell. Ein Workflow am Limit füllt damit alle
-Kandidatenplätze mit eigenen Zeilen. Der Filter (`!blocked.Contains(...)`, nur bei nicht-leerer
-Menge angehängt) verhindert das. `BlockedWorkflowIds` ist bewusst `Guid[]` und kein
-`IReadOnlySet<Guid>` — dessen eigene `Contains`-Methode bindet der Compiler an die Schnittstelle
-statt an `Enumerable.Contains`, was EF Core nicht zuverlässig zu `NOT IN (…)` übersetzt.
-
-**Deadlock-Ventil:** direkte Rekursion blockt `SubWorkflowInvocation.IsSelfInvocation`. Bleibt
-gegenseitige Rekursion (A→B→A) durch einen limitierten Workflow — beide Waits hängen am Step- bzw.
-Per-Item-Timeout und scheitern mit klarer Meldung statt zu hängen.
-
-**Sperrreihenfolge:** in beiden Sub-Workflow-Aktivitäten erst `IWorkflowConcurrencyGate`, dann
-`ISubWorkflowGate`, und der Wait liegt innerhalb der Step-Gate-Freigabe
-(`RunWithCurrentStepGateReleasedAsync`), damit Wartende keine `Engine:MaxConcurrentSteps`-Slots
-halten. Wartende auf ein Workflow-Limit belegen keinen globalen Sub-Workflow-Slot.
-
-**Aktive Sub-Workflows (ADR 0018):** Der gemeinsame Cap zählt Child-Workflows mit aktiver Arbeit.
-Der Scheduler zählt jeden aktiven Schritt separat innerhalb einer gemeinsamen Workflow-Lease:
-Ein laufender Geschwisterschritt hält den Slot; sobald kein Schritt mehr aktiv ist, etwa weil
-alle auf Unter-Workflows warten, wird er freigegeben. Fortsetzungen erwerben ihn erneut. Vollständig wartende Vorfahren bleiben
-durch den unveränderten globalen Engine-Cap begrenzt. Das Per-Item-Timeout von `forEach` umfasst
-beide Kapazitäts-Wartezeiten und die Child-Ausführung.
-
-**`0` wird abgelehnt** (400): `Engine:MaxConcurrentExecutions` liest einen nicht-positiven Cap als
-„aus", dieselbe Zahl dürfte hier nicht „nie laufen" heißen. Gemeinsamer Validator
-`NodePilot.Core.Validation.WorkflowConcurrency`, aufgerufen von Endpoint, Import und Restore — die
-letzten beiden schreiben die Entität direkt. Ein DB-Check-Constraint gibt es bewusst nicht: das
-Migration-Set ist provider-agnostisch und `HasCheckConstraint` kommt im Repo sonst nirgends vor.
-
-**Nicht versioniert und nicht im Update/Publish-Body.** `UpdateWorkflowRequest` ist ein
-Voll-Ersetzungs-Body — ein Client, der das Feld weglässt, würde die Drossel beim nächsten Speichern
-still auf „unbegrenzt" setzen. Deshalb ein eigener Endpoint (`PUT /concurrency-limit`) nach dem
-`enable`/`disable`-Muster, dessen Request-Property `[JsonRequired]` trägt, damit `{}` ein 400 ist.
-`WorkflowVersion` führt die Spalte nicht — ein Graph-Rollback soll einen Kapazitätsschutz nicht
-still ändern, wie bei `IsEnabled`.
-
----
-
-## `WorkflowExecution.ErrorMessage` — Triage-Summary
-
-Beim Übergang in einen terminalen Zustand befüllt die Engine `ErrorMessage` mit einer kompakten
-Zusammenfassung statt sie (wie früher) auf `null` zu lassen. Format:
-
-```
-Activity "<label>" failed[: <error>][ (+N more failed activities)]
-```
-
-- **`<label>`** = `StepExecution.StepName`, Fallback `StepId` wenn leer.
-- **`<error>`** = `StepExecution.ErrorOutput` der ersten fehlgeschlagenen Step; fehlt der Teil komplett, wenn `ErrorOutput` leer ist.
-- **`(+N …)`** erscheint nur bei mehr als einem fehlgeschlagenen Step.
-- **Auswahl der „ersten" Failure:** `OrderBy(StartedAt).ThenBy(Id)` — deterministisch auch wenn parallele Branches gleichzeitig scheitern.
-- **Redaction + Cap:** wie `InputParametersJson`/`ReturnData` durch `RedactAndCap(…, 32 KiB)` — Secrets maskiert, Überlänge mit `... [truncated]` abgeschnitten.
-- **Nur bei `Failed`.** Ein Lauf, der crasht statt sauber zu terminieren, trägt weiterhin die redigierte Exception-Message.
-
-**Autoritativ bleibt `StepExecution.ErrorOutput`.** `ErrorMessage` ist reine Triage-Oberfläche für
-Execution-Listen, Alerting-Notifications und `startWorkflow`-Parent-Läufe — nie als Fehler-Parsing-Quelle verwenden.
-
-Impl: [WorkflowEngine.cs](../src/NodePilot.Engine/WorkflowEngine.cs) (`failureSummary`).
-
-### `ExecutionResponse.StepsTotal` ist **kein** Fortschritts-Nenner
-
-`StepsTotal`/`StepsCompleted`/`FailedSteps` werden vom Listen-Endpoint `GET /api/executions` **und** von `GET /api/executions/{id}` befüllt (`Execute`/`Retry` lassen die Defaults stehen — eine frische `Pending`-Zeile hat noch keine Steps). `FailedSteps` ist nach `(StartedAt, Id)` sortiert; `StartedAt` allein ist bei parallelen Zweigen kein stabiler Sortierschlüssel.
-
-**Für einen laufenden Lauf sind die Zahlen kein Fortschritts-Prozentwert.** Seit ADR 0011 wird die
-`StepExecution`-Zeile mit stabiler GUID und Status `Running` zwingend vor der Activity gespeichert;
-`Engine:DeferRunningStateWrite=true` ist veraltet, wird ignoriert und einmalig gewarnt. Ein aktiver
-Step ist damit sichtbar, aber `StepsTotal` bleibt die Zahl der **bislang materialisierten**
-Step-Zeilen, nicht die Größe des noch auszuführenden Graphen. Loops und erst später erreichte Zweige
-können den Nenner weiter verändern, während `StepsCompleted` den laufenden Step noch nicht mitzählt.
-
-Deshalb zeigt Live-Ops bewusst **keinen Prozentbalken**, sondern die Zahl fertiger Steps plus Stagnations-Alter. Auch `Workflow.ActivityCount` taugt nicht als Ersatz-Nenner: es zählt zwar Trigger mit, aber keine deaktivierten Nodes und keine Annotationen (Notizen, Gruppen) ([WorkflowDefinitionDocument.cs](../src/NodePilot.Core/WorkflowDefinitions/WorkflowDefinitionDocument.cs), `BuildMetadata`), während `StepExecution`-Zeilen ausgeführte Trigger und `Skipped`-Zeilen enthalten — dazu kommen dynamische Loop-Iterationen.
-
----
-
-## Coverage-Messung (Backend-Test-Coverage)
-
-Gate: **Line ≥ 85 % / Branch ≥ 70 %**, erzwungen im `backend`-Job von `.github/workflows/ci.yml` (der Workflow ist die einzige autoritative Zahl; Ratsche — nur anheben). CI misst mit `--settings coverage.runsettings` — derselbe Filter wie lokal.
-
-Lokal reproduzieren:
-
-```powershell
-dotnet test NodePilot.slnx --no-build -s coverage.runsettings --collect:"XPlat Code Coverage" --results-directory ./TestResults
-dotnet reportgenerator "-reports:./TestResults/**/*.cobertura.xml" "-targetdir:./TestResults/merged" "-reporttypes:TextSummary" "-assemblyfilters:+NodePilot.*;+np;+nodepilot-mcp;-NodePilot.*.Tests;-NodePilot.TestCommons;-NodePilot.LoadTests"
-```
-
-- **Assembly-Gotcha:** die Cli-Assembly heißt `np`, die Mcp-Assembly `nodepilot-mcp` — ohne `+np;+nodepilot-mcp` fehlen beide im Merge.
-- **Cobertura-Pfad-Dubletten:** dieselbe Datei erscheint je nach erzeugendem Testprojekt als `NodePilot.Core/…` UND `src/NodePilot.Core/…` — bei eigener Auswertung `src/`-Präfix normalisieren, sonst sehen abgedeckte Dateien wie 0-%-Lücken aus.
-- `coverage.runsettings` schließt EF-Migrationen und `[ExcludeFromCodeCoverage]`-attributierten Code aus dem Nenner (Attribut nur mit Begründungskommentar, siehe CLAUDE.md).
-- Scheduler/Remote/Telemetry haben kein eigenes Testprojekt — deren Tests liegen in Engine.Tests (`InternalsVisibleTo`) bzw. Api.Tests.
-
----
-
-## Coverage Heatmap — Details
-
-`GET /api/workflows/{id}/coverage?windowDays=N` aggregiert pro Step die letzten N Tage Executions (default 30, capped 365). Pro Step: `executedCount` (Succeeded + Failed), `failedCount`, `skippedCount` (Skipped + Cancelled — letzteres = junction-race), plus `lastExecutedAt`/`lastSucceededAt`/`lastFailedAt`. Cap auf die letzten 900 Executions im Window. Response trägt `oldestExecutionInWindow`.
-
-UI: Toolbar-Toggle (Target-Icon, [EditorHeader.tsx](../src/nodepilot-ui/src/components/designer/EditorHeader.tsx)), bei aktivem State nutzt [useCoverageHeatmap.ts](../src/nodepilot-ui/src/hooks/useCoverageHeatmap.ts) den Endpoint und liefert eine `__coverage`-Map pro Node, die `useDisplayedGraph` in die Projektion mischt. [ActivityNode](../src/nodepilot-ui/src/components/designer/nodes/ActivityNode.tsx) tinted: `never` (0 Executions) → 40% opacity + grayscale, `rare` (<25% von Total) → 80% opacity, `common` (≥25%) → unverändert. Hover zeigt exact counts. Window-Days konfigurierbar via `useDesignStore.coverageWindowDays`.
-
-Trade-Offs der V1:
-- 25%-Threshold ist crude; präzise Verteilung gibt's via `step-stats`-Endpoint.
-- Skipped-by-disabled vs. skipped-by-condition vs. skipped-by-upstream-failure ist nicht aufgeteilt — alles fällt in `skippedCount`.
-- Edge-Coverage existiert nicht.
-
----
-
-## KI-Features — Details
-
-Drei opt-in Helfer (Default `Llm:Enabled=false`):
-
-**Activity-Katalog im Prompt (generiert, nicht handgepflegt):** Der Abschnitt „Activity catalog" in `activity-reference.md` ist nur der Platzhalter `<!--ACTIVITY_CATALOG-->`; `PromptCatalog` ersetzt ihn beim Konstruieren durch `ActivityCatalogPromptRenderer.Render()` aus `ActivityCatalog.All` + `NodePilot.Core.Activities.ActivityConfigReference` (`src/NodePilot.Core/Activities/Embedded/activity-config-reference.json`, `schemaVersion: 2` — Purpose, Config-Keys, `promptNotes`). **Es gibt keine Prompt-Ausschlussliste mehr** — jede Activity im Katalog ist dem Modell bekannt. Vorher war `llmQuery` bewusst ausgesperrt, worauf die Generierung für KI-Aufrufe einen handgebauten `restApi`-POST erzeugte. Dieselbe JSON speist die MCP-Resource `nodepilot://activity-config-reference` und `get_activity_config_reference` — sie liegt deshalb in `Core` (Dep-Graph: `Ai -> Core`, `Mcp -> Core`). Custom Activities (`custom:<key>`) hängen Generierung und Chat pro Request an (`RenderCustomActivities`, nur enabled, Freitext geflattet, gecappt auf 40 Einträge / ~10 k Zeichen). Guards: `PromptCatalogDriftTest` (jeder Typ + jeder required Key im gerenderten Prompt) und `ActivityConfigReferenceTests` (jeder dokumentierte Key wird vom Executor wirklich gelesen).
-
-**Streaming (SSE):** `chat` + `generate-script` antworten als `text/event-stream` (Events `delta`/`building` (chat)/`proposal` (chat)/`done`/`error`) — Ausgabe ab dem ersten Token. Geteilte Infrastruktur: `ILlmClient.StreamAsync` (`IAsyncEnumerable<LlmStreamEvent>`, OpenAI `stream:true` + `stream_options.include_usage`, HTTP-400-Fallback ohne `stream_options`, HTTP-400-Fallback `max_tokens`→`max_completion_tokens` für neuere OpenAI-Modelle (o-Serie/GPT-5-Ära), 16-MiB-Byte-Cap), [SseResponseWriter.cs](../src/NodePilot.Api/Ai/SseResponseWriter.cs) (Header + Event-Schreiben), [LlmErrorCodes.cs](../src/NodePilot.Api/Ai/LlmErrorCodes.cs). Controller-Lifecycle pro Stream: **erstes Event peeken** (Pre-Stream-`LlmException` → normaler HTTP-Status, greift in `authedFetch`), dann Events; drei Ausgänge — Erfolg (Success-Audit + Metrik), Fehler (`event:error` + `LlmCalls result=error`), **Abbruch** (Client trennt → kein Error-Event, Audit `cancelled=true` + `result=cancelled`). Frontend liest via `postEventStream` (client.ts, `Accept: text/event-stream`) + robustem SSE-Frame-Parser in [ai.ts](../src/nodepilot-ui/src/api/ai.ts); `AbortController` = Stop/Dialog-Close. `generate-workflow` bleibt **non-streaming** (JSON).
-
-- **`POST /api/ai/generate-script`** (SSE) — Sparkles-Button im `runScript`-Editor (beide Call-Sites: Properties-Panel + Doppelklick, via `useAiScriptStream`-Hook). Backend ruft das LLM standardmäßig nur mit Prompt + Upstream-Variablen-Schema (Cap `LlmOptions.MaxUpstreamVariables=30`) auf. Das **aktuelle Editor-Skript** wird nur nach einer nicht persistierten, standardmäßig abgewählten Einzelfreigabe an den im Dialog genannten Zielhost gesendet; `GenerateScriptRequest.IncludeCurrentScript=false` ist der serverseitige Default und ein bloß mitgesendetes `CurrentScript` wird ignoriert. **Streaming-aware Fence-Stripping**. Frontend tippt die Tokens **live in Monaco** ([ScriptEditorDialog.tsx](../src/nodepilot-ui/src/components/designer/ScriptEditorDialog.tsx)): Prompt-Dialog schließt **sofort** beim Klick auf Generieren (Editor-Overlay „Code wird generiert…" bis zum ersten Token, dann „generiert"-Pill + Stopp), Editor read-only während Streaming, Inserts an einer **explizit getrackten Position** (`advanceStreamPosition`, **nicht** `getSelection` — sonst verwürfeln die Tokens), gebatcht pro `requestAnimationFrame` als **eine Undo-Gruppe**, ReplaceAll leert erst beim ersten Token (Pre-Token-Fehler bleibt erhalten); Fehler erscheinen als Banner im Editor.
-- **`POST /api/ai/generate-workflow`** — „KI generieren"-Button auf [WorkflowsPage](../src/nodepilot-ui/src/pages/WorkflowsPage.tsx). Backend ruft LLM mit JSON-Mode + Few-Shot aus `workflow-example.json`, parser-pipeline mit Single-Retry (`LlmOptions.MaxJsonRetries=1`), Schema-Validierung gegen `nodes[]+edges[]`. UI zeigt Stats-Preview vor dem Anlegen. **Non-streaming.**
-- **`POST /api/ai/chat`** (SSE) — KI-Workflow-Assistent: lila Button neben dem Standard/Experte-Toggle öffnet ein angedocktes Chat-Panel ([AiWorkflowChatPanel.tsx](../src/nodepilot-ui/src/components/ai/AiWorkflowChatPanel.tsx)). Multi-Turn (`LlmRequest.Conversation`): erklärt den **aktuellen** Workflow (Markdown via `react-markdown`, live gestreamt) und schlägt auf Wunsch komplette Definitions-Umbauten vor (**Proposal-Karte** „poppt" am Ende — strukturiertes Changelog, selektives Übernehmen, Refine; da Merge/Validierung die volle Antwort braucht). Eigener Controller [AiChatController.cs](../src/NodePilot.Api/Controllers/AiChatController.cs) mit `[Authorize]` (alle Rollen) — Änderungs-Proposals nur für Admin/Operator (`User.IsPrivileged()`), sonst serverseitig verworfen. Pipeline ([WorkflowAssistantService.cs](../src/NodePilot.Ai/WorkflowAssistantService.cs)):
-  - **Ausgabeformat** (statt JSON-Envelope, streamfreundlich): Markdown-Prosa, dann optional der Delimiter `===NODEPILOT-DEFINITION===` + `{nodes,edges}`. Die Prosa wird Token für Token als `delta` ausgegeben; alles nach dem Delimiter wird gepuffert und am Ende verarbeitet.
-  - **System-Prompt** = `assistant-system.md` (Rolle, Schema, Secret-/Erhaltungs-/Injection-Regeln, Delimiter-Kontrakt) + `PromptCatalog.ActivityReference` (aus `workflow-system.md` herausgelöster Activity-Katalog **ohne** Generierungs-Output-Regeln) + dynamische `ActivityCatalog`-Metadaten der vorkommenden Node-Typen. Untrusted-Daten (das aktuelle, **secret-redigierte** Workflow-JSON) stehen in der **User-Message**, nicht im System-Prompt.
-  - **Empty-Canvas-Design-Mode** (`IsEmptyCanvas`: 0 Nodes oder nur Trigger-Nodes — `activityType` endet auf `Trigger`): bei faktischer Erst-Erstellung hängt `BuildSystemPrompt` eine Design-Sektion + das **reiche Few-Shot-Beispiel `workflow-example.json`** an („mimic this structure & richness"), damit der Chat einen **verzweigten** Workflow vorschlägt statt einer dünnen linearen Kette (Parität zum `generate-workflow`-Pfad). Bei nicht-leerem Canvas bleibt der konservative „möglichst wenig ändern"-Edit-Modus.
-  - **Secret-Redaktion**: `WorkflowDefinitionSecretRewriter.Rewrite(..., Redact, null)` delegiert an den strukturellen `WorkflowSecretRedactor`: benannte Secret-Keys sowie opaque ausführbare/runtime Payloads (Scripts, Bodies, Header, Argumente, Queries, Prompts, Bedingungs-Literale und Custom-Activity-Stringinputs) werden vor jedem LLM-Call vollständig zu `***` maskiert. **Ausnahme Workflow-Assistent** (`Llm:Profiles:<id>:ShareScriptsWithAssistant`, Default `true`): `WorkflowSecretRedactor.RedactForAssistant` lässt `script` (runScript, waitForCondition), `query`/`parameters` (sql, databaseTrigger) und `arguments` (startProgram, scheduledTask, wmiQuery, dazu `query`/`filter` bei wmiQuery) als String im Klartext — nur bei diesen eingebauten Typen, ein Custom-Input `script` bleibt `***`. Erkennt `WorkflowSecretContent.LooksSecretInScript` ein Secret-Muster (u. a. SQL `PASSWORD = '…'`, Connection-String `Pwd=…`, `ConvertTo-SecureString '…'`, `-Password '…'`, `$pw = '…'`, ohne Mindestlänge), wird der **ganze** Wert `***`. Heuristik, keine Garantie. Regex-Timeouts zählen in jedem Schritt als Treffer. Export, MCP, Wissens-Chat und Viewer-Ansicht nutzen weiter `Redact`.
-  - **Profil-Snapshot und Verlaufsbindung**: `StreamChatAsync` liest das aktive Profil **einmal** und nutzt es für Redaktion, Client (`ILlmClientFactory.Create(profile)`), Tools und Audit; kein auflösbares Profil → Fehler, kein Default-Fallback. Der Verlauf geht nur mit passendem `HistoryContextKey` (SHA-256 über Profil-Id, BaseUrl, Freigabe) mit; das `done`-Event liefert den Schlüssel, das Frontend nimmt ihn aus dem `meta` der letzten Antwort. Abweichend oder fehlend → Verlauf serverseitig verworfen, `done.historyDropped`, Hinweis im Panel, Audit `historyDropped`/`scriptsShared`.
-  - **Merge** ([WorkflowDefinitionMerge.cs](../src/NodePilot.Ai/WorkflowDefinitionMerge.cs)): per Node-/Edge-`id` zurück aufs **unredigierte** Original — ausgelassene Felder (position, sourceHandle/targetHandle, parentId, group/sticky-Styles, credentialId, conditionExpression) werden erhalten; Masken werden auch in verschachtelten Condition-/Case-Arrays konservativ aus dem Original wiederhergestellt (hat die KI ein solches Array darüber hinaus geändert, geht die Änderung verloren und ein Reply-Hinweis nennt Array und Node/Edge), von der KI gesetzte/abweichende benannte Secret-Werte verworfen (+ Reply-Hinweis). Danach `WorkflowDefinitionStructuralValidator` + AI-Checks (Positionen, Trigger-Erhalt).
-  - **Validierungsmeldungen**: `WorkflowChatRequest.Diagnostics` (optional) trägt die Lint-Befunde des Designers (`lintWorkflow`, wird erst beim Senden aus dem Live-Graph berechnet). Sie entstehen nur im Browser — das Backend-`WorkflowAnalyzer` ist ein Teil-Spiegel mit anderen Codes/Schweregraden und würde andere Meldungen liefern als das Panel. `AiChatController.NormalizeDiagnostics` behält nur Einträge mit bekannter Severity (`error|warning`), schlichtem Code, Node-/Edge-Id aus dem gesendeten Workflow und secret-freier Einzeilen-Message (max. 500 Zeichen, max. 100 Einträge, kappen statt 400). `BuildConversation` setzt sie als eigenen Datenblock zwischen Workflow-JSON und Frage; im Verfeinern-Modus entfallen sie (Basis ist der Vorschlag, nicht der Canvas).
-  - **Apply** läuft rein clientseitig auf den Canvas (kein DB-Write); Persistenz über den normalen Edit-Lock/Publish-Flow. Stale-Schutz: das Frontend hasht den Canvas-Stand (`hashDefinition`) und blockt das Apply, wenn er sich seit der Frage geändert hat.
-  - **Tool-Calling** (opt-in `Llm:Profiles:<id>:EnableToolCalling`, am aktiven Profil): ist es an, läuft `WorkflowAssistantService.StreamChatAsync` eine OpenAI-Function-Calling-Schleife (`tool_choice:auto`, nur wenn es hilft). Das Modell darf read-only Tools auf der **secret-redigierten** Definition callen — `analyze_workflow` (deterministische Static-Analysis: fehlender Trigger, unreachable Steps, Zyklen, Remote-Step ohne Target-Machine, Strukturfehler, unauflösbare Template-Referenzen, doppelte Edges/Output-Variablen, `Start-Job` im Runspace — gleiche Codes wie der Canvas-Linter, via `WorkflowAnalyzer` in `NodePilot.Core`, **derselbe Analyzer wie hinter dem MCP-Tool gleichen Namens**; `ok` heißt „kein Error-Befund", Warnungen zählen in `count`/`findings`) und `list_activity_types` (Activity-Katalog); Registry: `ChatToolRegistry`. Dazu drei **Execution-Log-Tools** — `list_recent_executions` (jüngste Läufe des geöffneten Workflows), `get_execution_steps` (Step-Details inkl. Output/ErrorOutput) und `get_failure_context` (One-Call: jüngster Failed-Run + Failed-Steps) — gespeist über `IExecutionLogReader` (Core-Interface) / `ExecutionLogReader` (Data, redigiert **immer** via `IAuditDetailsRedactor`, unabhängig vom Caller-Privileg — Outputs gehen ans externe LLM), Truncation in der Registry (1500/500 Zeichen, 2000 im Failure-Context, 100 Steps). **RBAC-Gate im Controller:** die WorkflowId ist client-kontrolliert; `AiChatController.Chat` prüft vor dem Stream Folder-Read (`IResourceAuthorizationService`) und reicht das Verdikt als `allowExecutionTools` an `StreamChatAsync` — kein Zugriff/unbekannt/ungespeichert → Reader wandert nicht in den `ChatToolContext`, die Execution-Tools werden nicht angeboten (`GetTools(context)` filtert) und ihre Handler antworten defensiv mit Error-JSON. Der Ownership-Check (`executionId` gehört zum autorisierten Workflow) lebt im Reader. Ergebnisse fließen als Tool-Messages zurück, dann produziert das Modell die finale Antwort/den Proposal. Gecappt durch `ToolCallMaxDepth` des aktiven Profils (Default 6, gültig 1–10): max LLM-Runden mit Tool-Calls pro Turn — in der **letzten erlaubten Runde** sendet der Server **keine** `tools` (erzwingt Text-Antwort; vermeidet den `tool_choice:none`-Literal, den manche lokalen Endpoints mit HTTP 400 ablehnen). SSE-Stream erhält `tool_call`/`tool_result`-Events; das UI zeigt eine „🔧 analyze_workflow — running…/checked"-Anzeige. Braucht ein Modell, das Function-Calling zuverlässig kann (viele kleine lokale Modelle nicht); aus → Chat verhält sich exakt wie vorher (keine `tools` gesendet).
-  - **`POST /api/ai/chat/applied`** (Admin/Operator, Folder-RBAC Edit) — schreibt Audit `AI_PROPOSAL_APPLIED` (mit Node-/Edge-Counts), wenn ein KI-Vorschlag auf den Canvas übernommen wird. **`GET /api/ai/chat/activity/{workflowId}`** (Admin/Operator, Folder-RBAC Read) — die KI-Audit-Einträge (`AI_WORKFLOW_EXPLAINED`/`AI_PROPOSAL_APPLIED`) eines Workflows, neueste zuerst; bewusst getrennt vom Admin-only `/api/audit`, damit Operatoren ihre eigene KI-Aktivität ohne globalen Audit-Zugriff sehen.
-  - **Rechter Panel-Slot**: Chat und `EditorRightPanel` (Node-/Edge-Properties, BulkEdit) belegen dieselbe Fläche — der geöffnete Chat überlagert sie. Jede **Einzel**-Selektion gibt den Slot zurück: ein `useEffect` auf `selected` in `WorkflowEditorPage` schließt den Chat (deckt Canvas-Klick, Marquee mit einem Treffer, Drop, Suche/`jumpToNode`, Tastatur-Navigation, Kontextmenü ab), zusätzlich schließt `onNodeClick` den Fall „Klick auf den bereits selektierten Node" (ReactFlow feuert dabei kein `onSelectionChange`). **Mehrfachauswahl** hält den Chat offen (`selected` ist dann `null`, und `onNodeClick` ignoriert Shift/Ctrl/Meta-Klicks) — sie ist der „Auswahl (N)"-Kontext des Chats.
-  - **Chat-UX (PR3)**: benannte Threads je Workflow (wechseln/umbenennen/löschen/neuer Chat), reload-persistenter Verlauf in `sessionStorage` (privacy-aware: strippt Canvas-Snapshots und persistiert Proposal-Definition-JSON immer nur als leeren/abgelaufenen Stub, nie für ungespeicherte Workflows, gecappt auf ~200 Messages/Thread, Logout leert), Markdown-Export eines Threads und eine in-panel workflow-scoped „AI-Aktivität"-Ansicht. (Slash-Commands wurden bewusst **nicht** gebaut.)
-
-**Transport**: OpenAI-kompatible HTTP-API über raw `HttpClient` — läuft gegen OpenAI Cloud, Ollama, LM Studio, vLLM, LocalAI, llama.cpp. Lokale Endpoints bevorzugt. **Zwei Wire-Dialekte**, ohne Config-Key aus dem `BaseUrl`-Pfad abgeleitet (`LlmEndpointGuard.ResolveEndpoint` → `LlmEndpointTarget`): Pfad endet auf `/responses` → [OpenAiResponsesLlmClient.cs](../src/NodePilot.Ai/OpenAiResponsesLlmClient.cs), sonst [OpenAiCompatibleLlmClient.cs](../src/NodePilot.Ai/OpenAiCompatibleLlmClient.cs); endet der Pfad bereits auf `/chat/completions`, wird nichts mehr angehängt. Beide teilen [LlmHttpTransport.cs](../src/NodePilot.Ai/LlmHttpTransport.cs) (Send/Auth/Timeout/Fehler-Mapping/16-MiB-Cap/SSE-Framing); die vier Kompatibilitäts-Fallbacks (`max_tokens`, `stream_options`, `response_format`, `strict`) sind Chat-Completions-only und im Responses-Client bewusst nicht vorhanden. Einzige dialekt-übergreifende Ausnahme ist [LlmTemperatureQuirk.cs](../src/NodePilot.Ai/LlmTemperatureQuirk.cs): ein 400er, der `temperature` als nicht unterstützt zurückweist (Reasoning-Modelle), lässt den optionalen Parameter fallen und wiederholt einmal, gemerkt pro `postUrl|model`; eine bloße Bereichsverletzung wird nicht als Quirk gewertet. Der Responses-Client sendet immer `store: false` (die API defaultet auf 30 Tage Retention, Chat Completions speichert nichts). Konfigurations-Keys + Dialekt-Tabelle + Modell-Empfehlungen siehe [docs/ai-features.md](../docs/ai-features.md). Für Chat-Edits an großen Workflows ggf. `MaxTokens` des aktiven Profils erhöhen.
-
-**Auth/Rate-Limit**: generate-Endpoints `[Authorize(Roles = "Admin,Operator")]`, chat `[Authorize]` (alle Rollen); `[EnableRateLimiting("ai-generate")]` (20/min/IP, hardcoded in [RateLimitingSetup.cs](../src/NodePilot.Api/Hosting/RateLimitingSetup.cs)) sitzt auf allen vier AI-Controllern — `AiController`, `AiChatController`, `AiAgentTeamController` **und** `AiKnowledgeController` —, gilt also auch für `/api/ai/generate-agent-team` und `/api/ai/knowledge/ask`.
-
-**DB-Timeout → 503 `DATABASE_TIMEOUT`**: Ein Command-Timeout ist ein transienter Lastzustand, kein Bug — `DatabaseTimeoutExceptionHandler` liefert 503 + `Retry-After` statt eines anonymen 500 (Erkennung provider-agnostisch über `DbErrorClassifier.Classify`; die Kette wird über `InnerException` abgelaufen, weil EF und seine Retry-Strategie doppelt wrappen). Die interaktive Workflow-Liste setzt zusätzlich ein eigenes 15-s-Command-Timeout (`DatabaseCommandBudget`) statt der 120 s aus `Database:CommandTimeoutSeconds`. Frontend-Seite: der globale `QueryCache.onError` toastet jeden fehlgeschlagenen Query (opt-out per `meta.silentError`), der globale `MutationCache.onError` jede fehlgeschlagene Mutation ohne eigenes `onError` (opt-out per `meta.handlesError`). Siehe ADR 0007, Amendments 2026-08-03/07.
-
-**DB-Ausfall → 503 `DATABASE_UNAVAILABLE`**: Der prozessweite Breaker hält die SPA-Shell erreichbar,
-kappt DB-abhängige HTTP-/Hub-Flächen vor Auth und erholt sich über eine eigene `SELECT 1`-Sonde.
-`/healthz/live` bleibt 200, `/healthz/ready` gatet `Armed`/`Unavailable` mit 503 und
-`/healthz/database` berichtet für SPA/CLI immer mit 200. Zustandsautomat, Recovery-, Engine-,
-Background-Service-, Konfigurations- und Observability-Vertrag stehen vollständig in
-[ADR 0011](adr/0011-database-availability-breaker.md).
-
-**Disabled-Antwort**: Wenn `Llm:Enabled=false` → 503 mit `code: LLM_DISABLED`; wenn an, aber `Llm:ActiveProfileId` kein vorhandenes Profil benennt → 503 `LLM_NO_ACTIVE_PROFILE` (`LlmAvailability` in [LlmAvailability.cs](../src/NodePilot.Api/Configuration/LlmAvailability.cs)). Andere Fehlerklassen siehe `LlmErrorKind` in [LlmException.cs](../src/NodePilot.Ai/LlmException.cs).
-
-**UI-Sichtbarkeits-Gating (`capabilities.llm`)**: `GET /api/ai/knowledge/capabilities` liefert neben dem Knowledge-Chat-`enabled` das rohe Feld `llm` (= `LlmOptions.IsUsable`, unabhängig vom AiKnowledge-Switch). Die SPA blendet **alle** KI-Einstiegspunkte nur bei `llm: true` ein: Designer-„KI-Assistent" (`EditorIdentity`), Script-Editor-KI-Button (`useAiScriptStream` liefert `undefined` → `ScriptEditorDialog.onAiGenerate` fehlt → Button weg; für Viewer zusätzlich immer `undefined`, da generate-script Admin/Operator-only ist) und „KI-Workflow generieren" (`WorkflowsPage`). Gemeinsamer Hook `useAiCapabilities` (ein QueryKey `ai-knowledge-capabilities`, `staleTime`+`refetchInterval` 60 s — die Query bleibt über die Sidebar dauerhaft aktiv und `refetchOnWindowFocus` ist global aus); LLM-/AiKnowledge-Saves rufen `refreshAiCapabilities` (sofortige + um 2 s verzögerte Invalidierung wegen `IOptionsMonitor`-Reload-Latenz). Die 503-Pfade oben bleiben als Fallback für Config-Flips mid-session.
-
-**Profile (`Llm:Profiles:<id>`)**: Verbindungen liegen als benannte Profile vor, gekeyt nach unveränderlicher Id; `Llm:ActiveProfileId` wählt das eine aktive. Global bleiben nur `Enabled` + `ActiveProfileId`, alles Verbindungsförmige (inkl. `EnableToolCalling`/`ToolCallMaxDepth` — Modell-Eigenschaft) sitzt im Profil (`LlmProfileOptions`).
-- **Objekt-statt-Array** ist der tragende Entscheid: `WriteSecretField` löst `__unchanged__` per **Id** gegen `previousSection` auf, also überlebt der API-Key Rename *und* Reorder. Env-Overrides bleiben lesbar (`Llm__Profiles__openai__ApiKey`), und `StripEnvLockedKeys` rekursiert in `JsonObject`, aber nicht in `JsonArray`.
-- **Löschsemantik**: Die Runtime-Override-Datei ist nur ein weiterer Provider *über* der Basis-Config, der Merge ist additiv — ein in `appsettings.json`/Env definiertes Profil käme nach dem Reload zurück. `EffectiveSourceDetector.DetectNonRuntimeSource` beantwortet „gehört das Profil der UI?"; das Read-DTO trägt das Ergebnis als `LlmProfileSettingsDto.ManagedBy`, ein Delete eines fremden Profils wird mit **400 `LLM_PROFILE_NOT_DELETABLE`** abgelehnt (Adapter-Hook `ISettingsSectionAdapter.CheckWriteAllowed`). Deshalb shippen `appsettings.json` + Deploy-Templates `"Profiles": {}`.
-- **Lazy-Resolve**: Es gibt **keine** scoped `ILlmClient`-Registrierung mehr — `Create()` wirft ohne aktives Profil, und eine Container-Registrierung würde beim *Controller-Bau* auflösen, also vor dem Action-Gate (503 würde zu 500). Alle vier Services (`ScriptGeneration`/`WorkflowGeneration`/`WorkflowAssistant`/`KnowledgeAssistant`) nehmen `ILlmClientFactory` und rufen `Create()` im Call.
-- **Nested-DTO-Validierung ist Handarbeit**: `Validator.TryValidateObject` rekursiert nicht in Collection-Elemente, `LlmSettingsDto.Validate` validiert daher jedes Profil explizit und meldet `Profiles[i].Feld`.
-- **Dynamische ConfigKeys**: Die Llm-Adapter-Keys hängen von den Profil-Ids ab → `DelegateSettingsSectionAdapter` hat dafür einen `Func<IReadOnlyList<string>>`-Overload.
-
-**Outbound-Proxy (`Llm:Proxy:*`)**: `Mode` = `Off` (default, Direktverbindung) | `System` (Proxy des **Dienstkontos**, Windows WinHTTP/WinINET inkl. dessen Bypass-Regeln) | `Custom` (`Address` + `BypassList`-Globs). Dazu `Username`/`Password` bzw. `UseDefaultCredentials` (NTLM/Kerberos, schlägt einen expliziten User). Ein Block pro Installation, nicht pro Profil — der Mischfall „Cloud über Proxy, lokales Ollama direkt" ist genau der Zweck der Bypass-Liste. Doku: [`ai-features.md`](ai-features.md).
-- **Warum die Sektion trotzdem hot-reloadable bleibt**: Der Proxy sitzt **nicht** im `SocketsHttpHandler` (der wird einmal pro Handler-Lebensdauer gebaut — deshalb ist `RestApi` restart-pflichtig), sondern in `LlmConfiguredProxy : IWebProxy`, das `IOptionsMonitor<LlmOptions>.CurrentValue` **pro Request** liest. Der Handler trägt fix `UseProxy = true`; `Mode: Off` beantwortet `IsBypassed` für jedes Ziel mit `true` und ist damit verhaltensgleich mit dem früheren `UseProxy = false`.
-- **Sicherheitsgrenze**: Mit Proxy im Pfad löst der Proxy das Ziel-DNS auf → `LlmConnectGuard.ConnectAsync` sieht nur noch den Proxy-Endpunkt, der Connect-Zeit-Schutz gegen Link-Local/Metadata deckt das **Ziel** nicht mehr ab. Bleibt: die Literal-Prüfung der `BaseUrl` in `LlmProfileValidation`, die bei jedem Save *und* beim Boot läuft. Bewusst **ohne** Pflicht-Allow-Liste (anders als `RestApi:AllowedHosts`) — die LLM-`BaseUrl` ist ein einzelner Admin-only-Wert, keine aus Trigger-Payloads gebaute Per-Step-URL.
-- **Validierung an einer Stelle**: `LlmProfileValidation.ValidateProxy` (Custom-ohne-Adresse, Nicht-http(s), Metadata-Adresse) wird von `AddNodePilotAi` *und* `LlmConfigBootValidator` gefahren — ein Save, der durchgeht, kann den nächsten Boot nicht blockieren. Die Bypass-Globs teilen sich Engine und Ai über `NodePilot.Core.Net.ProxyBypassPattern`.
-- **`Mode: System` cacht**: `HttpClient.DefaultProxy` liest die OS-Konfiguration prozessweit einmal — eine Änderung der Windows-Proxy-Einstellungen greift erst nach Dienst-Neustart. Das ist die einzige nicht-hot-reloadbare Ecke der Sektion.
-
-**Hardening**:
-- LLM-`BaseUrl` verlangt HTTPS. Klartext-HTTP ist ausschließlich für die exakten Loopback-Ziele `localhost`, `127.0.0.0/8` und `::1` erlaubt und wird auch bei konfiguriertem Proxy immer direkt verbunden, damit Prompt/API-Key den Host nicht unverschlüsselt verlassen.
-- SSRF-Block für Cloud-Metadata-IPs in **jeder** `Llm:Profiles:<id>:BaseUrl` (nicht nur der aktiven — Profilwechsel ist ein restart-freier Save). Eine geteilte Regel für Boot *und* Save-Simulation: [LlmProfileValidation.cs](../src/NodePilot.Ai/LlmProfileValidation.cs), aufgerufen von `AddNodePilotAi` und `LlmConfigBootValidator`. Einziger BaseUrl-Validierungspunkt bleibt [LlmEndpointGuard.cs](../src/NodePilot.Ai/LlmEndpointGuard.cs) (`NormalizeAndValidateBaseUrl`/`IsCloudMetadataEndpoint`), plus Connect-Zeit-Guard `LlmConnectGuard` in [LlmServiceCollectionExtensions.cs](../src/NodePilot.Ai/LlmServiceCollectionExtensions.cs). `Enabled=true` ohne auflösbares Profil ist bewusst nur eine **Warning** — KI ist opt-in und darf den Boot nicht blockieren.
-- Eigener `SocketsHttpHandler` (NICHT der `RestApiHttpClientProvider` — der hat SSRF-Guards die `127.0.0.1:11434` blocken würden). Proxy-Verhalten kommt aus `Llm:Proxy:*` über `LlmConfiguredProxy`, default `Off` = Direktverbindung.
-- **Erreichbarkeit ist von der Antwortzeit getrennt.** `TimeoutSeconds` ist reines Antwort-Budget; der Verbindungsaufbau hat eigene Konstanten in `LlmConnectGuard`: `ConnectPhaseTimeout` (15 s, deckt DNS + TCP im ConnectCallback) und `HandshakeTimeout` (30 s, als `SocketsHttpHandler.ConnectTimeout` — die einzige Stelle, die den **TLS-Handshake** binden kann, weil der Callback nur den rohen Transport-Stream zurückgibt). Die Ordnung `HandshakeTimeout > ConnectPhaseTimeout` ist **tragend**: nur weil DNS und TCP immer an ihrer eigenen Frist scheitern, darf `LlmHttpTransport.DescribeUnreachable` aus einem gefeuerten `ConnectTimeout` auf die TLS-Stufe schließen. Ein Test pinnt die Ordnung. Meldungspräfixe: `LLM endpoint DNS:` / `TCP:` / `TLS:`; die Modell-Stufe sagt „accepted the request but sent no answer". Debug-Logging der aufgelösten Adressen unter der Kategorie `NodePilot.Ai.LlmConnect`.
-- Klartext-ApiKey je Profil löst Startup-Hardening-Warning aus, analog `Smtp:Password` ([SecurityHardeningWarnings.cs](../src/NodePilot.Api/Hosting/SecurityHardeningWarnings.cs))
-- `SettingsSchema.IsUnchangedSecretValue` behandelt `__unchanged__` **und** die Anzeige-Maske `"********"` als „unverändert" — vorher hätte ein Client, der die GET-Antwort zurück-PUTet, die Maske als neuen Key verschlüsselt und den echten still zerstört (gilt jetzt für alle Sektionen, auch `Smtp:Password`).
-
-**Prompt-Injection-Residualrisiko**: Upstream-Variablen werden nur als Schema an den LLM gesendet — **niemals deren Werte**. Im System-Prompt als „untrusted JSON, not instructions" markiert. **Mitigation**: KI-generiertes Script wird am Cursor eingefügt (nicht stumm ersetzt), User muss aktiv reviewen.
-
-**Drift-Schutz**: [PromptCatalogDriftTest.cs](../tests/NodePilot.Ai.Tests/PromptCatalogDriftTest.cs) scannt `IActivityExecutor`-Implementations und assert-iert dass jede in `workflow-system.md` erwähnt ist (oder explizit in der Allowlist steht). Wer eine neue Activity mergt, muss den Prompt-Katalog ergänzen.
-
----
-
-## CLI (`np`) — Befehlsbereiche & Details
-
-Operations-CLI für Operatoren — eigenes Projekt unter [src/NodePilot.Cli/](../src/NodePilot.Cli/), `AssemblyName=np`. Mit beiden Installern ausgeliefert (`<install>\tools\np`, von Install/Update idempotent in die Maschinen-PATH gehängt), aus dem Source-Checkout per `dotnet publish`, **kein** `dotnet global tool`: `PackAsTool` verträgt kein Platform-TFM, und das Projekt hängt transitiv an `net10.0-windows` (NETSDK1146). **Reiner HTTP-Client gegen die bestehenden REST-Endpoints** — keine eigene API-Surface, keine DB-Zugriffe.
-
-**Befehlsbereiche:**
-- `auth` — login/logout/whoami/**methods** (Discovery der Local/LDAP/Windows-SSO-Tiles). `login` deckt Passwort (lokal + LDAP) und **`--windows`** ab: Negotiate/Kerberos gegen `POST /api/auth/windows`, dessen JWT ausschließlich im httpOnly-Cookie `np_auth` steckt — der native Client liest ihn aus dem eigenen `CookieContainer`, die API bleibt unverändert. Ohne `Authentication:Windows:Enabled`/SPN/Ticket endet der Befehl mit Exit-Code 3, worauf der Switcher auf seinen Anmeldedialog zurückfällt.
-- `workflow` — list/get/run/lock/unlock/publish/enable/disable/cancel-all/duplicate/delete/export/import/versions/rollback/force-unlock/import-scorch/stats/**contract**/**coverage**/**trigger**/**step-test**/**step-test-context**/**move-folder**
-- `exec` — list/get/steps/cancel/retry/watch/resume/paused-steps
-- Resources — `machine`, `credential`, `globals` (list/create/update/delete/**export**/**import**; `folder`-Unterbaum mit list/create/rename/move/delete (`--recursive` löscht samt Inhalt)), `user` + **`shared-folder`** (org RBAC: list/create/rename/move/delete (`--recursive` löscht samt Inhalt)/permissions/grant/revoke) + **`maintenance`** (Wartungsfenster: list/get/create/update/delete) + **`system-alert`** (System-Alert-Policies, ADR 0008: catalog/list/get/create/update/enable/disable/delete/test-fire; create/update via `--file`) + **`alerting`** (Notification-Rules: list/get/create/update/delete/**test-fire**/**deliveries** [Zustell-Ledger, Filter `--rule`/`--status`]; Routen via `--email`/`--webhook`, Scope via `--folder`/`--workflow`)
-- System — `audit list`, `health`, `cron next`, **`db`** (info/query — read-mode default, `--write` opt-in), `dashboard`, **`failure-causes`** (letzte Fehlschläge nach normalisierter Meldung, `--window-hours 1..720`, außerhalb des Bereichs still auf 24 zurück), `observability` (summary/**query**/**query-range**), **`settings`** (status/**restart-service**/system-info/**effective-sizing**/get/put/test smtp|llm), **`secrets reencrypt`**, `config get|set`
-
-Globale Flags: `--server`, `--profile`, `--tls-thumbprint <SHA256>`, `--insecure-tls`, `-o table|json|yaml`, `--no-color`, `-v`. Exit-Codes: 0 ok, 1 generic, 2 run failed/cancelled, 3 auth required, 4 permission denied.
-
-**Import in CI:** `workflow import` und `workflow import-scorch` geben bei `-o json` den kompletten
-Importreport mit `workflows[].id` auf stdout aus. Jeder Import ist zunächst disabled; die Pipeline
-schaltet ausschließlich die geprüften IDs in einem zweiten, auditierbaren Schritt mit
-`workflow enable <id>` scharf.
-
-**External-Trigger-Spezialfall:** `np workflow trigger <name>` ist session-unabhängig — der Endpoint ist anonym, aber der `X-Api-Key` ist per `ExternalTrigger:Keys:<id>:AllowedWorkflowIds` auf Workflow-GUIDs begrenzt; der Workflow braucht einen aktiven `manualTrigger`. Die vollständige `Keys`-Map kommt aus dem höchstprioren Provider, der sie deklariert (`Keys: {}` widerruft niedrigere Keys); Scope-Arrays kommen ebenfalls vollständig aus ihrem definierenden Provider statt aus dem indexweise gemergten `IConfiguration`-View. Schlüsselquellen in Präzedenz-Reihenfolge: `--api-key <K>` > `--api-key-stdin` > `NODEPILOT_TRIGGER_API_KEY` env. Optional `--idempotency-key <K>` für einen pro Key-Principal + Workflow isolierten Replay-Schutz; die DB speichert nur einen versionierten Digest.
-
-**Settings-Spezialfall:** `np settings ...` arbeitet section-basiert, file-roundtrip, ETag-gegated. Workflow: `np settings get Smtp --etag-only > etag.txt`, dann `np settings put Smtp --file smtp.json --etag $(cat etag.txt)`. Kein `set key=value`.
-
-**Token-Storage:** DPAPI-encrypted (`CurrentUser`-Scope) unter `%APPDATA%\NodePilot\session-<profile>.dat`, inklusive serverseitigem `expiresAt`. `TokenRefreshHandler` rotiert einen noch gültigen Token kurz vor der absoluten Deadline. CLI und MCP koordinieren parallele Prozesse über denselben origin-gebundenen File-Lease: genau ein Prozess refresht, wartende Verlierer laden dessen Token. Atomarer Replace im selben Verzeichnis verhindert partielle Session-Blobs. Transiente proactive Fehler (408/429/5xx) aktivieren pro Token 15 Sekunden Cooldown; noch gültige Requests laufen weiter und ein späterer Request versucht erneut zu rotieren. Nach absolutem Ablauf ist ein neuer Login nötig; Refresh verlängert die Session nicht. Klartext-Config (Server-URL, Default-Profile, TLS-Pin) liegt daneben in `config.json`.
-
-**TLS-Vertrauen (CLI + MCP):** Beide Clients validieren die Zertifikatskette normal. Für einen
-Server, dessen Zertifikat der Client-Maschine unbekannt ist (Lab, Pilot), gibt es zwei Wege statt
-eines Root-Store-Imports: einen **SHA-256-Pin** — `--tls-thumbprint <SHA256>` › `NODEPILOT_TLS_THUMBPRINT`
-› `ProfileEntry.TlsThumbprint` (MCP: `NODEPILOT_MCP_TLS_THUMBPRINT` › `NODEPILOT_TLS_THUMBPRINT` ›
-Profil) — und den Notnagel `--insecure-tls` bzw. `NODEPILOT_TLS_NO_VERIFY` (MCP:
-`NODEPILOT_MCP_TLS_NO_VERIFY`). Regeln: Der Pin ist **additiv** (eine gültige Kette wird weiterhin
-akzeptiert, sonst bräche jede Zert-Erneuerung ein sauberes Profil); ein gesetzter Pin, der **nicht**
-passt, wird abgelehnt — auch mit `--insecure-tls`. Ein gespeicherter Pin ist **origin-gebunden** wie
-der Token (`ClientSessionSecurity.HasSameServerOrigin`) und wird beim Serverwechsel gelöscht;
-`np auth login --tls-thumbprint …` schreibt ihn ins Profil, `np config set tls-thumbprint <SHA256>|none`
-setzt/löscht ihn. Der Bypass ist **nicht** persistierbar und druckt bei jedem Aufruf eine Warnung.
-Ein unbrauchbarer Pin ist fail-closed: die CLI bricht ab, der MCP-Server startet zwar, lehnt aber
-jeden API-Aufruf mit einem reparierbaren Konfigurationsfehler ab. Impl: `NodePilot.Core.Clients`
-(`CertificatePin`, `ClientTlsOptions`, `PinnedCertificateHandlerFactory`, `TlsObservationHandler`,
-`NetworkFailureAnalyzer`).
-
-**Netzwerkfehler nennen ihre Ursache.** Die Clients entfalten die `InnerException`-Kette und
-nennen bei einem TLS-Fehler das präsentierte Zertifikat samt SHA-256 (der Wert, den man in
-`--tls-thumbprint` kopiert). Die Beobachtung ist an den **Request** gebunden, der sie ausgelöst hat
-(`TlsObservationHandler`, `AsyncLocal` → `Exception.Data`) — ohne eindeutige Zuordnung (Pool-Reuse,
-Abbruch vor der Zertifikatsprüfung) entfällt der Zertifikatsblock, statt ein fremdes Zertifikat zu
-zeigen.
-
-**Abhilfe passt zur Ursache.** `TlsFailureKind` nennt weiterhin **eine** primäre Ursache, aber .NET
-setzt Namens- und Kettenfehler unabhängig — deshalb trägt `NetworkFailureInfo.HasNameMismatch` den
-Namensbefund getrennt, und beide werden gemeldet, wenn beide anliegen (vorher verschluckte der
-Kettenfehler den Namensfehler, und `IsExpired` beide). Der Abhilfe-Block wird daraus komponiert
-statt statisch gedruckt: Ein Root-Import erscheint nur beim Kettenfehler, weil er weder einen
-Namens-Mismatch noch ein abgelaufenes Zertifikat behebt. Beim Namens-Mismatch führt
-`PresentedCertificateInfo.SuggestedServerUrl` (erster nicht-Wildcard-Name ≠ `localhost` + der
-versuchte Port, `:443` entfällt) — CLI druckt `np config set server <url>`, MCP
-`NODEPILOT_MCP_SERVER=<url>`. Der Port kommt aus der Beobachtung, nicht aus dem Server-String: der
-Renderer wird auch ohne ihn gerufen (`Program.cs`).
-
-**Architektur-Konvention:** Wer einen neuen API-Endpoint hinzufügt, der für Operatoren-Workflows relevant ist, legt parallel eine Methode in [NodePilotApiClient.cs](../src/NodePilot.Cli/Api/NodePilotApiClient.cs) + ein Command unter `Commands/<Bereich>/` an. DTOs werden in `Cli/Api/Dtos/` **dupliziert** (kein ProjectReference auf `NodePilot.Api`).
-
----
-
-## AuditLog — Vollständige Audit-Codes
-
-> **Autoritative Quelle:** `NodePilot.Core.Audit.AuditActions` (Konstanten-Katalog). Die Liste unten ist eine Prosa-Übersicht; der Guard `AuditActionsCatalogTests` (Api.Tests) hält Katalog ↔ Verwendung in Sync. Neue Codes dort registrieren, nie als rohes Literal.
-
-> **Alarmierbar:** jeder Code ist über die System-Policy-Quelle `audit-event` (Kategorie `Security`, Felder `action`/`outcome`/`category`/`username`/`ipAddress`/`resourceType`/`details`, Presets für Failed-Login, Lockout, Break-Glass-Login, Privileged-Change) per Mail/Webhook alarmierbar — Details in `docs/alerting.md`. Der SIEM-Stream bleibt der Weg für externe Detection-Rules.
-
-- `WORKFLOW_CREATED|UPDATED|DELETED|DUPLICATED|ROLLED_BACK|ENABLED|DISABLED|CANCEL_ALL`
-- `WORKFLOW_LOCKED|UNLOCKED|PUBLISHED|FORCE_UNLOCKED` (Edit-Lock-Lifecycle)
-- `MACHINE_CREATED|UPDATED|DELETED|CONNECTION_TESTED|CONNECTION_TEST_FAILED`
-- `CREDENTIAL_CREATED|UPDATED|DELETED`
-- `GLOBAL_VARIABLE_CREATED|UPDATED|DELETED`
-- `LOGIN_SUCCESS|LOGIN_FAILED|LOGIN_LOCKED|LOGOUT|TOKEN_REFRESHED|USER_CREATED_BOOTSTRAP`
-  - **Jeder** Login-Fehlschlag ist auditiert — der `reason` im Details-JSON ist das einzige Mittel, die im Browser bewusst identische Meldung „Invalid credentials" aufzuschlüsseln: `local_login_policy` (Modus verbietet lokalen Login), `bootstrap_token_invalid`, `ldap_invalid_credentials` (Bind abgelehnt), `ldap_user_object_not_found` (Bind OK, aber kein Objekt mit passendem `userPrincipalName` — meist ein leeres UPN-Attribut), `no_allowed_directory_group` (eigener Code `USER_DIRECTORY_ACCESS_REFUSED`), `pre_jit_account_throttle` (als `LOGIN_LOCKED`), `infrastructure_failure` (zusätzlich HTTP 503)
-- `USER_CREATED|USER_ROLE_CHANGED|USER_ACTIVATED|USER_DEACTIVATED|USER_PASSWORD_RESET|USER_DELETED`
-- `CREDENTIAL_DECRYPTED|CREDENTIAL_DECRYPT_FAILED` (pro Decryption-Versuch, nicht pro Run; Fehlerdetails enthalten nur Provider und Fehlerklasse)
-- `USER_LDAP_JIT_CREATED|JIT_UPDATED|LINKED|REFUSED_COLLISION|REFUSED_BOOTSTRAP` + `USER_WINDOWS_*` (gleiche Suffixe; Code ist `USER_{providerTag}_…` mit `providerTag` = LDAP|WINDOWS)
-- `USER_OIDC_JIT_CREATED` (OIDC-Erstanmeldung, im selben `SaveChanges` wie der User; Details: source/issuer/subject/role/groupCount). Er und das OIDC-`USER_DIRECTORY_SYNCED` gehen nach dem Commit über `AuditEventForwarder` in den SIEM-Stream.
-- `EXECUTION_STARTED|EXECUTION_CANCELLED|EXECUTION_RETRIED|EXECUTION_RESUMED|EXECUTION_STEP_OVER|EXECUTION_DEBUG_STOP|EXECUTION_RECOVERED_FAILOVER`
-- `WEBHOOK_TRIGGERED` | `EXTERNAL_TRIGGER_FIRED` (nur erfolgreiche Fires)
-- `TRIGGER_FIRE_SUPPRESSED`
-- `WORKFLOW_IMPORTED_SCORCH` | `WORKFLOW_EXPORTED` | `WORKFLOW_EXPORTED_BULK` | `WORKFLOW_IMPORTED` | `CUSTOM_ACTIVITY_EXPORTED`
-- `AI_AGENT_TEAM_GENERATED` (Team-Entwurf aus Beschreibung; Details: model/promptChars/memberCount/blockingIssues/warnings/retried/durationMs — kein Prompt-Text, keine Ressourcennamen)
-- `AI_SCRIPT_GENERATED|AI_WORKFLOW_GENERATED|AI_WORKFLOW_EXPLAINED|AI_PROPOSAL_APPLIED` (Chat-Assistent; Details: nur Counts model/durationMs/modifyProposed/nodeCount/turnCount bzw. Node-/Edge-Counts bei Applied — kein Prompt-/JSON-Text)
-- `AI_KNOWLEDGE_ASKED` (globaler Wissens-Chat `/ai-chat`; geschrieben bei jedem Ende eines begonnenen Streams, auch bei Fehler; Details: model/durationMs/toolCalls/turnCount/cancelled/error, die vier Quellen-Flags und bei text2sql `dbQueryCount` + stabile `dbQueryFingerprints` — **kein** Prompt- und kein SQL-Text)
-- `DBADMIN_ROWS_VIEWED` | `DBADMIN_ROW_UPDATED` | `DBADMIN_ROW_DELETED`
-- `DBADMIN_SQL_EXECUTED` | `DBADMIN_SQL_WRITE_ATTEMPTED` | `DBADMIN_SQL_WRITE` (Admin SQL-Konsole; Preview, SHA-256, Byte- und Statement-Anzahl in Details; direkter Zugriff auf `AuditLog` ist blockiert)
-- `SECRETS_REENCRYPTED` (Passphrase-Rewrap aller Secrets)
-- `FOLDER_CREATED|FOLDER_UPDATED|FOLDER_MOVED|FOLDER_DELETED` | `WORKFLOW_MOVED` (Shared-Folders / RBAC Stufe A)
-- `FOLDER_PERMISSION_UPDATED|FOLDER_PERMISSION_REVOKED` (Per-Folder-Grants)
-- `MAINTENANCE_WINDOW_CREATED|UPDATED|DELETED|OVERRIDDEN` | `EXECUTION_BLOCKED_MAINTENANCE_WINDOW`
-- `ALERT_RULE_CREATED|UPDATED|DELETED|ENABLED|DISABLED|TEST_FIRED` (Alerting / Notification-Rules — siehe `docs/alerting.md`)
-- `SYSTEM_ALERT_POLICY_CREATED|UPDATED|DELETED|ENABLED|DISABLED|TEST_FIRED` (System-Alert-Policies, ADR 0008)
-- `BACKUP_EXPORTED|BACKUP_RESTORED|BACKUP_RESTORE_DB_COMMITTED` (System-Configuration Backup, ADR 0001)
-- `AUDIT_LOG_EXPORTED` | `SUPPORT_EVENTS_EXPORTED` | `SUPPORT_LOG_DOWNLOADED` | `APP_LOG_DOWNLOADED` (sensible Diagnose-/Compliance-Exporte)
-- `CLUSTER_LEADERSHIP_ACQUIRED` (HA-Lease mit Node-ID und Fencing-Epoch)
-- `DATABASE_RECOVERED` (genau einmal pro echter `Unavailable -> Available`-Episode; kein Trip-Audit, da die Datenbank dabei nicht schreibbar ist)
-- `SETTINGS_{SMTP|LLM|RETENTION|AUTHENTICATION|LOGGING|OPENTELEMETRY|STATS|DBADMIN}_UPDATED` (Admin-Settings, ein Code pro Section)
-
-**Audit-Write-Pipeline (Phase 3):** Jeder Audit-Write läuft durch `IAuditStager` (in [NodePilot.Core/Audit/](../src/NodePilot.Core/Audit/)), inkl. der drei ehemals direkten Bypass-Pfade. HTTP-Controller nutzen `IAuditWriter` (in [NodePilot.Api/Audit/](../src/NodePilot.Api/Audit/AuditWriter.cs)); der wrappt den Stager mit `HttpContextAccessor`-Actor-Resolution + ECS-Log-Forward + Support-Log-Whitelist-Check. Redaction + 4 KiB-Cap gelten überall einheitlich.
-
-Audit-Fehler brechen normale Mutationen nicht ab. Die einzige bewusst fail-closed ausgelegte Ausnahme ist der beliebige DB-Admin-SQL-Schreibmodus: Er benötigt vor der Ausführung einen persistierten `DBADMIN_SQL_WRITE_ATTEMPTED`-Eintrag; ohne verfügbares Audit wird das SQL nicht ausgeführt.
-
-**Archive-Integrität:** `AuditLogRetentionService.ArchiveAsync` schreibt gzip-komprimierte `audit-{date}-{ticks}-{rand}.ndjson.gz` plus SHA-256-Sidecar. Periodische Verify-Pass (default daily) rechnet Hashes neu und alerted via Metric `nodepilot.audit_archive.hash_drift` bei Drift.
-
----
-
-## Production Deployment — Referenz
-
-Vollständige Operator-Doku: [deploy/README.md](../deploy/README.md). Zweites Shipping-Ziel ist die
-**Desktop-App** — siehe [Desktop-Deployment — Referenz](#desktop-deployment--referenz) weiter unten.
-
-### Ziel-Topologie
-
-- **Windows Service** unter einem **gMSA** (`DOMAIN\svc-nodepilot$`, `Win32_Service.Create` über CIM mit leerem `StartPassword` + `sc.exe managedaccount` + `depend= Netlogon` — `New-Service` kann gMSA nicht) **oder** `-UseLocalSystem` (Netzwerk-Identität = Computer-Konto `DOMAIN\<host>$`; einfachster Einzelserver-Pfad), `start= auto` (siehe „Dienst-Startverhalten"), Recovery-Actions
-- **Signiertes Artefakt**: `Build-Artifact.ps1 -SigningCertificateThumbprint` erzeugt ZIP + Manifest + detached CMS (`.p7s`); `Install-NodePilot.ps1 -TrustedArtifactSignerThumbprint` verifiziert die Signatur (`CheckSignature($true)`, **ohne** Kette) gegen den **gepinnten Thumbprint** — plus Codesignatur-EKU, KeyUsage und Gültigkeitsfenster explizit, weil genau die die Kettenprüfung mitgeliefert hatte (`ArtifactSecurity.ps1`). Der Signer muss auf dem Ziel **nicht** in `LocalMachine\Root` liegen: bei einem selbstsignierten Herausgeber ist der Vertrauensanker dasselbe Zertifikat, die Kette bestätigt also nur, was der Pin schon sagt — der Preis wäre eine dauerhafte, maschinenweite Änderung auf jedem Ziel gewesen, und die ließ jede Erstinstallation auf einem unberührten Host scheitern. Der Import ist seither eine **optionale** Auto-Fix-Zeile (`signer`), die zusätzlich die Authenticode-Signatur der Installer selbst validieren lässt. Bewusst aufgegeben: Vertrauensanker, Zeitverschachtelung der Kette, Basic-/Name-/Policy-Constraints, Widerruf — bei einem Self-Signed-End-Entity-Cert ohne CRL-Verteilungspunkt war davon nur der erste real. **Achtung bei einem CA-ausgestellten Signaturzertifikat:** dann fällt die Kettenprüfung ersatzlos weg. Der Pin ist ein SHA-1-Thumbprint (`X509Certificate2.Thumbprint`); ein SHA-256 über `RawData` wäre die stärkere Form und steht aus
-- **Pre-Flight liegt in `deploy/Preflight.ps1`**, nicht im Installer: `Invoke-NodePilotPreflight` sammelt Ergebnisobjekte (`Pass|Fail|Warn|Skipped` + Remediation-Snippet), `Assert-NodePilotPreflight` bricht erst danach ab. Damit ist dieselbe Prüflogik hinter einem „Erneut prüfen"-Button wiederverwendbar — **und genau deshalb darf dort nichts mutieren**. `Enable-SqlReadCommittedSnapshot` (`ALTER DATABASE … WITH ROLLBACK IMMEDIATE`) bleibt installer-seitig und läuft nach bestandenem Pre-Flight. `Test-DeploymentTemplates.ps1` erzwingt die Regel über den geparsten **AST** statt per Regex, weil die Datei Remediation-Kommandos legitim als Anzeigetext enthält
-- **GUI-Setup** (`deploy/server/`, Inno Setup 6, ~52 MB): zweiter Weg zur *selben* Server-Installation, ruft `Install-NodePilot.ps1` unverändert auf. Pascal-Layer bleibt dünn (Seiten + Payload); der Wizard schreibt eine ACL-geschützte **Answer-File** und ruft `Invoke-NodePilotSetup.ps1` (`InitSession`/`Probe`/`Provision`/`Apply`/`Cleanup`). Grund für die Datei statt einer Kommandozeile: `-PostgresPassword` ist `[SecureString]` und kann über `powershell.exe -File` **gar nicht** übergeben werden — nebenbei fällt `/SILENT /ANSWERFILE=` für SCCM ab. Vertrag + Splat-Abbildung in `SetupContract.ps1`, verhaltensgetestet durch `Test-SetupAdapter.ps1`. Ergebnisse als **INI** (Inno hat `GetIniString`, aber kein JSON). Volle Doku inkl. der sieben gemessenen Inno-Fallen: `deploy/server/README.md`
-- **Deinstallation entfernt nie die Datenbank**, auch nicht optional — der Installer legt sie nicht an. Einzige Frage ist das Datenverzeichnis (`-PurgeData` / `/PURGEDATA=1`), Default überall **behalten**. `-PurgeData` nimmt vorher per `takeown`+`icacls` die Besitzrechte, weil `jwt-secret.key` owner-only auf das Dienstkonto ACL-t ist; der `icacls`-Grant trägt **keine** `(OI)(CI)`-Flags (auf Blattdateien stillschweigend verworfen, `icacls` meldet trotzdem Erfolg)
-- **Installations-Marker** `HKLM\SOFTWARE\NodePilot\Server` (`InstallPath`, `DataPath`, `ServiceName`, `Version`, `DbProvider`, `HttpsPort`) wird auf dem Erfolgspfad geschrieben und vom Uninstaller entfernt — vorher lag diese Information nur in `install-report.txt` **innerhalb** `DataPath`, also erst lesbar, wenn man `DataPath` schon kennt
-- **Kestrel bindet HTTPS direkt** auf den Ports aus `Kestrel:Https:HttpsPort|HttpPort`, Cert per Thumbprint aus `LocalMachine\My` — **kein IIS / Reverse Proxy**. SPA + API liegen zwingend auf **einer Origin**
-- **Externes SQL Server 2022 ab CU1** (Trusted Connection; Build ≥ `16.0.4003.1` — Runtime verbindet mit `Encrypt=Strict`/TDS 8.0, 2022 RTM korrumpiert TDS-8.0-RPC-Streams mit Error 8005, Installer-Preflight prüft das) oder **PostgreSQL 16+** (user/password). gMSA-Login bzw. Postgres-Role braucht DDL-Rechte.
-- **gMSA-Identität als WinRM-Auth**: `NegotiateWithImplicitCredential` in [WinRmSessionFactory.cs](../src/NodePilot.Remote/WinRmSessionFactory.cs) erlaubt Kerberos gegen Ziel-Maschinen ohne gespeicherte Credentials, sofern resource-based Constrained Delegation eingerichtet ist
-
-### Install-Dir / Data-Dir Split
-
-| Pfad | Inhalt | Service-ACL |
-|---|---|---|
-| `C:\Program Files\NodePilot\` | `NodePilot.Api.exe`, DLLs, `wwwroot/` | Read |
-| `C:\Program Files\NodePilot\appsettings.Production.json` | Config + Secrets | Read (Vererbung aus) |
-| `C:\ProgramData\NodePilot\` | JWT-Key, Setup-Token, Logs, Install-Report | Modify (Vererbung aus) |
-
-### Config-Keys (backward-compatible)
-
-| Key | Zweck | Fallback |
-|---|---|---|
-| `Jwt:KeyPath` | Absoluter Pfad für `jwt-secret.key` | `{ContentRoot}/jwt-secret.key` |
-| `Jwt:RotateInsecureKeyFile` | Einmalige, explizite Rotation einer unsicheren bestehenden Key-Datei; danach wieder auf `false` setzen. Invalidiert alle Sessions. | `false` |
-| `Database:AllowInsecureTls` | Escape-Hatch der strikten DB-TLS-Prüfung (`DatabaseTlsBootValidator`). Wirkt **nur** bei Loopback-DB-Host **und** (Development-Env **oder** `Deployment:Mode=Desktop`) — auf einem Produktions-Server bricht der Boot trotz `true` ab. | `false` |
-| `Security:AdminSetupTokenPath` | Absoluter Pfad für `admin-setup.token` | `{ContentRoot}/admin-setup.token` |
-| `NodePilot:BootstrapAdminUsername` | Nur dieses Konto darf das einmalige Setup-Token einlösen. Vom Installer gesetzt, wenn die Answer-File `bootstrap.adminUsername` trägt. | leer = jeder Name |
-| `Provisioning:SeedBackupPath` | `.npbackup`, das `ProvisioningSeeder` beim Start **in eine leere Instanz** einspielt (vor `EnsureBootstrapTokenIfNeeded`, also entsteht dann gar kein Token). Bei vorhandenen Benutzern passiert nichts. Datei wird nach Erfolg gelöscht. | leer = kein Seed |
-| `Provisioning:SeedBackupPassphrase` | Passphrase dazu. Vom Installer in den `Environment`-Wert des Dienstschlüssels geschrieben, **nie** in die JSON. Falsch oder fehlend → Boot bricht ab (fail closed). | — |
-| `Logging:File:Path` | Absoluter Pfad für Serilog-Rolling-File | `{ContentRoot}/logs/nodepilot-.log` |
-| `Kestrel:Https:*` | Kestrel-direct-HTTPS aus Windows Cert Store | No-op → Default-Binding |
-
-`AdminBootstrap.Validate/Consume/EnsureBootstrapTokenIfNeeded` akzeptieren optionalen `IConfiguration`-Parameter (Default `null`).
-
-### `Credentials:DpapiScope` für Production
-
-Installer-Template setzt `LocalMachine` ([appsettings.Production.json.template](../deploy/templates/appsettings.Production.json.template)). `CurrentUser` bricht bei Service-Account-Wechsel. Siehe Warnung in [CredentialStore.cs](../src/NodePilot.Data/CredentialStore.cs) (~Zeile 99).
-
-### Dienst-Startverhalten (Boot)
-
-Der Dienst steht auf **`start= auto`** (nicht `delayed-auto`) und wartet die Datenbank selbst ab.
-
-- **`DatabaseReadinessGate` läuft in beiden Deployment-Modi**, direkt vor `MigrationBootstrapper`. Gewartet wird **nur** auf Erreichbarkeit (Verbindung öffnen und schließen); ein Schema-/Migrationsfehler ist deterministisch und wird nie wiederholt, sondern schlägt sofort durch. Jede Wartezeile nennt den letzten Verbindungsfehler (z. B. abgelehntes TLS-Zertifikat).
-- **Der Boot-Block sitzt in `DatabaseBootService.StartingAsync`, nicht vor `app.RunAsync()`.** Code vor `RunAsync` läuft, bevor der Windows-Dienst beim SCM als gestartet gilt — und der SCM gibt nach 30 s auf, weit vor `StartupWaitSeconds`. In `StartingAsync` hat `WindowsServiceLifetime` bereits „läuft" gemeldet, und alle `StartAsync` inklusive Kestrel laufen erst danach. Guard: `DatabaseReadinessGateTests.Program_RunsTheDatabaseBootInAHostedServiceNotBeforeRun`. Test-Factories, die `IHostedService` leeren, müssen den Dienst wieder eintragen (`ApiPipelineFactory`).
-- **`Database:StartupWaitSeconds`** (default 300, boot-fixed — ein lokaler SQL Server startet verzögert-automatisch rund zwei Minuten nach dem Boot) steuert die Obergrenze. `0` oder negativ = einmal prüfen, dann weiter (dokumentierter Opt-out); Werte über **10 Minuten** werden gekappt — sonst hängt ein `86400`-Tippfehler den Dienststart wortlos einen Tag lang. Unlesbare Werte fallen auf 300 zurück.
-- **`depend= Netlogon` nur auf dem gMSA-Pfad.** Ein gMSA-Logon holt sein Passwort beim DC, bevor der Prozess existiert — kein In-Process-Warten kann das abfangen, der Fehlschlag ist Event 7000. LocalSystem braucht die Abhängigkeit nicht: es meldet sich immer an, und seine DB-Verbindung (Computerkonto-Kerberos) deckt das Gate ab.
-- **Warum nicht mehr `delayed-auto`:** die Verzögerung war der Ersatz für ein Warten, das es auf dem Server-Pfad nicht gab, und war an beiden Enden falsch. Gemessen auf CM1: Boot 11:37:45, SQL Server bereit 11:37:53, Dienststart 11:39:48 — 115 Sekunden Leerlauf, die für den Operator wie ein kaputter Dienst aussehen. Umgekehrt startete er bei einer Datenbank, die länger als die feste Frist braucht, weiterhin zu früh; einzige Rettung war die Absturz-Neustart-Schleife der SCM-Recovery-Aktionen.
-- **Bekannte Kante:** existiert die Zieldatenbank noch gar nicht (EF würde sie per `Migrate()` anlegen), meldet die Sonde „nicht erreichbar" und der Boot wartet die volle Frist ab, bevor er sie anlegt. Auf dem Server-Pfad tritt das nicht auf — der Preflight prüft `Server/Database` und lässt eine Installation gegen eine fehlende Datenbank nicht zu.
-
-### Stolperfallen (aus dem ersten Lab-Rollout gelernt)
-
-- **PS 5.1-Kompatibilität**: `RandomNumberGenerator.Fill()` ist .NET-Core-only — stattdessen `RNGCryptoServiceProvider.GetBytes()`. Deploy-Skripte müssen auf PS 5.1 **und** PS 7 laufen
-- **Em-Dashes (`—`) in PS-Scripts**: bricht PS 5.1 Parsing wenn Datei ohne BOM gespeichert. In Deploy-Skripten nur ASCII-Punctuation verwenden
-- **`Set-StrictMode -Version Latest`** + `& npm ...`-Shim triggert `PropertyNotFoundStrict` auf `.Statement`. In Deploy-Skripten `Version 3.0` verwenden
-- **`New-Service` unterstützt keine gMSA** (verlangt Passwort). `Win32_Service.Create` über CIM mit leerem `StartPassword` ist der Workaround (PS 5.1 entfernt `password= ''` aus der sc.exe-Argumentliste)
-- **`$PSHOME\Modules` muss auch im Server-Artefakt gestaged werden**: `dotnet publish` legt SMA.dll in die Wurzel, die Core-Module aber unter `runtimes\win\lib\<tfm>\Modules` → ohne Kopie nach `<stage>\Modules` scheitert **jede** runScript-Activity mit „The term 'Write-Output' is not recognized" (implizite WinPS-Compat, die das früher maskierte, ist seit PR #87 bewusst aus). `Build-Artifact.ps1` staged seit 2026-08-01 wie der Desktop-Build
-- **CSP vs. Code-Editoren**: CodeMirror 6 (style-mod) und Monaco injizieren Laufzeit-`<style>`-Elemente → `style-src` braucht `'unsafe-inline'` (M-3 für Styles teilrevertiert, `script-src 'self'` bleibt strikt; Monaco hat keine Nonce-API). Guard: `SecurityPipelineSetupTests` — Dev und E2E fahren ohne diese Middleware, ein Direktiven-Regress fiele sonst erst auf dem Server auf
-- **`TokenValidityMiddleware` rejected nur auf `/api` + `/hubs`**: der SPA-Fallback-Endpoint trägt kein `[AllowAnonymous]`, ein abgelaufenes `np_auth` machte damit die gesamte SPA **inklusive `/login`** unerreichbar (rohes 401-JSON statt Seite). Außerhalb dieser beiden Präfixe wird die ungültige Identität gestrippt statt abgelehnt
-- **Update-Skript-Semantik** (aus dem Lab-Rollout): Prozess-Guard bricht **vor** dem ersten Delete ab, wenn noch etwas aus dem InstallPath läuft (gestoppter Dienst ≠ freie DLLs — gemappte Images liefern „Access denied"). **Der SCM meldet `SERVICE_STOPPED` vor dem Prozessende**, deshalb wartet `ServiceControl.ps1` (geteilt mit dem Installer) erst 30 s und beendet dann Verbliebene per `-Force`; ohne das Warten scheiterte der Lauf an genau dem Prozess, den er selbst gestoppt hatte (Lab 2026-08-03, Exit 4). Die Reihenfolge „warten **vor** `sc.exe delete`" ist bindend — umgekehrt verwaist ein lebender Prozess, den danach nichts mehr über den SCM adressieren kann; `appsettings.Production.json` fällt beim Wipe **zuletzt** (steht bewusst nicht im Backup); die Health-Probe leitet ihren Port aus `Kestrel:Https:HttpsPort` der installierten Config ab — der 443-Parameterdefault rollte sonst ein gesundes 8443-Upgrade zurück. **Ein erfolgreicher Update lässt den Dienst LAUFEN**, unabhängig von seinem Zustand vor dem Lauf — ein Rollback stellt den Ausgangszustand wieder her (startet nichts, was vorher bewusst gestoppt war). **Einzige Dienstkonfiguration, die ein Update anfasst:** `start= auto` (Normalisierung von Altbeständen auf `delayed-auto`, sonst erreichte der Fix nur Neuinstallationen). Identität, `depend=` und Recovery-Aktionen bleiben Installer-Sache — per Contract
-
----
-
-## Desktop-Deployment — Referenz
-
-Operator-Doku: [deploy/desktop/README.md](../deploy/desktop/README.md). Nutzerseitiger Vergleich aller
-drei Betriebsarten: docs-ui `deployment/overview.md`.
-
-Zweites Shipping-Ziel: maschinenweiter, **offline** Win-11-x64-`.exe`-Installer (Inno Setup) mit
-gebündeltem PostgreSQL 16 (nur `bin`/`lib`/`share`) + self-contained .NET, beides als
-Boot-Start-Dienste (`NodePilot` = LocalSystem, `NodePilotDb` = NetworkService, `depend=`), plus
-Electron als dünner Viewer.
-
-**Posture `Deployment:Mode`** (`Server` default | `Desktop`, [DeploymentMode.cs](../src/NodePilot.Api/Configuration/DeploymentMode.cs); unbekannter Wert = Boot-Error). Desktop relaxiert **nur** zwei Dinge:
-- `DatabaseTlsBootValidator`: `AllowInsecureTls` wird bei **Loopback-DB** zur Warning statt Error
-- `KestrelHttpsConfigurator`: `ListenLocalhost` statt `ListenAnyIP` (`LoopbackOnly`, nicht abschaltbar)
-- `DatabaseReadinessGate`: Warten auf DB-Erreichbarkeit vor dem Migration-Bootstrap (nur Erreichbarkeit, keine Migrationsfehler) — läuft in **beiden** Deployment-Modi, siehe „Dienst-Startverhalten"
-
-**Konsequenzen (nicht offensichtlich):** Der Loopback-Bind trifft den **kompletten Listener** — SPA,
-`/api/*`, `/hubs/*`, `/healthz`, `/api/webhooks/*`. Es ist **nicht** so, dass einzelne Routen gesperrt
-wären und der Rest der API aus dem Netz erreichbar bliebe (häufiges Missverständnis). Daraus:
-**eingehende Webhooks und die externe Trigger-API unbrauchbar** (für letztere ist kein gescopter
-Integrationsschlüssel konfiguriert), kein Team-Zugriff; nur lokales Login (`LocalLoginMode=Enabled`);
-lokale `runScript` laufen als **SYSTEM**; Remote-WinRM braucht hinterlegte Credentials;
-**HA unmöglich** (Cluster+DPAPI = Boot-Error, kein `Jwt:Key`).
-
-**Was unverändert bleibt:** alle nicht-eingehenden Trigger (`schedule`/`fileWatcher`/`database`/
-`eventLog`/`manual`) und jede ausgehende Automatisierung (WinRM, `restApi`, `sql`, SMTP,
-Alerting-Webhooks). Merksatz: *ausgehend alles, eingehend nichts.*
-
-**Windows-/PS-5.1-Stolperfallen im Provisionierer** (alle real aufgetreten):
-- `RandomNumberGenerator.Fill` und `GetCertHashString(HashAlgorithmName)` sind .NET-Core-/4.8-APIs — unter PS 5.1 nicht vorhanden
-- **PostgreSQL re-execed unter Restricted-Token** (droppt Administrators) → `pgdata`/pwfile brauchen den **User-SID**
-- `sc.exe create binPath=` bricht bei Leerzeichen-Pfad (`C:\Program Files\…`) **still** ab → `New-Service`
-- `admin-setup.token` ist owner-only (SYSTEM): elevierter Admin darf weder lesen noch DACL ändern → einfachster Weg ohne ACL-Änderung: `robocopy <DataPath> $env:TEMP admin-setup.token /B` (Backup-Semantik). Alternativ `takeown /a` + `icacls`-Lesegrant an die **Administrators-Gruppe** (bleibt im trusted-Set von `RestrictedFileWriter`; Ownership auf den persönlichen Admin-User dagegen invalidiert die Datei)
-- `Invoke-WebRequest` scheitert unter PS 5.1 an Kestrels Loopback-TLS trotz gesunder API → `curl.exe`-Fallback
-- **`$PSHOME\Modules` muss mitgeliefert werden**, sonst schlägt jedes `runScript` fehl (Modul-Staging im Build)
-- Deploy-Skripte **ASCII-only** halten (UTF-8-no-BOM wird als ANSI gelesen)
-
-**Icons (skin-folgend):** [scripts/generate-desktop-icons.ps1](../scripts/generate-desktop-icons.ps1)
-rendert `src/nodepilot-desktop/assets/` aus den Brand-Assets der SPA — Default-Set (`icon.ico`
-16/32/48/256, `icon.png`, `tray.png`) **blau** aus `appicon-dark.png` plus `skins/<id>.png` +
-`<id>-tray.png` je Brand-Asset. Zur Laufzeit folgt die Shell dem Skin: die SPA schreibt den über
-`lib/appIcon.ts` gewählten `/appicon-<id>.png`-Pfad in `<link rel="icon">`; `light-minimal` und
-`dark-minimal` verwenden die vorhandenen blauen Assets `light` und `dark`; `dark-ion` verwendet
-das vorhandene Cyan-Asset `dark-nebula`. Chromium meldet
-den Pfad als `page-favicon-updated`, und
-[skins.ts](../src/nodepilot-desktop/src/skins.ts) mappt es zurück auf `skins/<id>.*` (Fenster- +
-Tray-Icon). Bewusst **kein** Preload/IPC am Produktions-SPA-Fenster — die Shell liest ein Signal,
-das der Renderer ohnehin sendet. Die Skin-Liste ist **nicht** gespiegelt: der Generator leitet sie
-aus den vorhandenen `appicon-*.png` ab, die Shell aus den erzeugten Dateien (unbekannter Skin →
-aktuelles Icon bleibt). Nur exe/Installer/Startmenü-Icon bleibt fix — Windows löst die aus der Datei
-auf. Output ist gitignored, die Quellen sind versioniert.
-
-**Dev-Loop:** `Sync-DesktopApp.ps1` (~1 Min) statt Installer-Rebuild; Electron-Shell via `npm start`
-direkt aus dem Quellcode gegen die installierte Backend-Instanz (davor einmal `npm run icons`,
-sonst ist `assets/` leer).
-
----
-
-## System-Configuration Backup (ADR 0001)
-
-Portables, verschlüsseltes Backup der **Konfiguration** — getrennt vom redigierten Workflow-Export. Es ersetzt kein vollständiges Disaster-Recovery-Backup: native Datenbank, `ProgramData`, Dienstkonfiguration und Schlüsselmaterial müssen separat gesichert und gemeinsam getestet werden. Vollständige Designentscheidung: [docs/adr/0001-system-configuration-backup-restore.md](../docs/adr/0001-system-configuration-backup-restore.md).
-
-**Scope.** Enthalten: `folders` (Struktur + Grants), `users` (inkl. BCrypt-Hash), `credentials`, `machines`, `globalVariables` (+ Global-Variable-Ordner), `workflows`, `customActivities` (`CustomActivityBackupPart`, siehe `docs/custom-activities.md`), `alerting` (Custom-Regeln + System-Policies, ADR 0008), `settings` (nur `appsettings.runtime.json`). **Nicht** enthalten: AuditLog, Execution-History, StepExecutions, WorkflowVersions, Stats, SupportEvents, Alerting-Ledger/Suppression/Policy-State (transient) — dafür gilt der DB-eigene Backup-Pfad.
-
-**Datei.** `.npbackup`, JSON-Envelope **`nodepilot-system-backup/v4`**. Außen sichtbar bleiben nur Schema, begrenzte KDF-Parameter, Passphrase-Verifier und ein authentifizierter AES-GCM-Ciphertext. Der Ciphertext enthält die komplette Konfiguration einschließlich Section-Namen, Counts, Metadaten, Workflowdefinitionen und Custom-Activity-Skripten. Der Reader akzeptiert ausschließlich v4; die früheren v1–v3-Formate mit sichtbaren Metadaten werden abgelehnt. Secret-Felder bleiben innerhalb des verschlüsselten Payloads zusätzlich als `{"$enc":"<b64>"}` beziehungsweise `$encDefinition` gekapselt, damit der Restore-Pfad keine Klartext-Zwischendatei braucht.
-
-**Alerting-Sektion (v2).** `AlertingBackupPart` exportiert jede `NotificationRule` mit Routen (Route-Secret-Rewrap wie Credentials) + Scope-Targets. Restore remappt Targets über `FolderMap`/`WorkflowMap` und stempelt bei restaurierten enabled System-Policies ein frisches `ActivatedAt` (verhindert Back-Alerting der Historie).
-
-**Crypto.** Passphrase → PBKDF2-SHA256 (600k Iter., per-File-Salt) → HKDF-Subkeys. AES-256-GCM verschlüsselt und authentifiziert den kompletten Payload; ein separater GCM-Verifier prüft die Passphrase vor dem Öffnen. [PassphraseSecretProtector.cs](../src/NodePilot.Data/Security/PassphraseSecretProtector.cs). Rewrap-Pfad (Export: at-rest entschlüsseln → Passphrase verschlüsseln; Restore: umgekehrt) entspricht `ReencryptAllCredentialsAsync`.
-
-**Endpoints** (alle `[Authorize(Roles="Admin")]`):
-
-| Endpoint | Body | Zweck |
-|---|---|---|
-| `GET /api/backup/manifest` | — | Section-Counts |
-| `POST /api/backup/export` | JSON `{sections[], passphrase}` | streamt `.npbackup` |
-| `POST /api/backup/preview` | multipart `file` + `passphrase` | authentifizierter Diff je Section |
-| `POST /api/backup/restore` | multipart `file` + `passphrase` + `policy` | wendet an |
-
-**Export** zieht harte Dependencies automatisch mit (Workflows → Folders/Machines/Credentials/CustomActivities). Jede Warnung bricht den Export ab; ein unvollständiges Archiv wird nicht ausgegeben. Der Sharing-Export redigiert Definitionen strukturell; das Konfigurations-Backup verschlüsselt den vollständigen Payload und kapselt Workflowdefinitionen zusätzlich als `$encDefinition` sowie Custom-Activity-Skripte/-Inputdefaults als `$enc`. `targetMachineId`/`credentialId` sowie `config.__customDefinitionId` sind harte GUID-Referenzen → pfadgebundene Validierung und ID-Remap beim Restore; gleichnamige verschachtelte Nutzdaten bleiben unverändert.
-
-**Restore** (Service: [BackupRestoreService.cs](../src/NodePilot.Api/Services/Backup/BackupRestoreService.cs)):
-1. Passphrase via Verifier prüfen und AES-GCM-Payload authentifizieren/entschlüsseln → sonst Abbruch.
-2. **Referenz-Validierung** (vor jedem Schreiben): jede harte Ref muss im Backup **oder** in der Ziel-DB (per `sourceId`) auflösbar sein, sonst Abbruch.
-3. Eine DB-Transaktion, **gekapselt in `db.Database.CreateExecutionStrategy().ExecuteAsync(...)`** — Pflicht, weil Postgres/SQL Server eine Retrying-Strategy nutzen, die direkte `BeginTransaction` ablehnen. Reihenfolge: Users → Folder-Struktur → Credentials → Machines → Globals → Custom Activities → Workflows → Folder-Grants. Jede Section füllt eine `sourceId→targetId`-Map; Folgereferenzen werden darüber remappt (`Machine.DefaultCredentialId`, `Folder.ParentFolderId`/`CreatedByUserId`, Workflow-Def-GUIDs, Custom-Definition-IDs, Grant-Principals). AD-Group-SIDs in Grants bleiben unverändert.
-4. **Settings** werden vor dem DB-Commit atomar per `RuntimeOverridesWriter.ReplaceAll` ersetzt. Scheitert der DB-Commit, wird die Originaldatei kompensierend zurückgeschrieben; scheitert auch das, folgt ein kritischer Fehler mit manueller Recovery-Anweisung. **Replace, nicht Merge**: Top-Level-Overrides, die im Ziel existieren aber nicht im Backup, werden entfernt (`__meta` bleibt); `enc:v1:`-Werte werden re-sealed.
-
-**Konflikt-Policy** (by-name-Match; default `skip`): `skip` / `rename` (Suffix `(Restored N)`) / `overwrite`. Format im `policy`-Feld: bare Wert (global) und/oder `section=policy`-Paare, komma-getrennt (z. B. `skip,users=overwrite`); Sektionsnamen ohne Beachtung der Groß-/Kleinschreibung. Eine unbekannte Policy oder Sektion → 400, kein stiller Rückfall auf `skip`. **Ausnahme Workflows:** ihr Name ist nicht eindeutig, deshalb matcht ein Backup-Workflow eine Zielzeile zuerst per Id, dann per Name innerhalb des Zielordners; zwei Backup-Zeilen matchen einander nie, ein Backup mit gleichnamigen Workflows stellt alle her. Die Preview zählt Konflikte nach derselben Regel.
-
-**Ausfuehrungs-Vollmacht.** Restore stempelt den ausfuehrenden Benutzer als `Workflow.PublishedByUserId` auf jeden wiederhergestellten Workflow — im Create- wie im Overwrite-Zweig, weil das Backup `IsEnabled` mitbringt. Ohne die Spalte weist `ExecutionDispatchService` jeden automatischen Start dauerhaft als `Cancelled` (`missing_effective_principal`) ab, waehrend der Workflow sich als aktiv anzeigt. Ausnahme: das First-Boot-Provisioning (`ProvisioningSeeder`) restauriert ohne Principal — dort handelt niemand. Ein so wiederhergestellter Workflow kommt bereits aktiv an, deshalb greift auch die Principal-Füllung von `/enable` nicht (ein Enable auf einem schon aktiven Workflow ist ein No-Op): er braucht einmal Publish oder Disable-dann-Enable.
-
-**Sicherungen:** Last-Admin-Schutz (Restore lässt nie 0 aktive Admins zurück → Abbruch). User-`overwrite` bumpt `SecurityStamp` + setzt `PasswordChangedAt` bei Hash-/Rollen-/Status-Änderung (invalidiert Sessions). Jede Restore-Warnung gilt als unvollständiges Ergebnis und rollt die komplette Operation zurück; verwaiste Grants oder nicht wiederherstellbare Secret-Werte werden nicht mehr still übersprungen.
-
-**Audit:** `BACKUP_EXPORTED` (Counts je Sektion und akkurates `containsSecrets` — nur wahr wenn tatsächlich ein `$enc`-Feld versiegelt wurde) / `BACKUP_RESTORED` (effektive Konflikt-Policy und Ergebnis je Sektion; Passphrase nie im Log). **Rate-Limit:** Policy `backup` (10/min/IP) auf dem ganzen Controller — Export liest Secrets, Restore ist ein schwerer Bulk-Write. **Fehlerbild:** falsche Passphrase / unvollständiger Export oder Restore / unauflösbare Referenzen / Last-Admin → 409; beschädigter Ciphertext oder strukturell kaputter authentifizierter Inhalt → 400. **CLI:** `np backup manifest|export|preview|restore`; auch Preview benötigt die Passphrase via `--passphrase-env`/`--passphrase-file`/Prompt, nie als Flag.
-
-**Test-Coverage-Lücke (bewusst):** Die Execution-Strategy-Kapselung (Schritt 3) wird von den Tests über SQLites *non-retrying* Strategy ausgeführt, aber nicht *erzwungen* — ein Entfernen des Wrappers bliebe in SQLite-Tests grün und würde erst gegen echtes Postgres/SQL Server brechen. Der ADR-Kommentar + Code-Kommentar halten die Invariante fest.
-
----
-
-## Security — Detail-Referenzen
-
-- **Sessions:** 8h absolute Lifetime (Default), serverseitige `AuthSession`, atomare JTI-Rotation und Revocation via `TokenValidityMiddleware`. Externe Gruppen liegen in authority-scoped `DirectoryMemberships`, nicht im JWT. Key aus `Jwt:Key` oder `{ContentRoot}/jwt-secret.key` (generiert beim ersten Start). Details: [JwtKeyResolver.cs](../src/NodePilot.Api/Security/JwtKeyResolver.cs).
-- **Authentication-Pfade:** Local-BCrypt (Default `BreakGlassOnly`), LDAPS, Windows-Negotiate/Kerberos und OIDC Code + PKCE konvergieren auf dieselbe Session; SCIM 2.0 provisioniert Benutzer und Gruppen. Externe Identitäten werden kanonisch über `(Authority, Subject)` aufgelöst; LDAP und Windows verwenden dieselbe AD-`objectSid`. Setup + Troubleshooting in [docs/ldap-windows-sso.md](../docs/ldap-windows-sso.md). Status bis zum realen AD-Feldtest: **AD SSO Preview**.
-- **REST-API-Proxy:** `RestApi:Proxy:Enabled` (default `false`). Bei `true` sind `Address` (Pflicht), `BypassList`, `Username`/`Password` auswertbar. Per-Step-Override via Node-Config: `proxyMode` + `proxyAddress` + `noProxy`. Details in [RestApiHttpClientProvider.cs](../src/NodePilot.Engine/Security/RestApiHttpClientProvider.cs).
-
-### Hardening-Flags (Default-On mit zwei Ausnahmen, in Development relaxed)
-
-Die Guard-Flags sind **hardened by default**: appsettings.json shippt sie als `true`, und ein **fehlender** Key liest ebenfalls als `true` (siehe `PathGuardTests`/`NetworkGuardTests`). `appsettings.Development.json` relaxt sie für lokale Iteration auf `false`. **Zwei Ausnahmen sind Relaxations mit Default `false`:** `PrometheusScrapeAllowAnonymous` und `Remote:RequireWinRmSsl`. Dazu liest `Security:StrictAllowedHosts` (`SecurityHardeningWarnings`) einen fehlenden Key als `false` — nur `appsettings.json` und das Production-Template shippen `true`, ohne Key greift der Boot-Abbruch bei unsicherem `AllowedHosts` nicht. `Remote:RequireWinRmSsl` blockt HTTP nur, wenn der Wert wörtlich `"true"` ist (`WinRmSessionFactory.CreateSessionAsync`) — ein fehlender Key erlaubt also Plaintext-WinRM.
-
-| Key | Default | Wirkung |
-|---|---|---|
-| `Remote:RequireWinRmSsl` | `false` | `true` verbietet WinRM über HTTP. Bei `false` läuft HTTP mit Negotiate (Kerberos in der Domäne, NTLM in der Workgroup); HTTPS pro Maschine optional |
-| `RestApi:BlockPrivateNetworks` | `true` | Blockiert RFC1918/Loopback in `restApi` (Dev: `false`) |
-| `RestApi:AllowedHosts` | `[]` | Exakte Host-/IP-Allow-Liste für tatsächlich proxied `restApi`-Ziele/Redirects — die Ausnahme von `BlockPrivateNetworks`. Link-Local/Cloud-Metadata bleibt immer gesperrt (Dev: `localhost`/`127.0.0.1`/`::1`). **Die Sperre gilt der Adresse, nicht dem Namen:** löst ein Host auf mehrere Adressen auf, genügt bei einem **direkt** verbundenen Ziel **eine** brauchbare (`NetworkGuard.AssertAddressesUsable`) — ein domänengebundener Windows-Host registriert seine IPv6-Link-Local-Adressen neben den routbaren im DNS und wäre sonst dauerhaft unerreichbar, ohne Möglichkeit ihn freizuschalten. Verbunden wird trotzdem nie zu einer gesperrten Adresse: `EnforceConnect` wendet dieselbe Regel im `ConnectCallback` pro Adresse an und öffnet den Socket nur zu einer, die dort überlebt. **Läuft das Ziel über einen Proxy, müssen alle aufgelösten Adressen passieren** (`requireAllAddresses`, gesetzt von `RestApiHttpClientProvider.UsesProxyForDestination`): der Proxy löst das Ziel-DNS selbst auf, `EnforceConnect` sieht die Ziel-Adressen nie, und diese Vorprüfung ist damit der einzige verbliebene Adressfilter |
-| `WaitForCondition:AllowedHosts` | `["localhost"]` | **Eigene** Liste für die PowerShell-Probes `portOpen`/`httpOk`. Diese können das Ziel beim Connect nicht erneut prüfen (kein `ConnectCallback`), akzeptieren deshalb nur exakt gelistete Hosts; leere Liste lehnt jede Probe ab. Bewusst getrennt von `RestApi:AllowedHosts`, damit „eigenen Dienst prüfen" nicht zugleich `restApi` zu Loopback öffnet — dessen URLs können aus Trigger-Payloads stammen. **Alleinige Autorität für beide Probe-Typen:** `httpOk` lief bis 2026-08-07 zusätzlich durch `NetworkGuard.ValidateUrl` (den restApi-SSRF-Guard) und war damit auf Loopback/RFC1918 unabhängig von dieser Liste blockiert — der ausgelieferte `localhost`-Default war auf jeder Nicht-Dev-Instanz wirkungslos und die Fehlermeldung nannte den falschen Key (`RestApi:BlockPrivateNetworks`, dazu restart-pflichtig). Heute prüft `NetworkGuard.ValidateProbeUrl` nur URL-Form, Scheme und diese Liste. Link-Local/Cloud-Metadata bleibt für beide Typen ungeachtet der Liste gesperrt. Vergleich exakt: `127.0.0.1` deckt `localhost` nicht ab (Dev: alle drei Schreibweisen) |
-| `FileSystemOperation:RejectTraversal` | `true` | Lehnt `..` in File-System-Op-Paths ab (Dev: `false`). Zusammen mit `FileSystemOperation:AllowedRoots` (Root-Containment + Reparse-Point-Sperre, aktiv auch bei leerer Root-Liste) gilt die Prüfung **zweimal**: lokal in `PathGuard` und noch einmal im PowerShell-Kontext des tatsächlichen WinRM-Ziels (`TargetPathGuardScript`, injiziert von den pfadführenden Activities `fileOperation`/`folderOperation`, `textFileEdit`, `fileHash`, `zipOperation`, `startProgram`). Ein nicht-leerer konfigurierter Root muss auf dem Ziel existieren, sonst schlägt der Step fehl |
-| `SqlActivity:RequireConnectionRef` | `true` | Nur benannte `connectionRef` statt inline `connectionString` (Dev: `false`) |
-| `StartProgram:DisallowShellExecute` | `true` | Verwirft `useShellExecute=true` (Dev: `false`). Nur ein explizites `false` schaltet ab; ein nicht lesbarer Wert lässt die Sperre an (ein Parser für alle Leser: `HardeningFlags.IsOn`) |
-| `Trigger:Database:RequireConnectionRef` | `true` | Nur benannte `connectionRef` für `databaseTrigger` (Dev: `false`) |
-| `Security:StrictAllowedHosts` | `true` | Boot-Abbruch bei unsicherem `AllowedHosts` (z.B. `*`) (Dev: `false`) |
-| `OpenTelemetry:RedactHostnames` | `true` | Hält den Hostnamen aus der Telemetrie: `service.instance.id` wird eine prozessstabile Zufalls-Id statt `hostname:pid`, das Resource-Attribut `host.name` entfällt, die Serilog-Bridge unterdrückt das Feld. Produktionsempfehlung ist der Default; `false` nur, wenn Host-Attribution in Tempo/Grafana gebraucht wird (siehe `docs/siem-logging.md`) |
-| `Webhook:RequireSecret` | `true` | `webhookTrigger` erzwingt ein konfiguriertes Secret — verifiziert je nach `signatureMode` als `X-Webhook-Secret`-Header oder NodePilot-HMAC-v2-Signatur (Dev: `false`) |
-| `Database:AllowInsecureTls` | `false` | Relaxation: deaktiviert die strikte DB-TLS-Prüfung (`Encrypt=Strict` / `SSL Mode=VerifyFull`) — greift nur bei Loopback-Host + (Development **oder** `Deployment:Mode=Desktop`). Prod-Default fail-closed; Dev: `true` |
-| `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` | `false` | `/metrics` anonym erreichbar |
-
-**Listen pro Provider atomar (`ProviderAtomicList`):** `RestApi:AllowedHosts`, `WaitForCondition:AllowedHosts`, `RestApi:Proxy:BypassList`, `Llm:Proxy:BypassList`, `Authentication:Ldap:AllowedGroupSids`/`GlobalRoleMappings`, `Authentication:Oidc:AllowedGroupIds`/`GlobalRoleMappings`/`Scopes` und `Agents:ReadOnlyMcpTools` werden vollständig aus dem höchstprioren Provider gelesen, der sie deklariert, nie indexweise gemischt. Eine leere Liste (`[]`) auf höherer Ebene ersetzt also eine gefüllte darunter; eine Deklaration als Skalar **und** Array gleichzeitig ist ein Fehler.
-
-## Maintenance Windows — Semantik
-
-Endpoints: siehe CLAUDE.md "API Endpoints" (Maintenance Windows-Zeile). CLI: `np maintenance`. Modelle/Enums in `src/NodePilot.Core/Models/MaintenanceWindow.cs` + `src/NodePilot.Core/Enums/Maintenance*.cs`, Evaluator `IMaintenanceWindowEvaluator`.
-
-- **Admission-Control, kein Kill-Switch:** Ein Fenster gated nur **neu** zu admittierende Läufe. Es cancelt **nie** laufende Executions und re-gated **nie** ein `resume`/`retry` oder Sub-Workflow-Aufruf. (Für Sofort-Stopp: `disable` + `cancel-all` = Quarantäne.)
-- **Modi (`MaintenanceMode`):** `Blackout` (verweigern) und `AllowOnly` (nur den genannten Scope zulassen). **Deny-wins** bei Überlappung: greift irgendein `Blackout`, wird blockiert — egal welche `AllowOnly`-Fenster sonst gelten.
-- **Scope (`MaintenanceScopeKind`):** `Global` | `Folders` (Ordner-Subtree) | `Workflows` (explizite Liste).
-- **Recurrence (`MaintenanceRecurrenceKind`):** `OneTime` | `Weekly` | `Cron`. Lokale Zeiten/DST werden zu halb-offenen UTC-Intervallen aufgelöst. `Cron` = Quartz-Ausdruck (`CronExpression`, mit Sekundenfeld, interpretiert in `TimeZoneId`) + `DurationMinutes` (1..10080, API-validiert via `Quartz.CronExpression.TryParse`): das Fenster ist aktiv in `[fire, fire + duration)` je Fire. Ein Fire in der Frühjahrs-Lücke der Zeitumstellung liegt am Ende der Lücke; in der Herbst-Nacht liefert ein Ausdruck auch die wiederholte Stunde. Ungültiger Ausdruck / fehlende Dauer / unbekannte Zone → Fenster inert (fail-open, wie unbekannte Zeitzone bei Weekly).
-- **Deferral (`MaintenanceDeferralPolicy`):** v1 honoriert **nur `Skip`** (geblockter Lauf wird verworfen). `RunOnceAfter`/`RunAllAfter` sind im Enum reserviert, aber **nicht** implementiert (`MaintenanceWindow.cs:77`).
-- **Verteilung:** `MaintenanceWindowSnapshotService` (always-on, **nicht** leader-gated) hält pro Knoten einen Snapshot aktuell, damit jeder Knoten die API-/Webhook-Last bewertet, die er bedient.
-
-## Background Services — Inventar
-
-> DB-pollende Dienste parken bei einem Ausfall über `WaitUntilServableAsync`; Ausnahmen, Drop- und
-> Recovery-Semantik definiert [ADR 0011](adr/0011-database-availability-breaker.md).
-
-Die Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](../src/NodePilot.Api/Hosting/BackgroundServicesSetup.cs) registriert (+ Cluster-Services in `ClusterSetup.cs`, SignalR-Bridge sowie die drei Dashboard-/Rollup-Dienste in `Program.cs`). Gating: **always-on** | **opt-in** (Config-Flag) | **opt-out** (Config-Flag, default an) | **leader-only** (nur im A/P-Leader aktiv).
-
-| Service | Zweck | Gating |
-|---|---|---|
-| `DatabaseRecoveryAuditService` | Persistiert `DATABASE_RECOVERED` idempotent je lokaler Outage-Episode | always-on |
-| `TriggerOrchestrator` + Quartz | Trigger-Scan (5 s) + Quartz-Cron für `scheduleTrigger` | leader-only (im Cluster) |
-| `ExecutionDispatchWorker` | Geleaster Dispatch persistierter `Pending`-Executions aus der DB-Outbox | leader-only (im Cluster) |
-| `MaintenanceWindowSnapshotService` | Hält den Maintenance-Window-Snapshot pro Knoten aktuell | always-on (nicht leader-gated) |
-| `ExecutionRetentionService` | Trimmt `WorkflowExecutions` (30 d) | default an, abschaltbar per `Retention:Executions:Enabled` |
-| `AuditLogRetentionService` | Trimmt `AuditLogs` (365 d) + gzip/SHA-256-Archiv | default an, abschaltbar per `Retention:AuditLog:Enabled` |
-| `WorkflowVersionsRetentionService` | Hält je Workflow die letzten N Versionen (50) | default an, abschaltbar per `Retention:WorkflowVersions:Enabled` |
-| `SupportEventRetentionService` | Trimmt `SupportEvents` (90 d) | default an, abschaltbar per `Retention:SupportEvents:Enabled`, leader-only |
-| `TriggerReceiptRetentionService` | Trimmt `TriggerDeliveryReceipts` (7 d) | opt-out `Retention:TriggerReceipts:Enabled`, leader-only |
-| `NotificationDispatcher` | Alerting: matcht Execution- + Signal-Events gegen Regeln, sendet via Sinks (~30 s) | opt-in by data, leader-only |
-| `NotificationRetentionService` | Trimmt den Delivery-Ledger + stale Suppression-States (90 d) | opt-out `Retention:Notifications:Enabled`, leader-only |
-| `IdempotencyKeyCleanupService` | Prunt Idempotency-Keys nach 24 h TTL | always-on (nicht abschaltbar) |
-| `WorkflowStatsRefresher` | Berechnet `WorkflowStats`-Aggregat (siehe Stats) | always-on |
-| `ExecutionStatsRollupService` | Schreibt die Stunden-Buckets `ExecutionHourlyStat` (inkl. Laufzeit-Histogramm für Median/P95) + `FailureCauseHourlyStat` fort (Sweep 60 s, Start nach 25 s, Backfill in Tages-Chunks; ein abgeschlossener Backfill deckt jedes Fenster, auch bei kürzerer Historie) | opt-out `Stats:Rollup:Enabled`, leader-only |
-| `DashboardAggregateWarmup` | Berechnet die Dashboard-Aggregate für 24 h / 7 d / 30 d nach dem Start vor, hält sie warm und primt nach einem Cache-Clear (Ordner-Mutation) neu (Sweep 20 s, Start nach 15 s) | opt-out `Dashboard:Warmup:Enabled` (prozesslokaler Cache, nicht leader-gated) |
-| `WorkflowDefinitionFactsWarmup` | Füllt den kalten `WorkflowDefinitionFactsCache` einmalig in 50er-Batches (Start nach 10 s) | always-on |
-| `RevokedTokensCleanupService` | Täglicher Sweep der `RevokedTokens` (Audit M12) | always-on |
-| `HubRevocationSweeper` | Schließt SignalR-Verbindungen bei Logout/Deaktivierung (Audit M2) | always-on |
-| `SupportEventFlushService` | Gepufferter Flush von Support-Events in die DB | always-on (wenn DB-Projektion an) |
-| `ClusterLeaderService` / `ClusterFencingHost` / `ClusterFailoverRecoveryHost` | Leader-Lease, Fencing, Failover-Recovery | nur `Cluster:Enabled` (siehe `docs/ha-active-passive.md`) |
-
-**Alerting-Config:** `Alerting:LongRunningSeconds` (default `600`, `ExecutionRunningLong`) und `Alerting:QueuedLongSeconds` (default `300`, `ExecutionQueuedLong`) werden von den jeweiligen Collectors pro Pass aus der Live-Config gelesen (Minimum 1 s). Infrastruktur-, Credential-Ablauf- und Zeitplansignale werden als System-Policies über den `ISystemAlertSource`-Katalog konfiguriert; ihre Schwellen und Zeitfenster liegen pro Policy vor. Der frühere Gauge-Collector samt globalen `Alerting:Gauge:*`-Schwellen ist entfernt. Custom-Regeln unterstützen nur die fünf Execution-Ereignisse und `CredentialFailure`. Das `cancelledBy`-Event-Feld (`user`/`cancelAll`/`failover`/`failover-pending`/`reconciler`/`reconciler-pending`/`dispatch`/`system`) bleibt für `ExecutionCancelled` verfügbar. Siehe [Alerting](alerting.md).
-
-## Stats — Workflow-KPI-Aggregat
-
-Dashboard + Workflow-Listen lesen ein **vorberechnetes** `WorkflowStats`-Aggregat statt pro Request `WorkflowExecutions` zu scannen. Refresh durch `WorkflowStatsRefresher` (always-on).
-
-| Key | Default | Wirkung |
-|---|---|---|
-| `Stats:RefreshIntervalMinutes` | `5` | Refresh-Intervall des Aggregats (1..1440; ein nicht lesbarer Wert lässt nur den Durchlauf scheitern und wartet dann 5 Min.) |
-| `Stats:WindowDays` | `7` | Zeitfenster der aggregierten KPIs |
-| `Stats:DurationSampleCap` | `1000` | Max. Dauer-Samples je Workflow für avg/p50/p95 (neueste zuerst) |
-
-`GET /api/stats/dashboard` liefert daher den letzten Refresh-Stand, nicht Live-Zahlen. Mutationen am Setting schreiben `SETTINGS_STATS_UPDATED` ins AuditLog. `RefreshIntervalMinutes`/`WindowDays` sind hot-reloadable — der Refresher liest sie pro Pass aus der Live-Config (kein Neustart nötig).
-
-**Warum der Sample-Cap:** Zähler und Zeitstempel aggregiert die DB serverseitig, Perzentile lassen sich aber nicht provider-agnostisch in LINQ ausdrücken. Die Dauer-Samples werden deshalb pro Workflow über den deckenden Index `(WorkflowId, StartedAt DESC)` geholt und hart gedeckelt — vorher materialisierte ein Pass **jeden** Erfolgslauf des Fensters im Speicher, alle 5 Minuten, für drei Kennzahlen.
-
-**Zeitfenster, Balken-Cap und Dichte.** `GET /api/operations/graph?windowMinutes=` ist serverseitig auf `{30, 60}` geklemmt (alles andere → 30, `OperationsController.DefaultWindowMinutes`) und steuert **nur** die beendeten Läufe. `running[]` ist bewusst nie gefenstert — ein seit sechs Stunden laufender Job muss in jedem Fenster sichtbar bleiben, das ist ja der Stuck-Fall.
-
-Die Liste steht an **vier** Stellen und muss geschlossen wandern: `AllowedWindowMinutes` im Controller, `OPS_WINDOW_MINUTES` in `lib/opsTimeline.ts` (dessen erster Eintrag zugleich der Default der Seite ist), die `window.option.*`-Keys in `i18n/locales/{de,en}/operations.json` und die Option-Hilfen von CLI (`np operations graph --window`) und MCP (`get_operations_graph`). Dazu passt `tickStepFor` die Achsen-Schrittweite an, so dass jede Spanne vier bis sechs Beschriftungen trägt — die Schritte sind bewusst Wanduhr-Teiler (5/15 min für die beiden Fenster, 1/5/15/60 s für einen per Mausrad gezoomten Ausschnitt), weil `axisTicks` auf Vielfache des Schritts rastet. Unter einer Minute Schrittweite ergänzt die Achse die Sekunden in der Beschriftung.
-
-Die Reihenfolge ist Vertrag: `ORDER BY CompletedAt DESC, Id DESC` in **beiden** Queries (Balken *und* Dichte-Scan). Ohne Tiebreaker entscheidet der Provider, welche Zeile die 4000ste bei gleichem `CompletedAt` ist — damit würden Cap-Grenze und Naht zwischen zwei Polls unveränderter Daten springen. Der Index `(CompletedAt, Id)` bedient genau diese Sortierung.
-
-**Warum die Optimierungen trotz zweier Fenster bleiben (Stand 2026-08-13).** Nach der Rücknahme von 2/3/4 Std ist das breiteste Fenster 1 Std. Auf der gemessenen Anlage (2.980 beendete Läufe/h) liegt das **unter** `RecentCap = 4000` — die Dichte greift dort also praktisch nie mehr. Das entwertet die übrige Arbeit nicht, weil fast nichts davon am Fenster hing:
-
-| Posten | Hängt am Fenster? | Warum er bleibt |
-|---|---|---|
-| `RecentCap = 4000` | ja | **Wichtiger denn je.** Er ist genau das, was das 1-h-Fenster vollständig macht; zurück auf 1000 stellt die ursprüngliche Beschwerde („bei 1 Std sehe ich nur die letzten 20 min") sofort wieder her. |
-| Verankerte Render-Ebene + memoisierte Subtree | nein | Bei 1 Std stehen ~2.980 Balken auf dem Board. Ohne sie werden die pro Sekunde neu erzeugt und positioniert. |
-| Balken-Transition entfernt | nein | Dieselben ~2.980 Balken würden sonst pro Frame durch einen Layout-Pass laufen. |
-| Callgraph-Cache, Response-Compression, Label-Map, Sortier-Tiebreaker | nein | Reine Pro-Poll-Kosten bzw. Korrektheit, unabhängig von der Zeitspanne. |
-| Sub-Row-Deckel, Tastaturzugang, Label-Spalte, Rate-Limit | nein | Hängen an Parallelität, Balkenzahl bzw. Viewport, nicht am Fenster. |
-| **Dichte-Histogramm + dessen Verankerung** | ja | Wird auf dieser Anlage zur **Ausnahme** statt Normalfall — nötig erst ab >4.000 beendeten Läufen in ≤ 1 h. Der behobene Defekt (grüne Fläche statt Chart) bliebe auf einer schnelleren Installation aber real, und der Pfad ist getestet. |
-
-`RecentCap = 4000` gilt für **jedes** Fenster, weil er ein **Render-Budget** ist und kein Fenster-Budget: er begrenzt, wie viele Balken die Konsole hält, und das hängt nicht daran, wie weit zurück jemand geschaut hat. Die Zahl ist der Punkt, an dem Balken aufhören, einzeln lesbar zu sein — keine runde Hausnummer: ein Balken braucht ~8 px Lane, um abzählbar zu sein, ein ~1.500-px-Track trägt also ~185 pro Lane, und ein ausgelastetes Board hat ~24 Lanes → ~4.400 Balken, bevor die Ansicht ohnehin lügt. Knapp darunter deckt sie auf einer gemessenen Anlage mit 2.980 beendeten Läufen/h das **ganze 1-h-Fenster** ab. ~4.400 ist damit eine **Lesbarkeits**-, keine Speichergrenze: darüber hinaus hilft kein größerer Cap mehr, sondern nur ein besseres Aggregat.
-
-**Der frühere Wert war 1000, und was ihn wirklich niedrig hielt, war eine CSS-Zeile.** `.np-ops-bar` trug `transition: left 1s linear, width 1s linear` — `left`/`width` sind Layout-Eigenschaften, die Transition lief also pro Frame durch einen vollen Layout-Pass für **jeden** Balken (der Kommentar „glides at compositor speed" war schlicht falsch). Ein beendeter Balken ist eingefroren und driftet zwischen zwei 1-Hz-Ticks nur mit dem Fenster nach links: 0,77 px/s bei 30 min, 0,38 px/s bei 1 h — ein Sub-Pixel-Schritt, den niemand sieht. Die Transition sitzt deshalb jetzt **nur noch** auf `.np-ops-bar--running` (wächst wirklich, und davon gibt es eine Handvoll). Erst das macht 4.000 Balken bezahlbar. Wer den Cap künftig anfasst: erst diese Zeile prüfen, dann die Zahl.
-
-Die Abdeckung des Fensters übernimmt deshalb **`density[]`**: pro Workflow gebucketete Zähler (`total`/`failed`/`cancelled`) über das **ganze** Fenster, berechnet **nur wenn** der Cap gegriffen hat (ruhige Anlage → zweite Query und Payload entfallen komplett). Feste Bucket-**Anzahl** statt fester Breite (`DensityBucketTarget = 48`, also 37 s bei 30 min, 75 s bei 1 h) — dadurch kostet ein breiteres Fenster nichts extra, egal wie viele Läufe dahinterstehen. Aggregiert wird **in-memory** über einen gedeckelten Scan (`DensityScanCap = 20.000`), bewusst nicht in SQL: portables Datums-Bucketing über Postgres, SQL Server **und** das SQLite-Test-Backend ist ein Übersetzungs-Minenfeld, ein schmaler Range-Read dagegen billig.
-
-Fünf Meta-Felder mit fünf verschiedenen Bedeutungen: `RecentSinceUtc` = *angeforderter* linker Rand (und Anker von Bucket 0), `OldestReturnedCompletedAt` = ältester *tatsächlich gelieferter* Abschluss (die Naht zwischen Balken und Dichte), `RecentTruncated` = ob der Cap gegriffen hat, `DensityBucketSeconds` = Bucket-Breite, `DensityCapped` = ob schon das Aggregat gedeckelt wurde (die Zähler sind dann eine Untergrenze, keine Summe).
-
-Die Buckets decken absichtlich das ganze Fenster ab und nicht nur die fehlende Strecke: die Naht fällt mitten in einen Bucket (ein dort abgeschnittener Bucket zählte sich selbst zu klein), und so ist die Bucket-Summe die ehrliche Fenster-Gesamtzahl für die Hinweiszeile. Das **Clipping** an der Naht ist eine reine Render-Entscheidung in `buildDensityCells` — rechts davon ist jeder Lauf ohnehin ein Balken. Das „keine Historie"-Band entfällt, sobald Dichte da ist: es behauptet „für diese Strecke kam nichts zurück", und die Dichte ist genau die Widerlegung. Ein Workflow **nur** mit Dichte (jeder seiner Läufe fiel hinter den Cap) bekommt in `assignLanes` trotzdem eine Lane — sonst hätte seine Historie nichts zum Zeichnen und der Workflow läse sich als untätig.
-
-**Render-Vertrag der Dichte: ein Histogramm, kein Band.** Die Dichte-Strecke wird als bodenverankertes Säulendiagramm gezeichnet — drei Marken mit drei getrennten Aussagen. Die **Säule** (`.np-ops-density`) trägt die Lauf-Anzahl in der **Höhe**, gedeckelt auf `OPS_DENSITY_MAX_H = 14` und damit strikt unter `OPS_BAR_H = 22`; diese Ungleichung ist per Test gepinnt und der Kern der ganzen Sache: eine Säule auf Balkenhöhe liest sich als *ein* langer Lauf. Sie ist bewusst **achromatisch** (`--color-on-surface`, 30 %) — ein Aggregat aus Erfolgen *und* Fehlern hat keine wahre Status-Farbe, und eine grüne Form auf diesem Track ist ein Lauf-Balken. Die **Achse** (`.np-ops-density-axis`, gestrichelt, eine je Lane, exakt über ihre Säulen) macht die Strecke als Chart lesbar und endet an der Naht, markiert also zugleich den Übergang zu Einzelbalken. Der **Rug** (`.np-ops-density-rug`) hängt **unter** der Grundlinie, wenn das Intervall Fehler (`--color-error`) bzw. ersatzweise Abbrüche (`--color-skipped`) enthält.
-
-Der Rug ersetzt einen anteiligen Outcome-Stapel, der bei dieser Skala nicht funktionieren kann: 65 Fehler unter 2981 Läufen sind 2,2 %, also 0,3 px auf einer 14-px-Säule — der Stapel versteckte den Fehler oder behauptete nach einem Sichtbarkeits-Floor einen Anteil, den er nicht hat. „Wie viel lief" (über der Linie) von „was ging schief" (darunter) zu trennen ist die einzige Kodierung, die bei *jedem* Verhältnis stimmt; die exakten Zahlen stehen im Hover-Titel. `buildDensityCells` nimmt zusätzlich `OPS_DENSITY_CELL_GAP_PX = 1` von der gezeichneten Breite (`fromMs`/`toMs` bleiben ehrlich): abstoßende Zellen (`to(i) === from(i+1)`) verschmolzen die 48 Buckets zu einer Fläche. Die Höhe skaliert linear gegen den **globalen** Peak über alle Lanes — die Lanes teilen eine Zeitachse, „höher = mehr Läufe" muss also auch zwischen Lanes gelten; per-Lane-Normalisierung zeichnete eine Lane mit 3 Läufen/Slice wie eine mit 300. Preis ist `OPS_DENSITY_MIN_H = 3`, damit eine ruhige Lane neben einer heißen nicht auf 0 rundet und als „nichts lief" liest. Eine Opazitäts-Rampe gibt es **nicht** mehr (`0.28 + 0.57 · total/peak` modulierte auf gleichmäßiger Last durch nichts und war die zweite Hälfte des Fläche-Effekts) — Höhe trägt die Zahl bereits, doppelt kodiert wird nicht. Verankert wird auf der Unterkante der **ersten** Sub-Row, nicht der Lane: konstante Bandhöhe hält Säulen über Lanes vergleichbar, und zusätzliche Sub-Rows entstehen ohnehin nur durch überlappende Balken rechts der Naht.
-
-**Zwei Hebel, zwei Defekte — nicht verwechseln.** Das Histogramm behebt, wie das Aggregat *aussieht*; es verschiebt die Naht nicht. Dass ein 1-h-Fenster nur seine neuesten ~20 Minuten als Läufe zeigte, war der **Cap**, und der ist separat auf 4.000 angehoben worden (oben). Beides musste passieren: ein größerer Cap allein hätte die Fläche dort, wo Dichte überhaupt noch greift, unverändert gelassen, ein schöneres Aggregat allein beantwortet nicht „wo sind meine Läufe".
-
-**Sperrvermerk:** `DensityBucketTarget = 48` bleibt. Weil die Bucket-*Anzahl* fix ist, ist eine Säule in jedem Fenster ≈ `trackWidth · 0,92 / 48` breit (~19 px auf 1.000 px) — ein gutes Seitenverhältnis zu 14 px Höhe, das eine Verdopplung auf 96 Buckets zu Rauschen machen würde. Ebenfalls unberührt: `OPS_MIN_BAR_PX = 4` (gemessener Wert mit eigenem Regressionstest). Dass Balken *rechts* der Naht unter hoher Last zusammenlaufen, ist ein anderer Defekt — das sind echte Läufe mit eigenem Hover-Titel und Drilldown, nicht dieselbe Falschaussage wie eine Aggregat-Fläche.
-
-**Zwei Render-Ebenen, zwei Koordinatensysteme.** Beendete Balken werden gegen `wAnchor` platziert — ein Fenster, dessen rechter Rand der **lokale** Zeitstempel des aktuell gezeigten Snapshots ist und sich damit **pro Poll** bewegt, nicht pro Uhr-Tick. Bewusst nicht `recentSinceUtc`: mit dem Server-Zeitstempel erbt die Ebene jede Uhr-Differenz als rohen Pixel-Offset und legt die Balken vor der korrigierenden Translation Tausende Pixel außerhalb ab — sichtbar, aber nicht mehr anklickbar. Sie liegen in `.np-ops-shift`, und ein Tick ändert ausschließlich deren `translateX`. Laufende Balken bleiben außerhalb und werden gegen das Live-Fenster platziert: sie wachsen zur NOW-Linie, was eine Translation nicht ausdrücken kann. Der **gesamte Inhalt** der Ebene liegt in einem `useMemo` (`anchoredLayer`) — Geometrie allein zu memoisieren reichte nicht, die JSX hing weiter am Tick und baute bei greifender Dichte ~1150 Dichte-Elemente pro Sekunde neu, inklusive `densityTitle` mit zwei uncachten `toLocaleTimeString` je Zelle. Deps sind ausschließlich Snapshot-Größen; die Helfer wohnen **im** Memo, sonst entwerten sie es als Per-Render-Closures. Clip und Transform sind zwei Elemente (`.np-ops-clip` / `.np-ops-shift`), sonst wandert die Clip-Box mit. Die Ebene trägt **alles Eingefrorene**, nicht nur die Balken: Dichte-Säulen samt Achsen und Rugs, die Call-Connectors und das „keine Historie“-Band. Die Faustregel beim Ergänzen lautet „hängt es an Daten oder an der Uhr?“ — die Dichte hing anfangs an der Uhr und war damit der größte verbliebene Kostenpunkt, sobald sie greift (~1150 Zellen pro Sekunde neu gerendert). Entsprechend nimmt `buildTimelineBars` **kein** Fenster mehr (Balken + Lanes hängen nur am Snapshot), und `OpsTimelineBar` bekommt `durationMs` statt `nowMs` — sonst hätte das `memo` pro Sekunde ein neues Prop gesehen und tausende eingefrorener Balken umsonst rerendert. Zwei Nebenwirkungen, bewusst in Kauf genommen: ein ausgewählter *beendeter* Balken liegt jetzt unter der NOW-Linie (die Ebene ist ein eigener Stacking-Context), und ein Balken, der zwischen zwei Polls über den linken Rand altert, bleibt bis zum nächsten Poll geklemmt sichtbar statt zu verschwinden — letzteres gilt nur in der ungezoomten Live-Ansicht, denn bei aktivem Detail-Ausschnitt filtert `placedBars` alles außerhalb der Spanne heraus, statt es zu klemmen. Begründung + Messwerte: `docs/performance-improvements.md`.
-
-**Zoom, Klick-Marge und wann eine Lane einrückt.** Drei Entscheidungen, die dieselbe Frage beantworten: Was ist in einem dichten Fenster überhaupt noch bedienbar?
-
-- **Zoom** hängt am Mausrad und verankert am Zeiger (`zoomTimelineWindow` in `lib/opsTimeline.ts`), nicht an der Fenstermitte — beim Hineinfahren soll der Balken unter dem Zeiger stehen bleiben. Nach unten ist bei **fünf Sekunden** Schluss, nach oben beim geladenen Fenster: weiter herauszoomen würde leeren Track zeigen und damit behaupten, dort ende die Historie, obwohl nur nichts geladen ist. Es gibt genau **einen** ungezoomten Zustand — erreicht der Ausschnitt wieder die volle Spanne, fällt der Zoom-State auf `null` zurück, und ein Wechsel des Fenster-Selektors verwirft ihn ebenfalls; ein „fast volles" Zoom-Fenster, das ungezoomt aussieht, sich aber anders verhält, gäbe es sonst als zweiten, unsichtbaren Zustand. Der Wheel-Handler ist bewusst ein **nativer** Listener mit `{ passive: false }`: Reacts eigene sind passiv, `preventDefault` verpufft dort, und die Seite scrollte beim Zoomen mit. Die Achsen-Schrittweiten unter einer Minute in `tickStepFor` existieren nur für diesen Fall.
-- **Sechs Pixel Klick-Marge.** Ein Lauf von einer halben Sekunde ist im 1-h-Fenster schmaler als ein Pixel und praktisch untreffbar. Der Track-Klick sucht deshalb den nächstliegenden Balken innerhalb von 6 px — aber **nur** unter den schmalen (`widthPx < 16`), und erst nachdem echte Buttons ihren Vorrang hatten (`closest('button, [role="button"]')` bricht ab). Sonst würde die Marge Klicks von breiten Nachbarbalken abfangen, bei denen es nichts zu helfen gibt.
-- **Eine Lane rückt nur unter einen Aufrufer ein, wenn *jeder* ihrer sichtbaren Balken auf denselben einzelnen Caller-Workflow auflöst.** Einrückung behauptet eine Eltern-Kind-Beziehung; gilt sie nur für einen Teil der Läufe, ist die Behauptung falsch. Geteilte, eigenständig gestartete und nicht auflösbare Aufrufe bleiben deshalb top-level — die einzelnen Aufrufe trägt ohnehin der Connector, nicht die Position. Die Lane beschriftet beides: `Parallelspur n/m` für die Sub-Rows, `n callers in window` für eine geteilte Lane.
-
-**Grenzen und Tastaturzugang der Timeline.** Eine Lane stapelt eine Sub-Row je gleichzeitig laufender Execution, ist also eine Funktion der Workflow-Parallelität und nicht der Ansicht — mit Cap-vielen überlappenden Läufen wäre eine Lane ~152.000 px hoch, und die verankerte Ebene macht daraus **eine** Compositing-Fläche. `OPS_MAX_SUB_ROWS = 12` deckelt das; darüber liegende Balken werden **nie verworfen**, sondern in die als nächstes frei werdende Zeile gepackt, wo sie überlappen — und die Lane sagt das über `subRowsCapped` (Marker + Titel). Verlieren wäre eine Lüge, überlappen ist nur eng.
-
-**Der Track ist genau ein Tab-Stop.** Balken tragen `tabIndex={-1}` und stabile Ids; der Track hält `role="grid"`, `tabIndex={0}` und bewegt `aria-activedescendant` per Pfeiltasten (links/rechts = Balken, hoch/runter = Lane, Home/End, Enter/Space öffnet). Tausende einzelne Tab-Stops waren eine Tastaturfalle — das Departure-Board darunter war ohne Tausende Anschläge unerreichbar. Der Fokus liegt bewusst **nicht** als Prop an den Balken: das würde die memoisierte Ebene bei jedem Tastendruck neu bauen; stattdessen ein `focus()`-Aufruf auf dem DOM-Knoten. Dichte-Säulen sind `role="img"` mit `aria-label` (ein `title` auf einem `div` erreicht keinen Screenreader), bleiben aber aus dem Tab-Order — es gibt dort nichts zu aktivieren.
-
-**Label-Spalte skaliert mit.** `clamp(140px, 24vw, 380px)` statt fixer 380 px: auf schmalen Desktops blieben sonst zweistellige Pixel Track übrig. Einheit ist **`vw`, nicht `%`** — Lane-Spalte und Achsen-Streifen liegen in verschiedenen Containing Blocks (die eine im scrollenden Bereich), ein Prozentwert würde die Achse um die Scrollbar-Breite gegen den Track verschieben. Die 140-px-Untergrenze ist seit dem Mobile-Swap (unten) nicht mehr erreichbar — unter `lg` rendert die Timeline gar nicht mehr.
-
-**Unter `lg` gibt es keine Timeline, sondern eine Liste.** Gemessen bleiben auf 390 px nach der Label-Spalte ~190 px Track: ein 30-Minuten-Fenster rendert mit ~6 px pro Minute, ein typischer Lauf ist ein 4-px-Splitter neben einem auf nichts gekürzten Namen. Ein Gantt ist ein horizontales Medium, und die Breite ist nicht verhandelbar — deshalb tauscht `OperationsPage` die Mitte per `useIsMobile()` gegen `OpsMobileView` (Zähler-Zeile → Hängende → Fehlgeschlagene → Laufende → gerade beendet), genau wie `AppLayout` den Designer gegen `MobileWorkflowView` tauscht. Fehlschläge bekommen eine **eigene Sektion mit eigenem Cap**, nicht bloß eine Farbe in „gerade beendet": auf einer belebten Installation ist diese Liste vierstellig und die zehn neuesten sind sämtlich grün — der Zähler zeigte damit auf Zeilen, die die Liste nie erreicht. Abbrüche bleiben bewusst in der allgemeinen Liste (Operator-Entscheidung, kein Vorfall) — dieselbe Grenze, die der Dichte-Rug der Timeline zieht. Beide Ansichten leiten aus **denselben** Eingaben über **dasselbe** `buildTimelineBars` ab, können also nie über die Existenz eines Laufs uneins sein; nur die Darstellung unterscheidet sich. Der Drilldown wird nicht nachgebaut, sondern in einen viewport-fixen Layer mit Backdrop gehängt (`DrilldownHost`) — dieselben Aktionen, dieselben Rechte-Gates. Caps sind sichtbar (`+N weitere …`), nicht still. Auch das Departure-Board verzweigt zur Laufzeit statt per `lg:hidden`: zwei parallele Layouts hätten jede Abfahrt doppelt im DOM und im Screenreader.
-
-**Freeze ist ein Darstellungs-Freeze.** Eingefroren werden nur die Render-Inputs (Snapshot, `locallySettled`, Uhr). Der SignalR-Feed bleibt verbunden, `seedRunning` reconciled weiter, und Hintergrund-Invalidierungen dürfen weiterhin Requests auslösen. `useOperationsFeed()` darf **niemals** bedingt aufgerufen werden: ohne den Feed schriebe `applyStatus` keine Tombstones mehr, und ein Refetch nach dem Auftauen könnte Läufe wiederbeleben, die währenddessen terminiert sind. Der Query-Key ist `['operations-graph', windowMinutes]`; beim Fensterwechsel verliert die alte Query ihren Observer und pollt von selbst nicht weiter.
-
-**Schritt-Aktivität statt Fortschritt.** `OpsRunningExecution` trägt `StepsFinished`, `LastCompletedStepName`, `LastProgressAt` und `ActiveStepCount` — **nullable**, und `null` heißt „nicht angereichert", nie „nichts passiert" (Cap: die 300 ältesten laufenden Läufe; `0` wäre eine Falschaussage). Bewusst **kein** Prozentsatz: jeder verfügbare Nenner ist falsch (Step-Zeilen enthalten `Skipped`, `ActivityCount` lässt deaktivierte Nodes weg, Loops führen Nodes mehrfach aus). `LastProgressAt` ignoriert `Skipped`-Zeilen — ein nie ausgeführter Zweig ist kein Fortschritt und würde die Stagnations-Uhr gratis zurücksetzen. Die Anreicherung wird bei leerem `running[]` komplett übersprungen; ein idles System zahlt nichts.
-
-**Overdue-Schwellwert kommt aus dem Alerting, nicht aus der UI.** `OpsSnapshotMeta.OverdueSeconds` liest `Alerting:LongRunningSeconds` mit demselben Default (600) und demselben `Math.Max(1, …)`-Floor wie `LongRunningExecutionCollector` — die Timeline hebt einen Lauf also exakt in dem Moment hervor, in dem die Alerting-Regel für ihn feuern würde. Roh pro Request gelesen (Sektion ist hot-reloadbar). Die Semantik ist ebenfalls gespiegelt: nur `Running` zählt als überfällig. `Pending` (noch nicht gestartet) und `Paused` (Breakpoint) sind andere Zustände und werden mit diesem Schwellwert nicht bewertet. `DashboardStats.LongRunningCount` liest denselben Key mit demselben Default und demselben Floor (`DashboardController.LongRunningSeconds`, ebenfalls roh pro Request) — dort stand vorher ein hart kodierter 30-min-Wert, mit dem Dashboard und Live-Ops-Konsole unterschiedliche Läufe als überfällig zählten.
-
-**Live-Ops-Aktionsrechte hängen am Knoten, nicht am Snapshot.** `OpsNode.CanRun` (Cancel / Retry / Cancel-all) und `OpsNode.CanEdit` (Disable / Quarantäne) kommen aus `GetWorkflowCapabilitiesAsync` je Ordner — einmal pro **distinktem** Ordner aufgelöst, für globale Admins per Short-Circuit ohne Query. Ein früheres snapshot-weites `OpsCapabilities.CanCancel` leitete sich allein aus der **globalen** Rolle ab und log damit: `cancel` verlangt serverseitig zusätzlich `ResourceOp.Run` auf dem Ordner, `disable` sogar `ResourceOp.Edit`. Ein globaler Operator mit bloßem Folder-Viewer-Recht bekam aktive Buttons und danach 403. Die beiden Rechte sind bewusst getrennt — Quarantäne ist nicht „Cancel mit mehr Wumms", sondern eine Edit-Operation.
-
-**Quarantäne ist nicht atomar.** Der Client ruft `disable` **vor** `cancel-all` — umgekehrt startet der `TriggerOrchestrator` die Läufe beim nächsten 5-s-Sync einfach neu. Scheitert `cancel-all` nach erfolgreichem `disable`, ist der Workflow sicher aus, seine Läufe laufen aber weiter; dieser Teilzustand hat eine eigene Meldung und wird über „Alle Läufe abbrechen" allein nachgeholt. Die Erfolgsmeldung nennt `total`, nicht `signalled`: `signalled` zählt nur die in-memory erreichten Läufe, verwaiste Zeilen aus einem früheren API-Prozess werden zusätzlich per `ExecuteUpdateAsync` zwangs-gecancelt — samt ihrer noch offenen Steps (`ExecutionStateLifecycle.CancelOrphanedStepsAsync`), derselbe Sweep, den auch die Engine nach jeder terminalen Execution-Schreibung, `/cancel` und das Offboarding fahren.
-
-**Armed-Trigger-Zeilen tragen ein Wartungsfenster-Verdikt.** `ArmedTriggerInfo.BlockedByWindowName` nennt das Fenster, das den angezeigten Start unterdrücken wird — sonst `null`. Ausgewertet wird per `IMaintenanceWindowEvaluator.Evaluate` **zum vorhergesagten Feuerzeitpunkt** (`NextFireUtc`), nicht zu „jetzt": `TriggerOrchestrator` wendet exakt dasselbe Prädikat im Moment des Feuerns an, das Verdikt ist also dieselbe Frage und keine Näherung. Zeilen ohne Vorhersage (`event-driven`, `polling`) fallen auf „jetzt" zurück. Bewusst `Evaluate` und **nicht** `GetWindowsAffecting` — nur ersteres drückt den AllowOnly-außerhalb-Fenster-Block aus und wendet Deny-wins an. Grenze: bewertet gegen den Fenster-Snapshot **dieser** Response; ein zwischenzeitlich angelegtes oder geändertes Fenster schlägt erst mit dem nächsten Poll durch. Das Live-Ops-Departure-Board markiert solche Zeilen, **versteckt sie aber nicht** und ändert ihre Sortierung nicht — der Sinn ist ja, dass der Operator den unterdrückten Start sieht.
-
-**Live-Ops-Query lädt ebenfalls keine Workflow-Definitionen.** Der Callgraph (`startWorkflow`/`forEach`-Kanten) kommt aus `WorkflowDefinitionFactsCache` (Api-Singleton), gekeyt auf `Workflow.UpdatedAt`; die 5-s-Poll-Query liest nur `(Id, Name, FolderId, IsEnabled, UpdatedAt)` und lädt `DefinitionJson` ausschließlich für tatsächlich veränderte Workflows nach — eingeschwungen für keinen. Gecacht werden **Call-Sites, keine Kanten**: eine namensbasierte Referenz löst gegen die Namen aller *anderen* Workflows auf, ein Rename am Kind ändert also die Kante des Eltern-Workflows ohne dessen Definition anzufassen; `WorkflowCallGraphBuilder.BuildFromCallSites` löst deshalb pro Request auf. Kein RBAC-Leck: der Cache hält je Workflow nur dessen eigene Refs, sichtbar wird davon nur, was in der übergebenen Identity-Menge steht. Die Antwort wird aus einem **request-lokalen** Snapshot gebaut, nicht aus einem zweiten Lesen des geteilten Caches — sonst könnten parallele Polls über einen Save hinweg mischen, und eine Eviction mitten im Request ließe Kanten still verschwinden. Die Eviction verwirft deshalb auch nur die ältesten Einträge; ein globales `Clear()` machte einen Workflow über der Grenze zu Dauer-Thrash. **`Workflow.Version` wäre als Marker falsch:** der Backup-Restore überschreibt `DefinitionJson` und setzt nur `UpdatedAt` (`BackupRestoreService`), ein Version-Key löge nach jedem Restore. Messwerte + der Sicherheitsvermerk zur Response-Compression: `docs/performance-improvements.md`.
-
-**Dashboard-Query lädt keine Workflow-Definitionen.** Der Endpoint braucht nur Trigger-Metadaten und liest sie aus der denormalisierten Spalte `TriggerTypesJson`; die volle `DefinitionJson` wird ausschließlich für Workflows mit `scheduleTrigger`/`databaseTrigger` nachgeladen (Cron-Ausdruck bzw. Poll-Intervall stehen nur im Graphen). Definitionen sind unbegrenzter Text inklusive aller Inline-Skripte — im Repo-Beispielset 21–42 KB pro Workflow — und die Dashboard-Seite pollt den Endpoint alle 120 s, solange sie offen ist. Die drei Sidebar-Badges hängen **nicht** mehr daran: `useSidebarBadges` liest den eigenen Drei-Zahlen-Endpoint `GET /api/stats/sidebar-counts` (60-s-Poll, folder-gescopte `COUNT(*)`s ohne Zeilen-Materialisierung) — vorher zog die auf jeder Seite gerenderte Sidebar für drei Zahlen das ganze Dashboard-Aggregat. Eine `NULL`-Spalte (Zeile älter als der Boot-Backfill) fällt auf die Definition zurück, damit kein Workflow still aus der Armed-Liste fällt.
-
-**Dashboard-Aggregate sind gecacht, die Antwort nicht.** `DashboardAggregateCache` (Api-Singleton, TTL **pro Eintrag**) hält die **fenster-skalierenden** Werte — Gesamtzahl, Zeitreihe, Retry-Quote, zusammengefasst in `DashboardHistoricalAggregates`, dazu `/stats/failure-causes` als eigener Eintrag (gemessen die teuerste Einzelabfrage: 3,4 s auf 30 Tagen, danach 0,01 s); beide mit `DashboardCacheSettings.Ttl` (150 s). `/stats/duration-trend` ist ein dritter Eintrag mit fest **2 min**, passend zum Poll-Intervall der Karte. Bewusst **kein** Response-Cache: dieselbe Antwort trägt Live-Zustand (laufende Läufe, Queue-Tiefe, Heartbeats) und einen **Admin-only Audit-Feed**, der an `User.IsInRole("Admin")` hängt — ein Eintrag über die ganze Antwort hätte einem Viewer den Feed des vorherigen Admin-Aufrufs geliefert (`DashboardCacheIsolationTests` pinnt das). Der Key trägt Fenster **und** Berechtigungszustand (`ScopeKey`: `all` vs. gehashte, sortierte Ordnerliste — Rechteentzug ändert den Key und wirkt damit sofort). Parallele Misses teilen sich **eine** Berechnung, und die läuft in einem **eigenen DI-Scope**: der auslösende Request darf abbrechen und seinen DbContext entsorgen, während andere noch warten. Ein Fehler wird nie als Antwort gecacht. Der kalte `WorkflowDefinitionFactsCache` wird nach dem Start von `WorkflowDefinitionFactsWarmup` in 50er-Batches gefüllt, damit nicht der erste Benutzer alle Definitionen liest.
-
-**Vorberechnete Stunden-Buckets sind seit 2026-09-14 die eigentliche Grundlage der Dashboard-Historie.** `ExecutionStatsRollupService` (Api, leader-gated, ~60 s) fasst je **Stunde und Workflow** zusammen: `ExecutionHourlyStat` (Status-Zähler, Retry-Anteil, Dauer-Summe) und `FailureCauseHourlyStat` (normalisierte Fehlergruppen, gekeyt über `MessageHash`). Das Dashboard summiert über maximal 720 Bucket-Stunden statt über Millionen Rohzeilen — die Kosten hängen damit an der Fensterlänge, nicht am Bestand. **Pro Workflow** abgelegt, weil nur so der Folder-Scope (`Workflow.FolderId`) erhalten bleibt und dieselbe Quelle die fixen 7-/14-Tage-Aggregationen bedient. **`IsFinal` ist die Korrektheitsgrenze:** Ein Lauf wird nach `StartedAt` einsortiert, sein Status steht aber später fest (10:55 gestartet, 11:30 fehlgeschlagen) — eine Stunde gilt erst als endgültig, wenn kein Lauf aus ihr mehr offen ist, provisorische Stunden werden neu gerechnet. `DashboardRollupReader` gibt **`null`** zurück, solange `ExecutionStatsRollupState.CoverageStartUtc` das Fenster nicht deckt (Backfill läuft noch) **oder** `UpdatedAt` älter als `StaleAfter` (10 min) ist — Rollup abgeschaltet oder dauerhaft fehlerhaft, sonst fehlten still alle Stunden seit dem letzten Pass; dann rechnet der alte Live-Pfad — langsam, aber korrekt. **Fenster unter 24 h** (`DashboardRollupReader.MinimumWindowHours`) liefern **immer** `null`: Stunden-Buckets beginnen zur vollen Stunde und summierten bis zu eine Stunde zu viel, solche Fenster rechnen deshalb live. Das 1-h-Fenster gruppiert die Rohläufe pro Minute; das Dashboard faltet sie in 30 Zwei-Minuten-Buckets ab der vollen Minute (`DashboardHistoricalAggregates.BuildBuckets`). Das Bucket-Raster hängt am Fensterstart der (gecachten) Aggregate, nicht an der Request-Zeit. **Aufbewahrung ohne eigenen Retention-Dienst:** Jeder Pass löscht Buckets älter als `BucketRetention` (720 h + 48 h, das längste Dashboard-Fenster plus Puffer), zieht `CoverageStartUtc` auf diese Grenze nach und backfillt nie weiter zurück. Der Backfill leert den Change-Tracker nach jedem Tages-Chunk. **`ExecutionsTotal` bleibt bewusst ein Live-`COUNT`**: eine Bucket-Summe zählte nur den abgedeckten Bereich. Abschaltbar über `Stats:Rollup:Enabled`. **Provider-Verhalten:** Npgsql (10.x) zieht Datumsteile von `timestamptz` nach `AT TIME ZONE 'UTC'` heraus — die Live-Gruppierung ist damit zeitzonenfest. Weil die Test-Suite auf SQLite läuft, pinnt ein `ToQueryString`-Übersetzungstest in `DashboardHistoricalAggregatesTests` das für Postgres und SQL Server.
-
-**`DashboardAggregateWarmup` macht den Cache auch für den *ersten* Besucher wirksam.** Ein reiner TTL-Cache half nur dem zweiten; der Warmup berechnet 24 h / 7 d / 30 d einmal nach dem Start vor (in dieser Reihenfolge — das Dashboard öffnet immer auf 24 h). **Kostenregel, die das Design trägt:** `PrimeAsync` zählt **nicht** als Anfrage, und der 20-s-Sweep erneuert ausschließlich Einträge, die jemand tatsächlich abgerufen hat (`LastRequestedUtc` innerhalb von 4 min) und die binnen 45 s ablaufen. Eine Instanz, die niemand ansieht, zahlt damit genau einen Durchlauf und danach nichts; ein geschlossenes Dashboard kühlt ab, seine Einträge werden verworfen. TTL 150 s liegt bewusst über dem 120-s-Poll der Seite, sonst wäre jeder Poll ein Miss. Nicht leader-gated (prozesslokaler Cache), abschaltbar über `Dashboard:Warmup:Enabled`. Weil der Warmup dieselbe Berechnung später wiederholt, nehmen `DashboardHistoricalAggregates.ComputeAsync` und `DashboardFailureCauses.ReadWindowAsync` die **Fensterlänge** statt eines fixen Start/Ende-Paars — ein eingefangener Zeitstempel würde das Fenster beim ersten Aufruf einfrieren.
-
-## Support-Log & SupportEvents
-
-Zwei Sub-Sinks aus demselben Serilog-Filter (für Operator-/Ticket-Diagnose):
-
-1. **Plain-Text-Datei** `{Logging:SupportLog:Path}` (Default `<ContentRoot>/logs/`, Production-Installer: `C:\ProgramData\NodePilot\logs\nodepilot-support-*.log`), `RetainedFileCountLimit` = 90 Tage, `FileSizeLimitBytes` Roll-Limit.
-2. **DB-Tabelle `SupportEvents`** für den Web-Viewer (Filter/Cursor/Export) — Toggle `Logging:SupportLog:DbProjectionEnabled` (default `true`). Geschrieben über den gepufferten `SupportEventFlushService`, getrimmt durch `SupportEventRetentionService` (90 d, `Retention:SupportEvents`).
-
-Endpoints: `GET /api/diagnostics/support-log|support-log/download|support-events|support-events/export` (Admin). UI: eigene Hauptmenü-Seite `/support-log` (Admin-only, im Sidebar direkt unter „Alerting" — bewusst außerhalb der Admin-Settings verortet, damit der Operator sie im Support-Fall direkt erreicht) → Toggle „Tabelle (DB) | Plain-Text (Datei)".
-
-**Server-Protokoll (Anwendungslog `nodepilot-.log`):** dieselbe Seite, Umschalter `?source=server` (Probleme gruppiert | Verlauf). `AppLogController` (`GET /api/diagnostics/app-log`, `…/download`, Admin) liest die Dateien neueste zuerst mit 8-MiB-Budget (`AppLogTailReader`), schneidet Zeilen auf Byte-Ebene, verwirft Budget-Randfragmente und die unvollständige letzte Zeile und parst pro Zeile `cmtrace`/`text`/CLEF/ECS (`AppLogParser`). Jede Antwort trennt **Scan** (`scan.complete`, `coverageStart` — nur bei erreichter Zeitraumgrenze vollständig) von **Ergebnis** (`results.matched/returned`; `minLevel`/`q` filtern vor `take`); `summary` zählt immer über das ganze gescannte Fenster. `message`/`details` laufen durch `OutputRedactor`; der Download ist ein zusammengeführter, redigierter Tagesexport (zeilenweise, PEM-Blöcke zustandsbehaftet) mit Audit `APP_LOG_DOWNLOADED`. `cmtrace` faltet Error/Fatal und Info/Debug beim Schreiben — „Kritisch" gibt es nur in `text`/`json`/`ecs-json`. MCP: `get_support_diagnostics kind='server'`; kein CLI-Befehl.
-
-## Admin-Settings — Dienst-Neustart aus der UI
-
-`POST /api/admin/settings/restart-service` (Admin, 202) startet den Windows-Dienst neu; Banner-Button, `np settings restart-service --yes` und das gated MCP-Tool `restart_service` rufen ihn. Mechanik (`ServiceRestartCoordinator`): `StopApplication()` nach ~1 s, dann in `ApplicationStopped` `Environment.Exit(75)` **vor** dem `SERVICE_STOPPED` der Service-Lifetime — ein gemeldeter Stopp gilt dem SCM als sauber und löst keine Recovery aus, ein Prozessende ohne Meldung schon. Dadurch greifen die bestehenden Recovery-Aktionen (`sc.exe failure … restart/5000/…`, Server- und Desktop-Installer); `failureflag` wird bewusst nicht gesetzt, Bestandsinstallationen brauchen keine Änderung.
-
-Verfügbarkeit (`GET /api/admin/settings/status` → `canRestartService`, `restartUnavailableReason`): Prozess läuft als Windows-Dienst (`WindowsServiceHelpers.IsWindowsService`), der Dienst-Registry-Key ist über `ImagePath` eindeutig auflösbar, und **jede** Aktion im `FailureActions`-Blob ist ein Restart (`WindowsServiceRecovery.AllActionsRestart`). Sonst `409 SERVICE_RESTART_UNAVAILABLE` mit Grund — ein manuell angelegter Dienst ohne Recovery bliebe nach dem Exit gestoppt. Audit: `SETTINGS_SERVICE_RESTART_REQUESTED`, geschrieben vor dem Exit. Die UI pollt danach alle 2 s den Status; der Banner verschwindet, sobald der neue Prozess `ClearRestartMarker` ausgeführt hat. **Release-Lab:** das Verhalten (Exit vor `SERVICE_STOPPED` → Recovery-Restart) ist nur gegen einen echten SCM prüfbar und gehört in die Lab-Matrix.
-
-## Admin-Settings — Hot-Reload-Matrix
-
-Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (hängt mit `reloadOnChange: true` dran, `RuntimeOverridesSetup.cs`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; `AdminSettingsController.PutSection` setzt den Restart-Marker (`RestartRequiredFor`) nur für `false`-Sektionen — rein datengetrieben, kein Controller-Branch. Die UI zeigt auf hot-reloadable Karten einen emerald „sofort wirksam"-Hinweis (`HotReloadHint`, i18n `adminSettings:hotReloadHint`), auf restart-pflichtigen den orangen `RestartBanner` (getrieben von `/api/admin/settings/status`).
-
-| Sektion | Hot-Reload? | Consumer / Begründung |
-|---|---|---|
-| `Smtp` | ✓ | `SmtpNotificationSink` + `EmailActivity` lesen `IOptionsMonitor<SmtpOptions>.CurrentValue` pro Senden |
-| `Llm` | ✓ | `ILlmClientFactory` + `WorkflowAssistantService` + Gates (`LlmQueryActivity`/`AiController`/`AiChatController`) lesen `IOptionsMonitor<LlmOptions>.CurrentValue` pro Use/Request — gilt auch für den Profilwechsel (`ActiveProfileId`) |
-| `AiKnowledge` | ✓ | `KnowledgeChatOrchestrator`, Tool-Registry und `/api/ai/knowledge/capabilities` lesen `IOptionsMonitor<AiKnowledgeOptions>.CurrentValue` pro Use — Source-Toggles und Root-Pfade greifen ohne Restart |
-| `Retention` | ✓ | `Execution`/`AuditLog`/`WorkflowVersions`/`Notification`/`SupportEvent`/`TriggerReceipt`-RetentionService lesen `IOptionsMonitor<RetentionOptions>.CurrentValue` pro Schleifen-Pass (`RunIterationAsync`-Seam); `ArchivePath`-Wechsel invalidiert den Cache → Re-Probe (AuditLog bewahrt Compliance-Invariante). `IdempotencyKeyCleanupService` bleibt bewusst config-frei (fixe 24h-TTL) |
-| `Stats` | ✓ | `WorkflowStatsRefresher` liest `IConfiguration.GetValue` pro Pass |
-| `Threading` | ✓ | `ThreadPoolTuningService` re-appliert `ThreadPool.SetMinThreads` bei Start + `ChangeToken.OnChange` (Boot-Call bleibt für Cold-Start-Prewarm). **Nur bei `Performance:ManualTuning=true`** — unter Auto-Dimensionierung folgt der Service dem Boot-Plan, sonst würde ein Reload allein den ThreadPool in einen anderen Modus ziehen als Runspace-Pool und Dispatch-Worker-Pool |
-| `FileSystemOperation` | ✓ | `PathGuard` liest `FileSystemOperation:RejectTraversal`/`AllowedRoots` pro Use aus `IConfiguration`. Der Remote-Zweig baut daraus pro Step den injizierten `TargetPathGuardScript` — auch dort greift eine Änderung ohne Restart, sie wirkt aber erst beim nächsten Step-Start |
-| `WaitForCondition` | ✓ | `NetworkGuard.RequireExplicitlyAllowlistedHost` liest `WaitForCondition:AllowedHosts` aus der Live-`IConfiguration` bei jedem Probe-Aufruf — gilt sofort ohne Restart. Gilt auch für `httpOk` (über `ValidateProbeUrl`); die restart-pflichtige `RestApi`-Sektion liegt nicht mehr im Pfad, sonst hätte eine hot-reload beworbene Karte einen Restart erzwungen |
-| `SqlActivity` | ✓ | `SqlActivity` liest `SqlActivity:RequireConnectionRef` pro Use aus `IConfiguration` |
-| `StartProgram` | ✓ | `StartProgramActivity` liest `StartProgram:DisallowShellExecute` pro Use aus `IConfiguration` |
-| `Webhook` | ✓ | `WebhooksController` liest `Webhook:RequireSecret` pro Request aus `IConfiguration` |
-| `ExternalTrigger` | ✓ | `ExternalTriggerController` liest gehashte `Keys`-Einträge sowie den GUID-Scope des Legacy-Keys pro Request aus `IConfiguration` |
-| `DbAdmin` | ✓ | `DbAdminQueryExecutor` liest `IOptionsMonitor<DbAdminOptions>.CurrentValue` pro Query (Referenz-Consumer) |
-| `Authentication` | ✗ | LDAP/Windows-SSO-Options beim Boot in die Auth-Builder eingebunden |
-| `Logging` | ✗ | Serilog-Logger einmal beim Boot konfiguriert (Reload würde neue Pipeline needed) |
-| `OpenTelemetry` | ✗ | OTel-SDK einmal beim Boot gebaut |
-| `Security` | ✗ | `StrictAllowedHosts`/`AllowedHosts` einmal beim Boot gelesen |
-| `RestApi` | ✗ | Mixed: `BlockPrivateNetworks` live, `Proxy` an `RestApiActivity` boot-fest → konservativ ganze Sektion restart-pflichtig |
-| `Remote` | ✗ | Mixed: `Provider`+SSL+Timeouts+Pool boot-fest gebunden → konservativ ganze Sektion restart-pflichtig |
-| `Performance` | ✗ | `ManualTuning` entscheidet, wie Runspace-Pool und Dispatch-Worker-Pool dimensioniert werden — beide entstehen einmal beim Boot. Der Plan wird deshalb genau einmal aufgelöst (`PerformancePlanFactory`) und als Singleton geteilt |
-| `Engine` | ✗ | Concurrency-Caps beim Boot in den Engine-Channel/Pool gebaut |
-| `ExecutionDispatch` | ✗ | Worker-Pool beim Boot gebaut; wartende Arbeit liegt dauerhaft in der DB-Outbox |
-| `Agents` | ✗ | Mixed: `AgentExecutionGate` liest `IOptions<AgentOptions>` (Boot-Snapshot) → konservativ ganze Sektion restart-pflichtig |
-
-**Dimensionierung (`Performance:ManualTuning`, default `false`):** Ohne den Schalter leitet NodePilot `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` und `ExecutionDispatch:*` aus erkannter CPU und erkanntem Speicher ab. **`Engine:MaxConcurrentExecutions:*` ist bewusst ausgenommen** — Sicherheits-Cap gegen Trigger-Schleifen/Sub-Workflow-Kaskaden, rein config-gesteuert (ausgeliefert 5000/2000, Code-Fallback bei fehlendem Key 500/200), gilt in beiden Modi (`PerformanceSizing` in `NodePilot.Core`, reiner Algorithmus; Erkennung + `Deployment:Mode` liefert `PerformancePlanFactory` in der Api, weil Core nicht rückwärts referenzieren darf). Die in den Sektionen gespeicherten Zahlen sind dann **inert** — `GET /api/admin/settings/effective-sizing` liefert die tatsächlich wirksamen Werte samt bindender Grenze (`Cpu`/`Ram`/`Floor`/`Ceiling`/`Manual`), die UI graut die Felder aus und zeigt den aktiven Wert. Formeln, Ceilings und die Speicher-Budgetierung: `docs/performance-improvements.md`.
-
-**UI-Zustände der Performance-Karten:** Zwei Flags, nicht eines — die Checkbox im Karten-Kopf (`chosen`, live, das was ein Save schreiben würde) und der Boot-Modus (`booted` = `effective-sizing.manualTuning`). Ausgegraut sind die plan-regierten Felder **nur** wenn beide auf Auto stehen; sobald manuelles Tuning angeklickt ist, sind sie editierbar (sonst könnte man die Werte, die der Neustart aufnimmt, gar nicht eintippen). Der Hinweis pro Karte folgt derselben Matrix: `auto/auto` → „gespeichert, aber nicht in Kraft", `manuell/auto` bzw. `auto/manuell` → „gewählt, aber noch nicht in Kraft — bis zum Service-Neustart gilt …", `manuell/manuell` → kein Hinweis. „Aktiv: N (…)"-Werte und der Threading-Hot-Reload-Hinweis hängen dagegen am **Boot**-Modus: `ThreadPoolTuningService` folgt dem Boot-Plan, ein Checkbox-Klick macht ein Threading-Save nicht live.
-
-**Mixed-Section-Limits:** `RestApi` und `Remote` mischen live- und boot-feste Keys in einer Sektion. Da `IsHotReloadable` nur Section-Granularität kennt, können diese nicht gemischt sein — sie bleiben konservativ restart-pflichtig (als bekannte Einschränkung dokumentiert, kein Flag-Per-Field). `Retention:ArchivePath` ist davon ausgenommen: der Pfad wird aktiv re-validiert, ein Wechsel löst eine Re-Probe aus (kein Neustart).
+| Edit-Lock, Publish und Canvas | [Designer](workflow-designer-features.md) |
+| KI und Tool-Zugriff | [KI-Features](ai-features.md), [Agenten](ai-agents.md) |
+| Authentifizierung und Hardening | [Threat Model](threat-model.md), [LDAP/SSO](ldap-windows-sso.md) |
+| Audit-Codes | [AuditActions.cs](../src/NodePilot.Core/Audit/AuditActions.cs) |
+| Deployment und Fehlerdiagnose | [Deployment-Guide](deployment-guide.md), [Desktop](../deploy/desktop/README.md) |
+| Konfigurationsbackup | [ADR 0001](adr/0001-system-configuration-backup-restore.md), zusätzlich native DB- und Schlüsselbackups für vollständige Wiederherstellung |
+| HA und Maintenance | [Enterprise-Features](enterprise-features.md), [HA](ha-active-passive.md) |
+| Coverage | [coverage.runsettings](../coverage.runsettings), [CI](../.github/workflows/ci.yml) |
+
+Beim Coverage-Merge die Assemblies `np` und `nodepilot-mcp` einschließen und
+unterschiedliche `src/`-Präfixe normalisieren. Migrationen und begründet markierter
+Code sind über die Runsettings ausgeschlossen. Scheduler-, Remote- und Telemetrie-Tests
+liegen in Engine.Tests beziehungsweise Api.Tests.

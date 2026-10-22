@@ -1,462 +1,140 @@
-# Workflow Designer — feature overview
+# Workflow Designer
 
-A complete inventory of every feature in the NodePilot workflow designer (React SPA, `src/nodepilot-ui/src/components/designer/` plus `pages/WorkflowEditorPage.tsx`), organised by functional area. Source: code as of 2026-07-02.
+The designer creates, edits and runs workflows on a canvas. Standard mode exposes the
+main controls, while Expert mode adds debugging, bulk editing and analysis overlays.
+The toolbar switches between these modes and offers compact or classic layouts.
 
-**Two operating modes:** the designer has a **standard mode** (reduced feature set, friendlier for newcomers) and an **expert mode** (full toolbar, all overlays, single-key shortcuts). Features visible only in expert mode are marked **(Expert)** below.
+## Editing and publishing
 
----
+Editing requires a role with write permission and the workflow's edit lock.
+Acquiring the lock disables the workflow. Saving retains the edit lock, while publishing
+saves, enables and releases it. Releasing the lock alone leaves the workflow disabled.
+Admins can force-release another user's lock.
 
-## Contents
+Changes are saved automatically after 5 seconds without further edits when write
+permission is available. Manual save and a warning before leaving with unsaved changes
+remain available. Lint errors block publishing, while warnings require confirmation.
+The lint panel links each finding to the affected node or edge.
 
-1. [Canvas & viewport](#1-canvas--viewport)
-2. [Node operations](#2-node-operations)
-3. [Node types](#3-node-types)
-4. [Activity library / palette](#4-activity-library--palette)
-5. [Edges / connections](#5-edges--connections)
-6. [Edge conditions](#6-edge-conditions)
-7. [Properties panel](#7-properties-panel)
-8. [Variable system & autocomplete](#8-variable-system--autocomplete)
-9. [Activity configuration](#9-activity-configuration)
-10. [Trigger configuration](#10-trigger-configuration)
-11. [Running from the designer](#11-running-from-the-designer)
-12. [Live monitoring](#12-live-monitoring)
-13. [Step debugger](#13-step-debugger)
-14. [Step test & simulation](#14-step-test--simulation)
-15. [Overlays & productivity tools](#15-overlays--productivity-tools)
-16. [Lint & pre-publish](#16-lint--pre-publish)
-17. [Editor chrome (header, banners, sidebar)](#17-editor-chrome)
-18. [Edit lifecycle (lock / publish)](#18-edit-lifecycle-lock--publish)
-19. [Persistence & export](#19-persistence--export)
-20. [Visual overlays & display options (designStore)](#20-visual-overlays--display-options)
-    - [20a. Live & annotation infrastructure](#20a-live--annotation-infrastructure)
-21. [Mobile view](#21-mobile-view)
-22. [Keyboard shortcuts (reference)](#22-keyboard-shortcuts-reference)
+## Canvas and workflow structure
 
----
+Activities can be added from the searchable library by clicking or dragging. Dropping
+a connection on empty canvas opens an activity picker. An existing connection also
+offers an insert button. The library includes triggers, control flow, enabled custom
+activities and reusable snippets.
 
-## 1. Canvas & viewport
+Nodes support selection, duplication, copy/paste and undo/redo. Groups move their members
+together and can be collapsed. Sticky notes provide annotations. Groups and notes do
+not execute. Expert mode adds bulk editing and configuration copying between activities
+of the same type.
 
-- **Pan & zoom:** pan with the middle or right mouse button; zoom down to `0.15×`. Wheel zoom via React Flow.
-- **Fit view:** `Home` fits all nodes with 15 % padding (300 ms animation); automatic fit on first load (not on lock/unlock/publish refetches).
-- **Zoom to selection (Expert):** `Ctrl+Shift+E` zooms to the selected nodes (20 % padding).
-- **MiniMap:** pannable and zoomable, node colour follows live status (Running = amber, Paused = orange, Succeeded = green, Failed = red, Skipped = grey), falling back to the last historical health or the activity type colour.
-- **Controls panel:** the standard React Flow controls (zoom in/out, fit, lock).
-- **Background:** a **dot grid** (gap 24 px, dot size 1.9) — identical in premium **and** classic; the earlier two-level crosshatch is gone without replacement. Opacity is skin-dependent via `--np-canvas-dot`: dark skins carry the higher alpha, because a near-black ground swallows more of it than a near-white one. `designerLightParity.test.ts` holds every skin above a minimum contrast against its own canvas ground. With snap-to-grid active, a **line** grid on the snap step size replaces the dot grid.
-- **Snap to grid (Expert):** `G` toggles grid snapping (20 px by default, configurable).
-- **Node scaling:** 8 size presets (XS … 4XL, default L); `Ctrl+Shift+>` / `Ctrl+Shift+<` (Expert) change node size, `Ctrl+Alt+.` / `Ctrl+Alt+,` the label font size (classic node style only).
-- **Fullscreen / distraction-free:** `F11` hides the sidebar, panels and banners, keeping header, canvas and an exit pill.
-- **Viewport virtualisation:** only visible elements are rendered (`onlyRenderVisibleElements`) — noticeable from around 50 nodes.
+Copy/paste transfers workflow JSON, including connections between selected nodes.
+Pasting assigns new IDs and updates their references. Named secret fields are masked
+and need to be supplied again, while scripts and other free text are copied as shown.
+Copying remains available in read-only mode.
 
-## 2. Node operations
+Connections support labels, conditions and manual reshaping. Their target can be
+detached and reattached without losing the condition or label. Multiple incoming
+branches require a Junction. When a second branch is connected to another activity,
+the designer offers to insert a `waitAll` Junction.
 
-- **Adding:**
-  - Drag and drop from the library (MIME `application/nodepilot-activity`) at the cursor position — with smart defaults (the last machine/credential of the same type is carried over).
-  - Quick-connect: dragging an edge into empty space opens the activity picker and creates node plus edge.
-  - Click on a library entry, or the insert button on an edge.
-- **Moving:** drag (only with write permission); arrow-key nudge (Expert): 10 px, or 1 px with `Shift`.
-- **Multi-select:** `Shift/Ctrl + click` (toggle) plus marquee selection (left-drag on the canvas, partial touch is enough). `Ctrl+A` selects everything.
-- **Duplicate:** `Ctrl+D` or the context menu, offset by +40/+40 px, with fresh IDs. It does not touch the system clipboard.
-- **Delete:** `Delete`/`Backspace`; for groups the children are re-parented and survive.
-- **Group (Expert):** `Ctrl+G` wraps the selection in a group node.
-- **Re-parenting:** nodes can be dragged into group nodes (the target group highlights live).
-- **Clipboard:** `Ctrl+C` puts the selected nodes, the nodes inside selected groups and the edges between them on the system clipboard as workflow JSON (`{ "nodes": [...], "edges": [...] }`, without canvas state or `__` runtime fields), so they can go to a text editor or another workflow. Values of secret config keys (the `WorkflowSecretKeys.SecretConfigKeys` list: `password`, `apiKey`, `secret`, `connectionString`, `Authorization` and so on) are written as `***`, as in a workflow export, so the clipboard history never holds them; scripts, bodies and other free text are copied as they are on the canvas, and viewers get the server's masks anyway. A pasted copy therefore needs its secrets set again. `Ctrl+V` (write permission only) inserts such JSON, also a full workflow definition: IDs are reassigned, edges, group membership, edge conditions and `{{id.…}}` templates remapped, edges to nodes outside the text dropped. A copy made in the editor lands 40 px further from its original with each paste; text from elsewhere lands in the middle of the visible canvas. Broken JSON is reported, plain text is ignored, and values masked as `***` are flagged. Both go through the browser's copy and paste events, so they work without a permission prompt and over plain HTTP; in text fields and the script editor the browser keeps its own behaviour. Nothing is kept in `sessionStorage`.
-- **Auto-layout / tidy:** `Ctrl+Shift+T`. Standard mode is always LR; expert cycles LR → TB → Compact → ELK. **Restore original layout** (Expert) `Ctrl+Shift+O` puts the starting layout back.
-- **Undo/redo:** `Ctrl+Z` / `Ctrl+Y` (also `Ctrl+Shift+Z`). History depth 50 snapshots; structural changes immediately, property edits batched with an 800 ms debounce; cleared when switching workflows.
-- **Bulk edit (Expert):** with 2 or more nodes selected, the bulk-edit panel appears (target machine, enable/disable, timeout, retry policy — each with its own apply button).
+Conditions include success, failure and unconditional execution. Expert mode adds a
+visual expression builder with comparisons, AND/OR groups and NOT. A disabled edge
+does not turn its target into an entry point.
 
-## 3. Node types
+## Properties and variables
 
-### Activity node
-- **Shapes by category:** a pentagon bookend pair (trigger `◁` plus returnData `▷`, mirrored horizontally); **every action activity has its own clip-path silhouette** (the icon stays centred and unclipped); control flow has one shape each (decision = diamond, junction = hexLong, forEach = reel, startWorkflow = tagLeft) with an **indigo group frame** — all via clip-path.
-- **Display styles:** **classic** (compact, icon-centred) and **card/MD3** (header plus config summary). Toggle with `Ctrl+Shift+N` (Expert).
-- **Colours & icon:** per activity type from CSS variables (`--act-<type>-color/-bg/-border`) plus a Material Symbols icon.
-- **Handles/ports:** all four sides bidirectionally — except the `aiAgentTeam` node (see below) — (the "flexible ports" toggle that used to gate the mouse is gone; all four handles are always connectable). Each port has an invisible hit zone three times the size of the dot, and a dragged connection snaps to a port within about 24 screen pixels at every zoom level. The dot's size and position do not change. Because the hit zone covers the end of an unselected edge, a drag there starts a new connection; to move an edge end, select the edge first or use "Detach target".
-- **Status badges:**
-  - **Disabled** (crossed-out eye) — the node is skipped but stays editable (50 % opacity, dashed).
-  - **Breakpoint** (red dot; amber when conditional) — pulses while the debugger waits there.
-  - **Fan-in** (the incoming edge count) colour-coded by junction mode (waitAll/waitAny/waitNofM/auto).
-  - **Lint** (red = error, amber = warning, counter caps at 9+).
-  - **Simulation** ("will run" / "skipped").
-- **Agent team node:** `aiAgentTeam` renders as its own wide card (`AgentTeamNode`) instead of a clip-path shape: the step label, then one clickable row per member (supervisor first, with role, tool count and live member status). It has a single target handle on the left and a single source handle on the right, so edges attach to those two sides only. Details: `docs/ai-agents.md`.
-- **Live status overlay:** Running (amber, pulsing ring), Succeeded (green), Failed (red), Skipped (grey, dashed), Paused (dark orange, pulsing).
-- **Heatmaps & paths:** failure tint (red, scaled by failure rate), critical-path glow (orange) plus slack badge, coverage greying (never/rare).
-- **Schedule preview:** for `scheduleTrigger`, the next fire time is shown (computed by the server's Quartz in the server time zone via `GET /api/triggers/schedule/next-fires`), "⏸ Paused" when the workflow is disabled.
-- **Health sparkline / stats:** the last up to 8 outcomes as dots — they stay visible during a running or canvas-pinned run as well (only the dry-run simulation hides them); performance stats (runs, failure rate, avg/p95 duration) in the hover tooltip (400 ms delay).
-- **Output variable & description:** `→ {{var.output}}` in the tooltip; a description indicator bottom right.
-- **Variable-flow highlight:** producer/consumer rings when hovering over variables.
+The properties panel contains the selected activity's configuration, target machine,
+credential and supported timeout or retry settings. Required fields are marked.
+Remote activities provide a connection test. Double-clicking a node opens quick editing,
+while script activities open the script editor with variable selection and step testing.
 
-### Group node
-- Visual grouping only (never executed); children move with it.
-- **Resize** (NodeResizer, min 200×120), **9 colours** (blue/teal/green/amber/orange/rose/pink/violet/slate), **collapse/expand** with a child-count badge, **inline label edit** (double-click), drop-target highlight.
+Typing `{{` offers variables from ancestor steps, globals and trigger inputs:
 
-### Sticky-note node
-- Pure annotation (no handles, always skipped).
-- **Resize** (min 140×50), **inline edit** (double-click, commit on blur or Ctrl+Enter), **5 font-size presets** (11–28 px), hover scaling on a far zoomed-out canvas, yellow "sticky note" look with a slight rotation.
-
-## 4. Activity library / palette
-
-- **Categories** (`buildActivityCategories`): **Triggers**, **Actions**, **Control Flow**, **Logic**, **Annotations** (sticky note), **Custom Nodes** (enabled custom activities; hidden when none exist). Items are sorted alphabetically by label; categories collapse.
-- **Search:** filters activities and snippets by name/type (case-insensitive); forces an expand while a search is active.
-- **Drag and drop / click** to add (only with write permission; otherwise 50 % opacity).
-- **Snippets section:** predefined mini-patterns (try-catch, forEach, fan-out+join, HTTP retry) — they insert the pattern's nodes and edges with fresh IDs (no group node).
-- **Activity picker grid:** a two-column popup grid (quick-connect / edge inserter) — without triggers or annotations.
-- **Activity type filter (toolbar):** hides activity types on the canvas (a checkbox per type present, sorted by frequency, "clear all", a badge with the filter count). `Ctrl+Alt+X` (Expert) clears the filter.
-
-## 5. Edges / connections
-
-- **Edge type:** a custom `LabeledEdge` with an arrow marker.
-- **Semantic colour coding (status tokens, dark-aware):** success = green, failed = red, custom condition = indigo (stroke, arrow and label pill share the colour), always = grey, disabled = dashed and dimmed — dashed now means *only* disabled; idle edges are solid.
-- **Labels:** manual (up to 60 characters in the graph) or auto-labelled from the condition ("On Success" / "On Failure"); an edge with no condition carries no label. Canonical labels sync automatically, manual ones are preserved.
-- **Routing modes:** `smart` (Bézier 0.25), `curved` (0.5), `straight` (step with a radius). `R` (Expert) cycles the modes.
-- **Manual bending:** two draggable Bézier control points (reshape handles, only while selected and with write permission), optionally with snap-to-grid; "reset shape" restores auto-routing.
-- **Backward edges:** an automatic U shape below the nodes when the flow runs right→left.
-- **Edge width/animation:** `Ctrl+]` / `Ctrl+[` (Expert, width), `A` (Expert, flow animation). The animated flow dash now only runs during a live execution, on the edge into the currently running step — idle edges stay calm and solid.
-- **Inline insert:** the ⊕ button on an edge inserts a node between A→B (A→NEW→B); the first half is unconditional, the second inherits label and condition.
-- **Quick-connect picker:** drag an edge into empty space → the activity picker appears at the cursor; it creates the node and the connecting edge.
-- **Data-flow overlay:** chips show which variables travel across an edge.
-- **Context menu (right-click):** enable/disable, detach target, swap source↔target (Expert), reset shape (Expert), delete.
-- **Detach target:** the target end follows the cursor; clicking an activity node re-attaches it there, keeping label, condition and disabled state, and docking at whichever of the four ports the click was nearest. The edge's **current** target counts as a valid node — clicking it moves the connection point without touching anything else. Esc, a click on empty canvas or a right-click cancels without a trace.
-- **Validation:** duplicate connections and self-loops (an edge from a node to itself) are prevented. A non-Junction Activity may have only one
-  incoming edge. When a second branch is connected, the designer offers to insert a `waitAll`
-  Junction, rewires the existing input through it, and selects the Junction so its mode can be
-  changed. Existing invalid definitions are marked by lint and rejected by Save/Publish.
-- **Edge properties panel:** source→target information, port selector (Expert), a label field with a "use auto" reset, simple or expression condition, a disabled toggle, delete (with confirmation).
-
-## 6. Edge conditions
-
-- **Simple mode:** "On Success" / "On Failure" / "Always" buttons plus a free-text condition (`stepId.success` and similar).
-- **Expression builder (Expert):** a visual AST editor.
-  - **Comparison operators:** `==`, `!=`, `<`, `>`, `<=`, `>=`, `contains`, `startsWith`, `endsWith`, `matches` (regex).
-  - **Unary:** `isEmpty`, `isNotEmpty`, `isTrue`, `isFalse`.
-  - **Composition:** AND/OR groups (nestable), NOT wrappers.
-  - **Operands:** a variable (step `output`/`error`/`success`/`param.X`, global, manual) or a literal (with `{{globals.X}}` support).
-- **Disabled edge:** skipped (the target node does not become a root), marked with a ⊘ badge.
-
-## 7. Properties panel
-
-- **Sections:** execution context, input variables, configuration, timeout, retry policy, test & debug — collapsible with a variable counter.
-- **Header:** activity icon, inline edit for name and description, close.
-- **Common node fields:**
-  - **Label** and **output variable** (falling back to the step ID; downstream `{{var.output}}`).
-  - **Description** (lazy "+ add description").
-  - **Target machine** and **credential** (for remote activities) as a `DynamicTargetField` — GUID, variable or literal, with a resolved label and a test-connection button.
-  - **Timeout** (`config.timeoutSeconds`, only for types that support it).
-  - **Retry policy** (`config.retry`: max attempts 2–20 including the first, backoff fixed/linear/exponential, initial and max delay; not for triggers, junction, decision, return data). Switching it off removes the key.
-  - **Disable toggle** and **breakpoint** (plus an optional breakpoint condition, Expert).
-- **Read-only mode:** without write permission the whole fieldset is disabled.
-- **Clone-config button (Expert):** copies configuration from a step of the same type — either completely or just machine plus credential (it never copies label, output or body).
-- **External-trigger note:** a green info box for schedule/webhook/file-watcher/database/event-log triggers ("Active …, the workflow must be enabled").
-
-## 8. Variable system & autocomplete
-
-- **Inline autocomplete:** typing `{{` opens a dropdown (`useVariableAutocomplete`); keyboard navigation (↑/↓, Enter/Tab selects, Esc closes). Can be switched on or off per field via the zap toggle (mirrored into localStorage).
-- **Variable sources:** upstream outputs of every ancestor step, globals (`{{globals.NAME}}`), manual and trigger data (`{{manual.NAME}}`).
-- **Tail types:** `.output`, `.error`, `.success`, `.param.X`.
-- **Derived outputs (`describeNodeOutputs`):** every step provides `.output`; additional `.param.*` entries are derived per type — `runScript` by regex from `$var = …` assignments (reserved PowerShell names excluded, matching what the runtime publishes), `returnData` from the data keys, `decision` → `param.case`, `wmiQuery` from captureProperties (plus `param.count`), `registryOperation` depending on the operation (value/exists/created and so on), `manualTrigger` from the declared parameters.
-- **VariableInsertField:** a unified input with a picker tray (variable picker, global picker with a secret lock, options picker), drag and drop of variables into text areas, template validation (unbalanced `{{}}`, invalid identifiers), and an SQL-injection warning on dynamic queries.
-- **Live preview tooltip:** hovering a variable shows the last runtime value from the most recent execution (250 ms delay, a "[Truncated]" badge, anchored to the right).
-- **AvailableVariablesList** (input-variables section): grouped by step, with type badges, click-to-copy and drag and drop.
-- **ParameterTable:** a key/value table for trigger parameters and free-form child-workflow parameters.
-- **ContractMappingTable:** typed mapping for sub-workflows with a known contract — inputs (type badge, required star, default hint, validation), a stale-key warning, and a read-only list of outputs.
-- **JsonPathTree:** interactive JSONPath selection from the last step output (click to copy, down to depth 7).
-
-## 9. Activity configuration
-
-Each activity type has its own config component (`properties/activities/`, registered in `activityConfigMap.ts`). Many fields are **conditional** — they appear depending on the chosen operation or action. Required fields come from `lib/activityConfigFacts.ts` (which also feeds the `missing-required-config` lint rule).
-
-| Activity | Configuration fields (with real option values) |
+| Expression | Value |
 |---|---|
-| `runScript` | **engine** (auto/pwsh/powershell/runspace), **succeed on exit codes** (`successExitCodes`, empty = error-based only), **transcript** (auto-logging checkbox), **process isolation** (checkbox, local only — its own process inside a Windows job object; greyed out for a remote target or the `runspace` engine) plus optional caps **memory limit (MB)** / **max processes**, **script** (PowerShell code field, minimum 12 lines) plus a fullscreen Monaco editor with AI generation and step test |
-| `fileOperation` | **operation** (copy/move/rename/delete/exists/create), **path**, **destination** (for copy/move), **newName** (for rename) |
-| `folderOperation` | **operation** (copy/move/rename/delete/exists/list/create), **path**, **destination** (for copy/move), **newName** (for rename) |
-| `fileHash` | **path**, **algorithm** (SHA256/SHA1/MD5/SHA384/SHA512), **expected** (optional target hash) |
-| `zipOperation` | **operation** (compress/extract), **source**, **destination**, **compressionLevel** (Optimal/Fastest/NoCompression, compress only), **force** |
-| `serviceManagement` | **serviceName**, **action** (status/start/stop/restart/create/delete/setStartType); for create: binaryPath, displayName, description, **startupType** (Automatic/AutomaticDelayedStart/Manual/Disabled) |
-| `scheduledTask` | **taskName**, **taskPath**, **action** (get/start/stop/enable/disable/register/unregister); for register: program, arguments, workingDirectory, **triggerType** (once/daily/weekly/atLogon/atStartup), startTime, daysInterval/weeksInterval, daysOfWeek (Mon–Sun toggles), runAsUser, **runLevel** (limited/highest), force |
-| `registryOperation` | **operation** (read/write/deleteValue/deleteKey/createKey/exists/listSubKeys/listValues), **keyPath**, **valueName**, **valueType** (String/ExpandString/Binary/DWord/MultiString/QWord, for write), **value** (for write) |
-| `wmiQuery` | **mode** (query/wql/invokeMethod), **className**, **namespace** (default `root\cimv2`), **filter** (WHERE), **query** (WQL), **methodName** plus **arguments** (invokeMethod), **captureProperties** (property list) |
-| `startProgram` | **filePath**, **arguments**, **workingDirectory**, **useShellExecute**, **waitForExit**, **successExitCodes** (with waitForExit). `filePath` completes the four unambiguous system launchers (`cmd`, `powershell`, `cscript`, `wscript`, from `lib/knownProgramLaunchers.ts`) to their absolute paths **on blur**, not while typing, and a path carrying its own directory stays untouched; anything else that is not fully qualified is reported during authoring — with its own message for a UNC path — instead of failing at the first run |
-| `powerManagement` | **action** (shutdown/restart/logoff/abort/hibernate), **delaySeconds**, **force**, **message** (for shutdown/restart) |
-| `waitForCondition` | **conditionType** (script/pathExists/serviceRunning/portOpen/httpOk), each with its own fields (script plus snippet buttons / path / serviceName / host+port / url), **intervalSeconds** |
-| `restApi` | **method** (GET/POST/PUT/PATCH/DELETE/HEAD), **url**, **headers** (Key: Value per line), **body** (JSON code field, for POST/PUT/PATCH), a collapsible proxy section: **proxyMode** (default/custom/direct), proxyAddress, noProxy |
-| `sql` | **provider** (sqlserver/sqlite/postgres), connection mode **builder ↔ connection string** (builder fields per provider: server/database/auth/encrypt …, or host/port/sslMode …, or dataSource), **query** (SQL code field) |
-| `emailNotification` | **to**, **subject**, **body** (multiline), **isHtml** (checkbox) |
-| `textFileEdit` | **operation** (append/prepend/insert/replaceLine/delete/replace), **path**, **content**, **lineNumber**, delete sub-mode (line/range/pattern), matchPattern, replace, useRegex, ignoreCase, occurrences (all/first), encoding (auto/utf8/utf8-bom/utf16le/utf16be/ascii), lineEnding (preserve/crlf/lf), backupSuffix, createIfMissing, dryRun |
-| `delay` | **seconds** (number, minimum 1) |
-| `generateText` | **random text generator** — **mode** (alphanumeric/alphabetic/numeric/hex/guid/password/custom), **length** (except guid), **customCharset** (for custom), **excludeAmbiguous** |
-| `llmQuery` | **LLM query** — an OpenAI-compatible endpoint (prompt→text; chat completions or the responses API, depending on the `baseUrl` path). **prompt** (required, supports `{{templates}}`), **systemPrompt**, **jsonMode**; override section: **baseUrl**, **model**, **apiKey** (secret), **maxTokens**, **temperature** (0–2), timeout field automatic. Empty → the active LLM profile; needs `Llm:Enabled=true` plus a resolvable active profile |
-| `xmlQuery` | an execution hint (with a target machine the query runs there via WinRM, otherwise on the NodePilot server), **source** (inline/file), content (XML code field) or path, **xpath**, **resultMode** (single/all), **namespaces** (JSON mapping) |
-| `jsonQuery` | the same execution hint, **source** (inline/file), content (JSON code field) or path, **jsonPath** plus a JSONPath picker, **resultMode** (single/all) |
-| `log` | **level** (info/warning/error), **message** (multiline) |
-| `junction` | **mode** (waitAll/waitAny/waitNofM), **requiredCount** (for waitNofM) — the only Activity allowed to receive multiple incoming edges |
-| `forEach` | **items** (multiline), **itemsFormat** (auto/json/lines), **childWorkflowNameOrId** plus picker, **itemParameterName** (default "item"), **indexParameterName** (default "index"), **maxParallelism** (0–64), **timeoutSecondsPerItem**, **continueOnError**, additional **parameters** (ParameterTable) |
-| `decision` | **cases** (name plus ConditionBuilder, sortable via up/down, first match → `param.case`), **defaultCaseName** |
-| `returnData` | **data** (a freely extendable key/value table) |
-| `aiAgent` | **task** (required, supports `{{templates}}`), the agent block: **role**, **instructions**, **model** (empty = active LLM profile), **tools** (checkbox groups, plus MCP tools picked per server), **skills**; when a tool needs a target (file, shell, log collection): machine, credential or service identity, working directory. Result block: **resultFormat** (text/json) with **resultSchema** (JSON schema field, json only); collapsible **budgets** `maxModelCalls` / `maxToolCalls`. Needs `Llm:Enabled=true`; semantics in `docs/ai-agents.md` |
-| `aiAgentTeam` | The same **task** and result block (**resultFormat**/**resultSchema**), plus **members** (a tab list: create team, add/remove member) with a **team lead** (supervisor) and per member the same role/instructions/model/tools/target/skills editor as `aiAgent` and a **team function** (specialist/reviewer; the supervisor is fixed); an AI **team draft** button. Budgets add `maxDelegations` and `maxParallelMembers`. The node is drawn as `AgentTeamNode` (§3); semantics in `docs/ai-agents.md` |
-| `custom:<key>` | Custom activities have no hand-written component: `DynamicActivityConfig` renders one field per **input** declared in the definition (string/number/multiline fields with `{{` autocomplete, boolean checkbox, select), required inputs marked with `*`. A deleted or disabled definition shows a notice instead. The definition itself is managed under Custom Nodes; see `docs/custom-activities.md` |
-| `startWorkflow` | workflow picker plus preview button, **workflowNameOrId**, **waitForCompletion**; parameters via ContractMappingTable (with a known contract) otherwise ParameterTable; a timeout in synchronous mode |
+| `{{step.output}}` | Standard output. |
+| `{{step.error}}` | Error output. |
+| `{{step.success}}` | Step success. |
+| `{{step.param.name}}` | A published output parameter. |
+| `{{globals.NAME}}` | Global variable. |
+| `{{manual.NAME}}` | Manual input or trigger data. |
 
-> Every remote activity additionally shows target machine, credential, test connection and, where applicable, a timeout.
-> Inline code fields use **CodeMirror** (languages: powershell/sql/json/xml/plain) with `{{` autocomplete; only the **fullscreen script editor** is Monaco.
+An activity's output-variable name can replace its step ID. Outputs from unrelated
+parallel branches are unavailable. Where several activities publish the same name,
+the reference must identify its owner, such as `{{stepA.param.name}}`.
+Sub-workflows with known contracts show typed input mappings and their outputs.
 
-## 10. Trigger configuration
+Field details are covered by the [activity reference](../src/nodepilot-docs-ui/content/en/activities-reference.md)
+and [trigger reference](../src/nodepilot-docs-ui/content/en/triggers.md).
+[Custom activities](custom-activities.md) and [AI agents](ai-agents.md) have separate guides.
 
-| Trigger | Key fields (with real option values) |
+## Running and debugging
+
+Run starts the workflow or opens the input dialog when the manual trigger declares
+parameters. With write permission, pending changes are saved first. Without the edit
+lock, the run uses the saved definition and its input parameters. An execution started
+from the designer is pinned to the canvas so its progress remains visible.
+
+Expert mode provides debug runs with optional conditional breakpoints. At a breakpoint,
+the variable inspector supports overrides before continuing, skipping the paused step
+or stopping the execution. A step test executes a single activity using empty context,
+previous results or manually supplied values. Simulation checks the control-flow path
+without executing activities.
+
+Live monitoring and history provide the following views:
+
+| View | Content |
 |---|---|
-| `manualTrigger` | **title**, **description**, **input parameters** (name plus **type** string/number/boolean/select plus required plus default); a live hint shows the access syntax |
-| `scheduleTrigger` | **cronExpression** plus 4 presets (`0 */5 * * * ?`, `0 0 * * * ?`, `0 0 6 * * ?`, `0 0 8 ? * MON-FRI`), a **live preview of the next 5 fire times** (server-side Quartz via `GET /api/triggers/schedule/next-fires`, relative times, red parse errors), description |
-| `webhookTrigger` | **HTTP method** (POST/PUT/GET), **webhook path** (template-capable), optional **secret** (password field), **signatureMode** (header/nodepilot-hmac-v2; legacy `hmac` cannot be selected) with **signatureHeader**/**signaturePrefix** (default `sha256=`) in hmac-v2 mode, **fieldMappings** (name + JSONPath → `manual.*`) |
-| `fileWatcherTrigger` | **directory**, **filter** (default `*.*`; a single glob pattern, passed unsplit to one `FileSystemWatcher` filter, so comma-separated lists are not supported), **watchType** (created/changed/deleted/renamed/any), **includeSubdirectories** |
-| `databaseTrigger` | **connectionRef** (a reference into `Trigger:Database:Connections`), **pollingIntervalSeconds** (default 30, minimum 5; alias `intervalSeconds`), **query** (multiline, with an SQL template warning on `{{`) |
-| `eventLogTrigger` | **logName** (Application/System/Security/Setup), **entryType** (any/Error/Warning/Information/SuccessAudit/FailureAudit), **source** (optional), **eventId** (optional), **messagePattern** (optional, a regex against the message text), **lookbackMinutes** (default 5, applies to the manual test run only) |
+| Live | Active runs, progress and step details, including output, errors and duration. |
+| History | Previous runs with step details, a timeline or Gantt chart, and replay. |
+| Output | Data-bus values grouped by source, with filtering and copying. |
+| Watch, Expert mode | Selected expressions resolved against the live data bus. |
 
-> Trigger data arrives in the run as `manual.*` variables (`{{manual.<name>}}`), and as `param.*` of the trigger node — there is **no** `trigger.*` namespace.
+Node status, health indicators and execution paths appear on the canvas. AI team nodes
+show their members and live status. Their run details include the report and journal.
 
-## 11. Running from the designer
+## Navigation and display
 
-- **Run** (`Ctrl+Enter`): starts immediately, or opens the parameter dialog for a `manualTrigger` that declares parameters (prefilled with the values last used).
-- **Debug run** (Expert, `Ctrl+Shift+Enter`): runs with `debug: true` → breakpoints are active.
-- **Auto-save before a run:** unsaved changes are saved first when you have write permission.
-- **Without the edit lock** a run executes the saved definition, so the parameter dialog asks for the parameters of the saved `manualTrigger`, not for the canvas you are looking at.
-- **Cancel run** (`Ctrl+Shift+X`): aborts the running execution.
-- **Canvas pinning:** a started execution is pinned → nodes and paths colour live; a snapshot keeps it after the 30 s SignalR TTL.
+The workflow browser supports folders, trigger grouping and search. Folder breadcrumbs
+and sub-workflow previews allow navigation between related workflows. Search locates
+nodes, while the command palette lists available actions. Expert mode adds find and
+replace across labels and configuration values.
 
-## 12. Live monitoring
+Display options cover node styles and sizes, connection routing, grid snapping and
+automatic layout. Expert overlays show target machines, failure rates, execution
+coverage, variable flow and the critical path. On phones and portrait tablets, the mobile view
+provides a read-only graph with live status, pan and zoom.
 
-- **Live execution panel with tabs:** **Live**, **History**, **Output**, **Watch** (Expert) — driven by SignalR live updates.
-- **Live tab:** a virtualised list of active runs (status badge, done/total, failed counter, paused pulse) plus a step inspector (config, **output parameters** from the live data bus (the `param.*` entries of the selected step), output/error/transcript, start/end, offset, duration); both panes are resizable.
-- **Live console:** a chronological stream (stdout/stderr/transcript), up to 1000 lines, text filter, an "errors only" toggle, auto-scroll, click-to-inspect, line prefix `+Xms · Step · Text`.
-- **Stats strip:** step progress, succeeded/failed/running counts, elapsed time, **ETA** (from the median of historical runs).
-- **Live timeline & Gantt chart:** step bars coloured by status, running bars grow on a 250 ms ticker; shared between live and history; list/Gantt switching; the Gantt has a **scrubber** (replay at a point in time).
-- **History tab:** a virtualised, sortable table (status, ID, trigger, user, steps, failed step, start/end, duration, error, extras) with a scope toggle (Expert; current workflow versus all); drill-down into the StepTimeline (list/Gantt) — the expanded step detail shows config, **output parameters** (`outputParametersJson`, the persisted `param.*` entries), output/error/transcript; a gap indicator (`∥` for parallel) and a replay toggle.
-- **Output tab:** a data-bus browser, grouped (trigger/global/step outputs/other), with coloured badges (OUT/ERR/PAR/TRG/GLB), a filter with auto-expand, expand/collapse all, and a copy button.
-- **Watch tab (Expert):** arbitrary `{{expression}}` entries with a right-click variable picker, resolved live against the data bus, persisted per workflow in localStorage.
+## Versions, export and AI
 
-## 13. Step debugger
+Version history compares changes to nodes and connections. Restoring a version requires
+write permission and the edit lock. Workflows can be exported as JSON or as a PNG of
+the visible canvas.
 
-- **Breakpoints:** `B` (Expert) or the context menu; optionally conditional.
-- **Auto-pause detection:** when a step pauses, the live tab opens automatically.
-- **Paused variables inspector:** a fullscreen inspector while paused — the header shows "Paused at: step", the reason (breakpoint/stepOver) and the time.
-  - **Three resume modes:** **continue**, **step over** (skip this step), **stop** (abort the execution) → `POST /executions/{id}/resume`.
-  - **Variable inspection and override:** grouped (globals/manual/step/other), inline editing with a dirty highlight, a reset button, and overrides handed over on resume.
+The workflow assistant explains the current workflow and proposes changes. All roles
+may ask questions, while Admins and Operators can apply proposals with write permission.
+Applying a proposal changes the canvas, followed by the normal save and publish process.
+The script editor also supports AI generation. Configuration and data sharing are
+described under [AI features](ai-features.md).
 
-## 14. Step test & simulation
+## Common shortcuts
 
-- **Step test panel:** test a single step in isolation (`POST /workflows/{id}/steps/{stepId}/test` with a `configOverride`).
-  - **Modes (Expert):** empty / last run / pick run (from the 10 most recent) / manual mocks.
-  - **Context preview:** `GET …/test-context` shows variables by origin; there is a refresh button.
-  - **Result:** success/failure with output, error, output parameters and duration; a JSONPath picker for JSON output.
-- **Expression tester (Expert):** ad-hoc testing of template expressions against mock variables (auto-prefilled from the last run), green or amber depending on resolution.
-- **Simulation / dry run (Expert):** `Ctrl+Shift+R` — a topological path analysis over the active edges (control flow only, nothing actually executes); it shows the execution order and the reachable versus skipped nodes with a step-by-step animation, plus a progress banner.
-
-## 15. Overlays & productivity tools
-
-- **Command palette** (`Ctrl+Shift+P`): fuzzy search across 51 designer commands, grouped by category, keyboard navigation, expert filtering.
-- **Search overlay** (`Ctrl+F`): node search (label/type/ID), jump to a hit (centre plus select), up to 30 results.
-- **Find & replace** (Expert, `Ctrl+H`): across node labels, edge labels and config values (deep traverse); replace one / replace all, match navigation with a context snippet.
-- **Help overlay** (`?`): the full shortcut reference by category.
-- **Node context menu (right-click):** duplicate, toggle disabled, toggle breakpoint (Expert), delete. Without write permission there is no menu.
-- **Quick-edit popup (double-click):** inline editing of the most important field per activity type (script, URL, service name and so on) — `runScript` opens the full script editor instead.
-- **Script editor dialog:** a Monaco editor (PowerShell, with its own theme), draggable and resizable or fullscreen, word wrap, font size, toggle comment, a variables sidebar (upstream plus automatically detected `$var` assignments → `{{step.param.var}}`), inline linting of unknown `{{…}}`, `{{` autocomplete, **AI generation** (replace/insert) and **run step test** with a result panel.
-- **Workflow quick switcher** (`Ctrl+P`): fast switching between workflows, recents (localStorage), scored substring matching.
-- **Sub-workflow preview:** clicking a `startWorkflow` node opens a read-only preview (its own React Flow instance, pan/zoom), optionally "open in editor".
-- **Workflow diff** (`Ctrl+Shift+D` in Expert; the more menu in standard mode): a version timeline plus diff (added/removed/changed for nodes and edges, ID-stable including handles and positions), with a restore to the selected version (needs write permission: Admin/Operator holding the edit lock) (`POST …/rollback/{v}`).
-- **AI workflow assistant** (the violet button next to the standard/expert toggle): a docked multi-turn chat panel that explains the current workflow (in Markdown) and, on request, proposes complete rebuilds. Every role may ask; only admins and operators can apply a proposal. Proposals are sent to the LLM with secrets redacted server-side, merged back onto the original by node ID (layout, secrets and fields are preserved), presented as a **proposal card** (a structured changelog, selective per-change adoption, refine, undo/auto-layout) and applied to the canvas (no database write — saving goes through the normal edit-lock/publish flow; stale protection blocks outdated proposals). Opt-in via `Llm:Enabled`.
-- **Global assistant launcher** (the chat button in the bottom-right corner): **absent in the designer** (`/workflows/:id`) — the workflow assistant is the chat for this page, so a second entry point in the same corner would be an unrelated conversation. Every other page carries it, the workflow list included, and it opens the read-only knowledge chat as a widget. Opening the workflow assistant closes a widget that is still open, so it does not reappear on leaving the designer; the two keep separate conversations. Visibility follows `GET /api/ai/knowledge/capabilities`; described fully in `docs/ai-features.md`.
-
-## 16. Lint & pre-publish
-
-- **Lint panel** (`Ctrl+Shift+L`): lists every error and warning with its code, the target node or edge, and click-to-jump. Lint runs live on every graph change; a node badge shows the count. A click anywhere outside the panel closes it (the header pill toggles it); a click on an issue row keeps it open.
-- **Rules detected (excerpt):**
-  - **Errors (block publishing):** `no-trigger`, `isolated-node`, `dup-output-variable`, `duplicate-edge`, `missing-required-config`, `missing-target-machine`, `fan-in-requires-junction`.
-  - **Warning `dup-published-param`:** two activities on one path publish the same name. A published value has exactly one owner, so the unqualified `$name` is not bound at all — reference it as `{{stepA.param.name}}`. Reported only when at least one publisher named the value itself; names that follow from the activity type (`exitCode` on every `runScript`, a `registryOperation`'s operation-shaped outputs, a `wmiQuery`'s `count`) collide by construction and cannot be renamed, so a clash between two of those is not flagged.
-  - **Warnings:** `orphan-root`, `unreachable-node`, `unknown-template-ref`, `startjob-in-runspace`, `ps7-syntax-in-windows-powershell`, `unknown-workflow-ref`, `edge-to-disabled`, `disabled-with-downstream`, `edge-occluded`, `edge-crowded`.
-- **Pre-publish checklist modal:** shown before publishing — blocked on errors (publish disabled), "publish anyway" on warnings, straight through when clean; every issue is clickable to its node or edge.
-
-## 17. Editor chrome
-
-### Header & toolbar
-Two header layouts exist; `designStore.toolbarLayout` picks one (default `compact`), and the toolbar layout switch below flips between them. Both put their controls in `ToolbarSection` groups on a proximity-driven colour glow (purely cosmetic, prefers-reduced-motion aware).
-
-**Compact (default)** — one row, three zones: identity on the left (back, brand, standard/expert toggle, AI assistant), the centred click-to-rename workflow name, and four toolbar sections on the right:
-1. **History:** undo, redo.
-2. **Inspect:** search in both modes. **Expert:** the **"appearance" settings dialog** (`ViewMenu`, `role="dialog"`: node style, icon view, ports/auto-hide, edge animation/routing/width, node and label size, premium canvas, snap grid, as labelled card rows with a switch, segmented control or stepper), the **"view" popover** (`OverlaysMenu`, an eye icon with an active counter: machine colouring, failure heatmap, data flow, coverage, critical path as switch rows), the activity type filter, and the **tools menu** (`ToolsMenu`: find & replace, zoom to selection, diff, simulation, shortcuts, tidy and restore original layout, JSON and PNG export). **Standard:** the hidden-types pill (only while activity types are hidden) and the more menu (`StandardMoreMenu`: diff, shortcuts, JSON, PNG).
-3. **Run:** the green run CTA, debug run (Expert), cancel and the lint pill.
-4. **Lifecycle** (with role write permission): edit-lock toggle, save (with a dirty dot), publish/disable/enable.
-
-The layout switch and the skin switcher trail after the sections.
-
-**Classic** — the inline row: the name is right-aligned, every toggle and tool is its own button, the run button is icon-only, and whole sections wrap onto further lines in narrow windows. Seven sections:
-1. **History:** undo, redo.
-2. **Layout** (with write permission): tidy (the algorithm is shown in the tooltip), restore original layout (Expert).
-3. **Inspect:** search; Expert adds find & replace, zoom to selection, diff, simulation and shortcuts; standard mode shows the hidden-types pill (only while types are hidden).
-4. **View** (Expert): the inline design toggles (`ClassicDesignToggles`) plus the activity type filter.
-5. **Run:** run, debug run (Expert), cancel and the lint pill; Expert adds the inline overlay toggles (`ClassicOverlayToggles`).
-6. **Lifecycle** (with role write permission): as in compact.
-7. **Export:** JSON and PNG buttons (Expert); in standard mode the more menu.
-
-**New workflow pill (both layouts, on the canvas):** a floating "New workflow" pill in the top right corner of the canvas, shown to Admin and Operator only (`NewWorkflowButton`). A name popover creates an empty workflow in the folder of the open workflow (so folder-scoped users do not hit the Root default) and opens it; it stacks below the exit pill in fullscreen.
-
-Back navigation (far left): the arrow goes to the workflow list. After switching from another workflow (sub-workflow link, breadcrumb, `Ctrl+P`) it steps back to that workflow instead, and a **list button** next to it leads straight to the workflow list. Unsaved changes ask for confirmation in both cases.
-
-Besides the sections, the header carries (to the right of the standard/expert toggle):
-- **AI workflow assistant button** (primary-gradient pill, `ChatBot` icon; shown only when an LLM endpoint is usable) — opens the chat panel; described fully in § 15.
-- **Toolbar layout switch** (`Row` icon, `data-testid="toggle-toolbar-layout"`, to the left of the skin switcher, visible in **both** layouts): flips the header between the compact three-zone layout (the default; grouped view/overlays/tools popovers, a centred name, a green "run" CTA) and the classic inline row (every toggle and tool as an individual button, a right-aligned name, an icon-only play). Persisted in the `designStore` (`toolbarLayout`, default `compact`). Both layouts share `EditorIdentity`/`SkinSwitcher`/`RunControls`/`LifecycleControls`/`StandardMoreMenu` (so there is no double-maintenance drift); the `EditorHeader` dispatcher only reads `toolbarLayout` and renders `CompactEditorHeader` or `ClassicEditorHeader`. The classic row wraps whole clusters onto several lines in narrow windows and keeps the proximity glow trays.
-- **Colour skin switcher** (palette icon, icon only, at the far right after the toolbar layout switch): opens a popover with all 10 skins plus `system` from the `THEMES` registry. The selection syncs with the settings picker and the sidebar (a shared `useThemeStore`); the active skin gets a check icon; clicking outside closes the popover.
-
-### Inline workflow name
-Grows with its content; read-only without write permission.
-
-### Status banners (contextual)
-Replay mode, test-run mode, viewer read-only, **locked by other** (plus admin force-unlock), **locked by me**, productive/disabled.
-
-### Breadcrumbs
-Pills for outgoing workflow references (`startWorkflow` / `forEach`); a resolved one becomes a link, an unresolved one an amber warning; dynamic `{{…}}` references are ignored.
-
-### Folder path breadcrumb (canvas, top left)
-The folder path of the open workflow. Every RBAC-visible segment opens a popover with sub-folders (drill down via a mini browser) and workflows (open directly) — navigating the folder hierarchy without leaving the canvas. Root workflows show no breadcrumb; ancestors that are not visible stay non-interactive text. Frontend only (from `workflow.folderPath`).
-
-### Sidebar (left)
-Two tabs (**node library** / **workflow browser**), collapsible to an icon bar, resizable.
-
-### Workflow browser
-- **View toggle:** folder view (a hierarchical shared-folder tree with drag and drop into folders) versus trigger view (grouped by trigger type).
-- **Search/filter**, a status dot (enabled/disabled), an activity count, hover actions (insert into a start-workflow / open) and a "current" marker.
-- **Splitter plus info card.**
-
-### Workflow info card
-Metadata of the hovered or current workflow: status, name, version, trigger, steps, last run, success rate, average duration, modified (time/user), locked by, folder path.
-
-### Maintenance-window badge
-A self-fetch of `…/maintenance-windows/affecting/{id}` — shows the relevant maintenance windows as pills ("· Active Now") with an active indicator.
-
-### Right panel
-Depending on the selection it shows: bulk edit (2 or more nodes, Expert), properties (1 node), edge properties (1 edge), or nothing; resizable.
-
-## 18. Edit lifecycle (lock / publish)
-
-- **`canWrite = roleCanWrite && isLockedByMe`** — both conditions are required.
-- **Lock** (`Ctrl+E`): atomically sets `IsEnabled=false` plus the lock; 409 when already locked.
-- **Unlock** (`Ctrl+U`): releases the lock (`IsEnabled` stays as it is).
-- **Publish** (`Ctrl+Shift+S`): atomically save plus enable plus unlock (through the pre-publish checklist).
-- **Disable/enable:** the kill switch (disable is **not** lock-gated); enable only without a foreign lock.
-- **Force unlock** (admin, `Ctrl+Shift+U`): breaks a foreign lock (confirmation plus an audit entry).
-- **Read-only behaviour:** without `canWrite`, dragging, connecting, deleting, pasting, duplicating, grouping, context menus and inline edits are all disabled. Copying with `Ctrl+C` still works.
-- **Selection survives lifecycle changes:** every action above refetches the workflow and re-adopts the server graph. The current selection and the open properties panel stay; the panel just switches between read-only and editable.
-
-## 19. Persistence & export
-
-- **Dirty state:** every structural or property change marks the workflow dirty.
-- **Auto-save:** a 5 s debounce after the last change (with write permission); runtime fields (`__liveStatus`, `__health`, `__stats`, …) are stripped before serialising.
-- **Manual save:** `Ctrl+S`; save-before-run is awaitable.
-- **Dirty protection:** a `beforeunload` warning plus a navigation blocker ("discard changes?") while there are unsaved changes.
-- **Version history:** update and rollback snapshot the previous definition.
-- **Export:** **JSON** (`Ctrl+Shift+J`, Expert, `{name}.workflow.json` via the API) and **PNG** (`Ctrl+Alt+P`, the WYSIWYG viewport without controls or minimap, DPI ≥ 2).
-
-## 20. Visual overlays & display options
-
-The designer uses the **Atelier** structure: a workbench with a dot grid, docked panels and one accent. `styles/designer-atelier.css` maps the `--color-*` tokens through a `--wd-*` palette layer, scoped by `.wd-atelier` on the editor root and `.wd-atelier-on` on `<html>` (the latter re-tokenises body-portaled tooltips). **Colour skins adapt it:** each skin re-points the accent family and the base tone (`--wd-accent*`, `--wd-canvas`/`--wd-panel`). **Minimal Light** and **Minimal Dark** also flatten decorative surfaces and simplify corners throughout the application: clear outlines replace sheen and shadow. Font sizes, spacing, panel layout, node shapes and port geometry stay unchanged, and execution states remain distinguishable. Switching skins does not change the `designStore` preferences, including `premiumCanvas`, or the workflow definition.
-
-**ION Dark** (`dark-ion`) adds deep navy surfaces, cyan accents, layered panels and luminous node outlines through the same theme system. Its decoration preserves node geometry, controls, semantic execution states and the existing designer preferences; reduced motion is respected. Logo and favicon reuse the cyan Nebula asset.
-
-Every display setting lives in the **`designStore`** (Zustand plus persist, key `nodepilot-design`) and applies editor-wide:
-
-| Setting | Default | Values / range | Effect |
-|---|---|---|---|
-| `designerMode` | `standard` | standard / expert | Unlocks the extended toolbar, overlays and shortcuts |
-| `toolbarLayout` | `compact` | compact / classic | Header layout: compact (grouped popover menus, a green "run") versus the classic inline row (every toggle and tool as an individual button, icon-only play). The switch button exists in both layouts |
-| `nodeStyle` | `classic` | classic / card | Node rendering (`Ctrl+Shift+N`) |
-| `nodeIconStyle` | `shape` | shape / glyph | Classic-only icon rendering: clip-path silhouette with a small glyph, or the bare large palette icon |
-| `nodeScaleIndex` | 3 | 0–7 (XS … 4XL) | Node size |
-| `labelFontOffsetIndex` | 2 | 0–6 (−4 … +8 px) | Label font size |
-| `edgesAnimated` | true | bool | Flow animation on edges (`A`) |
-| `edgeWidthIndex` | 2 | 1.5/2/2.5/3.5/5/7 px | Edge width (`Ctrl+]`/`[`) |
-| `edgeRouting` | `smart` | smart / curved / straight | Routing (`R`) |
-| `autoHidePorts` | true | bool | Ports stay hidden until the cursor nears the node, it is selected, or a connection is dragged toward it |
-| `snapToGrid` | false | bool | Grid snapping (`G`) |
-| `snapGridSize` | 20 | 10/20/30/40/60 px | Grid spacing |
-| `layoutMode` | `LR` | LR / TB / Compact / ELK | Auto-layout algorithm |
-| `machineColoringEnabled` | false | bool | Colours nodes by target machine plus a legend (`M`, an 8-colour palette) |
-| `failureHeatmapEnabled` | false | bool | Red tint by failure rate (`H`, from `__stats.failureRate`) |
-| `coverageHeatmapEnabled` | false | bool | Greys out nodes that never or rarely ran (coverage API) |
-| `coverageWindowDays` | 30 | 1–365 | The coverage heatmap's time window |
-| `criticalPathEnabled` | false | bool | Highlights the longest path plus slack badges (`C`) |
-| `dataFlowOverlayEnabled` | false | bool | Visualises variable flow along edges |
-| `premiumCanvas` | true | bool | Depth shadows, glass effect, coloured arrows, glow. **Not** the canvas background — the dot grid is the same in both modes (see [1. Canvas & viewport](#1-canvas--viewport)) |
-
-- **Coverage heatmap:** reads `GET /workflows/{id}/coverage?windowDays=N` → the node annotation `__coverage` (`never`/`rare`/`common` plus a red dot when there were failures).
-- **Critical path:** a real CPM calculation (topological Kahn sort plus a forward and backward pass) weighted by `p95DurationMs`; it ignores disabled nodes and edges; critical nodes turn orange, the rest get a slack badge.
-
-## 20a. Live & annotation infrastructure
-
-- **SignalR live stream** (`/hubs/execution`, `useSignalR` plus a reducer): the events **StepStarted**, **StepCompleted**, **StepPaused**, **StepResumed**, **ExecutionStatusChanged**, **LiveEventsBatch**. Authentication via the httpOnly cookie on the WebSocket upgrade.
-  - **Transport ladder:** WebSockets → server-sent events → long polling. Neither client nor hub restricts the transports and `skipNegotiation` is never set — a WebSocket upgrade dropped by a proxy or TLS inspection is therefore **not an outage** but a silent fallback to SSE (plus one error line from `@microsoft/signalr` in the console). Diagnosis: `docs/deployment-guide.md`, section *Is the live connection healthy?*.
-  - Builds the **live data bus** (`{stepId}.output/.error/.param.*` plus the output-variable aliases).
-  - **Hydration concurrency:** at most 4 parallel step fetches (a semaphore) against a thundering herd; auto-hydration covers only the 10 most recent active runs.
-  - **TTL/eviction:** finished runs disappear after 30 s; a periodic refresh every 10 s; reconnect re-joins the workflow.
-  - **Cache invalidation:** the React Query caches (`workflow-executions`, `executions`, `dashboard-stats`) are invalidated on a terminal status with a 500 ms debounce.
-- **Node annotation aggregator** (`useNodeAnnotations`): writes per node `__liveStatus` (live or replay scrub), `__health` (a sparkline from `step-health`, refreshed every 60 s), `__stats` (`step-stats?windowDays=30`, refreshed every 5 minutes), `__machineColorIdx`, `__varFlowRole` (producer/consumer while hovering a variable) and the edge highlight `__varFlowHighlighted` along the producer→consumer path.
-- **Displayed-graph projection** (`useDisplayedGraph`): a read-only transformation of the raw data before rendering — it hides filtered activity types (and their edges), computes `inDegreeCount` (the junction badge), the simulation status (`reachable`/`revealing`/`skipped`), lint counters, the failure tint, the data-flow variables, and folds collapsed groups together (`collapsedGraphView`).
-- **Smart defaults** (`lastSimilarNode`): new nodes inherit configuration (engine, machine and so on) from the most recently placed step of the same type.
-- **Resizable panels** (`useResizable`): sidebar, right panel, info card and the execution panes resize by dragging; double-click resets.
-- **Persisted UI state:** `workflowBrowserStore` (view mode folder/trigger, collapsed folders, info-card height) and `sidebarStore` (sidebar collapsed).
-
-## 21. Mobile view
-
-`MobileWorkflowView` — a read-only graph for phones and portrait tablets:
-- Reuses the editor's node and edge types; `draggable:false`, `selectable:false`.
-- **Live status** of the nodes via SignalR.
-- An enlarged node scale (`NodeScaleOverrideContext`, index 3) for readability; initial fit clamped to 0.7–1.6 zoom (manual zoom down to 0.1).
-- A header with a back button, the workflow name and a read-only note; pan and pinch-zoom instead of editing.
-
-## 22. Keyboard shortcuts (reference)
-
-### Global / standard
-| Key | Action |
+| Shortcut | Action |
 |---|---|
-| `?` | Help / shortcut reference |
-| `Esc` | Close overlays |
-| `Home` | Fit all |
-| `F11` | Fullscreen |
-| `Ctrl+P` | Quick switcher |
-| `Ctrl+Shift+P` | Command palette |
-| `Ctrl+S` | Save |
-| `Ctrl+Shift+S` | Publish / enable / disable |
-| `Ctrl+F` | Search |
-| `Ctrl+C` / `Ctrl+V` | Copy / paste |
-| `Ctrl+D` | Duplicate |
-| `Ctrl+Z` / `Ctrl+Y` / `Ctrl+Shift+Z` | Undo / redo |
-| `Ctrl+A` | Select all |
-| `Ctrl+E` / `Ctrl+U` | Lock / unlock |
-| `Ctrl+Enter` / `Ctrl+Shift+Enter` | Run / debug run |
-| `Delete` / `Backspace` | Delete |
-| `Ctrl+Shift+X` | Cancel run |
-| `Ctrl+Shift+T` | Tidy |
-| `Ctrl+Shift+L` | Lint panel |
-| `Ctrl+Alt+P` | Export PNG |
+| `Ctrl+S` | Save. |
+| `Ctrl+E` / `Ctrl+U` | Acquire or release the edit lock. |
+| `Ctrl+Shift+S` | Publish, enable or disable, depending on state. |
+| `Ctrl+Enter` | Run. |
+| `Ctrl+Shift+Enter` | Debug run, Expert mode. |
+| `Ctrl+Shift+X` | Cancel run. |
+| `Ctrl+F` / `Ctrl+Shift+P` | Search nodes or open the command palette. |
+| `Ctrl+P` | Switch workflows. |
+| `Ctrl+C` / `Ctrl+V` / `Ctrl+D` | Copy, paste or duplicate. |
+| `Ctrl+Z` / `Ctrl+Y` | Undo or redo. |
+| `Ctrl+Shift+T` | Tidy the layout. |
+| `Ctrl+Shift+L` | Open lint findings. |
+| `Home` / `F11` | Fit all nodes or toggle fullscreen. |
 
-### Expert mode (in addition)
-| Key | Action |
-|---|---|
-| `A` / `R` / `M` / `H` / `C` / `G` | Edge animation / routing / machine colouring / heatmap / critical path / snap grid |
-| `D` / `B` | Toggle disabled / breakpoint on the selection |
-| `Tab` / `Shift+Tab` | Move to the next/previous connected node |
-| Arrow keys (`+Shift`) | Nudge the selection (10 px / 1 px) |
-| `Ctrl+G` | Group |
-| `Ctrl+H` | Find & replace |
-| `Ctrl+Shift+E` | Zoom to selection |
-| `Ctrl+Shift+U` | Force unlock (admin) |
-| `Ctrl+Shift+O` | Restore layout |
-| `Ctrl+Shift+D` | Diff |
-| `Ctrl+Shift+R` | Simulation |
-| `Ctrl+Shift+N` | Node style (classic/card) |
-| `Ctrl+Alt+X` | Clear the activity type filter |
-| `Ctrl+]` / `Ctrl+[` | Edge width +/− |
-| `Ctrl+Shift+>` / `Ctrl+Shift+<` | Node size +/− |
-| `Ctrl+Alt+.` / `Ctrl+Alt+,` | Label font +/− |
-| `Ctrl+Shift+J` | Export JSON |
-| `Ctrl+Shift+1…5` | Navigate: workflows / executions / machines / globals / audit |
-
-### Canvas gestures
-- Left-drag = marquee selection · middle/right-drag = pan · `Shift+click` = extend the selection.
+Left-drag selects an area, middle/right-drag pans, and Shift-click extends the selection.
+The help overlay provides the full shortcut reference.
