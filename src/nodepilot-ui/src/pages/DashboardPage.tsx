@@ -177,7 +177,7 @@ export function DashboardPage() {
   useQuery(failureCausesQuery(windowHours));
   useQuery(durationTrendQuery(windowHours, durationWorkflowId));
   // Selecting a status row filters the Recent Executions table client-side. The backend only
-  // returns the latest 10 rows, so this filters within those; full filtering lives on /executions.
+  // returns the latest 50 runs, so this filters within those; full filtering lives on /executions.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
   // Nothing to show until a first response has arrived. A failed first load offers a retry.
@@ -688,9 +688,12 @@ function groupRecent(items: RecentExecutionInfo[]): RecentRowGroup[] {
   return groups;
 }
 
+// Rows shown after grouping; the backend sends more raw runs so grouping cannot leave the table short.
+const RECENT_ROWS = 10;
+
 function RecentExecutionsTable({ items, onOpen }: Readonly<{ items: RecentExecutionInfo[]; onOpen: (path: string) => void }>) {
   const { t } = useTranslation(['dashboard']);
-  const groups = groupRecent(items);
+  const groups = groupRecent(items).slice(0, RECENT_ROWS);
   const longest = Math.max(1, ...groups.map((g) => g.maxDurationMs ?? 0));
   return (
     <div className="overflow-x-auto -mx-4">
