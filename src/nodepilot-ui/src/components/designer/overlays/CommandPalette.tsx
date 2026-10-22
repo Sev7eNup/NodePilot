@@ -91,7 +91,7 @@ function fuzzyScore(query: string, target: string): number {
 export function CommandPalette({ commands, onClose }: Readonly<Props>) {
   const { t } = useTranslation('editor');
   const [query, setQuery] = useState('');
-  const [activeIdx, setActiveIdx] = useState(0);
+  const [activeCommandId, setActiveCommandId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -104,19 +104,10 @@ export function CommandPalette({ commands, onClose }: Readonly<Props>) {
     return scored.map((x) => x.c);
   }, [commands, query]);
 
-  useEffect(() => { setActiveIdx((i) => Math.min(i, Math.max(0, ranked.length - 1))); }, [ranked.length]);
-
   const invoke = (cmd: PaletteCommand) => {
     if (cmd.disabled) return;
     cmd.run();
     onClose();
-  };
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx((i) => Math.min(ranked.length - 1, i + 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx((i) => Math.max(0, i - 1)); }
-    else if (e.key === 'Enter' && ranked[activeIdx]) { e.preventDefault(); invoke(ranked[activeIdx]); }
-    else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
   };
 
   // Group results by their `group` field, preserving rank order within each bucket.
@@ -130,8 +121,24 @@ export function CommandPalette({ commands, onClose }: Readonly<Props>) {
     return [...map.entries()];
   }, [ranked]);
 
-  // Compute a flat-to-absolute index mapping for highlight and click handlers.
-  let cursor = 0;
+  const visibleCommands = grouped.flatMap(([, items]) => items);
+  const activeCommand = visibleCommands.find((cmd) => cmd.id === activeCommandId) ?? visibleCommands[0];
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const activeIdx = visibleCommands.findIndex((cmd) => cmd.id === activeCommand?.id);
+      const direction = e.key === 'ArrowDown' ? 1 : -1;
+      const nextIdx = Math.max(0, Math.min(visibleCommands.length - 1, activeIdx + direction));
+      setActiveCommandId(visibleCommands[nextIdx]?.id ?? null);
+    } else if (e.key === 'Enter' && activeCommand) {
+      e.preventDefault();
+      invoke(activeCommand);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
+  };
 
   const totalCommands = commands.length;
   const visibleCount = ranked.length;
@@ -152,7 +159,7 @@ export function CommandPalette({ commands, onClose }: Readonly<Props>) {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setActiveCommandId(null); }}
             onKeyDown={onKeyDown}
             placeholder={t('commandPalette.placeholder')}
             className="flex-1 bg-transparent border-none outline-none text-[15px] font-label text-on-surface placeholder:text-outline/70"
@@ -189,14 +196,13 @@ export function CommandPalette({ commands, onClose }: Readonly<Props>) {
                   <span className="text-outline/60 font-mono normal-case tracking-normal">· {items.length}</span>
                 </div>
                 {items.map((cmd) => {
-                  const idx = cursor++;
-                  const isActive = idx === activeIdx;
+                  const isActive = cmd.id === activeCommand?.id;
                   return (
                     <button
                       key={cmd.id}
                       type="button"
                       disabled={cmd.disabled}
-                      onMouseEnter={() => setActiveIdx(idx)}
+                      onMouseEnter={() => setActiveCommandId(cmd.id)}
                       onClick={() => invoke(cmd)}
                       className={`relative w-full flex items-center gap-3 pl-5 pr-4 py-2 text-left transition-colors group disabled:cursor-not-allowed ${
                         isActive

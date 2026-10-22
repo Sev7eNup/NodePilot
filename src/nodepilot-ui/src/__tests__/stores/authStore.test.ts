@@ -50,6 +50,7 @@ describe('authStore (cookie-based, audit H-5)', () => {
     localStorage.clear();
     useAiChatStore.setState({ messagesByThread: {}, threadsByScope: {}, activeThreadByScope: {} });
     sessionStorage.clear();
+    document.cookie = 'np_csrf=; Max-Age=0; path=/';
     queryClient.clear();
     // Reset store state to a known "pre-init" shape (matches production bundle load).
     useAuthStore.setState({
@@ -62,6 +63,7 @@ describe('authStore (cookie-based, audit H-5)', () => {
 
   afterEach(() => {
     while (synchronizationStops.length > 0) synchronizationStops.pop()?.();
+    document.cookie = 'np_csrf=; Max-Age=0; path=/';
     vi.unstubAllGlobals();
   });
 
@@ -70,6 +72,8 @@ describe('authStore (cookie-based, audit H-5)', () => {
     // username + role and relies on the httpOnly np_auth cookie for auth.
     const mockResponse = { userId: 'u-1', username: 'admin', role: 'Admin' };
     vi.mocked(api.post).mockResolvedValueOnce(mockResponse);
+    vi.stubGlobal('BroadcastChannel', undefined);
+    const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
 
     await useAuthStore.getState().login('admin', 'password');
 
@@ -77,6 +81,7 @@ describe('authStore (cookie-based, audit H-5)', () => {
     expect(state.isAuthenticated).toBe(true);
     expect(state.username).toBe('admin');
     expect(state.role).toBe('Admin');
+    expect(storageWrite).toHaveBeenCalledWith(AUTH_BOUNDARY_STORAGE_KEY, expect.stringContaining('"type":"identity"'));
     // No token field in state — the cookie is the source of truth.
     expect((state as unknown as { token?: string }).token).toBeUndefined();
   });
@@ -247,6 +252,62 @@ describe('authStore (cookie-based, audit H-5)', () => {
     expect(sessionStorage.getItem(DB_ADMIN_QUERY_DRAFT_KEY)).toBeNull();
     expect(localStorage.getItem(AI_CHAT_STORAGE_KEY)).toBeNull();
   });
+
+  it('initialize_publishesAnObservationWithoutTransmittingTheCookie', async () => {
+    document.cookie = 'np_csrf=session-companion-secret; path=/';
+    vi.stubGlobal('BroadcastChannel', undefined);
+    const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
+    storageWrite.mockClear();
+    vi.mocked(api.get).mockResolvedValueOnce({ id: 'u-1', username: 'alice', role: 'Admin' });
+
+    await useAuthStore.getState().initialize();
+
+    const messages = storageWrite.mock.calls
+      .filter(([key]) => key === AUTH_BOUNDARY_STORAGE_KEY)
+      .map(([, value]) => JSON.parse(value));
+    expect(messages).toEqual([expect.objectContaining({
+      type: 'identity', userId: 'u-1', observation: { username: 'alice', role: 'Admin' },
+    })]);
+    expect(JSON.stringify(messages)).not.toContain('session-companion-secret');
+  });
+
+  it.each(['cookie', 'user', 'role', 'username'] as const)(
+    'remoteSessionObservation_%sChange_clearsAndReprobesWithoutEcho', async (change) => {
+      document.cookie = 'np_csrf=original-session; path=/';
+      useAuthStore.getState().acceptAuthenticatedIdentity({
+        userId: 'u-1', username: 'alice', role: 'Admin',
+      }, { broadcastIdentity: false });
+      sessionStorage.setItem(DB_ADMIN_QUERY_DRAFT_KEY, 'SELECT previous_session_data');
+      queryClient.setQueryData(['private-result'], { secret: true });
+      const observed = {
+        userId: change === 'user' ? 'u-2' : 'u-1',
+        username: change === 'username' ? 'renamed' : 'alice',
+        role: change === 'role' ? 'Viewer' : 'Admin',
+      };
+      if (change === 'cookie') document.cookie = 'np_csrf=oidc-new-session; path=/';
+      vi.mocked(api.get).mockResolvedValueOnce({ id: observed.userId, username: observed.username, role: observed.role });
+      vi.stubGlobal('BroadcastChannel', undefined);
+      synchronizationStops.push(startAuthBoundarySynchronization());
+      const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
+      storageWrite.mockClear();
+
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: AUTH_BOUNDARY_STORAGE_KEY,
+        newValue: JSON.stringify({
+          version: 1, type: 'identity', userId: observed.userId,
+          observation: { username: observed.username, role: observed.role },
+          sourceId: 'another-tab', eventId: `observed-${change}`,
+        } satisfies AuthBoundaryEvent),
+      }));
+
+      expect(useAuthStore.getState().isAuthenticated).toBeNull();
+      expect(sessionStorage.getItem(DB_ADMIN_QUERY_DRAFT_KEY)).toBeNull();
+      expect(queryClient.getQueryData(['private-result'])).toBeUndefined();
+      await vi.waitFor(() => expect(useAuthStore.getState()).toMatchObject({ ...observed, isAuthenticated: true }));
+      expect(api.get).toHaveBeenCalledWith('/auth/me', { broadcastUnauthorized: false });
+      expect(storageWrite).not.toHaveBeenCalledWith(AUTH_BOUNDARY_STORAGE_KEY, expect.any(String));
+    },
+  );
 
   it('initialize_secondUser_discardsFirstUsersSqlAndAiState', async () => {
     vi.mocked(api.get)
@@ -520,6 +581,38 @@ describe('authStore (cookie-based, audit H-5)', () => {
       role: null,
       isAuthenticated: false,
     });
+  });
+
+  it('remoteSessionObservation_newOidcCookieRecoversFromAnAbandonedLogout', async () => {
+    document.cookie = 'np_csrf=session-before-logout; path=/';
+    useAuthStore.getState().acceptAuthenticatedIdentity({
+      userId: 'u-1', username: 'alice', role: 'Admin',
+    }, { broadcastIdentity: false });
+    vi.mocked(api.get).mockResolvedValueOnce({ id: 'u-1', username: 'alice', role: 'Admin' });
+    vi.stubGlobal('BroadcastChannel', undefined);
+    synchronizationStops.push(startAuthBoundarySynchronization());
+    const dispatch = (event: AuthBoundaryEvent) => window.dispatchEvent(new StorageEvent('storage', {
+      key: AUTH_BOUNDARY_STORAGE_KEY,
+      newValue: JSON.stringify(event),
+    }));
+    dispatch({
+      version: 1, type: 'logout', phase: 'started',
+      sourceId: 'closed-tab', eventId: 'abandoned-logout-started',
+    });
+    const observation = {
+      version: 1, type: 'identity', userId: 'u-1', observation: { username: 'alice', role: 'Admin' },
+      sourceId: 'oidc-tab', eventId: 'observation-during-logout',
+    } satisfies AuthBoundaryEvent;
+    dispatch(observation);
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(api.get).not.toHaveBeenCalled();
+
+    document.cookie = 'np_csrf=new-oidc-session; path=/';
+    dispatch({ ...observation, eventId: 'new-oidc-session-after-abandoned-logout' });
+
+    expect(useAuthStore.getState().isAuthenticated).toBeNull();
+    await vi.waitFor(() => expect(useAuthStore.getState()).toMatchObject({ userId: 'u-1', isAuthenticated: true }));
+    expect(api.get).toHaveBeenCalledWith('/auth/me', { broadcastUnauthorized: false });
   });
 
   it('remoteUnauthorized_clearsThenReprobesSoAStillValidCookieIsNotLoggedOut', async () => {

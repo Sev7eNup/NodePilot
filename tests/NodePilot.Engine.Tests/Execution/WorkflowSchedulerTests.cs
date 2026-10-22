@@ -964,6 +964,93 @@ public class WorkflowSchedulerTests
         skipped.Should().NotContain(["join", "last"]);
     }
 
+    [Theory]
+    [InlineData("waitAny", true)]
+    [InlineData("waitAny", false)]
+    [InlineData("waitNofM", true)]
+    [InlineData("waitNofM", false)]
+    public async Task RunAsync_RaceCancellation_ReevaluatesSharedJoins(string mode, bool otherBranchCompletesFirst)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var loserStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var loserDrained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var otherBranchProcessed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var raceStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var holdLoser = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var a = Node("a");
+        var b = Node("b");
+        var c = Node("c");
+        var marker = Node("c-processed");
+        var race = Node("race", "junction", JsonSerializer.Serialize(new { mode, requiredCount = 1 }));
+        var join = Node("join", "junction", """{"mode":"waitAll"}""");
+        var last = Node("last");
+        var nodes = new[] { a, b, c, marker, race, join, last };
+        var edges = new List<WorkflowEdge>
+        {
+            new() { Id = "a-race", Source = "a", Target = "race" },
+            new() { Id = "b-race", Source = "b", Target = "race" },
+            new() { Id = "b-join", Source = "b", Target = "join" },
+            new() { Id = "c-join", Source = "c", Target = "join" },
+            new() { Id = "c-marker", Source = "c", Target = "c-processed" },
+            new() { Id = "join-last", Source = "join", Target = "last" },
+        };
+        var adjacency = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var reverse = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var incoming = nodes.ToDictionary(n => n.Id, _ => new List<WorkflowEdge>());
+        var byEndpoints = new Dictionary<(string Source, string Target), WorkflowEdge>();
+        foreach (var edge in edges)
+        {
+            adjacency[edge.Source].Add(edge.Target);
+            reverse[edge.Target].Add(edge.Source);
+            incoming[edge.Target].Add(edge);
+            byEndpoints[(edge.Source, edge.Target)] = edge;
+        }
+        var results = new ConcurrentDictionary<string, ActivityResult>();
+        var completed = new HashSet<string>();
+        var skipped = new HashSet<string>();
+        var calls = new ConcurrentDictionary<string, int>();
+
+        await WorkflowScheduler.RunAsync(
+            [a, b, c], nodes.ToDictionary(n => n.Id), adjacency, reverse, incoming, byEndpoints,
+            new Dictionary<string, string>(), results, completed, skipped,
+            async (node, stepCt) =>
+            {
+                calls.AddOrUpdate(node.Id, 1, (_, count) => count + 1);
+                switch (node.Id)
+                {
+                    case "a":
+                        await loserStarted.Task.WaitAsync(stepCt);
+                        if (otherBranchCompletesFirst)
+                            await otherBranchProcessed.Task.WaitAsync(stepCt);
+                        break;
+                    case "b":
+                        loserStarted.SetResult();
+                        try { await holdLoser.Task.WaitAsync(stepCt); }
+                        finally { loserDrained.SetResult(); }
+                        break;
+                    case "c":
+                        if (!otherBranchCompletesFirst)
+                            await raceStarted.Task.WaitAsync(stepCt);
+                        break;
+                    case "c-processed":
+                        // A successor starts only after c's result has been processed by the scheduler.
+                        otherBranchProcessed.SetResult();
+                        break;
+                    case "race":
+                        raceStarted.SetResult();
+                        break;
+                }
+                return new ActivityResult { Success = true, Output = node.Id };
+            }, NullLogger.Instance, timeout.Token);
+
+        completed.Should().Contain(["race", "join", "last"]);
+        skipped.Should().BeEquivalentTo("b");
+        calls.Keys.Should().BeEquivalentTo(nodes.Select(n => n.Id));
+        calls.Values.Should().OnlyContain(count => count == 1);
+        loserDrained.Task.IsCompletedSuccessfully.Should().BeTrue();
+    }
+
     private sealed class GateProbeEngine(Task siblingRan) : IWorkflowEngine
     {
         public async Task<WorkflowExecution> ExecuteAsync(

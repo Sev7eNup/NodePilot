@@ -18,7 +18,8 @@ public interface IStepTester
         StepTestAuthorizationSnapshot authorizationSnapshot,
         Dictionary<string, string>? mockVariables,
         JsonElement? configOverride,
-        CancellationToken ct);
+        CancellationToken ct,
+        JsonElement? stepOverride = null);
 }
 
 /// <summary>
@@ -67,22 +68,26 @@ public class StepTester : IStepTester
     public async Task<StepTestResult> TestStepAsync(
         Guid workflowId, string stepId, StepTestAuthorizationSnapshot authorizationSnapshot,
         Dictionary<string, string>? mockVariables,
-        JsonElement? configOverride, CancellationToken ct)
+        JsonElement? configOverride, CancellationToken ct, JsonElement? stepOverride = null)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
-        if (configOverride.HasValue
+        if (configOverride.HasValue && stepOverride.HasValue)
+            return Fail("Config override and step override cannot be combined", sw);
+
+        var hasOverride = configOverride.HasValue || stepOverride.HasValue;
+        if (hasOverride
             && (authorizationSnapshot.CheckedOutByUserId is null
                 || authorizationSnapshot.CheckedOutAt is null))
         {
-            return Fail("Config override requires an active edit-lock authorization snapshot", sw);
+            return Fail("An override requires an active edit-lock authorization snapshot", sw);
         }
 
         var authorizedWorkflow = _db.Workflows.AsNoTracking()
             .Where(w => w.Id == workflowId
                         && w.FolderId == authorizationSnapshot.FolderId
                         && w.Version == authorizationSnapshot.Version);
-        if (configOverride.HasValue)
+        if (hasOverride)
         {
             authorizedWorkflow = authorizedWorkflow.Where(w =>
                 w.CheckedOutByUserId == authorizationSnapshot.CheckedOutByUserId
@@ -100,26 +105,15 @@ public class StepTester : IStepTester
         if (node is null)
             return Fail($"Step '{stepId}' not found in workflow", sw);
 
-        if (node.Data.Disabled)
-            return Fail("Step is disabled — enable it before testing", sw);
-
-        // Sub-workflow activities' runtime RBAC gate only fires when there is a persisted
-        // parent WorkflowExecution row. Step-test synthesises an execution id that is never
-        // persisted, so both startWorkflow and forEach would otherwise skip the resolver and
-        // could invoke a child workflow outside the caller's folder scope. Until step-test
-        // carries an authenticated persisted call context, refuse both activities.
-        if (string.Equals(node.Type, "startWorkflow", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(node.Type, "forEach", StringComparison.OrdinalIgnoreCase))
+        if (stepOverride is { } liveData)
         {
-            return Fail($"{node.Type} cannot be step-tested — run the full workflow to validate sub-workflow calls.", sw);
+            if (!TryParseStepOverride(stepId, liveData, out var liveNode) || liveNode is null)
+                return Fail("Step override requires an activityType string, a config object and valid node fields", sw);
+            node = liveNode;
         }
-
-        // Unsaved-config override: when the UI sends the live editor state, swap it onto the
-        // node we just parsed so the test reflects what the user is editing right now (not the
-        // last-saved DB config). Other fields (targetMachine, credential, outputVariable) keep
-        // coming from the persisted definition — those rarely change between test clicks and
-        // forcing the user to re-include them in every override would be ergonomic noise.
-        if (configOverride is { ValueKind: JsonValueKind.Object } overrideElement)
+        // Config overrides change only activity configuration. Target, credential and other
+        // node metadata come from the authorized persisted definition.
+        else if (configOverride is { ValueKind: JsonValueKind.Object } overrideElement)
         {
             node = new WorkflowNode
             {
@@ -139,10 +133,24 @@ public class StepTester : IStepTester
             };
         }
 
+        if (node.Data.Disabled)
+            return Fail("Step is disabled — enable it before testing", sw);
+
+        // Step tests have no persisted parent execution for the sub-workflow RBAC gate.
+        if (string.Equals(node.Type, "startWorkflow", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(node.Type, "forEach", StringComparison.OrdinalIgnoreCase))
+        {
+            return Fail($"{node.Type} cannot be step-tested — run the full workflow to validate sub-workflow calls.", sw);
+        }
+
         // Resolve machine + credential from node config (raw GUID or literal hostname)
         ManagedMachine? machine = null;
         if (Guid.TryParse(node.Data.TargetMachineRaw, out var machineId))
+        {
             machine = await _db.ManagedMachines.AsNoTracking().FirstOrDefaultAsync(m => m.Id == machineId, ct);
+            if (machine is null)
+                return Fail($"Target machine '{machineId}' was not found — select an existing machine before testing", sw);
+        }
         else if (!string.IsNullOrWhiteSpace(node.Data.TargetMachineRaw))
             machine = new ManagedMachine
             {
@@ -230,6 +238,41 @@ public class StepTester : IStepTester
 
     private static StepTestResult Fail(string msg, System.Diagnostics.Stopwatch sw)
         => new(false, null, msg, [], sw.Elapsed.TotalMilliseconds, msg);
+
+    private static bool TryParseStepOverride(string stepId, JsonElement data, out WorkflowNode? node)
+    {
+        node = null;
+        if (data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("activityType", out var type)
+            || type.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(type.GetString())
+            || !data.TryGetProperty("config", out var config) || config.ValueKind != JsonValueKind.Object
+            || !IsOptionalString(data, "label") || !IsOptionalString(data, "outputVariable")
+            || !IsOptionalString(data, "targetMachineId") || !IsOptionalString(data, "credentialId")
+            || !IsOptionalString(data, "breakpointCondition")
+            || !IsOptionalBoolean(data, "disabled") || !IsOptionalBoolean(data, "breakpoint"))
+            return false;
+
+        if (data.TryGetProperty("credentialId", out var credential)
+            && credential.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(credential.GetString())
+            && !Guid.TryParse(credential.GetString(), out _))
+            return false;
+
+        var definition = JsonSerializer.SerializeToElement(new
+        {
+            nodes = new[] { new { id = stepId, type = "activity", data } },
+        });
+        node = WorkflowDefinitionParser.ParseNodes(definition)[0];
+        return true;
+    }
+
+    private static bool IsOptionalString(JsonElement data, string name)
+        => !data.TryGetProperty(name, out var value)
+           || value.ValueKind is JsonValueKind.String or JsonValueKind.Null;
+
+    private static bool IsOptionalBoolean(JsonElement data, string name)
+        => !data.TryGetProperty(name, out var value)
+           || value.ValueKind is JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null;
 
     private static Dictionary<string, ActivityResult> BuildFakeResults(Dictionary<string, string> mockVars)
     {

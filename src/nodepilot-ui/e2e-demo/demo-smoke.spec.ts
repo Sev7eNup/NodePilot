@@ -625,9 +625,8 @@ test.describe('published browser demo', () => {
       await fetch(`/api/workflows/${id}/publish`, { method: 'POST', body: JSON.stringify({ name: 'Tab A edit' }) });
     }, target.id);
 
-    // Opening and reloading a second tab publishes an identity event. Without the isolation
-    // guard every other tab answers it by clearing its caches and remounting, which discards
-    // unsaved editor state.
+    // Separate demo worlds keep their own data across tab initialization and reload.
+    // Their auth transport is isolated as well, including real login/logout boundaries.
     const tabB = await context.newPage();
     await tabB.goto('./workflows');
     await tabB.reload();

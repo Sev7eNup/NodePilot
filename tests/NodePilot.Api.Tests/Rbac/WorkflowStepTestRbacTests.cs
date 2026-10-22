@@ -63,12 +63,14 @@ public sealed class WorkflowStepTestRbacTests : IDisposable
             .Setup(x => x.TestStepAsync(
                 It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<StepTestAuthorizationSnapshot>(),
                 It.IsAny<Dictionary<string, string>?>(),
-                It.IsAny<JsonElement?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<JsonElement?>(), It.IsAny<CancellationToken>(), It.IsAny<JsonElement?>()))
             .ReturnsAsync(new StepTestResult(true, "ok", null, [], 1, null));
     }
 
-    [Fact]
-    public async Task ConfigOverride_AsFolderOperator_IsForbiddenWithoutExecutingStep()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Override_AsFolderOperator_IsForbiddenWithoutExecutingStep(bool completeStep)
     {
         var controller = NewController();
         var configOverride = JsonDocument.Parse("""{"script":"Write-Output pwned"}""").RootElement.Clone();
@@ -76,7 +78,7 @@ public sealed class WorkflowStepTestRbacTests : IDisposable
         var result = await controller.TestStep(
             _workflow.Id,
             "run-script",
-            new StepTestRequest(ConfigOverride: configOverride),
+            OverrideRequest(completeStep, configOverride),
             CancellationToken.None);
 
         var denied = result.Result.Should().BeAssignableTo<ObjectResult>().Subject;
@@ -84,7 +86,7 @@ public sealed class WorkflowStepTestRbacTests : IDisposable
         _stepTester.Verify(x => x.TestStepAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<StepTestAuthorizationSnapshot>(),
             It.IsAny<Dictionary<string, string>?>(),
-            It.IsAny<JsonElement?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<JsonElement?>(), It.IsAny<CancellationToken>(), It.IsAny<JsonElement?>()), Times.Never);
     }
 
     [Fact]
@@ -109,15 +111,19 @@ public sealed class WorkflowStepTestRbacTests : IDisposable
                 && snapshot.CheckedOutAt == _workflow.CheckedOutAt),
             null,
             null,
-            It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<CancellationToken>(), null), Times.Once);
     }
 
-    [Fact]
-    public async Task ConfigOverride_AsFolderEditorWithoutLock_ReturnsLockedWithoutExecutingStep()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Override_AsFolderEditorWithoutOwnLock_ReturnsLockedWithoutExecutingStep(bool completeStep, bool foreignLock)
     {
         _db.SharedFolderPermissions.Single().Role = SharedFolderRole.FolderEditor;
-        _workflow.CheckedOutByUserId = null;
-        _workflow.CheckedOutAt = null;
+        _workflow.CheckedOutByUserId = foreignLock ? Guid.NewGuid() : null;
+        _workflow.CheckedOutAt = foreignLock ? DateTime.UtcNow : null;
         await _db.SaveChangesAsync();
         var controller = NewController();
         var configOverride = JsonDocument.Parse("""{"seconds":0}""").RootElement.Clone();
@@ -125,7 +131,7 @@ public sealed class WorkflowStepTestRbacTests : IDisposable
         var result = await controller.TestStep(
             _workflow.Id,
             "delay",
-            new StepTestRequest(ConfigOverride: configOverride),
+            OverrideRequest(completeStep, configOverride),
             CancellationToken.None);
 
         var denied = result.Result.Should().BeAssignableTo<ObjectResult>().Subject;
@@ -133,11 +139,13 @@ public sealed class WorkflowStepTestRbacTests : IDisposable
         _stepTester.Verify(x => x.TestStepAsync(
             It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<StepTestAuthorizationSnapshot>(),
             It.IsAny<Dictionary<string, string>?>(),
-            It.IsAny<JsonElement?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<JsonElement?>(), It.IsAny<CancellationToken>(), It.IsAny<JsonElement?>()), Times.Never);
     }
 
-    [Fact]
-    public async Task ConfigOverride_AsLockOwningFolderEditor_ExecutesOverride()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Override_AsLockOwningFolderEditor_ExecutesOverride(bool completeStep)
     {
         _db.SharedFolderPermissions.Single().Role = SharedFolderRole.FolderEditor;
         await _db.SaveChangesAsync();
@@ -147,7 +155,7 @@ public sealed class WorkflowStepTestRbacTests : IDisposable
         var result = await controller.TestStep(
             _workflow.Id,
             "delay",
-            new StepTestRequest(ConfigOverride: configOverride),
+            OverrideRequest(completeStep, configOverride),
             CancellationToken.None);
 
         result.Result.Should().BeOfType<OkObjectResult>();
@@ -160,9 +168,30 @@ public sealed class WorkflowStepTestRbacTests : IDisposable
                 && snapshot.CheckedOutByUserId == _userId
                 && snapshot.CheckedOutAt == _workflow.CheckedOutAt),
             null,
-            It.Is<JsonElement?>(value => value.HasValue && value.Value.GetProperty("seconds").GetInt32() == 0),
-            It.IsAny<CancellationToken>()), Times.Once);
+            It.Is<JsonElement?>(value => completeStep ? !value.HasValue : value.HasValue && value.Value.GetProperty("seconds").GetInt32() == 0),
+            It.IsAny<CancellationToken>(),
+            It.Is<JsonElement?>(value => completeStep ? value.HasValue && value.Value.GetProperty("config").GetProperty("seconds").GetInt32() == 0 : !value.HasValue)), Times.Once);
     }
+
+    [Fact]
+    public async Task CombinedOverrides_ReturnsBadRequestWithoutExecutingStep()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _db.SharedFolderPermissions.Single().Role = SharedFolderRole.FolderEditor;
+        await _db.SaveChangesAsync(ct);
+        var config = JsonSerializer.SerializeToElement(new { seconds = 0 });
+        var request = OverrideRequest(true, config) with { ConfigOverride = config };
+
+        var result = await NewController().TestStep(_workflow.Id, "delay", request, ct);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+        _stepTester.VerifyNoOtherCalls();
+    }
+
+    private static StepTestRequest OverrideRequest(bool completeStep, JsonElement config)
+        => completeStep
+            ? new StepTestRequest(StepOverride: JsonSerializer.SerializeToElement(new { activityType = "delay", config }))
+            : new StepTestRequest(ConfigOverride: config);
 
     public void Dispose()
     {

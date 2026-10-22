@@ -177,8 +177,10 @@ export function EditorOverlays({
           nodes={nodes}
           edges={edges}
           workflowId={id}
-          setNodes={setNodes}
-          onClose={() => { setScriptEditNodeId(null); commitHistory('Edit script'); }}
+          onSave={(nodeId, script) => {
+            if (canWrite) handleQuickEditSave(nodeId, { script });
+          }}
+          onClose={() => setScriptEditNodeId(null)}
         />
       )}
 
@@ -386,13 +388,13 @@ function findNodes(nodes: Node[], input: string): Node[] {
  * including the streaming AI generation.
  */
 function ScriptDoubleClickEditor({
-  nodeId, nodes, edges, workflowId, setNodes, onClose,
+  nodeId, nodes, edges, workflowId, onSave, onClose,
 }: Readonly<{
   nodeId: string;
   nodes: Node[];
   edges: Edge[];
   workflowId: string | undefined;
-  setNodes: (updater: (nds: Node[]) => Node[]) => void;
+  onSave: (nodeId: string, script: string) => void;
   onClose: () => void;
 }>) {
   const node = nodes.find((n) => n.id === nodeId);
@@ -410,21 +412,18 @@ function ScriptDoubleClickEditor({
   const upstreamRefs = upstreamVars.map((v) => ({ expression: v.expression, label: v.label }));
   const outputVariableName = (data.outputVariable as string) || undefined;
 
-  // Live (possibly unsaved) config so the step-test reflects the editor, not the last-saved DB
-  // state.
+  // Capture the target and configuration together, including the uncommitted script buffer.
   const runStepTest = async (currentScript: string): Promise<StepTestResult> =>
-    api.post<StepTestResult>(`/workflows/${workflowId}/steps/${node.id}/test`, { configOverride: { ...config, script: currentScript } });
+    api.post<StepTestResult>(`/workflows/${workflowId}/steps/${node.id}/test`, {
+      stepOverride: { ...data, config: { ...config, script: currentScript } },
+    });
 
   return (
     <Suspense fallback={null}>
       <ScriptEditorDialog
         value={(config.script as string) ?? ''}
         onChange={(v) => {
-          setNodes((nds) => nds.map((n) => {
-            if (n.id !== nodeId) return n;
-            const cfg = (n.data as Record<string, unknown>).config as Record<string, unknown> ?? {};
-            return { ...n, data: { ...n.data, config: { ...cfg, script: v } } };
-          }));
+          if (v !== (config.script ?? '')) onSave(nodeId, v);
         }}
         onClose={onClose}
         availableVars={psVars}

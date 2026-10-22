@@ -184,7 +184,8 @@ public sealed record LlmTestProbeRequest(string? ProfileId, JsonElement Settings
 
 public sealed record StepTestRequest(
     Dictionary<string, string>? MockVariables = null,
-    JsonElement? ConfigOverride = null);
+    JsonElement? ConfigOverride = null,
+    JsonElement? StepOverride = null);
 
 public sealed record StepTestResponse(
     bool Success,

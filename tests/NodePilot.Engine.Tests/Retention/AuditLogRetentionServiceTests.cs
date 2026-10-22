@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
@@ -19,7 +20,7 @@ namespace NodePilot.Engine.Tests.Retention;
 public class AuditLogRetentionServiceTests
 {
     private static (NodePilotDbContext db, IServiceScopeFactory factory, SqliteConnection conn) CreateEnv(
-        IInterceptor? scopeInterceptor = null)
+        IInterceptor? scopeInterceptor = null, IInterceptor? verificationInterceptor = null)
     {
         var conn = new SqliteConnection("DataSource=:memory:");
         conn.Open();
@@ -28,6 +29,7 @@ public class AuditLogRetentionServiceTests
         {
             o.UseSqlite(conn);
             if (scopeInterceptor is not null) o.AddInterceptors(scopeInterceptor);
+            if (verificationInterceptor is not null) o.AddInterceptors(verificationInterceptor);
         });
         var sp = services.BuildServiceProvider();
 
@@ -44,8 +46,10 @@ public class AuditLogRetentionServiceTests
     /// Deleted state — i.e. when the retention service is about to commit its purge.
     /// Inserts and unrelated mutations pass through untouched.
     /// </summary>
-    private sealed class FailOnAuditDeleteInterceptor : SaveChangesInterceptor
+    private sealed class FailOnAuditDeleteInterceptor(Action? onFailure = null) : SaveChangesInterceptor
     {
+        public bool Enabled { get; set; } = true;
+
         public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
             DbContextEventData eventData,
             InterceptionResult<int> result,
@@ -53,10 +57,127 @@ public class AuditLogRetentionServiceTests
         {
             var deletingAudit = eventData.Context?.ChangeTracker.Entries()
                 .Any(e => e.State == EntityState.Deleted && e.Entity is AuditLogEntry) == true;
-            if (deletingAudit)
+            if (deletingAudit && Enabled)
+            {
+                onFailure?.Invoke();
                 throw new DbUpdateException("simulated DB failure during audit log delete",
                     new Exception("forced by FailOnAuditDeleteInterceptor"));
+            }
             return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class UnavailableReadInterceptor : DbCommandInterceptor
+    {
+        public bool Enabled { get; set; }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+            => Enabled
+                ? throw new InvalidOperationException("simulated unavailable database during verification")
+                : base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+    }
+
+    private sealed class FailAfterCommitInterceptor : SaveChangesInterceptor
+    {
+        public override ValueTask<int> SavedChangesAsync(
+            SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default)
+            => throw new DbUpdateException("simulated lost acknowledgement after commit");
+    }
+
+    [Fact]
+    public async Task PurgeOnceAsync_DeleteCommittedButAcknowledgementFails_PreservesArchiveAcrossRetry()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var archiveDir = Path.Combine(Path.GetTempPath(), $"audit-test-{Guid.NewGuid():N}");
+        var (db, factory, conn) = CreateEnv(scopeInterceptor: new FailAfterCommitInterceptor());
+        try
+        {
+            var entry = new AuditLogEntry
+            {
+                Id = Guid.NewGuid(), Action = "COMMITTED",
+                Timestamp = DateTime.UtcNow.AddDays(-400),
+            };
+            db.AuditLog.Add(entry);
+            await db.SaveChangesAsync(ct);
+            var opts = new RetentionOptions();
+            opts.AuditLog.ArchivePath = archiveDir;
+            var svc = new AuditLogRetentionService(factory, new StaticOptionsMonitor<RetentionOptions>(opts),
+                new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+                NullLogger<AuditLogRetentionService>.Instance, TestDatabaseAvailability.Available);
+
+            await Assert.ThrowsAsync<DbUpdateException>(() => svc.PurgeOnceAsync(365, 100, ct));
+
+            (await db.AuditLog.CountAsync(ct)).Should().Be(0, "the delete committed before its acknowledgement failed");
+            var archive = Directory.GetFiles(archiveDir, "audit-*.ndjson.gz").Should().ContainSingle().Subject;
+            File.Exists(archive + ".sha256").Should().BeTrue();
+            using (var gzip = new GZipStream(File.OpenRead(archive), CompressionMode.Decompress))
+            using (var reader = new StreamReader(gzip, Encoding.UTF8))
+                (await reader.ReadToEndAsync(ct)).Should().Contain(entry.Id.ToString());
+            using (var stream = File.OpenRead(archive))
+            {
+                var checksum = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct)).ToLowerInvariant();
+                (await File.ReadAllTextAsync(archive + ".sha256", ct)).Should().StartWith(checksum);
+            }
+
+            (await svc.PurgeOnceAsync(365, 100, ct)).Should().Be(0);
+            Directory.GetFiles(archiveDir, "audit-*.ndjson.gz").Should().Equal(archive);
+        }
+        finally
+        {
+            db.Dispose();
+            conn.Dispose();
+            if (Directory.Exists(archiveDir)) Directory.Delete(archiveDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PurgeOnceAsync_DeleteOutcomeCannotBeVerified_PreservesArchiveAndStableIdsOnRetry()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var archiveDir = Path.Combine(Path.GetTempPath(), $"audit-test-{Guid.NewGuid():N}");
+        var reads = new UnavailableReadInterceptor();
+        var deletes = new FailOnAuditDeleteInterceptor(() => reads.Enabled = true);
+        var (db, factory, conn) = CreateEnv(deletes, reads);
+        try
+        {
+            var entry = new AuditLogEntry
+            {
+                Id = Guid.NewGuid(), Action = "UNCERTAIN",
+                Timestamp = DateTime.UtcNow.AddDays(-400),
+            };
+            db.AuditLog.Add(entry);
+            await db.SaveChangesAsync(ct);
+            var opts = new RetentionOptions();
+            opts.AuditLog.ArchivePath = archiveDir;
+            var svc = new AuditLogRetentionService(factory, new StaticOptionsMonitor<RetentionOptions>(opts),
+                new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+                NullLogger<AuditLogRetentionService>.Instance, TestDatabaseAvailability.Available);
+
+            await Assert.ThrowsAsync<DbUpdateException>(() => svc.PurgeOnceAsync(365, 100, ct));
+            (await db.AuditLog.CountAsync(ct)).Should().Be(1);
+            Directory.GetFiles(archiveDir, "audit-*.ndjson.gz").Should().ContainSingle();
+
+            reads.Enabled = false;
+            deletes.Enabled = false;
+            (await svc.PurgeOnceAsync(365, 100, ct)).Should().Be(1);
+            (await db.AuditLog.CountAsync(ct)).Should().Be(0);
+            var archives = Directory.GetFiles(archiveDir, "audit-*.ndjson.gz");
+            archives.Should().HaveCount(2, "unverified archives are retained even when a later retry makes a duplicate");
+            foreach (var archive in archives)
+            {
+                File.Exists(archive + ".sha256").Should().BeTrue();
+                using var gzip = new GZipStream(File.OpenRead(archive), CompressionMode.Decompress);
+                using var reader = new StreamReader(gzip, Encoding.UTF8);
+                (await reader.ReadToEndAsync(ct)).Should().Contain(entry.Id.ToString(), "stable audit ids allow deduplication");
+            }
+        }
+        finally
+        {
+            db.Dispose();
+            conn.Dispose();
+            if (Directory.Exists(archiveDir)) Directory.Delete(archiveDir, recursive: true);
         }
     }
 

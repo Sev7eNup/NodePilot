@@ -25,9 +25,8 @@ import { mountDemoBanner } from './ui/banner';
 import { mountTour } from './ui/tour';
 
 function bootstrap(): void {
-  // Several tabs of one browser must not disturb each other. Opening or reloading a tab
-  // publishes an identity event, and every other tab answers it by clearing caches and
-  // remounting, which throws away unsaved editor state.
+  // Demo tabs own independent users and data. Auth changes in one world must not clear
+  // another world's caches or drafts through the product's shared-session transport.
   isolateAuthBoundaryTransport();
 
   configureWorld(() => buildWorld());
