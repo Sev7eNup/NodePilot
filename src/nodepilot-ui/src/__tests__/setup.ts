@@ -125,8 +125,8 @@ Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
   value: vi.fn(() => canvasMeasureContext),
 });
 
-// `@tanstack/react-virtual` measures the scroll container via getBoundingClientRect /
-// offsetHeight to decide which items are in the viewport. jsdom returns 0 for both,
+// `@tanstack/react-virtual` measures the scroll container via clientHeight/clientWidth.
+// jsdom returns zero for layout dimensions,
 // which means a virtualised list renders nothing and assertions that look for items
 // fail spuriously. We give the prototype sensible non-zero defaults so virtualised
 // components produce DOM in tests. Real measurements stay correct in the browser.
@@ -135,6 +135,12 @@ Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
 });
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
   configurable: true, get() { return 600; },
+});
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+  configurable: true, get() { return this.offsetHeight; },
+});
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+  configurable: true, get() { return this.offsetWidth; },
 });
 const _origGetRect = HTMLElement.prototype.getBoundingClientRect;
 HTMLElement.prototype.getBoundingClientRect = function () {
