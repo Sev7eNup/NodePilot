@@ -569,7 +569,7 @@ The updater:
 - matches every framework the new build names against the runtimes the host reports and aborts **before anything is changed** when one of them is short — roll-forward never goes backwards, so an older patch on the host means the service would not start at all,
 - backs up the existing binaries,
 - waits up to 30 seconds after stopping the service for processes from the installation directory to exit and then terminates any that remain; only if that does not help does the updater abort with the process name and PID **before the first file deletion** (a stopped service is not enough: orphaned workers keep their DLLs mapped),
-- preserves the database, the service account, the production configuration and the complete Switcher configuration (server URL, SCOrch endpoints, allowlists, profiles; an invalid file aborts the update before anything is replaced),
+- preserves the database, the service account, the production configuration and the complete Switcher configuration (server URL, SCOrch endpoints, allowlists, profiles; the file is carried across byte for byte and its content never aborts the update — when it is not strict JSON for Windows PowerShell, the server URL is left unchecked and the updater prints a warning),
 - restarts the service,
 - checks the health endpoint on the port from the installed configuration (`-HttpsPort` is only needed to override it),
 - restores the previous binaries on a failed health check and leaves the service in the state it was in before the update,

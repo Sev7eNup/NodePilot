@@ -185,8 +185,8 @@ Each activity type has its own config component (`properties/activities/`, regis
 | `delay` | **seconds** (number, minimum 1) |
 | `generateText` | **random text generator** — **mode** (alphanumeric/alphabetic/numeric/hex/guid/password/custom), **length** (except guid), **customCharset** (for custom), **excludeAmbiguous** |
 | `llmQuery` | **LLM query** — an OpenAI-compatible endpoint (prompt→text; chat completions or the responses API, depending on the `baseUrl` path). **prompt** (required, supports `{{templates}}`), **systemPrompt**, **jsonMode**; override section: **baseUrl**, **model**, **apiKey** (secret), **maxTokens**, **temperature** (0–2), timeout field automatic. Empty → the active LLM profile; needs `Llm:Enabled=true` plus a resolvable active profile |
-| `xmlQuery` | **source** (inline/file), content (XML code field) or path, **xpath**, **resultMode** (single/all), **namespaces** (JSON mapping) |
-| `jsonQuery` | **source** (inline/file), content (JSON code field) or path, **jsonPath** plus a JSONPath picker, **resultMode** (single/all) |
+| `xmlQuery` | an execution hint (with a target machine the query runs there via WinRM, otherwise on the NodePilot server), **source** (inline/file), content (XML code field) or path, **xpath**, **resultMode** (single/all), **namespaces** (JSON mapping) |
+| `jsonQuery` | the same execution hint, **source** (inline/file), content (JSON code field) or path, **jsonPath** plus a JSONPath picker, **resultMode** (single/all) |
 | `log` | **level** (info/warning/error), **message** (multiline) |
 | `junction` | **mode** (waitAll/waitAny/waitNofM), **requiredCount** (for waitNofM) — the only Activity allowed to receive multiple incoming edges |
 | `forEach` | **items** (multiline), **itemsFormat** (auto/json/lines), **childWorkflowNameOrId** plus picker, **itemParameterName** (default "item"), **indexParameterName** (default "index"), **maxParallelism** (0–64), **timeoutSecondsPerItem**, **continueOnError**, additional **parameters** (ParameterTable) |
