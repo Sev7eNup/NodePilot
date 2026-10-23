@@ -12,12 +12,7 @@ exhaustive.
 
 ## [Unreleased]
 
-Planned version: **1.5.2**.
-
-### Changed
-
-- Desktop runtime updated to Electron 44.9.0 (embedded Node 24.22.0), with matching
-  manifest, lockfile and runtime contract pins.
+## [1.5.2] - 2026-10-24
 
 ### Added
 
@@ -52,8 +47,9 @@ Planned version: **1.5.2**.
   context menu.
 - The server setup wizard was reworked: readiness page, certificate guidance and host defaults. The
   release acceptance checks for the setup are reproducible scripts under `scripts/release-lab/`.
-- The desktop app moves to Electron 44.7.0; minor and patch updates of the UI, documentation site and
-  desktop dependencies.
+- The desktop app moves to Electron 44.9.0 (embedded Node 24.22.0) with matching manifest, lockfile and
+  runtime contract pins. Minor and patch updates of the NuGet packages, the UI, the documentation site
+  and the desktop dependencies; the coordinated runtime pins stay as they were.
 - German website pages are no longer redirected to English by the browser language, only by a language
   the visitor saved with the switch.
 
@@ -67,6 +63,26 @@ Planned version: **1.5.2**.
   and a warning replaces the abort; the server URL is only filled in when the file parses.
 - The server setup's "Next" on the readiness page refuses to continue while a fix is still ticked
   instead of dropping it silently (#536).
+- Step test: the test runs the step as it is in the editor, including a changed target machine, instead of
+  the machine it had before (#587). A step whose target machine no longer exists is refused instead of
+  running on the NodePilot server (#588).
+- The temporary-file cleanup example keeps the originals when archiving fails (#589).
+- Audit log retention no longer deletes both the database rows and their archive when the outcome of the
+  delete is unknown. The archive is only removed after a read confirms that every archived row is still in
+  the database; otherwise it is kept, and a retry may write duplicate entries, which share their audit
+  entry id (#590).
+- Designer: opening a second tab no longer discards unsaved work in the first one (#591), "Save & Close"
+  in the script editor persists the script (#592), and Enter on "Export PNG" in the command palette no
+  longer publishes the workflow (#593).
+- A `waitAny` cancellation no longer skips another join that is ready, and its downstream work (#594).
+  Valid graphs no longer trigger exponential preprocessing that ignores cancellation (#575).
+- The copied-secret masking also covers credential headers with Windows line endings.
+
+### Security
+
+- `dompurify` in the UI moves to 3.4.17, which closes three critical advisories in 3.4.16 and earlier
+  (`SAFE_FOR_TEMPLATES` bypass in shadow roots, `IN_PLACE` hook leaving event handlers armed, SMIL `href`
+  guard skipped for XHTML).
 
 ## [1.5.1] - 2026-10-16
 
@@ -2049,7 +2065,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.5.1...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.5.2...main
+[1.5.2]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.2
 [1.5.1]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.1
 [1.5.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.0
 [1.4.4]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.4
