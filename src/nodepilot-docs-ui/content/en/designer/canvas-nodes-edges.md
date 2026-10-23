@@ -38,7 +38,7 @@ The most important node types:
 - Select several nodes with `Ctrl` or `Shift`.
 - `Ctrl+D` duplicates the selection.
 - `Delete` or `Backspace` deletes the selection.
-- `Ctrl+C` puts the selected nodes and the edges between them on the clipboard as workflow JSON, for example to look at in VS Code. A selected group brings its nodes along. Configuration values come along, except the values of secret keys (such as `password`, `apiKey`, `secret`, `connectionString`, `Authorization`), which are written as `***` so they do not end up on the clipboard. Set them again after pasting.
+- `Ctrl+C` puts the selected nodes and the edges between them on the clipboard as workflow JSON, for example to look at in VS Code. A selected group brings its nodes along. Configuration values come along, except secrets, which are written as `***` so they do not end up on the clipboard: values of secret keys (such as `password`, `apiKey`, `secret`, `connectionString`, `Authorization`), values that look like a credential (a credential header line, a known token format or private key, a quoted `password="…"`-style assignment), and literal request-header values other than `Accept`, `Content-Type` and `User-Agent`. A header value that is only a `{{…}}` reference, optionally after a scheme such as `Bearer`, stays readable. Set masked values again after pasting.
 - `Ctrl+V` inserts such JSON, also from another workflow or a text editor. The nodes get new IDs, and conditions and references between them are updated. A copy from the designer lands offset next to its original, JSON from elsewhere in the middle of the visible canvas. Invalid JSON is reported.
 - With several nodes selected, shared values such as machine, timeout or enabled state can be changed together.
 

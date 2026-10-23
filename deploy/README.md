@@ -473,7 +473,7 @@ After a successful install the console shows:
 > token into the sign-in form by hand. The seed wins: if it brings users with it, no token is issued at
 > all. A wrong seed makes the service **not** start, instead of leaving behind an apparently
 > provisioned but actually empty instance. In full in
-> [`server/README.md`](server/README.md#turnkey-rollout-unattended-without-typing-a-token).
+> [`server/README.md`](server/README.md#turnkey-rollout).
 
 ## HAProxy in front of NodePilot
 
