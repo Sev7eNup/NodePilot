@@ -47,7 +47,7 @@ exhaustive.
   context menu.
 - The server setup wizard was reworked: readiness page, certificate guidance and host defaults. The
   release acceptance checks for the setup are reproducible scripts under `scripts/release-lab/`.
-- The desktop app moves to Electron 44.9.0 (embedded Node 24.22.0) with matching manifest, lockfile and
+- The desktop app moves to Electron 44.9.3 (embedded Node 24.22.0) with matching manifest, lockfile and
   runtime contract pins. Minor and patch updates of the NuGet packages, the UI, the documentation site
   and the desktop dependencies; the coordinated runtime pins stay as they were.
 - German website pages are no longer redirected to English by the browser language, only by a language
@@ -80,6 +80,11 @@ exhaustive.
 
 ### Security
 
+- **Electron 44.9.3.** The desktop runtime moves from 44.9.0 to 44.9.3, which carries the mitigation for
+  the compromised eMudhra intermediate certificates (GHSA-jr5w-w6x2-84p9).
+- `zod` moves to 4.6.7 in the UI and the documentation site (GHSA-mrhx-c7xc-m3w5, memory exhaustion on
+  oversized collections). It is only a development dependency through the ESLint React hooks plugin and
+  is not part of the shipped bundles; the CI audit step rejects it all the same.
 - `dompurify` in the UI moves to 3.4.17, which closes three critical advisories in 3.4.16 and earlier
   (`SAFE_FOR_TEMPLATES` bypass in shadow roots, `IN_PLACE` hook leaving event handlers armed, SMIL `href`
   guard skipped for XHTML).
