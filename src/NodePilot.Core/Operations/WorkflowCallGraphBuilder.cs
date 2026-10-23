@@ -219,8 +219,9 @@ public static class WorkflowCallGraphBuilder
 
         if (byName.TryGetValue(raw, out var matches))
         {
-            return matches.Count == 1
-                ? (WorkflowRefStatus.Resolved, matches[0].Id)
+            var preferred = WorkflowIdentityResolution.Matches(matches, raw);
+            return preferred.Length == 1
+                ? (WorkflowRefStatus.Resolved, preferred[0].Id)
                 : (WorkflowRefStatus.Ambiguous, null);
         }
 

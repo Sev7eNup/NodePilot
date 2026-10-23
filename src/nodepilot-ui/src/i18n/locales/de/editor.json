@@ -1,4 +1,5 @@
 {
+  "dependencyStepMissing": "Die Fundstelle wurde geändert: Dieser Schritt ist im aktuellen Workflow nicht mehr vorhanden.",
   "newWorkflow": "Neuer Workflow",
   "untitled": "Ohne Titel",
   "save": "Speichern",
@@ -53,6 +54,7 @@
   "redo": "Wiederherstellen",
   "backTo": "Zurück zu: {{name}}",
   "backToWorkflowList": "Zurück zur Workflow-Liste",
+  "backToDependencies": "Zurück zu Abhängigkeiten",
   "workflowNamePlaceholder": "Workflow-Name…",
   "undoTooltip": "Rückgängig (Ctrl+Z)",
   "redoTooltip": "Wiederherstellen (Ctrl+Y / Ctrl+Shift+Z)",

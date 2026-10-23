@@ -8,6 +8,7 @@ import {
 } from '@carbon/icons-react';
 import { useColumnResize } from '../hooks/useColumnResize';
 import { api } from '../api/client';
+import { DependencyLink } from '../components/dependencies/DependencyLink';
 import { ModalShell } from '../components/common/ModalShell';
 import { MobileCardList } from '../components/common/MobileCardList';
 import type { ManagedMachine, Credential } from '../types/api';
@@ -297,6 +298,7 @@ export function MachinesPage() {
           renderTitle={(m) => (
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm font-semibold text-on-surface truncate">{m.name}</span>
+              <DependencyLink kind="machine" id={m.id} />
               {m.useSsl && (
                 <span
                   className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 rounded-full px-1.5 py-0.5 shrink-0"
@@ -480,6 +482,7 @@ export function MachinesPage() {
                     <td className="px-4 py-2 overflow-hidden">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-sm font-semibold text-on-surface-variant truncate">{m.name}</span>
+                        <DependencyLink kind="machine" id={m.id} />
                         {m.useSsl && (
                           <span
                             className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 rounded-full px-1.5 py-0.5 shrink-0"

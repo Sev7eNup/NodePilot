@@ -116,7 +116,14 @@ Large free-text fields (stdout/stderr, return data, audit details, diagnostics) 
 
 ## Tool catalog
 
-100 default tools across 11 groups, plus 13 gated destructive tools (113 total). (Roles refer to the
+The dependency group adds three read-only tools: `list_dependency_objects`, `get_dependencies`
+and `get_dependency_evidence`. They expose the same permission-filtered static reports as
+the UI, including per-object usage and problem counts, the `problems`/`unused` filters,
+direct/indirect relationships, possible agent calls, evidence, bounded
+analysis and revision-bound pagination. See [Dependencies](dependencies.md) for the scope
+and CLI/API mapping. They never return credential values or script bodies.
+
+103 default tools across 12 groups, plus 13 gated destructive tools (116 total). (Roles refer to the
 authenticated user.)
 
 ### Discovery

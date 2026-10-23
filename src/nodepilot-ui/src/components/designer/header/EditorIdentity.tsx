@@ -18,24 +18,26 @@ export function EditorIdentity({ aiChatOpen, onToggleAiChat }: Readonly<{
   const location = useLocation();
   const routerNavigate = useNavigate();
   const fromWorkflow = (location.state as { fromWorkflow?: { id: string; name: string } } | null)?.fromWorkflow;
+  const fromDependencies = (location.state as { fromDependencies?: boolean } | null)?.fromDependencies === true;
   const designerMode = useDesignStore((s) => s.designerMode);
   const setDesignerMode = useDesignStore((s) => s.setDesignerMode);
   const llmUsable = useAiCapabilities().data?.llm === true;
 
   const handleBack = () => {
-    // Workflow-to-workflow entries carry fromWorkflow state and can safely use the browser
-    // stack. Direct editor entries fall back to the workflow list to match the button label.
-    if (fromWorkflow) routerNavigate(-1);
+    // Contextual entries return to the original history entry, including its query and view state.
+    if (fromWorkflow || fromDependencies) routerNavigate(-1);
     else routerNavigate('/workflows');
   };
+  const backLabel = fromWorkflow ? t('editor:backTo', { name: fromWorkflow.name })
+    : fromDependencies ? t('editor:backToDependencies') : t('editor:backToWorkflowList');
 
   return (
     <div className="flex items-center gap-3 min-w-0 shrink-0">
       <button
         onClick={handleBack}
         className="text-on-surface-variant hover:text-on-surface transition-colors shrink-0"
-        title={fromWorkflow ? t('editor:backTo', { name: fromWorkflow.name, defaultValue: `Zurück zu: ${fromWorkflow.name}` }) : t('editor:backToWorkflowList', { defaultValue: 'Zurück zur Workflow-Liste' })}
-        aria-label={fromWorkflow ? t('editor:backTo', { name: fromWorkflow.name, defaultValue: `Zurück zu ${fromWorkflow.name}` }) : t('editor:backToWorkflowList', { defaultValue: 'Zurück zur Workflow-Liste' })}
+        title={backLabel}
+        aria-label={backLabel}
       >
         <ArrowLeft size={20} />
       </button>

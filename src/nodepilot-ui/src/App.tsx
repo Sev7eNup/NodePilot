@@ -30,6 +30,7 @@ const ExecutionsPage = lazy(() => import('./pages/ExecutionsPage').then(m => ({ 
 const OperationsPage = lazy(() => import('./pages/OperationsPage').then(m => ({ default: m.OperationsPage })));
 const AiChatPage = lazy(() => import('./pages/AiChatPage').then(m => ({ default: m.AiChatPage })));
 const MachinesPage = lazy(() => import('./pages/MachinesPage').then(m => ({ default: m.MachinesPage })));
+const DependenciesPage = lazy(() => import('./pages/DependenciesPage').then(m => ({ default: m.DependenciesPage })));
 const GlobalVariablesPage = lazy(() => import('./pages/GlobalVariablesPage').then(m => ({ default: m.GlobalVariablesPage })));
 const CustomActivitiesPage = lazy(() => import('./pages/CustomActivitiesPage').then(m => ({ default: m.CustomActivitiesPage })));
 const MaintenanceWindowsPage = lazy(() => import('./pages/MaintenanceWindowsPage').then(m => ({ default: m.MaintenanceWindowsPage })));
@@ -113,6 +114,7 @@ export const router = createBrowserRouter([
       { path: '/workflows/:id', element: <WorkflowEditorPage /> },
       { path: '/executions', element: <ExecutionsPage /> },
       { path: '/operations', element: <OperationsPage /> },
+      { path: '/dependencies', element: <DependenciesPage /> },
       { path: '/ai-chat', element: <AiChatPage /> },
       { path: '/machines', element: <MachinesPage /> },
       { path: '/global-variables', element: <GlobalVariablesPage /> },
