@@ -350,7 +350,7 @@
       "forceClose": "Force close running apps",
       "message": "Message (optional)",
       "messagePlaceholder": "Scheduled maintenance — please save your work",
-      "delayHint": "On targets running NodePilot itself, a delay greater than 0 is advisable so the step can return cleanly before the OS shuts down.",
+      "delayHint": "A delay greater than 0 requires ‘Force close running apps’. To wait without forcing apps closed, add a separate Delay step before this activity and set this delay to 0.",
       "forceCloseHint": "Close open applications without asking (<code>/f</code>)"
     },
     "waitForCondition": {

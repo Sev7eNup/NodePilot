@@ -350,7 +350,7 @@
       "forceClose": "Laufende Apps zwangsweise schließen",
       "message": "Nachricht (optional)",
       "messagePlaceholder": "Geplante Wartung — bitte speichern Sie Ihre Arbeit",
-      "delayHint": "Bei Targets, auf denen NodePilot selbst läuft, empfiehlt sich ein Delay größer 0, damit der Step sauber zurückkehren kann, bevor das OS herunterfährt.",
+      "delayHint": "Eine Verzögerung größer 0 erfordert „Laufende Apps zwangsweise schließen“. Zum Warten ohne erzwungenes Schließen einen separaten Delay-Schritt vor diese Aktivität setzen und diese Verzögerung auf 0 stellen.",
       "forceCloseHint": "Offene Anwendungen ohne Rückfrage schließen (<code>/f</code>)"
     },
     "waitForCondition": {

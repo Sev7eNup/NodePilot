@@ -537,11 +537,12 @@ public sealed class BuildScriptTests : IDisposable
     }
 
     [Fact]
-    public async Task PowerManagement_ForceFalse_OmitsForceFlag()
+    public async Task PowerManagement_ForceFalseWithDelay_RejectsImplicitForce()
     {
         var config = ParseConfig("{\"action\":\"shutdown\",\"force\":false,\"delaySeconds\":30}");
-        var script = await ExecuteAndCaptureScript(CreatePowerMgmt(), config);
-        ShutdownInvocation(script).Should().Be("& shutdown.exe /s /t 30");
+        var act = () => ExecuteAndCaptureScript(CreatePowerMgmt(), config);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*delaySeconds must be 0 when force is false*");
     }
 
     [Fact]

@@ -265,8 +265,8 @@
       "description": "Shut down, restart or otherwise power-control a machine (remote).",
       "configKeys": [
         { "key": "action", "type": "string", "required": true, "description": "shutdown | restart | logoff | abort | hibernate." },
-        { "key": "delaySeconds", "type": "number", "required": false, "description": "Delay before the action." },
-        { "key": "force", "type": "boolean", "required": false, "description": "Force running applications to close." },
+        { "key": "delaySeconds", "type": "number", "required": false, "description": "Shutdown/restart countdown in seconds, default 0. Positive values require force=true. To wait with force=false, use a separate Delay step and set delaySeconds=0." },
+        { "key": "force", "type": "boolean", "required": false, "description": "Force running applications to close, default true. When false, delaySeconds must be 0." },
         { "key": "message", "type": "string", "required": false, "description": "Message shown to logged-on users." }
       ]
     },

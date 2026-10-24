@@ -13,7 +13,7 @@ namespace NodePilot.Engine.Activities;
 ///
 /// Config:
 ///   action        string, required — "shutdown" | "restart" | "logoff" | "abort" | "hibernate"
-///   delaySeconds  int, default 0   — /t N countdown before execution (shutdown/restart only)
+///   delaySeconds  int, default 0   — /t N countdown (shutdown/restart only; positive values require force)
 ///   force         bool, default true — /f, closes running apps without prompting
 ///   message       optional shutdown or restart dialog comment
 ///
@@ -112,6 +112,13 @@ public class PowerManagementActivity : BaseRemoteActivity
 
     private static string BuildShutdownInvocation(string opFlag, int delay, bool force, string? message)
     {
+        // Windows implicitly enables /f whenever /t is positive.
+        if (delay > 0 && !force)
+            throw new InvalidOperationException(
+                "Power Management: delaySeconds must be 0 when force is false. " +
+                "Windows forces applications closed with a positive shutdown delay. " +
+                "Use a separate Delay step before this activity to wait without forcing applications closed.");
+
         // shutdown.exe flags are bare tokens in PowerShell — the PS parser does not try to
         // resolve them as cmdlets because of the `&` call operator. Only the user-supplied
         // message needs PowerShellQuoter because it can contain apostrophes.
