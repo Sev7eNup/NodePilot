@@ -74,7 +74,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         new(_atRest, NullLogger<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>.Instance);
 
     private async Task<byte[]> ExportAsync(NodePilotDbContext db, List<string> sections)
-        => (await new BackupService(Parts(db)).ExportAsync(sections, Passphrase, "admin", CancellationToken.None)).Content;
+        => (await new BackupService(Parts(db), db).ExportAsync(sections, Passphrase, "admin", CancellationToken.None)).Content;
 
     private static byte[] MutatePayload(byte[] backup, Action<JsonObject> mutate)
     {
@@ -208,7 +208,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         sourceSettings.MutateAndWrite(root => root["Smtp"] = new JsonObject { ["Port"] = 2525 });
         var backup = (await new BackupService(Parts(src)
             .Where(part => part is not SettingsBackupPart)
-            .Append(new SettingsBackupPart(sourceSettings, _atRest)))
+            .Append(new SettingsBackupPart(sourceSettings, _atRest)), src)
             .ExportAsync([BackupSections.Workflows, BackupSections.Settings], Passphrase, "admin", ct)).Content;
 
         using var dst = TestDbFactory.Create();
@@ -1324,7 +1324,8 @@ public sealed class BackupRestoreServiceTests : IDisposable
         // Backup carries only a Smtp override.
         var srcWriter = new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance);
         srcWriter.MutateAndWrite(root => root["Smtp"] = new JsonObject { ["Port"] = 2525 });
-        var backup = (await new BackupService([new SettingsBackupPart(srcWriter, _atRest)])
+        using var src = TestDbFactory.Create();
+        var backup = (await new BackupService([new SettingsBackupPart(srcWriter, _atRest)], src)
             .ExportAsync([BackupSections.Settings], Passphrase, "admin", CancellationToken.None)).Content;
 
         // Target has an extra override ("Foo") that is NOT in the backup.

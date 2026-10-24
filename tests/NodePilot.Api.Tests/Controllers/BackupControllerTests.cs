@@ -54,7 +54,7 @@ public sealed class BackupControllerTests : IDisposable
             new CustomActivityBackupPart(new CustomActivityDefinitionStore(_db)),
             new WorkflowBackupPart(_db),
             new SettingsBackupPart(overrides, _atRest),
-        ]);
+        ], _db);
         _restore = new BackupRestoreService(
             _db, _atRest, overrides, NullLogger<BackupRestoreService>.Instance,
             new NodePilot.Api.Services.WorkflowVersionDefinitionProtector(

@@ -91,7 +91,7 @@ public sealed class CustomActivityBackupTests : IDisposable
                 _atRest, NullLogger<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>.Instance));
 
     private async Task<byte[]> ExportAsync(NodePilotDbContext db) =>
-        (await new BackupService(Parts(db)).ExportAsync(Sections, Passphrase, "admin", CancellationToken.None)).Content;
+        (await new BackupService(Parts(db), db).ExportAsync(Sections, Passphrase, "admin", CancellationToken.None)).Content;
 
     private static async Task<CustomActivityDefinition> SeedAsync(NodePilotDbContext db, bool enabled)
     {
@@ -196,7 +196,7 @@ public sealed class CustomActivityBackupTests : IDisposable
         var definition = await SeedAsync(src, enabled: true);
         SeedWorkflow(src, definition.Id);
 
-        var result = await new BackupService(Parts(src)).ExportAsync(
+        var result = await new BackupService(Parts(src), src).ExportAsync(
             [BackupSections.Workflows], Passphrase, "admin", CancellationToken.None);
 
         result.AutoIncludedSections.Should().Contain(BackupSections.CustomActivities);
@@ -228,7 +228,7 @@ public sealed class CustomActivityBackupTests : IDisposable
     {
         using var src = TestDbFactory.Create();
         await SeedAsync(src, enabled: true);
-        var current = await new BackupService(Parts(src)).ExportAsync(
+        var current = await new BackupService(Parts(src), src).ExportAsync(
             [BackupSections.CustomActivities], Passphrase, "admin", CancellationToken.None);
         var envelope = (JsonObject)JsonNode.Parse(Encoding.UTF8.GetString(current.Content))!;
         envelope["schema"] = BackupSections.SchemaV2;
