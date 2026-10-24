@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/images/logo.png" alt="NodePilot logo" width="180">
+
 # NodePilot
 
 **Open-source Windows and PowerShell workflow automation. Self-hosted, agentless execution over WinRM, with an import path for System Center Orchestrator runbooks.**
