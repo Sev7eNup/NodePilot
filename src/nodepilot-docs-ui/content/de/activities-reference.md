@@ -172,6 +172,8 @@ Das Timeout begrenzt das Warten auf den laufenden Prozess. Nach seinem Ende wird
 - **Config:** `action` (shutdown/restart/logoff/abort/hibernate), `delaySeconds`, `force`, `message`
 - **Outputs:** —
 
+Bei Shutdown und Restart ist `force` standardmäßig `true`. Mit `force=false` muss `delaySeconds` auf `0` stehen; ein positiver Wert wird vor der Ausführung abgelehnt. [Windows erzwingt bei einem positiven Shutdown-Timer das Schließen von Apps](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/shutdown). Zum Warten ohne erzwungenes Schließen eine separate `delay`-Aktivität vor diesen Schritt setzen und `delaySeconds=0` beibehalten.
+
 ## `scheduledTask`
 
 **Remote.** Erfordert meist Admin auf dem Ziel.

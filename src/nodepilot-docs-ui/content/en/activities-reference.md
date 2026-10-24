@@ -167,6 +167,8 @@ The timeout bounds the wait on the running process. After it exits, reading cont
 - **Config:** `action` (shutdown/restart/logoff/abort/hibernate), `delaySeconds`, `force`, `message`
 - **Outputs:** —
 
+For shutdown and restart, `force` defaults to `true`. With `force=false`, `delaySeconds` must be `0`; a positive value is rejected before execution. [Windows implicitly forces apps closed when its shutdown timer is positive](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/shutdown). To wait without forcing apps closed, add a separate `delay` activity before this step and keep `delaySeconds=0`.
+
 ## `scheduledTask`
 
 **Remote.** Usually requires admin rights on the target.

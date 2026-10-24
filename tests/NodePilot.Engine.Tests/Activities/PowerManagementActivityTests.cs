@@ -93,6 +93,24 @@ public sealed class PowerManagementActivityTests : IDisposable
 
     // ---- Error cases ----
 
+    [Theory]
+    [InlineData("shutdown", 1)]
+    [InlineData("shutdown", 30)]
+    [InlineData("restart", 1)]
+    [InlineData("restart", 30)]
+    [InlineData("Restart", 30)]
+    public async Task PositiveDelayWithoutForce_RejectsBeforeExecutingCommand(string action, int delaySeconds)
+    {
+        var act = () => CreateActivity().ExecuteAsync(Ctx(),
+            JsonSerializer.SerializeToElement(new { action, delaySeconds, force = false }), CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*delaySeconds must be 0 when force is false*");
+        _capturedScript.Should().BeNull();
+        _sessionFactory.Verify(f => f.CreateSessionAsync(
+            It.IsAny<ManagedMachine>(), It.IsAny<Credential>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // Defence-in-depth: PowerManagement is all-destructive (shutdown/restart/logoff/
     // hibernate), so the backend must NOT silently default a missing `action`. The UI
     // persists the visual default on first render to heal the common case; this throw
@@ -193,14 +211,18 @@ public sealed class PowerManagementActivityTests : IDisposable
         _capturedScript.Should().Contain("/f");
     }
 
-    [Fact]
-    public async Task Shutdown_ForceFalse_NoSlashF()
+    [Theory]
+    [InlineData("shutdown", "/s", 0)]
+    [InlineData("restart", "/r", 0)]
+    [InlineData("shutdown", "/s", -5)]
+    public async Task NonPositiveDelayWithoutForce_UsesZeroTimerAndNoSlashF(string action, string flag, int delaySeconds)
     {
         _capturedScript = null;
         await CreateActivity().ExecuteAsync(Ctx(),
-            Cfg("{\"action\": \"shutdown\", \"force\": false}"),
+            JsonSerializer.SerializeToElement(new { action, delaySeconds, force = false }),
             CancellationToken.None);
         _capturedScript.Should().NotContain("/f");
+        _capturedScript.Should().Contain($"& shutdown.exe {flag} /t 0");
     }
 
     [Fact]
