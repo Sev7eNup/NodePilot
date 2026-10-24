@@ -1,8 +1,11 @@
 using System.Reflection;
+using System.Data;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using NodePilot.Data.Security;
+using NodePilot.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace NodePilot.Api.Services.Backup;
 
@@ -29,7 +32,7 @@ public sealed class BackupExportException(string message) : Exception(message);
 /// <see cref="IBackupPart"/>, assembles the current versioned system-backup envelope, and seals it
 /// and authenticates that complete payload with passphrase-derived AES-GCM.
 /// </summary>
-public sealed class BackupService(IEnumerable<IBackupPart> parts)
+public sealed class BackupService(IEnumerable<IBackupPart> parts, NodePilotDbContext db)
 {
     /// <summary>
     /// Minimum backup passphrase length. A backup is a portable secret-bearing artifact.
@@ -87,21 +90,32 @@ public sealed class BackupService(IEnumerable<IBackupPart> parts)
 
         var salt = PassphraseSecretProtector.GenerateSalt();
         var protector = PassphraseSecretProtector.Derive(passphrase, salt);
-        var ctx = new BackupExportContext { Protector = protector };
-
-        var sections = new JsonObject();
         var includedOrdered = SectionOrder.Where(effective.Contains).ToList();
-        var counts = new List<BackupSectionCount>(includedOrdered.Count);
-        foreach (var key in includedOrdered)
+        var strategy = db.Database.CreateExecutionStrategy();
+        var (sections, counts) = await strategy.ExecuteAsync(async () =>
         {
-            counts.Add(new BackupSectionCount(key, await byKey[key].CountAsync(ct)));
-            sections[key] = await byKey[key].ExportAsync(ctx, ct);
-        }
+            var ctx = new BackupExportContext { Protector = protector };
+            var captured = new JsonObject();
+            var capturedCounts = new List<BackupSectionCount>(includedOrdered.Count);
+            // Serializable prevents cross-section phantoms on both PostgreSQL and SQL Server.
+            await using var snapshot = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            foreach (var key in includedOrdered)
+            {
+                captured[key] = await byKey[key].ExportAsync(ctx, ct);
+                // Runtime settings are an independent atomic file snapshot, outside DB isolation.
+                var count = key == BackupSections.Settings
+                    ? (captured[key]?["runtimeJson"] as JsonObject)?.Count ?? 0
+                    : await byKey[key].CountAsync(ct);
+                capturedCounts.Add(new BackupSectionCount(key, count));
+            }
 
-        if (ctx.Warnings.Count > 0)
-            throw new BackupExportException(
-                "Backup aborted because one or more selected values could not be exported completely: "
-                + string.Join(" | ", ctx.Warnings));
+            if (ctx.Warnings.Count > 0)
+                throw new BackupExportException(
+                    "Backup aborted because one or more selected values could not be exported completely: "
+                    + string.Join(" | ", ctx.Warnings));
+            await snapshot.CommitAsync(ct);
+            return (captured, capturedCounts);
+        });
 
         var payload = new JsonObject
         {

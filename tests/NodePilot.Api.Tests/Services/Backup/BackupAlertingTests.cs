@@ -54,7 +54,7 @@ public sealed class BackupAlertingTests : IDisposable
     ];
 
     private async Task<byte[]> ExportAsync(NodePilotDbContext db, List<string> sections)
-        => (await new BackupService(Parts(db)).ExportAsync(sections, Passphrase, "admin", CancellationToken.None)).Content;
+        => (await new BackupService(Parts(db), db).ExportAsync(sections, Passphrase, "admin", CancellationToken.None)).Content;
 
     private BackupRestoreService Restore(NodePilotDbContext db) =>
         new(db, _atRest, new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance),

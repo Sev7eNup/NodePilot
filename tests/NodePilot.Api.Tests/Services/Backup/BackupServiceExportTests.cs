@@ -52,7 +52,7 @@ public sealed class BackupServiceExportTests : IDisposable
             new WorkflowBackupPart(_db),
             new SettingsBackupPart(_overrides, _atRest),
         };
-        _service = new BackupService(parts);
+        _service = new BackupService(parts, _db);
     }
 
     private static byte[] DeterministicKey()
@@ -371,13 +371,35 @@ public sealed class BackupServiceExportTests : IDisposable
     [Fact]
     public async Task Export_AnyPartWarning_AbortsInsteadOfProducingAnIncompleteArchive()
     {
-        var service = new BackupService([new WarningPart()]);
+        var service = new BackupService([new WarningPart()], _db);
 
         var act = () => service.ExportAsync(
             [BackupSections.Users], Passphrase, "admin", CancellationToken.None);
 
         await act.Should().ThrowAsync<BackupExportException>()
             .WithMessage("*could not be exported completely*");
+        _db.Database.CurrentTransaction.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Export_Settings_CountMatchesTheCapturedFileWithoutASecondRead()
+    {
+        _overrides.MutateAndWrite(root => root["Smtp"] = new JsonObject { ["Port"] = 2525 });
+        var part = new SettingsSnapshotPart(new SettingsBackupPart(_overrides, _atRest));
+        var service = new BackupService([part], _db);
+
+        var result = await service.ExportAsync([BackupSections.Settings], Passphrase, "admin", TestContext.Current.CancellationToken);
+
+        result.Counts.Single().Count.Should().Be(1);
+        Parse(result.Content)["sections"]!["settings"]!["runtimeJson"]!["Smtp"]!["Port"]!.GetValue<int>().Should().Be(2525);
+    }
+
+    private sealed class SettingsSnapshotPart(IBackupPart inner) : IBackupPart
+    {
+        public string Key => inner.Key;
+        public IReadOnlyList<string> DependsOn => inner.DependsOn;
+        public Task<int> CountAsync(CancellationToken ct) => throw new InvalidOperationException("Export must count the captured settings document.");
+        public Task<JsonNode> ExportAsync(BackupExportContext ctx, CancellationToken ct) => inner.ExportAsync(ctx, ct);
     }
 
     private sealed class WarningPart : IBackupPart

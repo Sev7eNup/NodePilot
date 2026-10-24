@@ -69,8 +69,7 @@ public sealed class DatabaseRecoveryAuditServiceTests
     [Fact]
     public async Task RealOutageRecovery_PersistsExactlyOneEpisodeAudit_AndNoTripAudit()
     {
-        using var connection = new SqliteConnection("DataSource=:memory:");
-        connection.Open();
+        using var connection = OpenDatabase();
         await using (var schema = NewDb(connection))
             await schema.Database.EnsureCreatedAsync();
 
@@ -122,8 +121,7 @@ public sealed class DatabaseRecoveryAuditServiceTests
     [Fact]
     public async Task TwoRealOutageRecoveries_PersistOneDistinctAuditPerEpisode()
     {
-        using var connection = new SqliteConnection("DataSource=:memory:");
-        connection.Open();
+        using var connection = OpenDatabase();
         await using (var schema = NewDb(connection))
             await schema.Database.EnsureCreatedAsync();
 
@@ -171,8 +169,7 @@ public sealed class DatabaseRecoveryAuditServiceTests
     public async Task RecoveryAuditWriteFailure_RetriesOnFreshContextWithoutDuplicatingUnknownCommit(
         bool commitBeforeAcknowledgementIsLost)
     {
-        using var connection = new SqliteConnection("DataSource=:memory:");
-        connection.Open();
+        using var connection = OpenDatabase();
         await using (var schema = NewDb(connection))
             await schema.Database.EnsureCreatedAsync();
 
@@ -189,7 +186,7 @@ public sealed class DatabaseRecoveryAuditServiceTests
             Interlocked.Increment(ref contextsCreated);
             return new NodePilotDbContext(
                 new DbContextOptionsBuilder<NodePilotDbContext>()
-                    .UseSqlite(connection)
+                    .UseSqlite(connection.ConnectionString)
                     .AddInterceptors(failure)
                     .Options);
         });
@@ -231,8 +228,16 @@ public sealed class DatabaseRecoveryAuditServiceTests
         }
     }
 
+    private static SqliteConnection OpenDatabase()
+    {
+        // Keep the shared in-memory database alive; each concurrent context owns its connection.
+        var connection = new SqliteConnection($"Data Source=recovery-audit-{Guid.NewGuid():N};Mode=Memory;Cache=Shared;Pooling=False");
+        connection.Open();
+        return connection;
+    }
+
     private static NodePilotDbContext NewDb(SqliteConnection connection)
-        => new(new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(connection).Options);
+        => new(new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(connection.ConnectionString).Options);
 
     private static async Task<List<AuditLogEntry>> WaitForAuditRowsAsync(
         SqliteConnection connection,

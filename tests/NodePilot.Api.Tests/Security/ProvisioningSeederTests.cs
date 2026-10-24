@@ -60,7 +60,7 @@ public sealed class ProvisioningSeederTests : IDisposable
         });
         await source.SaveChangesAsync();
 
-        var export = await new BackupService([new UserBackupPart(source)])
+        var export = await new BackupService([new UserBackupPart(source)], source)
             .ExportAsync([BackupSections.Users], Passphrase, "admin", CancellationToken.None);
         return export.Content;
     }

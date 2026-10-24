@@ -228,6 +228,15 @@ operator to check the operation ID before repeating the restore. Request cancell
 skip this commit reconciliation.
 
 ### K9 — Export only the runtime overrides, as raw file content
+
+Export captures all database sections and their counts in one Serializable transaction,
+inside the EF execution strategy. A retry recaptures every section. PostgreSQL uses its
+transaction snapshot; SQL Server holds serializable read/range locks through capture.
+Runtime overrides are captured once from the atomically replaced file; their count is
+derived from that captured document. The file and database are separate snapshots, not
+a distributed transaction. Encryption and archive serialization finish after the database
+transaction is released. Any capture or transaction failure prevents returning an archive.
+
 What is exported is **only** the **raw JSON content** of `appsettings.runtime.json` (the
 database/file overrides), **not** `IConfigurationRoot` — that one is already decrypted and merged
 with env, CLI and appsettings.json, which would drag host and environment secrets into the file.
