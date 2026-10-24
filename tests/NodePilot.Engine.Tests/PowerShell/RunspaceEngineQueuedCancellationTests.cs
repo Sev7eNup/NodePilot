@@ -94,7 +94,7 @@ public class RunspaceEngineQueuedCancellationTests
     }
 
     [Fact]
-    public async Task Execute_CallerCancelsWhileCompletedOutputIsFormatted_PreservesSuccess()
+    public async Task Execute_CallerCancelsWhileOutputIsCaptured_PropagatesCancellation()
     {
         using var engine = new RunspaceExecutionEngine(NullLogger.Instance, 1, 1);
         using var cts = new CancellationTokenSource();
@@ -102,17 +102,16 @@ public class RunspaceEngineQueuedCancellationTests
         CancelOnFormat.Callbacks[key] = cts.Cancel;
         try
         {
-            // ToString runs in the engine after EndInvoke has returned the completed pipeline's output.
-            var result = await engine.ExecuteAsync(new PowerShellExecutionRequest
+            // Streaming capture formats each record while the pipeline is still running.
+            var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => engine.ExecuteAsync(new PowerShellExecutionRequest
             {
                 ScriptText = $"[NodePilot.Engine.Tests.PowerShell.RunspaceEngineQueuedCancellationTests+CancelOnFormat]::new('{key}')",
                 Timeout = TimeSpan.FromSeconds(10),
-            }, cts.Token);
+            }, cts.Token));
 
-            cts.IsCancellationRequested.Should().BeTrue("formatting must actually exercise the late cancellation");
-            result.Success.Should().BeTrue();
-            result.TimedOut.Should().BeFalse();
-            result.Output.Should().Contain("completed-before-cancel");
+            cts.IsCancellationRequested.Should().BeTrue("formatting must exercise cancellation during capture");
+            error.CancellationToken.Should().Be(cts.Token);
+            error.Message.Should().Be(IPowerShellExecutionEngine.CancelledMessage);
         }
         finally
         {

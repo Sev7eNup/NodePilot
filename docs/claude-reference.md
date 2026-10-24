@@ -23,6 +23,14 @@ verwalteten WinRM-Pfad. Ohne Maschine beziehungsweise bei Loopback ohne Credenti
 läuft es lokal auf dem API-Host. `engine: auto` startet Nutzerskripte in Windows
 PowerShell 5.1. Eingebaute Activities verwenden lokal den In-Process-Pool.
 
+`Engine:MaxCapturedOutputChars` begrenzt die während einer Skriptausführung gesammelte
+Ausgabe über alle Streams auf insgesamt 16.777.216 Zeichen (positiver Wert, Neustart erforderlich).
+Der Standard lässt Platz für die beiden auf je 1 MiB begrenzten Ausgaben von `startProgram`
+einschließlich JSON-Escaping. Kleinere Werte begrenzen auch diese Aktivität entsprechend.
+Das gemeinsame Limit gilt für Prozess-, Runspace- und WinRM-Ausführung. Überschreitung
+beendet den Schritt mit einem Ausgabelimit-Fehler; das spätere Kürzen gespeicherter Ergebnisse
+ist davon unabhängig. Prozess-Pipes werden auch nach Erreichen des Limits weiter geleert.
+
 Selbst aufgebautes Remoting innerhalb eines lokalen Skripts liegt außerhalb der
 verwalteten WinRM-Verbindung. Dabei entfallen deren Credential-Anbindung,
 Target-Zuordnung, Telemetrie und Transport-Hardening. Das Skript muss seine

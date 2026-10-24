@@ -1,8 +1,9 @@
 using System.Diagnostics;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
-using System.Text;
 using Microsoft.Extensions.Logging;
+using NodePilot.Core.Execution;
+using NodePilot.Remote;
 
 namespace NodePilot.Engine.PowerShell;
 
@@ -19,15 +20,19 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
     private readonly RunspacePool? _pool;
     private readonly bool _initFailed;
     private readonly string? _initError;
+    private readonly int _maxCapturedOutputChars;
 
     public string EngineType => "runspace";
     public bool IsAvailable => !_initFailed;
 
-    public RunspaceExecutionEngine(ILogger logger, int minRunspaces = 1, int maxRunspaces = 5)
+    public RunspaceExecutionEngine(ILogger logger, int minRunspaces = 1, int maxRunspaces = 5,
+        int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit)
     {
         _logger = logger;
         _minRunspaces = minRunspaces;
         _maxRunspaces = maxRunspaces;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCapturedOutputChars);
+        _maxCapturedOutputChars = maxCapturedOutputChars;
 
         try
         {
@@ -124,10 +129,6 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
     private async Task<PowerShellExecutionResult> ExecuteOnceAsync(PowerShellExecutionRequest request, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
-        var output = new StringBuilder();
-        var errors = new StringBuilder();
-        var warnings = new StringBuilder();
-        var verbose = new StringBuilder();
 
         if (ct.IsCancellationRequested)
             throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
@@ -137,14 +138,14 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
         ps.RunspacePool = _pool;
         ps.AddScript(PowerShellScriptWrapper.Wrap(request.ScriptText, request.Parameters, _logger, request.OutputCaptureAllowlist));
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        if (request.Timeout is { } configuredTimeout)
-            cts.CancelAfter(configuredTimeout);
-
         // BeginInvoke queues work without parking a ThreadPool worker. Stop can complete a
         // queued invocation without throwing, so both EndInvoke and the terminal state matter.
         // Own output buffer: it keeps what the script wrote before a terminating error.
         var results = new PSDataCollection<PSObject>();
+        using var capture = new PowerShellOutputCapture(ps, results, _maxCapturedOutputChars);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, capture.Budget.LimitReached);
+        if (request.Timeout is { } configuredTimeout)
+            cts.CancelAfter(configuredTimeout);
         IAsyncResult asyncResult;
         try
         {
@@ -176,40 +177,36 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             var finished = await Task.WhenAny(invokeTask, GraceElapsedAfterCancelAsync(cts.Token, waitDone.Token));
             waitDone.Cancel();
             if (finished != invokeTask && !invokeTask.IsCompleted)
-                return AbandonPipeline(request, ct, ps, results, invokeTask, stopTask, sw);
+                return AbandonPipeline(request, ct, ps, results, invokeTask, stopTask, sw, capture.Budget);
         }
 
         try
         {
             await invokeTask;
+            if (ct.IsCancellationRequested)
+                throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+            if (capture.Budget.Exceeded)
+                return OutputLimitResult(capture.Budget, sw.Elapsed);
             var invocationState = ps.InvocationStateInfo;
             if (invocationState.State == PSInvocationState.Stopped)
                 throw new PipelineStoppedException();
 
-            foreach (var r in results)
-                output.AppendLine(SafeToString(r));
-            foreach (var e in ps.Streams.Error)
-                errors.AppendLine(SafeToString(e));
-            foreach (var w in ps.Streams.Warning)
-                warnings.AppendLine(SafeToString(w));
-            foreach (var v in ps.Streams.Verbose)
-                verbose.AppendLine(SafeToString(v));
-
             sw.Stop();
             // Non-terminating errors still indicate that the step did not complete cleanly.
             // Treating "any stdout" as success lets workflows continue after Write-Error.
-            var success = invocationState.State == PSInvocationState.Completed && !ps.HadErrors;
-            if (!success && errors.Length == 0)
-                errors.Append(invocationState.Reason?.Message
-                    ?? $"Script execution ended in state '{invocationState.State}'.");
+            var error = capture.Errors.Text.TrimEnd();
+            var success = invocationState.State == PSInvocationState.Completed && !ps.HadErrors && error.Length == 0;
+            if (!success && error.Length == 0)
+                error = invocationState.Reason?.Message
+                    ?? $"Script execution ended in state '{invocationState.State}'.";
             return new PowerShellExecutionResult
             {
                 Success = success,
                 ExitCode = success ? 0 : 1,
-                Output = output.ToString().TrimEnd(),
-                Error = errors.ToString().TrimEnd(),
-                Warning = warnings.ToString().TrimEnd(),
-                Verbose = verbose.ToString().TrimEnd(),
+                Output = capture.Output.Text.TrimEnd(),
+                Error = error,
+                Warning = capture.Warnings.Text.TrimEnd(),
+                Verbose = capture.Verbose.Text.TrimEnd(),
                 Duration = sw.Elapsed,
             };
         }
@@ -219,19 +216,22 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             // Caller cancellation reaches StepRunner as Cancelled; an internal timeout is Failed.
             if (ct.IsCancellationRequested)
                 throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+            if (capture.Budget.Exceeded)
+                return OutputLimitResult(capture.Budget, sw.Elapsed);
             return StoppedResult(request, cts.IsCancellationRequested, sw.Elapsed);
         }
         catch (Exception ex)
         {
             sw.Stop();
-            // A script that throws still published its output markers before the throw.
-            foreach (var r in results)
-                output.AppendLine(SafeToString(r));
+            if (ct.IsCancellationRequested)
+                throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+            if (capture.Budget.Exceeded)
+                return OutputLimitResult(capture.Budget, sw.Elapsed);
             return new PowerShellExecutionResult
             {
                 Success = false,
                 ExitCode = -1,
-                Output = output.ToString().TrimEnd(),
+                Output = capture.Output.Text.TrimEnd(),
                 Error = ex.Message,
                 Duration = sw.Elapsed,
             };
@@ -248,7 +248,7 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
     // so disposal waits for the pipeline to end, which also returns its runspace to the pool.
     private PowerShellExecutionResult AbandonPipeline(
         PowerShellExecutionRequest request, CancellationToken ct, System.Management.Automation.PowerShell ps,
-        PSDataCollection<PSObject> results, Task invokeTask, Task? stopTask, Stopwatch sw)
+        PSDataCollection<PSObject> results, Task invokeTask, Task? stopTask, Stopwatch sw, ScriptOutputBudget budget)
     {
         sw.Stop();
         _logger.LogError(
@@ -269,8 +269,17 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
 
         if (ct.IsCancellationRequested)
             throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+        if (budget.Exceeded) return OutputLimitResult(budget, sw.Elapsed);
         return StoppedResult(request, stopRequested: true, sw.Elapsed);
     }
+
+    private static PowerShellExecutionResult OutputLimitResult(ScriptOutputBudget budget, TimeSpan duration) => new()
+    {
+        Success = false,
+        ExitCode = -1,
+        Error = budget.Error,
+        Duration = duration,
+    };
 
     private static PowerShellExecutionResult StoppedResult(PowerShellExecutionRequest request, bool stopRequested, TimeSpan duration)
     {
@@ -302,25 +311,4 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
         _pool?.Dispose();
     }
 
-    // PSObject.ToString() can trigger the formatter (e.g. Format-Default) which itself needs a
-    // runspace. When the pool runspace is mid-recycle or the object's formatter chain throws,
-    // the bare ToString() call fails with "There is no Runspace available to run scripts in
-    // this thread." Empirically seen for New-Service's ServiceController output. We unwrap to
-    // BaseObject first (primitives, ServiceController.ServiceName etc. format safely) and fall
-    // back to a typed placeholder if every ToString path throws — never let formatter errors
-    // tear down step output.
-    private static string SafeToString(object? value)
-    {
-        if (value is null) return string.Empty;
-        if (value is PSObject ps)
-        {
-            var baseObj = ps.BaseObject;
-            if (baseObj is string s) return s;
-            try { return baseObj?.ToString() ?? string.Empty; } catch { /* fall through */ }
-            try { return ps.ToString() ?? string.Empty; } catch { /* fall through */ }
-            return $"<{baseObj?.GetType().Name ?? "PSObject"}: ToString failed>";
-        }
-        try { return value.ToString() ?? string.Empty; }
-        catch { return $"<{value.GetType().Name}: ToString failed>"; }
-    }
 }

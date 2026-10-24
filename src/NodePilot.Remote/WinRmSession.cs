@@ -3,6 +3,7 @@ using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Text;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.Execution;
 
 namespace NodePilot.Remote;
 
@@ -10,6 +11,7 @@ public class WinRmSession : IRemoteSession
 {
     private readonly Runspace _runspace;
     private readonly string? _targetHostname;
+    private readonly int _maxCapturedOutputChars;
     // Set when a timeout or cancellation cut through ExecuteScriptAsync while it was still
     // running. PowerShell.Invoke() doesn't observe the cancellation token directly — Task.Run
     // only abandons the awaiter while the pipeline keeps running on the threadpool. Once that
@@ -17,10 +19,13 @@ public class WinRmSession : IRemoteSession
     // pool consumer, so we mark the session poisoned and let the pool discard it on Return.
     private int _poisoned;
 
-    public WinRmSession(Runspace runspace, string? targetHostname = null)
+    public WinRmSession(Runspace runspace, string? targetHostname = null,
+        int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit)
     {
         _runspace = runspace;
         _targetHostname = targetHostname;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCapturedOutputChars);
+        _maxCapturedOutputChars = maxCapturedOutputChars;
     }
 
     /// <summary>
@@ -60,8 +65,6 @@ public class WinRmSession : IRemoteSession
         activity?.SetTag("nodepilot.remote.timeout_sec", timeoutSeconds);
 
         var sw = Stopwatch.StartNew();
-        var output = new StringBuilder();
-        var errors = new StringBuilder();
 
         using var ps = PowerShell.Create();
         ps.Runspace = _runspace;
@@ -73,13 +76,14 @@ public class WinRmSession : IRemoteSession
         //
         // timeoutSeconds null or <=0 means "no timeout" — only the parent cancellation token (ct)
         // can cancel the call.
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var results = new PSDataCollection<PSObject>();
+        using var capture = new PowerShellOutputCapture(ps, results, _maxCapturedOutputChars);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, capture.Budget.LimitReached);
         if (timeoutSeconds is { } secs && secs > 0)
             cts.CancelAfter(TimeSpan.FromSeconds(secs));
 
         // Own output buffer: it keeps what the script wrote before a terminating error, which
         // EndInvoke's return value would lose when it throws.
-        using var results = new PSDataCollection<PSObject>();
         IAsyncResult asyncResult;
         try
         {
@@ -102,28 +106,21 @@ public class WinRmSession : IRemoteSession
         }
 
         using var ctRegistration = cts.Token.Register(() =>
-        {
-            try { ps.Stop(); } catch { /* best-effort: pipeline may already be torn down */ }
-        });
+            _ = Task.Run(() => { try { ps.Stop(); } catch { /* pipeline may already be torn down */ } }));
 
         try
         {
             await Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
-
-            foreach (var result in results)
-                output.AppendLine(result?.ToString());
-
-            foreach (var error in ps.Streams.Error)
-                errors.AppendLine(error.ToString());
+            if (cts.IsCancellationRequested) throw new PipelineStoppedException();
 
             sw.Stop();
 
-            var stdout = output.ToString().TrimEnd();
-            var stderr = errors.ToString().TrimEnd();
+            var stdout = capture.Output.Text.TrimEnd();
+            var stderr = capture.Errors.Text.TrimEnd();
             activity?.SetTag("nodepilot.remote.stdout.bytes", Encoding.UTF8.GetByteCount(stdout));
             activity?.SetTag("nodepilot.remote.stderr.bytes", Encoding.UTF8.GetByteCount(stderr));
 
-            var success = !ps.HadErrors;
+            var success = !ps.HadErrors && stderr.Length == 0;
             if (success)
                 activity?.SetStatus(ActivityStatusCode.Ok);
             else
@@ -147,6 +144,13 @@ public class WinRmSession : IRemoteSession
             Volatile.Write(ref _poisoned, 1);
             sw.Stop();
             var cancelled = ct.IsCancellationRequested;
+            if (capture.Budget.Exceeded && !cancelled)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "output_limit");
+                RemoteMetrics.ScriptDuration.Record(sw.Elapsed.TotalMilliseconds,
+                    new KeyValuePair<string, object?>("result", "fail"));
+                return new RemoteExecutionResult { Success = false, ErrorOutput = capture.Budget.Error, Duration = sw.Elapsed };
+            }
             activity?.SetStatus(ActivityStatusCode.Error, cancelled ? "cancelled" : "timeout");
             activity?.SetTag("nodepilot.remote.timeout", true);
             RemoteMetrics.ScriptTimeouts.Add(1);
@@ -174,13 +178,10 @@ public class WinRmSession : IRemoteSession
             activity?.SetTag("exception.type", ex.GetType().FullName);
             RemoteMetrics.ScriptDuration.Record(sw.Elapsed.TotalMilliseconds,
                 new KeyValuePair<string, object?>("result", "fail"));
-            // A script that throws still published its output markers before the throw.
-            foreach (var result in results)
-                output.AppendLine(result?.ToString());
             return new RemoteExecutionResult
             {
                 Success = false,
-                Output = output.ToString().TrimEnd(),
+                Output = capture.Output.Text.TrimEnd(),
                 ErrorOutput = ex.Message,
                 Duration = sw.Elapsed
             };

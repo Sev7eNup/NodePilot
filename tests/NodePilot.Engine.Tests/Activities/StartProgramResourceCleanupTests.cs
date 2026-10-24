@@ -130,14 +130,16 @@ public class StartProgramResourceCleanupTests
         await AssertResources(engine);
     }
 
-    [Fact]
-    public async Task OutputBeyondCap_DrainsBothPipesAndReportsTruncation()
+    [Theory]
+    [InlineData('x', 'y')]
+    [InlineData('\0', '\u0001')]
+    public async Task OutputBeyondCap_DrainsBothPipesAndReportsTruncation(char stdoutChar, char stderrChar)
     {
         using var engine = CreateEngine();
         var count = StartProgramActivity.MaxOutputBytesPerStream + 4096;
         var result = await Execute(engine, new {
             filePath = PowerShellPath,
-            arguments = EncodedCommand($"[Console]::Out.Write(('x' * {count})); [Console]::Error.Write(('y' * {count}))"),
+            arguments = EncodedCommand($"[Console]::Out.Write(([string][char]{(int)stdoutChar} * {count})); [Console]::Error.Write(([string][char]{(int)stderrChar} * {count}))"),
             timeoutSeconds = CaptureBudgetSeconds
         }, CaptureBudgetSeconds);
         result.Success.Should().BeTrue(result.ErrorOutput);

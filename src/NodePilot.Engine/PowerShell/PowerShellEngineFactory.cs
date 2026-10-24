@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Configuration;
+using NodePilot.Core.Execution;
 
 namespace NodePilot.Engine.PowerShell;
 
@@ -43,8 +44,9 @@ public class PowerShellEngineFactory
         var drainGraceSeconds = configuration?.GetValue<int?>("Engine:IsolatedDrainGraceSeconds") ?? 5;
         var isolatedDrainGrace = drainGraceSeconds > 0 ? TimeSpan.FromSeconds(drainGraceSeconds) : (TimeSpan?)null;
 
-        _pwsh = ProcessExecutionEngine.CreatePwsh(logger, isolatedDrainGrace);
-        _windowsPowerShell = ProcessExecutionEngine.CreateWindowsPowerShell(logger, isolatedDrainGrace);
+        var outputLimit = configuration?.GetValue<int?>(ScriptOutputBudget.ConfigurationKey) ?? ScriptOutputBudget.DefaultLimit;
+        _pwsh = ProcessExecutionEngine.CreatePwsh(logger, isolatedDrainGrace, outputLimit);
+        _windowsPowerShell = ProcessExecutionEngine.CreateWindowsPowerShell(logger, isolatedDrainGrace, outputLimit);
         ProcessExecutionEngine.DeleteOrphanedTempScripts(logger);
 
         // Runspace pool sizing belongs to the process-wide PerformancePlan (hardware-derived,
@@ -56,7 +58,7 @@ public class PowerShellEngineFactory
             new Dictionary<string, int?>());
         var minRunspaces = plan.MinRunspaces.Value;
         var maxRunspaces = plan.MaxRunspaces.Value;
-        _runspace = new RunspaceExecutionEngine(logger, minRunspaces, maxRunspaces);
+        _runspace = new RunspaceExecutionEngine(logger, minRunspaces, maxRunspaces, outputLimit);
 
         logger.LogInformation("PowerShell engines: pwsh={PwshAvailable}, powershell={PSAvailable}, runspace=true (min={Min}, max={Max})",
             _pwsh.IsAvailable, _windowsPowerShell.IsAvailable, minRunspaces, maxRunspaces);
