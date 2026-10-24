@@ -419,4 +419,59 @@ public class WorkflowDefinitionMergeTests
             .GetValue<string>().Should().Be("prod");
         result.Notes.Should().BeEmpty();
     }
+
+    // The AI replaced edge-1 by two new edges and copied its masked literal operand onto both.
+    private const string EdgeSplitOriginal = """
+        { "nodes": [], "edges": [{ "id": "edge-1", "source": "a", "target": "b", "data": {
+            "conditionExpression": { "type": "comparison", "left": { "kind": "variable", "value": "status" },
+                "op": "==", "right": { "kind": "literal", "value": "ready" } } } }] }
+        """;
+
+    [Fact]
+    public void Merge_MaskedLiteralCopiedOntoNewEdge_KeepsMaskAndNotes()
+    {
+        var proposed = Parse("""
+            { "nodes": [], "edges": [
+              { "id": "edge-2", "source": "a", "target": "j", "data": { "conditionExpression": {
+                  "type": "comparison", "left": { "kind": "variable", "value": "status" },
+                  "op": "==", "right": { "kind": "literal", "value": "***" } } } },
+              { "id": "edge-3", "source": "a", "target": "k", "data": { "conditionExpression": {
+                  "type": "group", "op": "AND", "children": [{ "type": "comparison",
+                      "left": { "kind": "variable", "value": "status" },
+                      "op": "!=", "right": { "kind": "literal", "value": "***" } }] } } }
+            ] }
+            """);
+
+        var result = WorkflowDefinitionMerge.Merge(Parse(EdgeSplitOriginal), proposed);
+
+        result.Notes.Should().HaveCount(2);
+        result.Notes[0].Should().Contain("'value'").And.Contain("'edge-2'").And.Contain("***");
+        result.Notes[1].Should().Contain("'value'").And.Contain("'edge-3'");
+    }
+
+    [Fact]
+    public void Merge_MaskedValueInNewArrayItem_Notes()
+    {
+        var proposed = Parse("""
+            { "nodes": [{ "id": "new-node", "type": "activity", "data": { "activityType": "runScript",
+                "config": { "arguments": ["-Force", "***"] } } }], "edges": [] }
+            """);
+
+        var result = WorkflowDefinitionMerge.Merge(Parse("""{ "nodes": [], "edges": [] }"""), proposed);
+
+        result.Notes.Should().ContainSingle().Which.Should().Contain("'arguments'").And.Contain("'new-node'");
+    }
+
+    [Fact]
+    public void Merge_MaskedNamedSecretOnNewNode_NotesManualSetting()
+    {
+        var proposed = Parse("""
+            { "nodes": [{ "id": "new-node", "type": "activity", "data": { "activityType": "restApi",
+                "config": { "password": "***" } } }], "edges": [] }
+            """);
+
+        var result = WorkflowDefinitionMerge.Merge(Parse("""{ "nodes": [], "edges": [] }"""), proposed);
+
+        result.Notes.Should().ContainSingle().Which.Should().Contain("Secret 'password'");
+    }
 }

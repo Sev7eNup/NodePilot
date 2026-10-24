@@ -78,7 +78,8 @@ The transport is **stdio** (streamable HTTP is planned as a later option). Windo
 - **Secrets:** workflow definitions are redacted before tool output (`secret`/`apiKey`/`password`/
   `authToken`/`bearer`/`connectionString` → `***`). On `publish`/`update`/`apply_workflow_patch`, real
   secrets are restored by node ID from the stored version — the agent's `***` never overwrites a real
-  value. Credentials/globals never emit secrets.
+  value. A `***` on a new node or edge ID has nothing to restore, so the call is rejected and nothing
+  is saved. Credentials/globals never emit secrets.
 - **Annotations:** read tools are `readOnly`, gated tools `destructive`, and enable/disable/lock
   are `idempotent`. `execute_workflow` is **not idempotent**: calling it again starts another run.
   Check executions before retrying a start whose response was lost.

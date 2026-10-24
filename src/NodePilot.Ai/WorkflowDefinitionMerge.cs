@@ -122,6 +122,8 @@ internal static class WorkflowDefinitionMerge
             {
                 if (sourceChild is not null && !IsMask(sourceChild))
                     target[key] = sourceChild.DeepClone();
+                else if (sourceChild is null)
+                    NoteMaskWithoutOriginal(key, itemId, notes);
                 continue;
             }
 
@@ -166,6 +168,18 @@ internal static class WorkflowDefinitionMerge
         }
     }
 
+    // A mask with nothing to restore would be saved as the literal "***", for example a condition
+    // operand copied onto a new edge.
+    private static void NoteMaskWithoutOriginal(string key, string? itemId, List<string> notes)
+    {
+        if (WorkflowSecretKeys.SecretConfigKeys.Contains(key))
+        {
+            notes.Add($"Secret '{key}' bitte manuell am Node setzen — die KI darf keine Secrets vergeben.");
+            return;
+        }
+        notes.Add($"'{key}' von '{itemId ?? "?"}' enthält '***' ohne gespeicherten Originalwert — bitte den echten Wert im Designer setzen, sonst wird '***' wörtlich gespeichert.");
+    }
+
     // Null and the empty string count as "no secret set".
     private static bool HasValue(JsonNode? node)
         => node is not null && !(node is JsonValue value && value.TryGetValue(out string? text) && string.IsNullOrEmpty(text));
@@ -206,9 +220,9 @@ internal static class WorkflowDefinitionMerge
                     MergeNestedArray(targetArray, sourceItem as JsonArray, notes, itemId, key);
                     break;
                 case JsonValue targetValue when targetValue.TryGetValue(out string? value)
-                                               && value == SecretMask
-                                               && sourceItem is not null:
-                    target[index] = sourceItem.DeepClone();
+                                               && value == SecretMask:
+                    if (sourceItem is not null) target[index] = sourceItem.DeepClone();
+                    else NoteMaskWithoutOriginal(key, itemId, notes);
                     break;
             }
         }

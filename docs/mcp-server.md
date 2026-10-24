@@ -104,7 +104,9 @@ before retrying a start whose response was lost.
 - On `publish_workflow`/`update_workflow_definition`/`apply_workflow_patch`, real secrets are
   **restored from the stored version** by node id (including masks nested in condition/case arrays)
   — the agent's `***` never overwrites them, and a
-  secret the agent invents on a new node is rejected (masked + noted).
+  secret the agent invents on a new node is rejected (masked + noted). A `***` with no stored
+  value behind it (for example a condition literal copied onto a new edge id) rejects the whole
+  operation, because it would otherwise be saved as the literal `***`.
 - Credentials carry no password field; secret global values arrive masked. Create/update accept
   secrets write-only.
 
