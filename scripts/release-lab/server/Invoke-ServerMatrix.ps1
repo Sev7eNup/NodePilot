@@ -200,7 +200,7 @@ foreach ($s in $scenarios) {
             }
             if ($s.check -eq 'crlMissing') {
                 $inno = Invoke-Command -Session $session -ScriptBlock { Get-Content 'C:\NP-Test\B-inno.log' -Raw -ErrorAction SilentlyContinue }
-                $refused = $r.setupExit -ne 0 -and $inno -match 'certificate revocation could not be checked'
+                $refused = $r.setupExit -ne 0 -and $inno -match 'certificate revocation validation failed'
                 $r | Add-Member -NotePropertyName preflightRefused -NotePropertyValue $refused -Force
                 $r.verdict = if ($refused) { 'PASS' } else { 'FAIL' }
             }
