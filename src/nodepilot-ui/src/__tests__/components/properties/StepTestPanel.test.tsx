@@ -5,7 +5,7 @@ import { StepTestPanel } from '../../../components/designer/properties/StepTestP
 
 /**
  * Covers StepTestPanel: rendering and switching all four mode tabs, "Run test" sending the
- * configOverride and the selected mocks, "Pick a run" keeping the Run button disabled until a
+ * complete step snapshot and the selected mocks, "Pick a run" keeping the Run button disabled until a
  * run is chosen, the manual mocks editor parsing key=value lines while skipping comments and
  * blank lines, and last-run mode forwarding the context variables without globals.
  */
@@ -45,7 +45,7 @@ describe('StepTestPanel', () => {
     fetchMock.mockImplementation((url: string) => url.includes('/test-context')
       ? pending.promise
       : Promise.resolve(jsonResponse({ success: true, output: 'OK', outputParameters: {}, durationMs: 1 })));
-    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveConfig={{}} canRun expertMode={false} />);
+    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveStep={{ activityType: 'runScript', config: {} }} canRun expertMode={false} />);
 
     const run = screen.getByRole('button', { name: /Test activity/i });
     expect(run).toBeDisabled();
@@ -65,7 +65,7 @@ describe('StepTestPanel', () => {
 
   it('shows a failed context load in standard mode and allows retry before running', async () => {
     fetchMock.mockRejectedValueOnce(new Error('Context unavailable'));
-    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveConfig={{}} canRun expertMode={false} />);
+    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveStep={{ activityType: 'runScript', config: {} }} canRun expertMode={false} />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/context/i);
     expect(screen.getByRole('button', { name: /Test activity/i })).toBeDisabled();
@@ -83,7 +83,7 @@ describe('StepTestPanel', () => {
     fetchMock.mockReturnValue(pending.promise);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const panel = (workflowId: string, stepId: string) => <QueryClientProvider client={qc}>
-      <StepTestPanel workflowId={workflowId} stepId={stepId} liveConfig={{}} canRun />
+      <StepTestPanel workflowId={workflowId} stepId={stepId} liveStep={{ activityType: 'runScript', config: {} }} canRun />
     </QueryClientProvider>;
     const view = render(panel('wf1', 'step1'));
     fireEvent.click(screen.getByRole('button', { name: /Run test/i }));
@@ -105,7 +105,7 @@ describe('StepTestPanel', () => {
       ]));
       return pending.promise;
     });
-    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveConfig={{}} canRun />);
+    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveStep={{ activityType: 'runScript', config: {} }} canRun />);
     fireEvent.click(screen.getByRole('button', { name: /^Pick a run$/ }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('?executionId=exec1'))).toBe(true));
     expect(screen.getByRole('button', { name: /Run test/i })).toBeDisabled();
@@ -119,7 +119,7 @@ describe('StepTestPanel', () => {
       <StepTestPanel
         workflowId="wf1"
         stepId="step1"
-        liveConfig={{}}
+        liveStep={{ activityType: 'runScript', config: {} }}
         canRun={true}
         expertMode={false}
       />,
@@ -135,7 +135,7 @@ describe('StepTestPanel', () => {
       <StepTestPanel
         workflowId="wf1"
         stepId="step1"
-        liveConfig={{ script: 'Get-Process' }}
+        liveStep={{ activityType: 'runScript', config: { script: 'Get-Process' } }}
         canRun={true}
       />,
     );
@@ -152,7 +152,7 @@ describe('StepTestPanel', () => {
       <StepTestPanel
         workflowId="wf1"
         stepId="step1"
-        liveConfig={{}}
+        liveStep={{ activityType: 'runScript', config: {} }}
         canRun={false}
       />,
     );
@@ -164,7 +164,7 @@ describe('StepTestPanel', () => {
       success: false, output: '', errorOutput: 'boom',
       outputParameters: {}, durationMs: 5, errorMessage: 'failed',
     }));
-    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveConfig={{}} canRun={true} />);
+    wrap(<StepTestPanel workflowId="wf1" stepId="step1" liveStep={{ activityType: 'runScript', config: {} }} canRun={true} />);
     fireEvent.click(screen.getByRole('button', { name: /Run test/i }));
 
     const block = (await screen.findByText('boom')).closest('div.rounded-md')!;
@@ -173,7 +173,7 @@ describe('StepTestPanel', () => {
     expect(block.className).not.toMatch(/bg-(red|green)-50/);
   });
 
-  it('Empty mode test sends configOverride + no mockVariables', async () => {
+  it('Empty mode sends the complete live step and no mock variables', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({
       success: true, output: 'OK', errorOutput: null,
       outputParameters: {}, durationMs: 12, errorMessage: null,
@@ -183,7 +183,7 @@ describe('StepTestPanel', () => {
       <StepTestPanel
         workflowId="wf1"
         stepId="step1"
-        liveConfig={{ script: 'Get-Process', timeoutSeconds: 30 }}
+        liveStep={{ activityType: 'runScript', targetMachineId: 'host-b', credentialId: 'credential-b', config: { script: 'Get-Process', timeoutSeconds: 30 } }}
         canRun={true}
       />,
     );
@@ -194,7 +194,8 @@ describe('StepTestPanel', () => {
     const call = fetchMock.mock.calls[0];
     expect(call[0]).toContain('/workflows/wf1/steps/step1/test');
     const body = JSON.parse((call[1] as RequestInit).body as string);
-    expect(body.configOverride).toEqual({ script: 'Get-Process', timeoutSeconds: 30 });
+    expect(body.stepOverride).toEqual({ activityType: 'runScript', targetMachineId: 'host-b', credentialId: 'credential-b', config: { script: 'Get-Process', timeoutSeconds: 30 } });
+    expect(body.configOverride).toBeUndefined();
     expect(body.mockVariables).toBeUndefined();
 
     expect(await screen.findByText(/Succeeded/i)).toBeInTheDocument();
@@ -210,7 +211,7 @@ describe('StepTestPanel', () => {
       <StepTestPanel
         workflowId="wf1"
         stepId="step1"
-        liveConfig={{}}
+        liveStep={{ activityType: 'runScript', config: {} }}
         canRun={true}
       />,
     );
@@ -258,7 +259,7 @@ describe('StepTestPanel', () => {
       <StepTestPanel
         workflowId="wf1"
         stepId="step1"
-        liveConfig={{}}
+        liveStep={{ activityType: 'runScript', config: {} }}
         canRun={true}
       />,
     );
@@ -305,7 +306,7 @@ describe('StepTestPanel', () => {
       <StepTestPanel
         workflowId="wf1"
         stepId="step1"
-        liveConfig={{}}
+        liveStep={{ activityType: 'runScript', config: {} }}
         canRun={true}
       />,
     );

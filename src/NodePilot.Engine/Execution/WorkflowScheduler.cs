@@ -299,7 +299,11 @@ public static class WorkflowScheduler
                     foreach (var predEdge in preds)
                     {
                         if (!completed.Contains(predEdge.Source) && !skipped.Contains(predEdge.Source))
-                            MarkSubtreeSkipped(predEdge.Source, skipped, adjacency, reverseAdjacency, stopAtNode: successor);
+                        {
+                            foreach (var reopened in MarkSubtreeSkipped(
+                                         predEdge.Source, skipped, adjacency, reverseAdjacency, stopAtNode: successor))
+                                successorsToEvaluate.Enqueue(reopened);
+                        }
                     }
 
                     foreach (var inFlightStep in inFlight.Values)

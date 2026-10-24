@@ -43,17 +43,18 @@ describe('guided demo executions', () => {
     expect(getWorld().steps.get(run.id)).toEqual([]);
   });
 
-  it('overlaps both cleanup branches and waits for both before the email', async () => {
+  it('overlaps both read-only checks and waits for both before cleanup and email', async () => {
     const workflow = ensureMissionWorkflow('parallel')!;
     const run = startRun(workflow.id)!;
     await vi.runAllTimersAsync();
     const steps = getWorld().steps.get(run.id)!;
     const byId = (id: string) => steps.find(step => step.stepId === id)!;
     expect(run.status).toBe('Succeeded');
-    expect(Date.parse(byId('checksum').startedAt!)).toBeLessThan(Date.parse(byId('purge').completedAt!));
-    expect(Date.parse(byId('purge').startedAt!)).toBeLessThan(Date.parse(byId('checksum').completedAt!));
-    expect(Date.parse(byId('gather').startedAt!)).toBeGreaterThanOrEqual(Math.max(Date.parse(byId('checksum').completedAt!), Date.parse(byId('purge').completedAt!)));
-    expect(Date.parse(byId('mail').startedAt!)).toBeGreaterThanOrEqual(Date.parse(byId('gather').completedAt!));
+    expect(Date.parse(byId('checksum').startedAt!)).toBeLessThan(Date.parse(byId('inventory').completedAt!));
+    expect(Date.parse(byId('inventory').startedAt!)).toBeLessThan(Date.parse(byId('checksum').completedAt!));
+    expect(Date.parse(byId('gather').startedAt!)).toBeGreaterThanOrEqual(Math.max(Date.parse(byId('checksum').completedAt!), Date.parse(byId('inventory').completedAt!)));
+    expect(Date.parse(byId('purge').startedAt!)).toBeGreaterThanOrEqual(Date.parse(byId('gather').completedAt!));
+    expect(Date.parse(byId('mail').startedAt!)).toBeGreaterThanOrEqual(Date.parse(byId('purge').completedAt!));
   });
 
   it('starts and verifies a stopped service before reporting recovery', async () => {

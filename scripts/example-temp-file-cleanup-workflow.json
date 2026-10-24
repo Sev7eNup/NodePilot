@@ -5,18 +5,18 @@
   "workflows": [
     {
       "name": "Temp File Cleanup",
-      "description": "Archives a temp folder into a ZIP, then verifies the archive with a checksum while the aged-out originals are removed. Both branches converge on a waitAll junction before the summary mail goes out.",
+      "description": "Archives a temp folder into a ZIP, then inventories the folder and computes the archive checksum in parallel. After both checks succeed, aged-out originals are removed and a summary mail is sent.",
       "definition": {
         "nodes": [
           { "id": "note_input", "type": "stickyNote", "position": { "x": 0, "y": 60 },
-            "style": { "width": 940, "height": 110 },
+            "style": { "width": 640, "height": 110 },
             "data": { "label": "Note", "activityType": "note",
               "text": "Phase A - Input\nThe two trigger parameters are the only thing to fill in. Both are declared as strings: the run dialog sends strings, and a number would be rejected on execute.",
               "fontSize": 13, "disabled": true } },
-          { "id": "note_finish", "type": "stickyNote", "position": { "x": 1040, "y": 60 },
-            "style": { "width": 940, "height": 110 },
+          { "id": "note_finish", "type": "stickyNote", "position": { "x": 740, "y": 60 },
+            "style": { "width": 1480, "height": 110 },
             "data": { "label": "Note", "activityType": "note",
-              "text": "Phase B - Verify and clean\nChecksum and delete run in parallel and converge on waitAll, so the summary mail only goes out once both are done.",
+              "text": "Phase B - Verify and clean\nInventory and checksum run in parallel after successful archiving. waitAll joins both checks; only successful checks allow deletion. The summary mail follows successful cleanup.",
               "fontSize": 13, "disabled": true } },
 
           { "id": "trg", "type": "activity", "position": { "x": 0, "y": 400 },
@@ -32,7 +32,7 @@
               }
             } },
 
-          { "id": "inventory", "type": "activity", "position": { "x": 400, "y": 400 },
+          { "id": "inventory", "type": "activity", "position": { "x": 740, "y": 560 },
             "data": {
               "label": "folderOperation: list the temp folder",
               "activityType": "folderOperation",
@@ -41,7 +41,7 @@
               "config": { "operation": "list", "path": "{{trg.param.path}}" }
             } },
 
-          { "id": "archive", "type": "activity", "position": { "x": 700, "y": 400 },
+          { "id": "archive", "type": "activity", "position": { "x": 400, "y": 400 },
             "data": {
               "label": "zipOperation: archive the folder",
               "activityType": "zipOperation",
@@ -56,7 +56,7 @@
               }
             } },
 
-          { "id": "checksum", "type": "activity", "position": { "x": 1040, "y": 240 },
+          { "id": "checksum", "type": "activity", "position": { "x": 740, "y": 240 },
             "data": {
               "label": "fileHash: checksum the archive",
               "activityType": "fileHash",
@@ -65,7 +65,7 @@
               "config": { "path": "C:\\Archive\\temp-cleanup.zip", "algorithm": "SHA256" }
             } },
 
-          { "id": "purge", "type": "activity", "position": { "x": 1040, "y": 560 },
+          { "id": "purge", "type": "activity", "position": { "x": 1380, "y": 400 },
             "data": {
               "label": "runScript: remove the archived files",
               "activityType": "runScript",
@@ -77,7 +77,7 @@
               }
             } },
 
-          { "id": "gather", "type": "activity", "position": { "x": 1380, "y": 400 },
+          { "id": "gather", "type": "activity", "position": { "x": 1080, "y": 400 },
             "data": {
               "label": "Junction: waitAll (2)",
               "activityType": "junction",
@@ -109,23 +109,27 @@
             } }
         ],
         "edges": [
-          { "id": "e_trg_inventory", "source": "trg", "target": "inventory", "type": "labeled",
+          { "id": "e_trg_archive", "source": "trg", "target": "archive", "type": "labeled",
             "data": { "label": "Always" } },
-          { "id": "e_inventory_archive", "source": "inventory", "target": "archive", "type": "labeled",
-            "data": { "label": "On Success", "condition": "inventory.success" } },
-
           { "id": "e_archive_checksum", "source": "archive", "target": "checksum", "type": "labeled",
-            "data": { "label": "Always" } },
-          { "id": "e_archive_purge", "source": "archive", "target": "purge", "type": "labeled",
-            "data": { "label": "Always" } },
+            "data": { "label": "On Success", "condition": "archive.success" } },
+          { "id": "e_archive_inventory", "source": "archive", "target": "inventory", "type": "labeled",
+            "data": { "label": "On Success", "condition": "archive.success" } },
 
           { "id": "e_checksum_gather", "source": "checksum", "target": "gather", "type": "labeled",
             "data": { "label": "Always" } },
-          { "id": "e_purge_gather", "source": "purge", "target": "gather", "type": "labeled",
+          { "id": "e_inventory_gather", "source": "inventory", "target": "gather", "type": "labeled",
             "data": { "label": "Always" } },
 
-          { "id": "e_gather_mail", "source": "gather", "target": "mail", "type": "labeled",
-            "data": { "label": "Always" } },
+          { "id": "e_gather_purge", "source": "gather", "target": "purge", "type": "labeled",
+            "data": { "label": "Checks succeeded", "conditionExpression": {
+              "type": "group", "op": "AND", "children": [
+                { "type": "comparison", "left": { "kind": "variable", "stepId": "checksum", "field": "success" }, "op": "isTrue" },
+                { "type": "comparison", "left": { "kind": "variable", "stepId": "inventory", "field": "success" }, "op": "isTrue" }
+              ]
+            } } },
+          { "id": "e_purge_mail", "source": "purge", "target": "mail", "type": "labeled",
+            "data": { "label": "On Success", "condition": "purge.success" } },
           { "id": "e_mail_ret", "source": "mail", "target": "ret", "type": "labeled",
             "data": { "label": "Always" } }
         ]

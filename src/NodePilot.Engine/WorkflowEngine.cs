@@ -1056,7 +1056,7 @@ public class WorkflowEngine : IWorkflowEngine
         // resolve a template from an unrelated parallel branch — and only when that branch
         // happened to finish first, which made the same definition succeed or fail depending on
         // timing. Computed once per run from the compiled reverse adjacency.
-        var ancestorsByNode = AncestorIndex.Build(reverseAdjacency);
+        var ancestorsByNode = AncestorIndex.Build(reverseAdjacency, cts.Token);
 
         // The out-of-scope gate asks "is this a node of the graph that I may not read", not "has
         // it run yet" — the latter made the check depend on which branch finished first. Built

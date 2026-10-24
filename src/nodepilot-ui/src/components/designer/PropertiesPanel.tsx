@@ -294,6 +294,7 @@ function PropertiesPanelImpl({
               onOpenWorkflowPicker,
               workflowId,
               stepId: node.id,
+              liveStep: data,
               outputVariableName: outputVariable || undefined,
               lastStepsByStepId,
               isLocalTarget: !(data.targetMachineId),
@@ -336,7 +337,7 @@ function PropertiesPanelImpl({
             <StepTestPanel
               workflowId={workflowId}
               stepId={node.id}
-              liveConfig={config}
+              liveStep={{ ...data, config }}
               canRun={canWrite}
               expertMode={expertMode}
             />

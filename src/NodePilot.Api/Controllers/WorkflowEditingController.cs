@@ -610,7 +610,7 @@ public class WorkflowEditingController : WorkflowsControllerBase
     /// Useful for testing individual steps during development. Admin/Operator only.
     ///
     /// <para>Body fields: <c>MockVariables</c> for upstream variable injection,
-    /// <c>ConfigOverride</c> for testing unsaved editor state without going through PUT first.
+    /// <c>ConfigOverride</c> for config-only changes or <c>StepOverride</c> for a complete node-data snapshot.
     /// Testing the persisted config requires Run; an override additionally requires Edit and
     /// the caller's active edit-lock because it can replace executable activity config.</para>
     /// </summary>
@@ -628,7 +628,10 @@ public class WorkflowEditingController : WorkflowsControllerBase
         if (await RequireWorkflowAccessAsync(workflow, NodePilot.Core.Interfaces.ResourceOp.Run, ct) is { } d8) return d8;
 
         var configOverride = request?.ConfigOverride;
-        if (configOverride.HasValue)
+        var stepOverride = request?.StepOverride;
+        if (configOverride.HasValue && stepOverride.HasValue)
+            return BadRequest(new { message = "Config override and step override cannot be combined" });
+        if (configOverride.HasValue || stepOverride.HasValue)
         {
             // An override is unsaved executable editor state. Without the Edit + lock gates a
             // FolderOperator could replace a persisted runScript/HTTP/SQL config and execute it
@@ -644,7 +647,8 @@ public class WorkflowEditingController : WorkflowsControllerBase
             StepTestAuthorizationSnapshot.Capture(workflow),
             request?.MockVariables,
             configOverride,
-            ct);
+            ct,
+            stepOverride);
         await _audit.LogAsync(AuditActions.WorkflowStepTested, "Workflow", workflow.Id,
             AuditDetails.Json(("stepId", stepId), ("success", result.Success), ("durationMs", result.DurationMs)),
             ct);

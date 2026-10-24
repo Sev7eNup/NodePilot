@@ -33,22 +33,21 @@ type Mode = 'empty' | 'lastRun' | 'pickRun' | 'manualMocks';
 interface Props {
   workflowId: string;
   stepId: string;
-  /** Live, possibly unsaved config from the editor. Sent as ConfigOverride. */
-  liveConfig: Record<string, unknown>;
+  /** Complete node data from the current editor revision. */
+  liveStep: Record<string, unknown>;
   /** When false, the Run button is hidden. Viewers can still inspect the panel. */
   canRun: boolean;
   expertMode?: boolean;
 }
 
 /**
- * Step-test panel with context-aware modes. Always sends the live editor config as
- * `ConfigOverride` so the user tests what they see, not the last saved state.
+ * Step-test panel with context-aware modes and a consistent live step snapshot.
  */
 export function StepTestPanel(props: Readonly<Props>) {
   return <StepTestPanelContent key={`${props.workflowId}:${props.stepId}`} {...props} />;
 }
 
-function StepTestPanelContent({ workflowId, stepId, liveConfig, canRun, expertMode = true }: Readonly<Props>) {
+function StepTestPanelContent({ workflowId, stepId, liveStep, canRun, expertMode = true }: Readonly<Props>) {
   const { t } = useTranslation(['properties', 'common']);
   const [mode, setMode] = useState<Mode>(expertMode ? 'empty' : 'lastRun');
   const [pickedRunId, setPickedRunId] = useState<string | null>(null);
@@ -136,7 +135,7 @@ function StepTestPanelContent({ workflowId, stepId, liveConfig, canRun, expertMo
         `/workflows/${workflowId}/steps/${stepId}/test`,
         {
           mockVariables: mocks,
-          configOverride: liveConfig,
+          stepOverride: liveStep,
         });
       setTestResult(result);
     } catch (err: unknown) {
@@ -148,7 +147,7 @@ function StepTestPanelContent({ workflowId, stepId, liveConfig, canRun, expertMo
     } finally {
       setTesting(false);
     }
-  }, [canStart, workflowId, stepId, liveConfig, buildMocks]);
+  }, [canStart, workflowId, stepId, liveStep, buildMocks]);
 
   return (
     <div className="space-y-2.5">

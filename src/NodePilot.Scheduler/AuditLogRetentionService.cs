@@ -171,18 +171,8 @@ public class AuditLogRetentionService : LeaderGatedRetentionService
             }
             catch
             {
-                // F-4: archive succeeded but the DB delete failed (lock, constraint violation,
-                // connection drop). Without the rollback below, the next retention pass would
-                // re-select the same rows and append a second archive copy — duplicated audit
-                // events break SIEM frequency analytics and forensics deduplication. Rolling
-                // back the per-batch archive file keeps the file/DB invariant clean. If this
-                // delete itself fails we live with the duplicate — recoverable, vs. silent loss.
                 if (archivedFilePath is not null)
-                {
-                    var sidecarPath = archivedFilePath + ".sha256";
-                    TryDeleteFile(archivedFilePath, "archive-rollback-gz");
-                    TryDeleteFile(sidecarPath, "archive-rollback-sidecar");
-                }
+                    await RollbackArchiveIfRowsRemainAsync(archivedFilePath, batchIds);
                 throw;
             }
 
@@ -190,6 +180,34 @@ public class AuditLogRetentionService : LeaderGatedRetentionService
         }
 
         return totalDeleted;
+    }
+
+    private async Task RollbackArchiveIfRowsRemainAsync(string archivedFilePath, List<Guid> batchIds)
+    {
+        // A failed acknowledgement can follow a committed delete. Only remove the archive
+        // after an independent read confirms that every archived row is still in the DB.
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+            var remaining = await db.AuditLog.AsNoTracking()
+                .CountAsync(a => batchIds.Contains(a.Id), timeout.Token);
+            if (remaining == batchIds.Count)
+            {
+                TryDeleteFile(archivedFilePath, "archive-rollback-gz");
+                TryDeleteFile(archivedFilePath + ".sha256", "archive-rollback-sidecar");
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not verify the audit delete outcome for {Archive}", archivedFilePath);
+        }
+
+        _logger.LogWarning(
+            "Preserving audit archive {Archive}: the complete batch was not confirmed in the database. " +
+            "Retries may produce duplicate entries; deduplicate by audit entry id.", archivedFilePath);
     }
 
     // L-16: validation of the audit archive path. Unlike ExecutionRetention, we must NOT
@@ -252,17 +270,16 @@ public class AuditLogRetentionService : LeaderGatedRetentionService
 
     /// <summary>
     /// Writes the audit batch as gzipped NDJSON to a per-batch file (one file per Purge batch,
-    /// not one per day) plus a SHA-256 sidecar at <c>{name}.sha256</c>. Per-batch granularity
-    /// makes the (archive, delete) pair idempotent across retries — the rollback in
-    /// PurgeOnceAsync simply deletes the per-batch file pair.
+    /// not one per day) plus a SHA-256 sidecar at <c>{name}.sha256</c>. Retention removes this
+    /// pair after a failed delete only when every archived row is confirmed in the database.
+    /// An uncertain delete outcome preserves the archive; entry IDs allow deduplication.
     /// Critical properties:
     ///   - tmp-write + atomic rename: a crash between write and rename leaves a .tmp file
     ///     that ops can clean up without affecting durability of committed batches.
     ///   - SHA-256 sidecar is written AFTER the gzip rename, so a sidecar without a .gz
     ///     never happens; a .gz without a sidecar only happens on sidecar-write failure
     ///     (logged loudly; the file still archives correctly, just without integrity proof).
-    ///   - returns the final .gz path (or null on failure) so PurgeOnceAsync can roll back
-    ///     both files when the matching DB delete throws — this is what closes F-4.
+    ///   - returns the final .gz path (or null on failure) for verified rollback of the pair.
     /// </summary>
     internal async Task<string?> ArchiveAsync(string archivePath, IEnumerable<NodePilot.Core.Models.AuditLogEntry> rows, CancellationToken ct)
     {

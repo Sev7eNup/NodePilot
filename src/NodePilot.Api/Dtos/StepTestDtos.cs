@@ -9,19 +9,16 @@ namespace NodePilot.Api.Dtos;
 /// <c>"checkDisk.output": "7"</c>, <c>"checkDisk.param.freeGb": "7"</c>). Populates
 /// upstream <c>{{step.output}}</c> / <c>{{step.param.x}}</c> references.</para>
 ///
-/// <para><b>ConfigOverride</b>: optional unsaved config JSON for the step under test. When
-/// set, this replaces the persisted node config — the test then reflects what the user is
-/// editing right now, not the last-saved DB state. Pass null to fall back to the persisted
-/// definition. Only the <c>data.config</c> sub-tree is overridden; targetMachine, credential,
-/// and outputVariable still come from the persisted node so the user doesn't have to re-enter
-    /// them on every test click. Because an override can replace executable script/HTTP/SQL
-    /// config while retaining stored targets and credentials, it requires Folder Edit permission
-    /// and the caller's active workflow edit-lock. A request without an override only requires
-    /// Run permission.</para>
+/// <para><b>ConfigOverride</b> replaces only <c>data.config</c>, retaining persisted node metadata.
+/// <b>StepOverride</b> replaces the complete <c>node.data</c> object, including activity type,
+/// config, target and credential. Omitted target/credential fields clear their saved values.
+/// The overrides are mutually exclusive. Either requires Folder Edit permission and the
+/// caller's active edit-lock; testing the persisted step requires Run permission.</para>
 /// </summary>
 public record StepTestRequest(
     Dictionary<string, string>? MockVariables = null,
-    JsonElement? ConfigOverride = null);
+    JsonElement? ConfigOverride = null,
+    JsonElement? StepOverride = null);
 
 /// <summary>
 /// Variable name + sample value the UI shows in the mock-editor when the user picks

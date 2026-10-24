@@ -7,8 +7,8 @@ import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockA
  * StepTestPanel (components/designer/properties/StepTestPanel.tsx) is mounted inside the
  * PropertiesPanel's collapsible "Test & Debug" section for any non-trigger activity that has a
  * workflowId. It:
- *   - POSTs /api/workflows/{id}/steps/{stepId}/test with { mockVariables, configOverride }, where
- *     configOverride is the live editor config so unsaved edits are tested,
+ *   - POSTs /api/workflows/{id}/steps/{stepId}/test with { mockVariables, stepOverride }, where
+ *     stepOverride contains the complete live step, including target and configuration,
  *   - has four modes (Empty / Last run / Pick a run / Manual mocks); lastRun and pickRun pull from
  *     GET .../test-context and /test-context/runs,
  *   - renders the result block with output, error output, and structured params.
@@ -22,7 +22,7 @@ import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockA
  *   28.1 — Empty mode runs the step and shows live output; /test is the only POST, never /execute.
  *   28.1b — redacted output ("***") surfaces in the result block.
  *   28.2 — Manual mocks: key=value lines are parsed into mockVariables on the /test POST.
- *   28.3 — configOverride carries the live editor config, not the config saved in the database.
+ *   28.3 — stepOverride carries the live editor step, not the configuration saved in the database.
  *   28.6 — Viewer: the Run button is hidden (canRun=false); the API rejects the call as well.
  */
 
@@ -99,9 +99,9 @@ test.describe('Step-Test mit Kontext (Teil 28)', () => {
     await expect(runButton(page)).toBeVisible({ timeout: 10_000 });
     await runButton(page).click();
 
-    // The step-test POST fired; its body has configOverride and no mockVariables (Empty mode).
+    // The step-test POST carries the complete live step and no mockVariables (Empty mode).
     await expect.poll(() => calls.test, { timeout: 10_000 }).not.toBeNull();
-    expect((calls.test as { configOverride?: Record<string, unknown> }).configOverride).toMatchObject({ script: 'Get-PSDrive C' });
+    expect((calls.test as { stepOverride?: Record<string, unknown> }).stepOverride).toMatchObject({ activityType: 'runScript', config: { script: 'Get-PSDrive C' } });
     expect((calls.test as { mockVariables?: unknown }).mockVariables).toBeUndefined();
 
     // Live output is shown; no execution was started.
@@ -158,7 +158,7 @@ test.describe('Step-Test mit Kontext (Teil 28)', () => {
     });
   });
 
-  test('28.3 — configOverride carries the LIVE (unsaved) editor config, not the DB-saved one', async ({ page }) => {
+  test('28.3 — stepOverride carries the live unsaved editor configuration', async ({ page }) => {
     const sink: { body: Record<string, unknown> | null } = { body: null };
     await page.route(`**/api/workflows/${WF_ID}/steps/step-probe/test`, (route) => {
       sink.body = route.request().postDataJSON();
@@ -169,7 +169,7 @@ test.describe('Step-Test mit Kontext (Teil 28)', () => {
     });
 
     // DB-saved script is "echo OLD". Open it, then edit the script in the RunScript config editor
-    // to "echo NEW" WITHOUT saving — the panel must send the live value as configOverride.
+    // to "echo NEW" WITHOUT saving — the panel must include it in the live step snapshot.
     await openStepTest(page, { script: 'echo OLD' });
 
     // The RunScript config exposes a CodeMirror/textarea holding the script. Find the editable
@@ -188,9 +188,9 @@ test.describe('Step-Test mit Kontext (Teil 28)', () => {
     await runButton(page).click();
 
     await expect.poll(() => sink.body, { timeout: 10_000 }).not.toBeNull();
-    const override = (sink.body as { configOverride?: { script?: string } }).configOverride;
-    expect(override?.script).toContain('echo NEW');
-    expect(override?.script).not.toContain('echo OLD');
+    const override = (sink.body as { stepOverride?: { config?: { script?: string } } }).stepOverride;
+    expect(override?.config?.script).toContain('echo NEW');
+    expect(override?.config?.script).not.toContain('echo OLD');
   });
 
   test('28.6 — Viewer cannot run a step-test: the Run button is hidden', async ({ page }) => {

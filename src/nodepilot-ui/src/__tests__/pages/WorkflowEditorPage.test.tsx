@@ -241,9 +241,80 @@ async function openToolsMenu() {
   fireEvent.click(await screen.findByTestId('tools-menu-trigger'));
 }
 
+describe('WorkflowEditorPage — double-click script editing', () => {
+  it('marks an applied script dirty, saves with Ctrl+S, and restores the prior script with Undo', async () => {
+    const writes: { definitionJson: string }[] = [];
+    server.use(http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+      writes.push(await request.json() as { definitionJson: string });
+      return new HttpResponse(null, { status: 204 });
+    }));
+    renderPage();
+    await waitForCanvasReady();
+    fireEvent.doubleClick(document.querySelector('.react-flow__node[data-id="step-b"]')!);
+    fireEvent.change(await screen.findByTestId('monaco-editor-mock'), {
+      target: { value: "Write-Output 'updated script'" },
+    });
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /save.*close/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    const leave = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(leave);
+    expect(leave.defaultPrevented).toBe(true);
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await waitFor(() => expect(writes).toHaveLength(1));
+    const saved = JSON.parse(writes[0].definitionJson);
+    expect(saved.nodes.find((node: { id: string }) => node.id === 'step-b').data.config.script)
+      .toBe("Write-Output 'updated script'");
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    fireEvent.doubleClick(document.querySelector('.react-flow__node[data-id="step-b"]')!);
+    expect(await screen.findByTestId('monaco-editor-mock')).toHaveValue('Get-PSDrive C');
+  });
+});
+
+describe('WorkflowEditorPage — step-test target consistency', () => {
+  it('tests the whole edited step before autosave without mixing in the saved target', async () => {
+    const oldMachine = '22222222-2222-2222-2222-222222222222';
+    const newMachine = '33333333-3333-3333-3333-333333333333';
+    const definition = JSON.parse(MOCK_WORKFLOW.definitionJson);
+    definition.nodes[1].data.targetMachineId = oldMachine;
+    const puts: { definitionJson: string }[] = [];
+    const requests: { stepOverride?: Record<string, unknown>; configOverride?: unknown }[] = [];
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json({ ...MOCK_WORKFLOW, definitionJson: JSON.stringify(definition) })),
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+        const body = await request.json() as { definitionJson: string };
+        puts.push(body);
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/steps/step-b/test`, async ({ request }) => {
+        requests.push(await request.json() as typeof requests[number]);
+        return HttpResponse.json({ success: true, output: 'tested live step', outputParameters: {}, durationMs: 1 });
+      }),
+    );
+    const view = renderPage();
+    try {
+      await waitForCanvasReady();
+      fireEvent.click(document.querySelector('.react-flow__node[data-id="step-b"]')!);
+      fireEvent.change(await screen.findByDisplayValue(oldMachine), { target: { value: newMachine } });
+      fireEvent.change(screen.getByDisplayValue('Get-PSDrive C'), { target: { value: 'Write-Output "new target test"' } });
+      fireEvent.click(screen.getByText('Test & Debug'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Run test (Empty)' }));
+      await waitFor(() => expect(requests).toHaveLength(1));
+      expect(requests[0].stepOverride).toMatchObject({
+        activityType: 'runScript',
+        targetMachineId: newMachine,
+        config: { script: 'Write-Output "new target test"' },
+      });
+      expect(requests[0].configOverride).toBeUndefined();
+      expect(puts).toHaveLength(0);
+    } finally { view.unmount(); }
+  });
+});
+
 describe('WorkflowEditorPage — smoke + toolbar', () => {
   it.each(['double-click', 'properties'] as const)('tests the current unsaved script from the %s editor', async (entry) => {
-    let sent: { configOverride?: { script?: string } } | undefined;
+    let sent: { stepOverride?: { config?: { script?: string }; targetMachineId?: string }; configOverride?: unknown } | undefined;
     server.use(http.post(`${BASE}/api/workflows/wf-smoke-1/steps/step-b/test`, async ({ request }) => {
       sent = await request.json() as typeof sent;
       return HttpResponse.json({ success: true, output: 'current script', outputParameters: {}, durationMs: 1 });
@@ -251,6 +322,8 @@ describe('WorkflowEditorPage — smoke + toolbar', () => {
     renderPage();
     await waitForCanvasReady();
     const node = document.querySelector('.react-flow__node[data-id="step-b"]')!;
+    fireEvent.click(node);
+    fireEvent.change(await screen.findByDisplayValue('machine-test'), { target: { value: 'unsaved-new-target' } });
     if (entry === 'double-click') fireEvent.doubleClick(node);
     else {
       fireEvent.click(node);
@@ -258,7 +331,9 @@ describe('WorkflowEditorPage — smoke + toolbar', () => {
     }
     fireEvent.change(await screen.findByTestId('monaco-editor-mock'), { target: { value: "Write-Output 'updated safe script'" } });
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^run$/i }));
-    await waitFor(() => expect(sent?.configOverride?.script).toBe("Write-Output 'updated safe script'"));
+    await waitFor(() => expect(sent?.stepOverride?.config?.script).toBe("Write-Output 'updated safe script'"));
+    expect(sent?.stepOverride?.targetMachineId).toBe('unsaved-new-target');
+    expect(sent?.configOverride).toBeUndefined();
   });
 
   it('loads machine options without requesting operational statistics', async () => {
@@ -1802,6 +1877,28 @@ describe('WorkflowEditorPage — Overlays via Buttons & Keys', () => {
 
     // CommandPalette renders a "Type a command…" placeholder
     await waitFor(() => expect(screen.getByPlaceholderText(/Type a command/)).toBeInTheDocument());
+  });
+
+  it('Enter on the highlighted PNG export runs the export without publishing', async () => {
+    const publish = vi.fn();
+    server.use(http.post(`${BASE}/api/workflows/wf-smoke-1/publish`, () => {
+      publish();
+      return HttpResponse.json(MOCK_PRODUCTIVE);
+    }));
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderPage();
+    await waitForCanvasReady();
+    fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
+    const search = await screen.findByPlaceholderText(/Type a command/);
+    fireEvent.change(search, { target: { value: 'run' } });
+    const exportButton = screen.getByRole('button', { name: /Export canvas as PNG/ });
+    fireEvent.mouseEnter(exportButton);
+    expect(exportButton).toHaveClass('bg-primary/10');
+    fireEvent.keyDown(search, { key: 'Enter' });
+
+    await waitFor(() => expect(anchorClick).toHaveBeenCalledOnce());
+    expect(toBlobMock).toHaveBeenCalledOnce();
+    expect(publish).not.toHaveBeenCalled();
   });
 
   it('Search opens via Ctrl+F', async () => {

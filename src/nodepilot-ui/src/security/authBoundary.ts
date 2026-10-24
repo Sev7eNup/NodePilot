@@ -14,6 +14,8 @@ export type AuthBoundaryEvent =
       version: 1;
       type: 'identity';
       userId: string;
+      /** Present for a cookie probe; absent for an explicit authentication boundary. */
+      observation?: { username: string; role: string };
       sourceId: string;
       eventId: string;
     }
@@ -110,6 +112,11 @@ function parseEvent(value: unknown): AuthBoundaryEvent | null {
     || candidate.eventId.length > 200) return null;
 
   if (candidate.type === 'identity') {
+    const observation = candidate.observation;
+    if (observation !== undefined
+      && (!observation || typeof observation !== 'object'
+        || !('username' in observation) || typeof observation.username !== 'string' || observation.username.length > 256
+        || !('role' in observation) || typeof observation.role !== 'string' || observation.role.length > 256)) return null;
     return typeof candidate.userId === 'string' && candidate.userId.length > 0 && candidate.userId.length <= 256
       ? candidate as AuthBoundaryEvent
       : null;
@@ -155,9 +162,8 @@ let isolated = false;
  * Switches the cross-tab transport off in both directions: nothing is published and nothing
  * is received, covering the BroadcastChannel and the storage-event fallback alike.
  *
- * Needed where several tabs of the same origin must not disturb each other. Opening or
- * reloading a second tab publishes an identity event, and every other tab answers it by
- * clearing its caches and re-probing — which discards unsaved editor state.
+ * Needed for independent demo worlds on the same origin: a login or logout in one world
+ * must not clear the other world's caches or component-local drafts.
  */
 export function isolateAuthBoundaryTransport(): void {
   isolated = true;
@@ -275,6 +281,15 @@ export function clearAuthBoundaryQueryCaches(): void {
 
 export function publishAuthenticatedIdentity(userId: string): void {
   publish(envelope({ type: 'identity', userId }));
+}
+
+/** A cookie probe observes a session without establishing a new one. No cookie is transmitted. */
+export function publishObservedSession(identity: { userId: string; username: string; role: string }): void {
+  publish(envelope({
+    type: 'identity',
+    userId: identity.userId,
+    observation: { username: identity.username, role: identity.role },
+  }));
 }
 
 export function publishLogoutBoundary(phase: 'started' | 'succeeded' | 'failed'): void {
