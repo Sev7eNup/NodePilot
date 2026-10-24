@@ -63,6 +63,8 @@ export function useWorkflowPersistence({
   const dirtyRef = useRef(false);
   const savingRef = useRef(false);
   const publishRef = useRef(false);
+  // True while replaceDraft runs: no autosave and no follow-up save may write the old draft.
+  const holdSavesRef = useRef(false);
   const syncedWorkflowIdRef = useRef<string | undefined>(undefined);
   const renderedWorkflowIdRef = useRef(workflowId);
   const draftGenerationRef = useRef(0);
@@ -143,6 +145,7 @@ export function useWorkflowPersistence({
 
           // A route change owns a different draft. Never carry a follow-up across it.
           if (draftRef.current.workflowId !== snapshot.workflowId) return response;
+          if (holdSavesRef.current) return response;
           if (revisionRef.current === snapshot.revision) {
             updateDirty(false);
             return response;
@@ -183,7 +186,9 @@ export function useWorkflowPersistence({
   useEffect(() => {
     if (!isDirty || isSaving || isPublishQueued || hasVersionConflict || suspendAutoSave || !workflowId) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = setTimeout(() => { void saveLatest().catch(() => undefined); }, 5000);
+    autosaveTimer.current = setTimeout(() => {
+      if (!holdSavesRef.current) void saveLatest().catch(() => undefined);
+    }, 5000);
     return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current); };
   }, [isDirty, isSaving, isPublishQueued, hasVersionConflict, suspendAutoSave, nodes, edges, name, workflowId, saveLatest]);
 
@@ -251,6 +256,26 @@ export function useWorkflowPersistence({
     revisionRef.current += 1;
     updateDirty(true);
     return true;
+  }, [updateDirty]);
+
+  /**
+   * Runs a server operation that replaces the draft (end editing, version restore). Autosave and
+   * follow-up saves stop first and a running save is awaited, so the old draft cannot land after
+   * the operation. Only on success is the draft dropped, which lets the next server sync replace
+   * the canvas; on failure the draft stays dirty and the next edit or Save writes it.
+   */
+  const replaceDraft = useCallback(async (operation: () => Promise<unknown>): Promise<void> => {
+    holdSavesRef.current = true;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    try {
+      if (saveLoopRef.current) await saveLoopRef.current.catch(() => undefined);
+      await operation();
+      draftGenerationRef.current += 1;
+      revisionRef.current += 1;
+      updateDirty(false);
+    } finally {
+      holdSavesRef.current = false;
+    }
   }, [updateDirty]);
 
   const save = useCallback(() => { void saveLatest().catch(() => undefined); }, [saveLatest]);
@@ -322,6 +347,7 @@ export function useWorkflowPersistence({
     save,
     saveAsync,
     publish,
+    replaceDraft,
     syncFromServer,
   };
 }

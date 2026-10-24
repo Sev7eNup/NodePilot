@@ -21,11 +21,14 @@ type WorkflowVersionRow = {
  * Version diff. User picks a historical version from the timeline; the modal compares
  * that saved definition with the current working copy. The actual diff rendering is
  * delegated to the shared, ID-stable {@link DefinitionDiffViewer} (handles/positions-aware).
+ * A restore runs through `replaceDraft`, so the editor's draft is replaced by the restored
+ * version instead of being autosaved over it.
  */
-export function WorkflowDiffModal({ workflowId, currentDefinition, canRestore = false, onClose }: Readonly<{
+export function WorkflowDiffModal({ workflowId, currentDefinition, canRestore = false, replaceDraft, onClose }: Readonly<{
   workflowId: string;
   currentDefinition: { nodes: Node[]; edges: Edge[] };
   canRestore?: boolean;
+  replaceDraft: (operation: () => Promise<unknown>) => Promise<void>;
   onClose: () => void;
 }>) {
   const { t } = useTranslation('editor');
@@ -53,7 +56,8 @@ export function WorkflowDiffModal({ workflowId, currentDefinition, canRestore = 
   const rollbackMutation = useMutation({
     mutationFn: async (version: number) => {
       setRollbackError(null);
-      await api.post(`/workflows/${workflowId}/rollback/${version}`, { reason: t('diff.rollbackReason', { version }) });
+      await replaceDraft(() =>
+        api.post(`/workflows/${workflowId}/rollback/${version}`, { reason: t('diff.rollbackReason', { version }) }));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workflow-versions', workflowId] });

@@ -28,7 +28,7 @@ Features, die nur im Expert-Modus sichtbar sind, sind in den folgenden Seiten mi
 
 - `canWrite = roleCanWrite && isLockedByMe` — beide Bedingungen nötig.
 - **Lock** `Ctrl+E` → atomar `IsEnabled=false` + Lock-Fields. 409 wenn schon gelockt.
-- **Unlock** `Ctrl+U` → Lock freigeben (`IsEnabled` bleibt).
+- **Unlock** `Ctrl+U` → Lock freigeben (`IsEnabled` bleibt). Ungespeicherte Änderungen werden nach Rückfrage verworfen, der Canvas zeigt danach den gespeicherten Stand. Dasselbe gilt für das Wiederherstellen einer Version im Diff-Dialog.
 - **Publish** `Ctrl+Shift+S` → atomar Save + Enable + Unlock (durch Pre-Publish-Checklist).
 - **Disable/Enable** — Kill-Switch (Disable **nicht** lock-gegated).
 - **Force-Unlock** (Admin) `Ctrl+Shift+U` — bricht fremden Lock.

@@ -308,6 +308,7 @@ export function EditorOverlays({
           workflowId={id}
           currentDefinition={{ nodes, edges }}
           canRestore={canWrite}
+          replaceDraft={lifecycle.replaceDraft}
           onClose={() => setDiffOpen(false)}
         />
       )}

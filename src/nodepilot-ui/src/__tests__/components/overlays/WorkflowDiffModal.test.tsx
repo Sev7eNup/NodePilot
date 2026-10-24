@@ -35,7 +35,13 @@ function edge(id: string, source: string, target: string, label = 'On Success'):
   return { id, source, target, type: 'labeled', data: { label } };
 }
 
-function renderModal(currentNodes: Node[], currentEdges: Edge[], opts: { canRestore?: boolean; onClose?: () => void } = {}) {
+const runOperation = async (operation: () => Promise<unknown>) => { await operation(); };
+
+function renderModal(currentNodes: Node[], currentEdges: Edge[], opts: {
+  canRestore?: boolean;
+  onClose?: () => void;
+  replaceDraft?: (operation: () => Promise<unknown>) => Promise<void>;
+} = {}) {
   patchFetch();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -44,6 +50,7 @@ function renderModal(currentNodes: Node[], currentEdges: Edge[], opts: { canRest
         workflowId="wf-1"
         currentDefinition={{ nodes: currentNodes, edges: currentEdges }}
         canRestore={opts.canRestore}
+        replaceDraft={opts.replaceDraft ?? runOperation}
         onClose={opts.onClose ?? vi.fn()}
       />
     </QueryClientProvider>
@@ -232,6 +239,23 @@ describe('WorkflowDiffModal', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('restore_runsTheRollbackThroughReplaceDraft', async () => {
+    const replaceDraft = vi.fn(runOperation);
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-1/versions`, () =>
+        HttpResponse.json([{ version: 2, isCurrent: true }, { version: 1, isCurrent: false }])),
+      http.get(`${BASE}/api/workflows/wf-1/versions/1`, () =>
+        HttpResponse.json({ definition: { nodes: [], edges: [] } })),
+      http.post(`${BASE}/api/workflows/wf-1/rollback/1`, () => HttpResponse.json({ ok: true })),
+    );
+
+    renderModal([], [], { canRestore: true, replaceDraft });
+    fireEvent.click(await screen.findByText('Version 1'));
+    fireEvent.click(await screen.findByRole('button', { name: /Restore v1/ }));
+
+    await waitFor(() => expect(replaceDraft).toHaveBeenCalledOnce());
+  });
+
   it('closeButton_callsOnClose', async () => {
     server.use(http.get(`${BASE}/api/workflows/wf-1/versions`, () => HttpResponse.json([])));
     const onClose = vi.fn();
@@ -239,7 +263,7 @@ describe('WorkflowDiffModal', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <WorkflowDiffModal workflowId="wf-1" currentDefinition={{ nodes: [], edges: [] }} onClose={onClose} />
+        <WorkflowDiffModal workflowId="wf-1" currentDefinition={{ nodes: [], edges: [] }} replaceDraft={runOperation} onClose={onClose} />
       </QueryClientProvider>
     );
 
