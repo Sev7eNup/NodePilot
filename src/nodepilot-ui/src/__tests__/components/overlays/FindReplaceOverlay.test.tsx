@@ -114,6 +114,29 @@ describe('FindReplaceOverlay', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('replacingTheSelectedConfigMatch_changesOnlyThatField', () => {
+    const onApply = vi.fn();
+    render(
+      <FindReplaceOverlay canWrite
+        nodes={[node('a', 'Deploy', { script: 'Restart-Service prod-api', workingDirectory: '/srv/prod' })]}
+        edges={[]}
+        onApply={onApply}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Find/i), { target: { value: 'prod' } });
+    fireEvent.change(screen.getByPlaceholderText(/Replace with/i), { target: { value: 'test' } });
+    fireEvent.click(screen.getByText('Deploy › workingDirectory'));
+    fireEvent.click(screen.getByTitle(/Replace current match/i));
+
+    const [appliedNodes] = onApply.mock.calls[0] as [Node[], Edge[]];
+    expect((appliedNodes[0].data as { config: Record<string, string> }).config).toEqual({
+      script: 'Restart-Service prod-api',
+      workingDirectory: '/srv/test',
+    });
+  });
+
   it('replaceButtonsDisabledWhenNoMatches', () => {
     render(
       <FindReplaceOverlay canWrite nodes={[node('a', 'Foo')]} edges={[]} onApply={vi.fn()} onClose={vi.fn()} />
