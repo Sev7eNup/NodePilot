@@ -61,6 +61,7 @@ function defaultProps(over: Partial<EditorLifecycle> = {}): EditorHeaderProps {
       save: vi.fn(),
       lock: vi.fn(),
       unlock: vi.fn(),
+      replaceDraft: vi.fn(),
       forceUnlock: vi.fn(),
       disable: vi.fn(),
       requestPublish: vi.fn(),

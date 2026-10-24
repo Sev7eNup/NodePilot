@@ -290,6 +290,40 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
+  it('replaceDraft waits for the running save, skips its follow-up and then drops the draft', async () => {
+    const saving = deferred<unknown>();
+    vi.mocked(api.put).mockImplementationOnce(() => saving.promise);
+    const operation = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderPersistence();
+    act(() => { result.current.syncFromServer('First', 4); result.current.markDirty(); result.current.save(); });
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    // A newer edit would normally trigger a follow-up save of the same draft.
+    act(() => result.current.markDirty());
+
+    let replaced!: Promise<void>;
+    act(() => { replaced = result.current.replaceDraft(operation); });
+    expect(operation).not.toHaveBeenCalled();
+    await act(async () => { saving.resolve({}); await replaced; });
+
+    expect(operation).toHaveBeenCalledTimes(1);
+    expect(api.put).toHaveBeenCalledTimes(1);
+    expect(result.current.isDirty).toBe(false);
+    expect(result.current.syncFromServer('Server state', 4)).toBe(true);
+  });
+
+  it('replaceDraft keeps the draft dirty when the operation fails', async () => {
+    const { result } = renderPersistence();
+    act(() => { result.current.syncFromServer('First', 4); result.current.markDirty(); });
+
+    await act(async () => {
+      await expect(result.current.replaceDraft(() => Promise.reject(new Error('unlock failed'))))
+        .rejects.toThrow('unlock failed');
+    });
+
+    expect(result.current.isDirty).toBe(true);
+    expect(result.current.syncFromServer('Server state', 4)).toBe(false);
+  });
+
   it('drops queued Publish when the editor unmounts while its save is pending', async () => {
     const saving = deferred<unknown>();
     vi.mocked(api.put).mockImplementationOnce(() => saving.promise);

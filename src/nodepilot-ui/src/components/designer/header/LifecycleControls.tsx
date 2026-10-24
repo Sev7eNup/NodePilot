@@ -36,10 +36,7 @@ export function LifecycleControls({ workflow, lifecycle }: Readonly<LifecycleCon
       {isLockedByMe && (
         <button
           type="button"
-          onClick={async () => {
-            if (isDirty && !(await confirmDialog(t('editor:endEditingDirtyConfirm')))) return;
-            onUnlock();
-          }}
+          onClick={onUnlock}
           disabled={isUnlocking}
           className="flex items-center justify-center rounded-md h-9 w-9 bg-transparent hover:bg-surface-high text-on-surface-variant transition-colors disabled:opacity-50"
           title={t('editor:endEditingTitleFull')}
