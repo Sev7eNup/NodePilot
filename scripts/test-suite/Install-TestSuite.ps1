@@ -361,6 +361,7 @@ foreach ($entry in @($manifest.workflows)) {
     $current = Invoke-NodePilotJson -Method POST -Path '/api/workflows' -Body $body
     $existing += $current
     if ($wantEnabled) {
+      $body.expectedVersion = $current.version
       $null = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/publish" -Body $body
       Write-Host "created + published : $($wf.name)"
     }
@@ -387,6 +388,7 @@ foreach ($entry in @($manifest.workflows)) {
     if (-not $lockedByMe) {
       $null = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/lock"
     }
+    $body.expectedVersion = $current.version
     if ($wantEnabled) {
       $null = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/publish" -Body $body
       Write-Host "updated + published : $($wf.name)"

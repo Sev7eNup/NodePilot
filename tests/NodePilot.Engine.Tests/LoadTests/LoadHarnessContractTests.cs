@@ -58,9 +58,10 @@ public sealed class LoadHarnessContractTests
             {
                 var id = Guid.NewGuid();
                 created.Add(id, (name, definition));
-                return Json(new { id });
+                return Json(new { id, version = 1 });
             }
             Assert.EndsWith("/publish", request.RequestUri.AbsolutePath);
+            Assert.Equal(1, body.RootElement.GetProperty("expectedVersion").GetInt32());
             var workflowId = Guid.Parse(request.RequestUri.Segments[^2].Trim('/'));
             Assert.Equal(created[workflowId], (name, definition));
             // A parent may only become executable once its named child is published.

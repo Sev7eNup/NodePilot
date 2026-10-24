@@ -68,12 +68,12 @@ class ScriptContracts(unittest.TestCase):
                 elif self.path == "/api/workflows/wf" and self.command == "DELETE":
                     code = 204
                 elif self.path == "/api/workflows/wf":
-                    response = {"id": "wf", "name": "Stress-Test", "isEnabled": True,
+                    response = {"id": "wf", "name": "Stress-Test", "isEnabled": True, "version": 3,
                                 "folderId": "existing-folder", "checkedOutByUserId": fixture.owner}
                 elif self.path == "/api/workflows" and self.command == "POST":
-                    code, response = 201, {"id": "wf", "name": body["name"], "checkedOutByUserId": "caller"}
+                    code, response = 201, {"id": "wf", "name": body["name"], "version": 1, "checkedOutByUserId": "caller"}
                 elif self.path == "/api/workflows/wf/lock":
-                    code, response = (409 if fixture.owner == "another-user" else 200), {"id": "wf"}
+                    code, response = (409 if fixture.owner == "another-user" else 200), {"id": "wf", "version": 3}
                 elif self.path == "/api/workflows/wf/publish":
                     code, response = fixture.publish_status, {"id": "wf", "name": "Stress-Test"}
                 elif self.path == "/api/workflows/wf/execute":
@@ -168,6 +168,11 @@ class ScriptContracts(unittest.TestCase):
         self.assertEqual(0, self.run_python("stress-test/launch-40x.py"))
         self.assertFalse(any(path.endswith("/lock") for _, path, _ in self.calls))
 
+    def test_publish_sends_the_version_it_read(self):
+        self.assertEqual(0, self.run_python("stress-test/launch-40x.py"))
+        publishes = [body for _, path, body in self.calls if path.endswith("/publish")]
+        self.assertEqual([3], [body["expectedVersion"] for body in publishes])
+
     def test_foreign_lock_and_failed_publish_never_launch(self):
         for owner, publish_status in (("another-user", 200), (None, 400)):
             self.owner, self.publish_status = owner, publish_status
@@ -230,6 +235,7 @@ class ScriptContracts(unittest.TestCase):
         creates = [body for method, path, body in self.calls if method == "POST" and path == "/api/workflows"]
         publishes = [body for _, path, body in self.calls if path.endswith("/publish")]
         self.assertEqual(4, len(creates))
+        self.assertTrue(all(body.pop("expectedVersion") == 1 for body in publishes))
         self.assertEqual(creates, publishes)
         self.assertTrue(all(isinstance(body["definitionJson"], str) for body in creates))
 

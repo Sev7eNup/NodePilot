@@ -11,7 +11,15 @@ namespace NodePilot.Api.Dtos;
 /// chosen folder before persisting.
 /// </summary>
 public record CreateWorkflowRequest(string Name, string? Description, string DefinitionJson, Guid? FolderId = null);
-public record UpdateWorkflowRequest(string Name, string? Description, string DefinitionJson);
+/// <summary>
+/// Body for <c>PUT /api/workflows/{id}</c>. <see cref="ExpectedVersion"/> is the workflow version
+/// the client's draft is based on; a mismatch returns 409 so a stale draft never replaces a newer save.
+/// </summary>
+public record UpdateWorkflowRequest(
+    string Name,
+    string? Description,
+    string DefinitionJson,
+    [property: System.Text.Json.Serialization.JsonRequired] int ExpectedVersion);
 
 /// <summary>
 /// Body for <c>PUT /api/workflows/{id}/concurrency-limit</c>. Null means unlimited.
@@ -183,4 +191,8 @@ public record WorkflowCapabilities(bool CanRead, bool CanRun, bool CanEdit, bool
 /// — publish is "save current draft + enable + unlock" in one atomic transaction, so it
 /// needs the full editable surface.
 /// </summary>
-public record PublishWorkflowRequest(string Name, string? Description, string DefinitionJson);
+public record PublishWorkflowRequest(
+    string Name,
+    string? Description,
+    string DefinitionJson,
+    [property: System.Text.Json.Serialization.JsonRequired] int ExpectedVersion);

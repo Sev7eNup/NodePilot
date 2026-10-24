@@ -327,10 +327,10 @@ public sealed class WorkflowEditTools
     {
         if (publish)
         {
-            var r = await ApiErrorMapper.Guard(() => _api.PublishWorkflowAsync(wf.Id, new PublishWorkflowRequest(name, description, definitionJson), ct));
+            var r = await ApiErrorMapper.Guard(() => _api.PublishWorkflowAsync(wf.Id, new PublishWorkflowRequest(name, description, definitionJson, wf.Version), ct));
             return new { published = true, workflowId = r.Id, version = r.Version, enabled = r.IsEnabled, notes };
         }
-        await ApiErrorMapper.Guard(() => _api.UpdateWorkflowAsync(wf.Id, new UpdateWorkflowRequest(name, description, definitionJson), ct));
+        await ApiErrorMapper.Guard(() => _api.UpdateWorkflowAsync(wf.Id, new UpdateWorkflowRequest(name, description, definitionJson, wf.Version), ct));
         return new { saved = true, mode = "draft", workflowId = wf.Id, notes };
     }
 

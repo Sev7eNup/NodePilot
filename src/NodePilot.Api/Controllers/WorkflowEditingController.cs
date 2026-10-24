@@ -459,6 +459,12 @@ public class WorkflowEditingController : WorkflowsControllerBase
         if (await RequireWorkflowAccessAsync(workflow, NodePilot.Core.Interfaces.ResourceOp.Edit, ct) is { } d6) return d6;
         if (await EnsureWriteLockAsync(workflow, ct) is { } locked) return locked;
 
+        const string publishConflictMessage =
+            "Workflow was published concurrently. Reload the workflow and retry publish.";
+        // The compare-and-swap below also matches on workflow.Version, so this check is atomic.
+        if (request.ExpectedVersion != workflow.Version)
+            return await LostCompareAndSwapAsync(id, publishConflictMessage, ct);
+
         var sizeError = ValidateDefinitionJson(request.DefinitionJson);
         if (sizeError is not null) return sizeError;
         if (NodePilot.Api.Security.WorkflowActivationValidation.Validate(request.DefinitionJson) is { } activationError)
@@ -479,8 +485,6 @@ public class WorkflowEditingController : WorkflowsControllerBase
 
         // Publish through the shared compare-and-swap (see CompareAndSwapWorkflowAsync); the
         // setter chain additionally enables the workflow and releases the edit lock.
-        const string publishConflictMessage =
-            "Workflow was published concurrently. Reload the workflow and retry publish.";
         int updated;
         try
         {

@@ -55,7 +55,7 @@ Workflows haben einen per-User Edit-Lock (`CheckedOutByUserId` + `CheckedOutAt`)
 |---|---|
 | `POST /lock` | Atomar `IsEnabled=false` + Lock-Fields setzen. 409 wenn schon gelockt. |
 | `POST /unlock` | Lock-Fields auf null. `IsEnabled` bleibt unverändert. |
-| `POST /publish` | Atomar: Save + `IsEnabled=true` + Unlock. Die übergebene Definition wird vorher validiert: ein schwaches Webhook-HMAC-Secret liefert `400 weak_webhook_hmac_secret`, eine für Quartz ungültige Cron-Expression liefert `400 invalid_cron_expression`. |
+| `POST /publish` | Atomar: Save + `IsEnabled=true` + Unlock. Wie `PUT` verlangt es `expectedVersion`; ein veralteter Entwurf liefert `409 workflow_version_conflict`. Die übergebene Definition wird vorher validiert: ein schwaches Webhook-HMAC-Secret liefert `400 weak_webhook_hmac_secret`, eine für Quartz ungültige Cron-Expression liefert `400 invalid_cron_expression`. |
 | `POST /force-unlock` | Admin-only. Bricht fremden Lock. |
 
 ## UX-Flow
@@ -148,13 +148,13 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflow
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/workflows/21f1c0d4-..." \
   -H 'Content-Type: application/json' \
   -d '{ "name":"Deploy App", "description":"wip",
-        "definitionJson":"{\"nodes\":[...],\"edges\":[...]}" }' -i   # 204
+        "definitionJson":"{\"nodes\":[...],\"edges\":[...]}", "expectedVersion": 3 }' -i   # 204
 
 # Publish — atomar Save + Enable + Unlock. Workflow ist wieder Productive.
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../publish" \
   -H 'Content-Type: application/json' \
   -d '{ "name":"Deploy App", "description":null,
-        "definitionJson":"{\"nodes\":[...],\"edges\":[...]}" }'
+        "definitionJson":"{\"nodes\":[...],\"edges\":[...]}", "expectedVersion": 4 }'
 
 # Exit ohne Publish: nur Unlock — Workflow bleibt Disabled
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../unlock"

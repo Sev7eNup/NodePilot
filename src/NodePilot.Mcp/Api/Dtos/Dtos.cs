@@ -80,8 +80,8 @@ public sealed record WorkflowCapabilities(
 
 public sealed record CreateWorkflowRequest(
     string Name, string? Description, string DefinitionJson, Guid? FolderId = null);
-public sealed record UpdateWorkflowRequest(string Name, string? Description, string DefinitionJson);
-public sealed record PublishWorkflowRequest(string Name, string? Description, string DefinitionJson);
+public sealed record UpdateWorkflowRequest(string Name, string? Description, string DefinitionJson, int ExpectedVersion);
+public sealed record PublishWorkflowRequest(string Name, string? Description, string DefinitionJson, int ExpectedVersion);
 public sealed record SetWorkflowConcurrencyLimitRequest(int? MaxConcurrentExecutions);
 public sealed record RollbackRequest(string? Reason);
 

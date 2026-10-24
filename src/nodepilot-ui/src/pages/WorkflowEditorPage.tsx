@@ -356,7 +356,7 @@ function WorkflowEditorInner() {
 
   useEffect(() => {
     if (workflow) {
-      if (!syncFromServer(workflow.name)) return;
+      if (!syncFromServer(workflow.name, workflow.version)) return;
       resetPasteCount();
       pushRecentWorkflow(workflow.id);
       try {

@@ -44,19 +44,21 @@ public class NodePilotApiClient
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _token);
     }
 
-    public async Task<Guid> CreateWorkflowAsync(string name, string definitionJson, CancellationToken ct = default)
+    public async Task<(Guid Id, int Version)> CreateWorkflowAsync(string name, string definitionJson, CancellationToken ct = default)
     {
         // Mirror of CreateWorkflowRequest(Name, Description, DefinitionJson)
         var req = new { name, description = (string?)null, definitionJson };
         using var resp = await _http.PostAsJsonAsync("api/workflows", req, ct);
         resp.EnsureSuccessStatusCode();
         using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-        return doc.RootElement.GetProperty("id").GetGuid();
+        return (doc.RootElement.GetProperty("id").GetGuid(), doc.RootElement.GetProperty("version").GetInt32());
     }
 
-    public async Task PublishWorkflowAsync(Guid id, string name, string definitionJson, CancellationToken ct = default)
+    public async Task PublishWorkflowAsync(
+        Guid id, string name, string definitionJson, int expectedVersion, CancellationToken ct = default)
     {
-        using var resp = await _http.PostAsJsonAsync($"api/workflows/{id}/publish", new { name, definitionJson }, ct);
+        using var resp = await _http.PostAsJsonAsync(
+            $"api/workflows/{id}/publish", new { name, definitionJson, expectedVersion }, ct);
         resp.EnsureSuccessStatusCode();
     }
 

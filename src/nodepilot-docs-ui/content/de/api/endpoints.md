@@ -69,18 +69,18 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflow
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/workflows/21f1c0d4-..." \
   -H 'Content-Type: application/json' \
   -d '{ "name": "Deploy App v2", "description": "updated",
-        "definitionJson": "{\"nodes\":[...],\"edges\":[...]}" }' -i   # 204
+        "definitionJson": "{\"nodes\":[...],\"edges\":[...]}", "expectedVersion": 3 }' -i   # 204
 
 # Publish (atomar), Duplicate, Cancel-All
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../publish" \
   -H 'Content-Type: application/json' \
   -d '{ "name": "Deploy App", "description": null,
-        "definitionJson": "{\"nodes\":[...],\"edges\":[...]}" }'
+        "definitionJson": "{\"nodes\":[...],\"edges\":[...]}", "expectedVersion": 4 }'
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../duplicate"
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../cancel-all"   # {"total":3,"signalled":2}
 ```
 
-409-Lock-Konflikt-Body: `{"message":"Workflow is already locked by alice.","lockedByUserName":"alice","lockedAt":"..."}`. 409-Version-Konflikt: `{"code":"workflow_version_conflict","currentVersion":4}`.
+409-Lock-Konflikt-Body: `{"message":"Workflow is already locked by alice.","lockedByUserName":"alice","lockedAt":"..."}`. 409-Version-Konflikt: `{"code":"workflow_version_conflict","currentVersion":4}`. `PUT` und `publish` verlangen `expectedVersion`, die Version, auf der der Entwurf basiert; weicht sie von der gespeicherten ab, antwortet der Server mit diesem 409 und überschreibt nichts.
 
 ## Versionen & Contract
 

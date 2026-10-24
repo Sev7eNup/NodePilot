@@ -109,7 +109,7 @@ public sealed class WorkflowPortabilityTests
         (await h.Workflows.Enable(saved.Id, Ct)).Should().BeOfType<BadRequestObjectResult>();
         saved.CheckedOutByUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
         await db.SaveChangesAsync(Ct);
-        var publish = await h.Editing.Publish(saved.Id, new(saved.Name, null, saved.DefinitionJson), Ct);
+        var publish = await h.Editing.Publish(saved.Id, new(saved.Name, null, saved.DefinitionJson, saved.Version), Ct);
         publish.Result.Should().BeOfType<BadRequestObjectResult>();
         saved.DefinitionJson = saved.DefinitionJson.Replace(Guid.Empty.ToString(), Guid.NewGuid().ToString());
         WorkflowResourceReferences.UnresolvedError(saved.DefinitionJson).Should().BeNull();
