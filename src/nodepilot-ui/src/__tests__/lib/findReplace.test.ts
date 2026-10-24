@@ -125,6 +125,42 @@ describe('applyReplaceAll', () => {
     expect(cfg.headers[0].value).toBe('still-New');
   });
 
+  it('replacingOneConfigMatch_leavesOtherFieldsOfTheSameNodeUnchanged', () => {
+    const nodes = [node('n1', 'Deploy prod', { workingDirectory: '/srv/prod/app', script:'Restart-Service prod-api' })];
+    const selected = findMatches('prod', nodes, [], ALL_SCOPES)
+      .filter((m) => m.configKeyPath === 'workingDirectory');
+
+    const { nodes: out } = applyReplaceAll(selected, 'prod', 'test', nodes, []);
+
+    const data = out[0].data as { label: string; config: Record<string, string> };
+    expect(data.config.workingDirectory).toBe('/srv/test/app');
+    expect(data.config.script).toBe('Restart-Service prod-api');
+    expect(data.label).toBe('Deploy prod');
+  });
+
+  it('replacingALabelMatch_leavesConfigUnchanged', () => {
+    const nodes = [node('n1', 'Old step', { script: 'Old-Command' })];
+    const labelOnly = findMatches('Old', nodes, [], ALL_SCOPES).filter((m) => m.kind === 'node-label');
+
+    const { nodes: out } = applyReplaceAll(labelOnly, 'Old', 'New', nodes, []);
+
+    const data = out[0].data as { label: string; config: Record<string, string> };
+    expect(data.label).toBe('New step');
+    expect(data.config.script).toBe('Old-Command');
+  });
+
+  it('replacesAtAConfigKeyThatContainsADot', () => {
+    const nodes = [node('n1', 'Call', { headers: { 'X.Old': 'Old-value', X: { Old: 'Old-nested' } } })];
+    const selected = findMatches('Old', nodes, [], ALL_SCOPES)
+      .filter((m) => m.configPath?.join('/') === 'headers/X.Old');
+
+    const { nodes: out } = applyReplaceAll(selected, 'Old', 'New', nodes, []);
+
+    const cfg = (out[0].data as { config: { headers: Record<string, unknown> } }).config;
+    expect(cfg.headers['X.Old']).toBe('New-value');
+    expect(cfg.headers.X).toEqual({ Old: 'Old-nested' });
+  });
+
   it('doesNotMutateOriginalArrays', () => {
     // applyReplaceAll must produce new arrays instead of splicing the inputs in place.
     const nodes = [node('n1', 'OldText')];

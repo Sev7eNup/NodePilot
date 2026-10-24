@@ -6,8 +6,10 @@ export interface MatchLocation {
   kind: MatchKind;
   nodeId?: string;
   edgeId?: string;
-  /** Dot-path into config, e.g. "script" or "headers.0.value" */
+  /** Dot-path into config for display, e.g. "script" or "headers.0.value" */
   configKeyPath?: string;
+  /** The same path as segments; replacement uses it, because a key may itself contain a dot. */
+  configPath?: string[];
   /** The matched substring */
   matchedText: string;
   /** Short context around the match for display */
@@ -35,11 +37,11 @@ function traverseObject(
   obj: unknown,
   query: string,
   pathParts: string[],
-  results: Array<{ path: string; text: string; context: string }>,
+  results: Array<{ path: string[]; text: string; context: string }>,
 ): void {
   if (typeof obj === 'string') {
     if (obj.toLowerCase().includes(query.toLowerCase())) {
-      results.push({ path: pathParts.join('.'), text: obj, context: snippet(obj, query) });
+      results.push({ path: pathParts, text: obj, context: snippet(obj, query) });
     }
     return;
   }
@@ -98,17 +100,19 @@ export function findMatches(
     for (const n of nodes) {
       const config = (n.data as Record<string, unknown>).config;
       if (!config) continue;
-      const hits: Array<{ path: string; text: string; context: string }> = [];
+      const hits: Array<{ path: string[]; text: string; context: string }> = [];
       traverseObject(config, query, [], hits);
       const nodeLabel = (n.data as Record<string, unknown>).label as string | undefined;
       for (const h of hits) {
+        const keyPath = h.path.join('.');
         results.push({
           kind: 'config',
           nodeId: n.id,
-          configKeyPath: h.path,
+          configKeyPath: keyPath,
+          configPath: h.path,
           matchedText: h.text,
           contextSnippet: h.context,
-          displayName: `${nodeLabel || n.id} › ${h.path || 'config'}`,
+          displayName: `${nodeLabel || n.id} › ${keyPath || 'config'}`,
         });
       }
     }
@@ -117,17 +121,18 @@ export function findMatches(
   return results.slice(0, 50);
 }
 
-function replaceInValue(value: unknown, search: string, replacement: string): unknown {
-  if (typeof value === 'string') {
-    return value.replaceAll(search, replacement);
-  }
+/** Replaces inside the one string at `path`; every other config value is left untouched. */
+function replaceAtPath(value: unknown, path: string[], search: string, replacement: string): unknown {
+  if (path.length === 0) return typeof value === 'string' ? value.replaceAll(search, replacement) : value;
+  const [head, ...rest] = path;
   if (Array.isArray(value)) {
-    return value.map((v) => replaceInValue(v, search, replacement));
+    const index = Number(head);
+    if (!Number.isInteger(index) || index < 0 || index >= value.length) return value;
+    return value.map((item, i) => (i === index ? replaceAtPath(item, rest, search, replacement) : item));
   }
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, replaceInValue(v, search, replacement)])
-    );
+  if (value && typeof value === 'object' && Object.hasOwn(value, head)) {
+    const record = value as Record<string, unknown>;
+    return { ...record, [head]: replaceAtPath(record[head], rest, search, replacement) };
   }
   return value;
 }
@@ -145,13 +150,13 @@ export function applyReplaceAll(
   const newNodes = nodes.map((n) => {
     if (!nodeIds.has(n.id)) return n;
     const hasLabelMatch = matches.some((m) => m.nodeId === n.id && m.kind === 'node-label');
-    const hasConfigMatch = matches.some((m) => m.nodeId === n.id && m.kind === 'config');
     let data = n.data as Record<string, unknown>;
     if (hasLabelMatch && typeof data.label === 'string') {
       data = { ...data, label: data.label.replaceAll(search, replacement) };
     }
-    if (hasConfigMatch && data.config) {
-      data = { ...data, config: replaceInValue(data.config, search, replacement) };
+    for (const m of matches) {
+      if (m.nodeId !== n.id || m.kind !== 'config' || !m.configPath) continue;
+      data = { ...data, config: replaceAtPath(data.config, m.configPath, search, replacement) };
     }
     return { ...n, data };
   });
