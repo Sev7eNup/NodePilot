@@ -27,10 +27,20 @@ Ein Posten wandert von R2 nach R1, wenn sein Trigger eintritt — nicht, weil er
 
 ### Abhängigkeitsmenü (beschlossen 2026-10-23)
 
-Auf Nutzerfreigabe im Branch `feat/dependencies-menu` umgesetzt, noch nicht auf `main`:
+Umgesetzt und auf `main`:
 lesbare Verwendungsübersicht, fokussierte Karte und Fundstellen für Workflows, Maschinen,
 Zugangsdaten, globale Variablen und Custom Activities. API, CLI, MCP und Browser-Demo sind
 angebunden. [Bedienung und Grenzen](dependencies.md), [Feature-Plan](dependencies-plan.md).
+
+### Credentials-Menü (beschlossen 2026-10-24)
+
+Credentials sind globale Dienstkonten und bekommen deshalb einen eigenen Menüpunkt unter
+Infrastruktur statt einer Karte in den persönlichen Einstellungen. Sichtbar nur für Admin und
+Operator, wie die API. Ein Badge zählt abgelaufene und bald ablaufende Konten mit derselben
+Rechnung wie die System-Policy `credential-expiring`, deren Link `/credentials` damit ein Ziel
+hat. Umgesetzt und auf `main`. Offen als eigener kleiner Schritt: eine
+Löschwarnung, die die Verwendungen aus dem Abhängigkeitsmenü nennt, weil das Löschen die
+Maschinen-Vorgabe still entfernt.
 
 ### Allgemeine KI-Agenten und Teams (beschlossen 2026-09-18)
 

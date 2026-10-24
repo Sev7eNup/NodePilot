@@ -48,5 +48,5 @@ export function dependencyHref(kind: DependencyKind, id: string) {
 }
 export function dependencySourceHref(kind: DependencyKind, id: string, nodeId?: string | null) {
   if (kind === 'workflow') return `/workflows/${encodeURIComponent(id)}${nodeId ? `?focusNode=${encodeURIComponent(nodeId)}` : ''}`;
-  return ({ machine: '/machines', credential: '/settings', variable: '/global-variables', customActivity: '/custom-activities' })[kind];
+  return ({ machine: '/machines', credential: '/credentials', variable: '/global-variables', customActivity: '/custom-activities' })[kind];
 }

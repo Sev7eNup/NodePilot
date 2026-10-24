@@ -1,6 +1,6 @@
 {
   "title": "Einstellungen",
-  "subtitle": "Persönliche Oberfläche und hinterlegte Anmeldedaten verwalten. Die globale Konfiguration (Integrationen, Sicherheit, Datenbank …) finden Administratoren im Reiter „System\".",
+  "subtitle": "Darstellung und Sprache der Oberfläche einstellen. Die globale Konfiguration (Integrationen, Sicherheit, Datenbank …) finden Administratoren im Reiter „System\".",
   "appearance": "Darstellung",
   "theme": "Theme",
   "themeLight": "Hell",

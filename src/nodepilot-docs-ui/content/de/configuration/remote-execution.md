@@ -27,6 +27,8 @@ Welches Konto die WinRM-Verbindung trägt, hängt allein davon ab, ob für den S
 
 Die Credential-Auflösung ist **zweistufig**: Credential am Node → `DefaultCredentialId` der Maschine → Dienstidentität. Ein globales Default-Credential gibt es nicht. Wird ein Credential gelöscht, verliert die Maschine ihren Verweis darauf still und fällt auf die Dienstidentität zurück.
 
+Credentials verwalten Admins und Operatoren unter **Infrastruktur → Credentials**; Viewer sehen den Menüpunkt nicht, weil die API ihnen die Liste verweigert. Löschen darf nur ein Admin. Ein optionales Ablaufdatum speist die System-Policy `credential-expiring`. Das Badge am Menüpunkt zählt abgelaufene Konten und solche mit höchstens 14 vollen Resttagen, also nach derselben Rechnung wie die Vorlage der Policy. **Abhängigkeiten anzeigen** an jeder Zeile zeigt, welche Maschinen und Schritte ein Credential verwenden — vor dem Löschen der richtige Blick.
+
 Auf dem Zielsystem braucht das verwendete Konto — Credential wie Dienstidentität — einen erreichbaren WinRM-Endpunkt und Zugriff darauf:
 
 ```powershell

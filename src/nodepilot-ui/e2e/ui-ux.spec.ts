@@ -150,16 +150,15 @@ test.describe('UI/UX (Teil 10)', () => {
     await page.keyboard.press('Enter');
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(false);
 
-    // Form fields are labelled/typeable: the credential name input accepts input.
-    // (Settings shows the Add-Credential form under "Credentials"; Admin can open it.)
-    const addCred = page.getByRole('button', { name: /add credential|anmeldedaten hinzufügen/i });
-    if (await addCred.count()) {
-      await addCred.first().click();
-      const nameField = page.getByPlaceholder(/credential name|name der anmeldedaten/i).first();
-      await expect(nameField).toBeVisible();
-      await nameField.fill('svc-account');
-      await expect(nameField).toHaveValue('svc-account');
-    }
+    // Form fields are labelled/typeable: the credential name input on the Credentials page
+    // accepts input (the mocked user is an Admin, so the add form is available).
+    await page.goto('/credentials');
+    await page.getByRole('button', { name: /add credential|credential hinzufügen/i }).click();
+    const nameField = page.getByRole('group', { name: /add credential|credential hinzufügen/i })
+      .getByPlaceholder(/credential name|credential-name/i);
+    await expect(nameField).toBeVisible({ timeout: 15_000 });
+    await nameField.fill('svc-account');
+    await expect(nameField).toHaveValue('svc-account');
   });
 
   test('10.3b — Escape closes a transient popover (keyboard dismiss)', async ({ page }) => {

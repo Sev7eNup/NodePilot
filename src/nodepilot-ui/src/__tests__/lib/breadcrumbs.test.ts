@@ -44,6 +44,15 @@ describe('resolveBreadcrumbs', () => {
     expect(resolveBreadcrumbs(pathname, search, 'Admin').at(-1)?.labelKey).toBe(expected);
   });
 
+  it('places credentials under infrastructure for Admin and Operator only', () => {
+    expect(resolveBreadcrumbs('/credentials', '', 'Operator')).toEqual([
+      { labelKey: 'nav:groupInfrastructure', to: '/machines' },
+      { labelKey: 'nav:credentials' },
+    ]);
+    expect(resolveBreadcrumbs('/credentials', '', 'Admin')).toHaveLength(2);
+    expect(resolveBreadcrumbs('/credentials', '', 'Viewer')).toEqual([]);
+  });
+
   it('returns no crumbs for an unknown route', () => {
     expect(resolveBreadcrumbs('/not-found', '', 'Admin')).toEqual([]);
   });

@@ -30,6 +30,7 @@ const ExecutionsPage = lazy(() => import('./pages/ExecutionsPage').then(m => ({ 
 const OperationsPage = lazy(() => import('./pages/OperationsPage').then(m => ({ default: m.OperationsPage })));
 const AiChatPage = lazy(() => import('./pages/AiChatPage').then(m => ({ default: m.AiChatPage })));
 const MachinesPage = lazy(() => import('./pages/MachinesPage').then(m => ({ default: m.MachinesPage })));
+const CredentialsPage = lazy(() => import('./pages/CredentialsPage').then(m => ({ default: m.CredentialsPage })));
 const DependenciesPage = lazy(() => import('./pages/DependenciesPage').then(m => ({ default: m.DependenciesPage })));
 const GlobalVariablesPage = lazy(() => import('./pages/GlobalVariablesPage').then(m => ({ default: m.GlobalVariablesPage })));
 const CustomActivitiesPage = lazy(() => import('./pages/CustomActivitiesPage').then(m => ({ default: m.CustomActivitiesPage })));
@@ -66,6 +67,12 @@ void useAuthStore.getState().initialize();
 function AdminOnly({ children }: { children: React.ReactNode }) {
   const role = useAuthStore((s) => s.role);
   return role === 'Admin' ? <>{children}</> : <Navigate to="/" replace />;
+}
+
+/** Admin/Operator route guard for pages whose API is not Viewer-readable, such as credentials. */
+function WriterOnly({ children }: { children: React.ReactNode }) {
+  const role = useAuthStore((s) => s.role);
+  return role === 'Admin' || role === 'Operator' ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 function ThemeWatcher() {
@@ -117,6 +124,7 @@ export const router = createBrowserRouter([
       { path: '/dependencies', element: <DependenciesPage /> },
       { path: '/ai-chat', element: <AiChatPage /> },
       { path: '/machines', element: <MachinesPage /> },
+      { path: '/credentials', element: <WriterOnly><CredentialsPage /></WriterOnly> },
       { path: '/global-variables', element: <GlobalVariablesPage /> },
       { path: '/custom-activities', element: <CustomActivitiesPage /> },
       { path: '/maintenance-windows', element: <MaintenanceWindowsPage /> },
