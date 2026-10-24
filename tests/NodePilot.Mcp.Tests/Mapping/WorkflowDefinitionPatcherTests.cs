@@ -321,4 +321,66 @@ public sealed class WorkflowDefinitionPatcherTests
         merged["edges"]![0]!["data"]!["conditionExpression"]!["children"]![0]!
             ["left"]!["value"]!.GetValue<string>().Should().Be("left-secret");
     }
+
+    private const string EdgeWithLiteral = """
+        {"nodes":[],"edges":[{"id":"edge-1","source":"a","target":"b","data":{"conditionExpression":{
+          "type":"comparison","left":{"kind":"variable","value":"status"},"op":"==",
+          "right":{"kind":"literal","value":"ready"}}}}]}
+        """;
+
+    [Fact]
+    public void MergeFull_MaskedLiteralCopiedOntoNewEdge_Throws()
+    {
+        // edge-1 replaced by edge-2, which carries the mask the agent saw on edge-1.
+        var proposed = E("""
+        {"nodes":[],"edges":[{"id":"edge-2","source":"a","target":"j","data":{"conditionExpression":{
+          "type":"comparison","left":{"kind":"variable","value":"status"},"op":"==",
+          "right":{"kind":"literal","value":"***"}}}}]}
+        """);
+
+        var act = () => WorkflowDefinitionPatcher.MergeFull(E(EdgeWithLiteral), proposed);
+
+        act.Should().Throw<ArgumentException>().WithMessage("*'value' on 'edge-2'*no stored value*");
+    }
+
+    [Fact]
+    public void Apply_UpsertNewEdgeWithMaskedGroupOperand_Throws()
+    {
+        var ops = WorkflowDefinitionPatcher.ParseOps(E("""
+        [{"op":"upsertEdge","edge":{"id":"edge-2","source":"a","target":"j","data":{"conditionExpression":{
+          "type":"group","op":"AND","children":[{"type":"comparison",
+          "left":{"kind":"variable","value":"status"},"op":"!=","right":{"kind":"literal","value":"***"}}]}}}}]
+        """));
+
+        var act = () => WorkflowDefinitionPatcher.Apply(E(EdgeWithLiteral), ops);
+
+        act.Should().Throw<ArgumentException>().WithMessage("*'value' on 'edge-2'*");
+    }
+
+    [Fact]
+    public void Apply_UpsertNewNodeWithMaskedArrayItem_Throws()
+    {
+        var ops = WorkflowDefinitionPatcher.ParseOps(E("""
+        [{"op":"upsertNode","node":{"id":"new-node","type":"activity","data":{"activityType":"runScript",
+          "config":{"arguments":["-Force","***"]}}}}]
+        """));
+
+        var act = () => WorkflowDefinitionPatcher.Apply(E("""{"nodes":[],"edges":[]}"""), ops);
+
+        act.Should().Throw<ArgumentException>().WithMessage("*'arguments' on 'new-node'*");
+    }
+
+    [Fact]
+    public void Apply_UpsertNewNodeWithMaskedNamedSecret_KeepsMaskWithNote()
+    {
+        var ops = WorkflowDefinitionPatcher.ParseOps(E("""
+        [{"op":"upsertNode","node":{"id":"new-node","type":"activity","data":{"activityType":"restApi",
+          "config":{"password":"***"}}}}]
+        """));
+
+        var result = WorkflowDefinitionPatcher.Apply(E("""{"nodes":[],"edges":[]}"""), ops);
+
+        result.Definition["nodes"]![0]!["data"]!["config"]!["password"]!.GetValue<string>().Should().Be("***");
+        result.Notes.Should().ContainSingle().Which.Should().Contain("Secret 'password'");
+    }
 }

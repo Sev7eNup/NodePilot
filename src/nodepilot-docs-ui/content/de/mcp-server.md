@@ -81,7 +81,9 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
 - **Secrets:** Workflow-Definitionen werden vor Tool-Output redigiert (`secret`/`apiKey`/`password`/
   `authToken`/`bearer`/`connectionString` → `***`). Bei `publish`/`update`/`apply_workflow_patch`
   werden echte Secrets per Node-ID aus der gespeicherten Version wiederhergestellt — das `***` des
-  Agenten überschreibt nie einen echten Wert. Credentials/Globals geben Secrets nie aus.
+  Agenten überschreibt nie einen echten Wert. Ein `***` auf einer neuen Node- oder Edge-ID hat kein
+  Original, deshalb wird der Aufruf abgelehnt und nichts gespeichert. Credentials/Globals geben
+  Secrets nie aus.
 - **Annotations:** Read-Tools `readOnly`, gated Tools `destructive`, enable/disable/lock
   `idempotent`. `execute_workflow` ist **nicht idempotent**: ein erneuter Aufruf startet
   eine weitere Ausführung. Einen unklar beantworteten Start zuerst über die Ausführungen prüfen.

@@ -147,7 +147,9 @@ public sealed class WorkflowEditTools
         RequireFullDefinition(definition);
         // No original to MergeFull against an empty def masks any secrets the agent set on new
         // nodes.
-        var merged = WorkflowDefinitionPatcher.MergeFull(EmptyDefinition, definition);
+        WorkflowDefinitionPatcher.PatchResult merged;
+        try { merged = WorkflowDefinitionPatcher.MergeFull(EmptyDefinition, definition); }
+        catch (ArgumentException ex) { throw new McpException(ex.Message); }
         var mergedElement = JsonSerializer.SerializeToElement(merged.Definition);
         var validation = WorkflowDefinitionStructuralValidator.Validate(mergedElement);
         if (!validation.IsValid)
@@ -295,7 +297,9 @@ public sealed class WorkflowEditTools
         RequireFullDefinition(definition);
         var wf = await ResolveAsync(idOrName, ct);
         var current = ParseDef(wf.DefinitionJson);
-        var merged = WorkflowDefinitionPatcher.MergeFull(current, definition);   // restore secrets from current
+        WorkflowDefinitionPatcher.PatchResult merged;
+        try { merged = WorkflowDefinitionPatcher.MergeFull(current, definition); }   // restore secrets from current
+        catch (ArgumentException ex) { throw new McpException(ex.Message); }
         var mergedElement = JsonSerializer.SerializeToElement(merged.Definition);
         var validation = WorkflowDefinitionStructuralValidator.Validate(mergedElement);
         if (!validation.IsValid)
