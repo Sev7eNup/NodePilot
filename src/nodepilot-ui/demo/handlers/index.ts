@@ -19,6 +19,7 @@ import { alertingRoutes } from './alerting';
 import { auditRoutes } from './audit';
 import { customActivityRoutes } from './customActivities';
 import { diagnosticsRoutes } from './diagnostics';
+import { dependencyRoutes } from './dependencies';
 
 /**
  * Endpoints that exist only because a real server does something the browser cannot: run
@@ -76,6 +77,7 @@ export const demoRoutes: Route[] = [
   ...auditRoutes,
   ...customActivityRoutes,
   ...diagnosticsRoutes,
+  ...dependencyRoutes,
   ...statsRoutes,
   ...workflowRoutes,
   ...executionRoutes,

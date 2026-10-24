@@ -1,6 +1,6 @@
 import { ArrowLeft, Screen } from '@carbon/icons-react';
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -39,6 +39,8 @@ const edgeTypes: EdgeTypes = { labeled: LabeledEdge };
  */
 function MobileWorkflowViewInner({ workflowId }: Readonly<{ workflowId: string }>) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromDependencies = (location.state as { fromDependencies?: boolean } | null)?.fromDependencies === true;
   const { t } = useTranslation(['workflows', 'common']);
   const [nodes, setNodes] = useNodesState<Node>([]);
   const [edges, setEdges] = useEdgesState<Edge>([]);
@@ -94,7 +96,7 @@ function MobileWorkflowViewInner({ workflowId }: Readonly<{ workflowId: string }
     <div className="np-shell flex flex-col h-screen bg-surface">
       <header className="shrink-0 h-12 px-3 flex items-center gap-2 border-b border-outline-variant/40 bg-surface-low/60 backdrop-blur-sm">
         <button
-          onClick={() => navigate('/workflows')}
+          onClick={() => fromDependencies ? navigate(-1) : navigate('/workflows')}
           className="-ml-1 shrink-0 p-1.5 rounded text-on-surface-variant hover:bg-surface-highest hover:text-on-surface transition-colors"
           aria-label={t('common:back')}
         >

@@ -1,4 +1,5 @@
 using NodePilot.Core.Operations;
+using NodePilot.Core.Dependencies;
 
 namespace NodePilot.Core.WorkflowDefinitions;
 
@@ -33,6 +34,7 @@ public sealed record WorkflowDefinitionFacts(
     IReadOnlyList<Guid> MachineRefs,
     bool HasManualTriggerParameters)
 {
+    public DependencyFacts Dependencies { get; init; } = DependencyFacts.Invalid;
     public static WorkflowDefinitionFacts Empty { get; } = new([], [], false);
 
     public static WorkflowDefinitionFacts Extract(string? definitionJson)
@@ -43,7 +45,7 @@ public sealed record WorkflowDefinitionFacts(
         return new WorkflowDefinitionFacts(
             WorkflowCallGraphBuilder.ExtractCallSites(doc),
             ExtractMachineRefs(doc),
-            ExtractHasManualTriggerParameters(doc));
+            ExtractHasManualTriggerParameters(doc)) { Dependencies = DependencyFacts.Extract(doc) };
     }
 
     private static List<Guid> ExtractMachineRefs(WorkflowDefinitionDocument doc)

@@ -1,4 +1,5 @@
 {
+  "dependencyStepMissing": "This reference has changed: the step is no longer present in the current workflow.",
   "newWorkflow": "New Workflow",
   "untitled": "Untitled",
   "save": "Save",
@@ -53,6 +54,7 @@
   "redo": "Redo",
   "backTo": "Back to: {{name}}",
   "backToWorkflowList": "Back to workflow list",
+  "backToDependencies": "Back to dependencies",
   "workflowNamePlaceholder": "Workflow name…",
   "undoTooltip": "Undo (Ctrl+Z)",
   "redoTooltip": "Redo (Ctrl+Y / Ctrl+Shift+Z)",

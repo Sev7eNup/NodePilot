@@ -11,6 +11,7 @@
   "operations": "Live-Ops",
   "aiChat": "AI Chat",
   "machines": "Machines",
+  "dependencies": "Dependencies",
   "globals": "Globals",
   "customNodes": "Custom Nodes",
   "maintenance": "Maintenance",

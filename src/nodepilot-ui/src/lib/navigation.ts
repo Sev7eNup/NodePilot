@@ -1,7 +1,7 @@
 import type { CarbonIconType } from '@carbon/icons-react';
 import {
   Activity, Apps, Archive, Calendar, ChartLine, Chat, Dashboard, DataBase, Document,
-  FlowModeler, Group, Notification, PlayFilledAlt, Screen, Security, Settings, ValueVariable,
+  FlowModeler, Group, Notification, PlayFilledAlt, Screen, Security, Settings, ShareKnowledge, ValueVariable,
 } from '@carbon/icons-react';
 
 export type BadgeKind = 'workflows' | 'running' | 'machines' | 'alerts' | 'live';
@@ -46,6 +46,7 @@ export const navGroups: NavGroup[] = [
   {
     labelKey: 'groupMonitoring',
     items: [
+      { to: '/dependencies', icon: ShareKnowledge, key: 'dependencies' },
       { to: '/metrics', icon: ChartLine, key: 'metrics' },
       { to: '/alerts', icon: Notification, key: 'alerts', badge: 'alerts' },
       { to: '/support-log', icon: Document, key: 'supportLog', adminOnly: true },

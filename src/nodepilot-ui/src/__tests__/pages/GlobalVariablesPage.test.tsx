@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router';
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -59,9 +60,9 @@ function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
   server.use(http.get(`${BASE}/api/global-variable-folders`, () => HttpResponse.json(FOLDERS)));
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
+    <MemoryRouter><QueryClientProvider client={qc}>
       <GlobalVariablesPage />
-    </QueryClientProvider>
+    </QueryClientProvider></MemoryRouter>
   );
 }
 

@@ -4,7 +4,7 @@ Ein [Model-Context-Protocol](https://modelcontextprotocol.io)-Server, mit dem ei
 (Claude Desktop/Code oder ein beliebiger MCP-Client) **NodePilot-Workflows steuern und bearbeiten**
 sowie **Daten auslesen** kann. Wie die `np`-CLI ist er ein reiner HTTP-Client gegen die bestehende
 REST-API — **kein neuer Backend-Pfad**; jedes Tool ruft einen vorhandenen Endpoint auf oder rechnet
-in-proc gegen `NodePilot.Core`. 113 Tools über 11 Gruppen, plus 3 MCP-Resources.
+in-proc gegen `NodePilot.Core`. 116 Tools über 12 Gruppen, plus 3 MCP-Resources.
 
 ## Agentenwerkzeuge
 
@@ -89,6 +89,14 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
   eine weitere Ausführung. Einen unklar beantworteten Start zuerst über die Ausführungen prüfen.
 
 ## Tool-Gruppen
+
+- **Abhängigkeiten (lesend):** `list_dependency_objects`, `get_dependencies`,
+  `get_dependency_evidence`. Workflows, Maschinen, Zugangsdaten, globale Variablen und Custom
+  Activities suchen, nach Problemen oder fehlender Verwendung filtern und nach Verwendung
+  sortieren; direkte und mittelbare Verwendung, mögliche Agent-Aufrufe und Fundstellen
+  untersuchen. Berichte berücksichtigen Ordnerrechte, enthalten keine Secret-Werte und weisen
+  Analysegrenzen sowie an den gespeicherten Stand gebundene Folgeseiten aus. Sie beschreiben
+  gespeicherte Konfiguration, keine Ausfallvorhersage.
 
 - **Discovery:** `whoami`, `get_safety_status`, `list_activity_types`, `get_activity_config_reference`, `validate_cron`
 - **Workflow lesen:** `list_workflows`, `get_workflow`, `get_workflow_definition` (redigiert), `get_workflow_contract`, Versionen, `export_workflow`

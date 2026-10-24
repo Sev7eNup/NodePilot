@@ -7,6 +7,14 @@ UI subset**. Backend-only and environment-bound scenarios are covered elsewhere 
 
 ## Running
 
+`dependencies.spec.ts` covers object selection, search while typing, usage counts with the
+problems/unused filters and usage sort, direct/indirect explanations, the two-sided map with
+expandable levels, map/history,
+revoked access, changed evidence, analysis limits, mobile keyboard access, the read-only
+designer deep link and the restored scroll position of the wide-layout details panel. Optional `NP_DESIGN_ROUND=<round>` captures desktop/mobile, list and map
+review fixtures; `NP_DESIGN_SKIN=light` selects the light skin (default dark).
+Normal test runs do not write design assets.
+
 Agent budget finalization and packaged CMD/Bash command binding are backend
 regressions in `AgentRuntimeTests` and `AgentSkillTests`; mocked browser tests do
 not establish those guarantees. See the backend cases in the E2E catalogue.

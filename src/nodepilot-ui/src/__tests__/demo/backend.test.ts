@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../api/client';
+import { dependenciesApi } from '../../api/dependencies';
 import { adminSettings } from '../../api/adminSettings';
 import { getAllPages, getPage } from '../../api/paging';
 import { ROOT_FOLDER_ID, sharedFoldersApi } from '../../api/sharedFolders';
@@ -78,6 +79,64 @@ describe('the fetch patch', () => {
     const response = await fetch('/api/auth/me');
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('application/json');
+  });
+
+  it('derives dependency chains and evidence from the current saved world', async () => {
+    const world = getWorld();
+    world.workflows = world.workflows.slice(0, 2);
+    const [child, parent] = world.workflows; const machine = world.machines[0];
+    child.definitionJson = JSON.stringify({ nodes: [{ id: 'copy', data: { activityType: 'runScript', label: 'Copy', targetMachineId: machine.id, config: { script: 'Never expose this script' } } }], edges: [] });
+    parent.definitionJson = JSON.stringify({ nodes: [{ id: 'call', data: { activityType: 'startWorkflow', config: { workflowNameOrId: child.id } } }], edges: [] });
+    const report = await dependenciesApi.report('machine', machine.id, 'usedBy', null);
+    expect(report.counts).toEqual({ direct: 1, indirect: 1, possible: 0 });
+    expect(JSON.stringify(report)).not.toContain('Never expose');
+    const indirect = report.items.find(i => i.object.id === parent.id)!;
+    const evidence = await dependenciesApi.evidence(report.object, indirect.object, 'usedBy', null);
+    expect(evidence.analysisRevision).toBe(report.analysisRevision);
+    expect(evidence.items.map(i => i.nodeId).sort()).toEqual(['call', 'copy']);
+    child.definitionJson = '{broken';
+    expect((await dependenciesApi.report('machine', machine.id, 'usedBy', null)).counts.direct).toBe(0);
+    expect((await dependenciesApi.report('workflow', child.id, 'uses', null)).problems[0].status).toBe('invalid');
+  });
+
+  it('dependency reports track credential overrides and changing machine defaults', async () => {
+    const world = getWorld(); world.workflows = world.workflows.slice(0, 1);
+    const workflow = world.workflows[0]; const machine = world.machines[0];
+    const [original, replacement] = world.credentials;
+    machine.defaultCredentialId = original.id;
+    workflow.definitionJson = JSON.stringify({ nodes: [{ id: 'remote', data: { activityType: 'runScript', targetMachineId: machine.id, config: {} } }], edges: [] });
+    const first = await dependenciesApi.report('workflow', workflow.id, 'uses', null);
+    expect(first.items.some(i => i.object.id === original.id)).toBe(true);
+    machine.defaultCredentialId = replacement.id;
+    const second = await dependenciesApi.report('workflow', workflow.id, 'uses', null);
+    expect(second.items.some(i => i.object.id === original.id)).toBe(false);
+    expect(second.items.some(i => i.object.id === replacement.id)).toBe(true);
+    expect(second.analysisRevision).not.toBe(first.analysisRevision);
+  });
+
+  it('dependency inventory reports usage, problems and unused resources like the API', async () => {
+    const world = getWorld(); world.workflows = world.workflows.slice(0, 2);
+    const [child, parent] = world.workflows; const [used, idle] = world.machines;
+    child.definitionJson = JSON.stringify({ nodes: [{ id: 'copy', data: { activityType: 'runScript', label: 'Copy', targetMachineId: used.id, config: {} } }], edges: [] });
+    parent.definitionJson = JSON.stringify({ nodes: [
+      { id: 'call', data: { activityType: 'startWorkflow', config: { workflowNameOrId: child.id } } },
+      { id: 'lost', data: { activityType: 'startWorkflow', config: { workflowNameOrId: 'Missing workflow' } } },
+    ], edges: [] });
+    const machines = await dependenciesApi.objects('', 'machine', null, 'usage', null);
+    expect(machines.items[0]).toMatchObject({ object: { id: used.id }, usedByDirect: 1, usedByIndirect: 1, problems: 0 });
+    const problems = (await dependenciesApi.objects('', 'workflow', 'problems', 'name', null)).items;
+    expect(problems.map(i => [i.object.id, i.problems])).toEqual([[parent.id, 1]]);
+    const unused = (await dependenciesApi.objects('', null, 'unused', 'name', null)).items.map(i => i.object.id);
+    expect(unused).toContain(idle.id);
+    expect(unused).not.toContain(used.id);
+    expect(unused).not.toContain(child.id);
+  });
+
+  it('dependency inventory cursors reject changed source data', async () => {
+    const page = await api.get<{ nextCursor: string }>('/dependencies/objects?limit=1');
+    expect(page.nextCursor).toBeTruthy();
+    getWorld().machines[0].name = 'Renamed after first page';
+    await expect(api.get(`/dependencies/objects?limit=1&cursor=${page.nextCursor}`)).rejects.toMatchObject({ status: 409, code: 'DEPENDENCIES_CHANGED' });
   });
 
   it('previews the offline Quartz subset through the production endpoint contract', async () => {

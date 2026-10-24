@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { api } from '../api/client';
 import type { Credential } from '../types/api';
+import { DependencyLink } from '../components/dependencies/DependencyLink';
 import { useRole } from '../lib/rbac';
 import { useThemeStore, THEMES, type Theme } from '../stores/themeStore';
 import { useLangStore } from '../stores/langStore';
@@ -340,6 +341,7 @@ function PersonalSettings() {
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-sm">{c.name}</p>
+                    <DependencyLink kind="credential" id={c.id} />
                     <CredentialExpiryBadge expiresAt={c.expiresAt} />
                   </div>
                   <p className="text-xs text-outline">

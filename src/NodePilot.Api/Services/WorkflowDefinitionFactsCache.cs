@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using NodePilot.Core.WorkflowDefinitions;
+using NodePilot.Core.Dependencies;
 
 namespace NodePilot.Api.Services;
 
@@ -50,6 +51,26 @@ public sealed class WorkflowDefinitionFactsCache
     private readonly ConcurrentDictionary<Guid, Entry> _entries = new();
     private readonly object _evictionGate = new();
     private long _sequence;
+    private readonly ConcurrentDictionary<Guid, (DateTime Revision, DependencyFacts Facts)> _customDependencies = new();
+
+    public bool TryGetCustomDependencies(Guid id, DateTime revision, out DependencyFacts facts)
+    {
+        if (_customDependencies.TryGetValue(id, out var entry) && entry.Revision == revision)
+        {
+            facts = entry.Facts;
+            return true;
+        }
+        facts = DependencyFacts.Invalid;
+        return false;
+    }
+
+    public void StoreCustomDependencies(Guid id, DateTime revision, DependencyFacts facts)
+    {
+        if (_customDependencies.Count >= MaxEntries)
+            foreach (var key in _customDependencies.OrderBy(kv => kv.Value.Revision).Take(MaxEntries - EvictTo).Select(kv => kv.Key))
+                _customDependencies.TryRemove(key, out _);
+        _customDependencies[id] = (revision, facts);
+    }
 
     /// <param name="Sequence">Insertion order, for eviction. Not an LRU stamp: refreshing it on
     /// every read would put a write on the hot path to save re-parsing a definition once.</param>
@@ -128,7 +149,12 @@ public sealed class WorkflowDefinitionFactsCache
 
         var resolved = new Dictionary<Guid, WorkflowDefinitionFacts>(workflows.Count);
 
-        var staleIds = StaleIds(workflows);
+        var staleIds = new List<Guid>();
+        foreach (var (id, revision) in workflows)
+        {
+            if (_entries.TryGetValue(id, out var entry) && entry.UpdatedAt == revision) resolved[id] = entry.Facts;
+            else staleIds.Add(id);
+        }
         if (staleIds.Count > 0)
         {
             foreach (var row in await loadDefinitions(staleIds, ct))
@@ -141,7 +167,7 @@ public sealed class WorkflowDefinitionFactsCache
 
         foreach (var (id, _) in workflows)
         {
-            if (!resolved.ContainsKey(id)) resolved[id] = Get(id);
+            if (!resolved.ContainsKey(id)) resolved[id] = WorkflowDefinitionFacts.Empty;
         }
 
         return resolved;

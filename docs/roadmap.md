@@ -25,6 +25,13 @@ Ein Posten wandert von R2 nach R1, wenn sein Trigger eintritt — nicht, weil er
 
 ## R1 — Gesetzt
 
+### Abhängigkeitsmenü (beschlossen 2026-10-23)
+
+Auf Nutzerfreigabe im Branch `feat/dependencies-menu` umgesetzt, noch nicht auf `main`:
+lesbare Verwendungsübersicht, fokussierte Karte und Fundstellen für Workflows, Maschinen,
+Zugangsdaten, globale Variablen und Custom Activities. API, CLI, MCP und Browser-Demo sind
+angebunden. [Bedienung und Grenzen](dependencies.md), [Feature-Plan](dependencies-plan.md).
+
 ### Allgemeine KI-Agenten und Teams (beschlossen 2026-09-18)
 
 `aiAgent` und `aiAgentTeam`: allgemeine Agenten mit auswählbaren nativen Werkzeugen,
@@ -305,7 +312,7 @@ Per-Rule Dedup-Key-Templates sind bereits implementiert (`DedupKeyTemplate`, in 
 
 ## E — Offene Entscheidungen
 
-Diese drei Punkte können nicht gebaut werden, solange die Entscheidung aussteht. Sie sind
+Diese Punkte können nicht gebaut werden, solange die Entscheidung aussteht. Sie sind
 bewusst keine R2-Posten: Es fehlt nicht der Auslöser, es fehlt der Beschluss. Die Frage nach
 Downloads in der Desktop-App ist entschieden: gleiche Herkunft mit nativem Speichern-Dialog (PR #448).
 

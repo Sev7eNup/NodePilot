@@ -246,6 +246,13 @@ public static class CommandRegistration
             o.AddCommand<NodePilot.Cli.Commands.Operations.OperationsGraphCommand>("graph")
                 .WithDescription("Workflow call-graph + currently-running executions (RBAC-scoped).");
         });
+        config.AddBranch("dependencies", d =>
+        {
+            d.SetDescription("Explain saved resource relationships and reference locations.");
+            d.AddCommand<NodePilot.Cli.Commands.Dependencies.DependencyListCommand>("list").WithDescription("Find visible objects.");
+            d.AddCommand<NodePilot.Cli.Commands.Dependencies.DependencyShowCommand>("show").WithDescription("Show direct and indirect dependencies.");
+            d.AddCommand<NodePilot.Cli.Commands.Dependencies.DependencyEvidenceCommand>("evidence").WithDescription("Read exact reference locations.");
+        });
         config.AddBranch("observability", o =>
         {
             o.SetDescription("Observability / Prometheus surface.");

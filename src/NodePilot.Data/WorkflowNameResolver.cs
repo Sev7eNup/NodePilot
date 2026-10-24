@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Core.Models;
+using NodePilot.Core.Operations;
 
 namespace NodePilot.Data;
 
@@ -39,14 +40,11 @@ public static class WorkflowNameResolver
         var lower = trimmed.ToLowerInvariant();
         var candidates = await source.Where(w => w.Name.ToLower() == lower).Take(6).ToListAsync(ct);
 
-        var exact = candidates.Where(w => string.Equals(w.Name, trimmed, StringComparison.Ordinal)).ToList();
-        if (exact.Count == 1) return Result.Found(exact[0]);
-        if (exact.Count > 1) return Result.Ambiguous;
-
-        return candidates.Count switch
+        var preferred = WorkflowIdentityResolution.Matches(candidates.Select(w => new WorkflowCallGraphIdentity(w.Id, w.Name)), trimmed);
+        return preferred.Length switch
         {
             0 => Result.NotFound,
-            1 => Result.Found(candidates[0]),
+            1 => Result.Found(candidates.Single(w => w.Id == preferred[0].Id)),
             _ => Result.Ambiguous,
         };
     }
