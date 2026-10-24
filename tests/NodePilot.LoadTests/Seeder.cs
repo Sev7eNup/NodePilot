@@ -15,8 +15,8 @@ public static class Seeder
 
         async Task<Guid> CreatePublishedAsync(string name, string definition)
         {
-            var id = await client.CreateWorkflowAsync(name, definition, ct);
-            await client.PublishWorkflowAsync(id, name, definition, ct);
+            var (id, version) = await client.CreateWorkflowAsync(name, definition, ct);
+            await client.PublishWorkflowAsync(id, name, definition, version, ct);
             return id;
         }
 

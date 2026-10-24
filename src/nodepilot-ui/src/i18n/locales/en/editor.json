@@ -137,6 +137,7 @@
   "unsavedChanges": "You have unsaved changes.",
   "discardChanges": "Discard changes?",
   "discardChangesConfirm": "You have unsaved changes. Really discard?",
+  "versionConflict": "This workflow was saved elsewhere in the meantime. Your draft is kept but no longer saved automatically. Reload the workflow to see the current version.",
   "fitView": "Fit view",
   "zoomIn": "Zoom in",
   "zoomOut": "Zoom out",

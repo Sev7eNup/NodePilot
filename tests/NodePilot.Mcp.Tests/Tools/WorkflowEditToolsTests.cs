@@ -61,6 +61,7 @@ public sealed class WorkflowEditToolsTests
         var body = api.Server.LogEntries.Last(e => e.RequestMessage!.Path.EndsWith("/publish")).RequestMessage!.Body ?? "";
         body.Should().Contain("real-secret-value");   // restored from the current version
         body.Should().NotContain("\"***\"");            // the mask was NOT written over the real secret
+        body.Should().Contain("\"expectedVersion\":1");  // the version the merge was based on
     }
 
     [Fact]

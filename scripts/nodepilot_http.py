@@ -72,6 +72,7 @@ def publish_workflow(http, identity, name, definition):
         status, workflow = http("POST", "/api/workflows", token=token, body=payload)
         if status != 201:
             raise RuntimeError(f"Cannot create workflow (HTTP {status})")
+    payload["expectedVersion"] = workflow["version"]
     status, published = http("POST", f"/api/workflows/{workflow['id']}/publish", token=token, body=payload)
     if status != 200:
         raise RuntimeError(f"Cannot publish workflow (HTTP {status}); no executions started")

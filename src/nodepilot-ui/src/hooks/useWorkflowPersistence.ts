@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useBlocker } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import type { Node, Edge } from '@xyflow/react';
-import { api } from '../api/client';
+import { api, ApiError } from '../api/client';
 import type { Workflow } from '../types/api';
 import { stripRuntimeDefinition } from '../lib/workflowDefinitionSanitizer';
 import { confirmDialog } from '../stores/confirmStore';
@@ -26,7 +26,13 @@ interface WorkflowSnapshot {
     name: string;
     description: string;
     definitionJson: string;
+    /** Server version the draft is based on; a mismatch makes the server answer 409. */
+    expectedVersion: number;
   };
+}
+
+function isVersionConflict(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && err.code === 'workflow_version_conflict';
 }
 
 export interface AsyncGraphEditToken {
@@ -49,7 +55,11 @@ export function useWorkflowPersistence({
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishQueued, setIsPublishQueued] = useState(false);
+  // Set when the server rejected the draft as stale. Autosave stops so the draft is kept and
+  // the conflict is not retried every few seconds; a reload adopts the newer server state.
+  const [hasVersionConflict, setHasVersionConflict] = useState(false);
   const revisionRef = useRef(0);
+  const baseVersionRef = useRef(0);
   const dirtyRef = useRef(false);
   const savingRef = useRef(false);
   const publishRef = useRef(false);
@@ -78,6 +88,15 @@ export function useWorkflowPersistence({
 
   useLayoutEffect(() => () => { draftGenerationRef.current += 1; }, []);
 
+  const reportSaveError = (err: unknown) => {
+    if (isVersionConflict(err)) {
+      setHasVersionConflict(true);
+      toast.error(t('editor:versionConflict'));
+      return;
+    }
+    toast.error(t('common:saveFailed', { message: (err as Error).message }));
+  };
+
   const updateDirty = useCallback((value: boolean) => {
     dirtyRef.current = value;
     setIsDirty(value);
@@ -93,14 +112,19 @@ export function useWorkflowPersistence({
         name: draft.name,
         description: draft.description,
         definitionJson: JSON.stringify(stripRuntimeDefinition(draft.graph)),
+        expectedVersion: baseVersionRef.current,
       },
     };
   }, []);
 
   const saveMutation = useMutation({
     mutationFn: (snapshot: WorkflowSnapshot) => api.put(`/workflows/${snapshot.workflowId}`, snapshot.body),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['workflows'] }); },
-    onError: (err) => toast.error(t('common:saveFailed', { message: (err as Error).message })),
+    onSuccess: (_response, snapshot) => {
+      if (draftRef.current.workflowId === snapshot.workflowId)
+        baseVersionRef.current = snapshot.body.expectedVersion + 1;
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
+    },
+    onError: (err) => reportSaveError(err),
   });
 
   const saveLoopRef = useRef<Promise<unknown> | null>(null);
@@ -139,14 +163,15 @@ export function useWorkflowPersistence({
   }, [captureSnapshot, saveMutation, updateDirty]);
 
   const publishMutation = useMutation({
-    mutationFn: (snapshot: WorkflowSnapshot) => api.post(`/workflows/${snapshot.workflowId}/publish`, snapshot.body),
-    onSuccess: (_response, snapshot) => {
+    mutationFn: (snapshot: WorkflowSnapshot) => api.post<Workflow>(`/workflows/${snapshot.workflowId}/publish`, snapshot.body),
+    onSuccess: (response, snapshot) => {
+      if (draftRef.current.workflowId === snapshot.workflowId) baseVersionRef.current = response.version;
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
       queryClient.invalidateQueries({ queryKey: ['workflow', snapshot.workflowId] });
       if (draftRef.current.workflowId === snapshot.workflowId && revisionRef.current === snapshot.revision)
         updateDirty(false);
     },
-    onError: (err) => toast.error(t('common:saveFailed', { message: (err as Error).message })),
+    onError: (err) => reportSaveError(err),
     onSettled: () => {
       publishRef.current = false;
       setIsPublishQueued(false);
@@ -156,11 +181,11 @@ export function useWorkflowPersistence({
   // Autosave five seconds after the newest edit. A running save performs its own follow-up.
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!isDirty || isSaving || isPublishQueued || suspendAutoSave || !workflowId) return;
+    if (!isDirty || isSaving || isPublishQueued || hasVersionConflict || suspendAutoSave || !workflowId) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => { void saveLatest().catch(() => undefined); }, 5000);
     return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current); };
-  }, [isDirty, isSaving, isPublishQueued, suspendAutoSave, nodes, edges, name, workflowId, saveLatest]);
+  }, [isDirty, isSaving, isPublishQueued, hasVersionConflict, suspendAutoSave, nodes, edges, name, workflowId, saveLatest]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => { if (isDirty) e.preventDefault(); };
@@ -271,12 +296,14 @@ export function useWorkflowPersistence({
    * Returns whether the page may atomically adopt the server name and DefinitionJson. Lifecycle
    * refetches during a save/publish or while dirty must not replace the locally owned canvas.
    */
-  const syncFromServer = useCallback((serverName: string): boolean => {
+  const syncFromServer = useCallback((serverName: string, serverVersion: number): boolean => {
     const isNewWorkflow = syncedWorkflowIdRef.current !== workflowId;
     if (!isNewWorkflow && (dirtyRef.current || savingRef.current || publishRef.current)) return false;
 
     syncedWorkflowIdRef.current = workflowId;
     if (isNewWorkflow) revisionRef.current = 0;
+    baseVersionRef.current = serverVersion;
+    setHasVersionConflict(false);
     draftRef.current = { ...draftRef.current, name: serverName };
     setName(serverName);
     updateDirty(false);

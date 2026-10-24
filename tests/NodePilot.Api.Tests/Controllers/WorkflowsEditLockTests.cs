@@ -131,7 +131,7 @@ public class WorkflowsEditLockTests
         await db.SaveChangesAsync();
 
         var h = NewHarness(db);
-        var result = await h.Workflows.Update(w.Id, new UpdateWorkflowRequest("X", null, "{}"), CancellationToken.None);
+        var result = await h.Workflows.Update(w.Id, new UpdateWorkflowRequest("X", null, "{}", ExpectedVersion: 1), CancellationToken.None);
 
         var obj = result.Should().BeOfType<ObjectResult>().Subject;
         obj.StatusCode.Should().Be(StatusCodes.Status423Locked);
@@ -147,7 +147,7 @@ public class WorkflowsEditLockTests
         await db.SaveChangesAsync();
 
         var h = NewHarness(db);  // caller is OwnerId
-        var result = await h.Workflows.Update(w.Id, new UpdateWorkflowRequest("X", null, "{}"), CancellationToken.None);
+        var result = await h.Workflows.Update(w.Id, new UpdateWorkflowRequest("X", null, "{}", ExpectedVersion: 1), CancellationToken.None);
 
         var obj = result.Should().BeOfType<ObjectResult>().Subject;
         obj.StatusCode.Should().Be(StatusCodes.Status423Locked);
@@ -186,7 +186,7 @@ public class WorkflowsEditLockTests
         var h = NewHarness(db, audit, authz: authz);
 
         var result = await h.Workflows.Update(
-            w.Id, new UpdateWorkflowRequest("must-not-land", null, "{}"), CancellationToken.None);
+            w.Id, new UpdateWorkflowRequest("must-not-land", null, "{}", ExpectedVersion: 1), CancellationToken.None);
 
         result.Should().BeOfType<ConflictObjectResult>();
         db.ChangeTracker.Clear();
@@ -513,7 +513,7 @@ public class WorkflowsEditLockTests
 
         var result = await h.Editing.Publish(
             w.Id,
-            new PublishWorkflowRequest("Renamed", "new desc", newDef),
+            new PublishWorkflowRequest("Renamed", "new desc", newDef, ExpectedVersion: 1),
             CancellationToken.None);
 
         result.Result.Should().BeOfType<OkObjectResult>();
@@ -527,6 +527,88 @@ public class WorkflowsEditLockTests
         saved.PublishedByUserId.Should().Be(OwnerId,
             "trigger-driven runtime authority is pinned to the publisher");
         audit.Calls.Should().ContainSingle(c => c.Action == "WORKFLOW_PUBLISHED");
+    }
+
+    [Fact]
+    public async Task Update_FromStaleTab_Returns409AndKeepsTheEarlierSave()
+    {
+        var db = CreateContext();
+        await SeedUserAsync(db, OwnerId, "alice");
+        var w = NewWorkflow(enabled: false, lockedBy: OwnerId);
+        db.Workflows.Add(w);
+        await db.SaveChangesAsync();
+        var h = NewHarness(db);
+        const string tabADefinition = """{"nodes":[{"id":"log","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"log","config":{"message":"from tab A"}}}],"edges":[]}""";
+
+        // Both tabs loaded version 1. Tab A saves first, tab B then saves its old snapshot.
+        var tabA = await h.Workflows.Update(
+            w.Id, new UpdateWorkflowRequest("W", null, tabADefinition, ExpectedVersion: 1), CancellationToken.None);
+        var tabB = await h.Workflows.Update(
+            w.Id, new UpdateWorkflowRequest("Renamed in tab B", null, "{}", ExpectedVersion: 1), CancellationToken.None);
+
+        tabA.Should().BeOfType<NoContentResult>();
+        var conflict = tabB.Should().BeOfType<ConflictObjectResult>().Subject;
+        conflict.Value.Should().BeEquivalentTo(new { code = "workflow_version_conflict", currentVersion = 2 });
+        db.ChangeTracker.Clear();
+        var saved = (await db.Workflows.FindAsync(w.Id))!;
+        saved.DefinitionJson.Should().Be(tabADefinition);
+        saved.Name.Should().Be("W");
+        saved.Version.Should().Be(2);
+        (await db.WorkflowVersions.CountAsync(v => v.WorkflowId == w.Id)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Update_WithStaleVersionAndForeignLock_Returns423()
+    {
+        var db = CreateContext();
+        await SeedUserAsync(db, OtherUserId, "bob");
+        var w = NewWorkflow(lockedBy: OtherUserId);
+        w.Version = 3;
+        db.Workflows.Add(w);
+        await db.SaveChangesAsync();
+
+        var result = await NewHarness(db).Workflows.Update(
+            w.Id, new UpdateWorkflowRequest("X", null, "{}", ExpectedVersion: 1), CancellationToken.None);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status423Locked);
+    }
+
+    [Fact]
+    public async Task Publish_FromStaleDraft_Returns409AndLeavesWorkflowLockedAndUnchanged()
+    {
+        var db = CreateContext();
+        await SeedUserAsync(db, OwnerId, "alice");
+        var w = NewWorkflow(enabled: false, lockedBy: OwnerId);
+        w.Version = 2;
+        db.Workflows.Add(w);
+        await db.SaveChangesAsync();
+        var audit = new CapturingAuditWriter();
+
+        var result = await NewHarness(db, audit).Editing.Publish(
+            w.Id, new PublishWorkflowRequest("Stale", null, """{"nodes":[],"edges":[]}""", ExpectedVersion: 1),
+            CancellationToken.None);
+
+        result.Result.Should().BeOfType<ConflictObjectResult>()
+            .Which.Value.Should().BeEquivalentTo(new { code = "workflow_version_conflict", currentVersion = 2 });
+        db.ChangeTracker.Clear();
+        var saved = (await db.Workflows.FindAsync(w.Id))!;
+        saved.Name.Should().Be("W");
+        saved.Version.Should().Be(2);
+        saved.IsEnabled.Should().BeFalse();
+        saved.CheckedOutByUserId.Should().Be(OwnerId);
+        audit.Calls.Should().NotContain(c => c.Action == "WORKFLOW_PUBLISHED");
+    }
+
+    [Theory]
+    [InlineData(typeof(UpdateWorkflowRequest))]
+    [InlineData(typeof(PublishWorkflowRequest))]
+    public void SaveRequests_WithoutExpectedVersion_DoNotDeserialize(Type requestType)
+    {
+        var act = () => System.Text.Json.JsonSerializer.Deserialize(
+            """{"name":"W","description":null,"definitionJson":"{}"}""", requestType,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+        act.Should().Throw<System.Text.Json.JsonException>().WithMessage("*expectedVersion*");
     }
 
     [Fact]
@@ -551,7 +633,7 @@ public class WorkflowsEditLockTests
 
         var result = await NewHarness(db).Editing.Publish(
             workflow.Id,
-            new PublishWorkflowRequest("Unsafe", null, weakHmacDefinition),
+            new PublishWorkflowRequest("Unsafe", null, weakHmacDefinition, ExpectedVersion: 1),
             CancellationToken.None);
 
         var badRequest = result.Result.Should().BeOfType<BadRequestObjectResult>().Subject;
@@ -582,7 +664,7 @@ public class WorkflowsEditLockTests
 
         var result = await h.Editing.Publish(
             w.Id,
-            new PublishWorkflowRequest("Renamed", "new desc", "{}"),
+            new PublishWorkflowRequest("Renamed", "new desc", "{}", ExpectedVersion: 1),
             CancellationToken.None);
 
         result.Result.Should().BeOfType<ConflictObjectResult>();
@@ -610,7 +692,7 @@ public class WorkflowsEditLockTests
             .Options);
 
         var result = await NewHarness(db).Editing.Publish(
-            w.Id, new PublishWorkflowRequest("Renamed", null, "{}"), CancellationToken.None);
+            w.Id, new PublishWorkflowRequest("Renamed", null, "{}", ExpectedVersion: 1), CancellationToken.None);
 
         result.Result.Should().BeOfType<ConflictObjectResult>();
     }
@@ -643,7 +725,7 @@ public class WorkflowsEditLockTests
         var h = NewHarness(db);
         var result = await h.Editing.Publish(
             w.Id,
-            new PublishWorkflowRequest("X", null, "{}"),
+            new PublishWorkflowRequest("X", null, "{}", ExpectedVersion: 1),
             CancellationToken.None);
 
         var obj = result.Result.Should().BeOfType<ObjectResult>().Subject;

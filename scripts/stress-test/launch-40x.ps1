@@ -44,6 +44,7 @@ if ($wf) {
   $body = $payload | ConvertTo-Json -Depth 50
   $wf = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/workflows" -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
 }
+$payload.expectedVersion = $wf.version
 $body = $payload | ConvertTo-Json -Depth 50
 $wf = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/workflows/$($wf.id)/publish" -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
 Log "Workflow id=$($wf.id) name=$($wf.name)"

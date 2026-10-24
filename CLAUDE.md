@@ -151,7 +151,7 @@ Routen + Rollen-Gating stehen an den Controllern in `src/NodePilot.Api/Controlle
 
 ## Edit-Lifecycle (SCOrch-style Edit-Lock)
 
-Workflows haben einen per-User-Edit-Lock (`CheckedOutByUserId` + `CheckedOutAt`). Mutierende Endpoints liefern `423 Locked` wenn Caller nicht Lock-Owner. `Disable` ist **nicht** lock-gegated (Incident-Kill-Switch).
+Workflows haben einen per-User-Edit-Lock (`CheckedOutByUserId` + `CheckedOutAt`). Mutierende Endpoints liefern `423 Locked` wenn Caller nicht Lock-Owner. `PUT` und `publish` verlangen `expectedVersion`; ein veralteter Entwurf → `409 workflow_version_conflict`. `Disable` ist **nicht** lock-gegated (Incident-Kill-Switch).
 
 | Endpoint | Verhalten |
 |---|---|

@@ -214,6 +214,7 @@ if ($existingChild) {
     }
     $childResp = Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows" -Headers $authHeaders -Body $childReq
     $childId = $childResp.id
+    $childReq.expectedVersion = $childResp.version
     Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows/$childId/publish" -Headers $authHeaders -Body $childReq | Out-Null
     Write-Host "Created child workflow: $childId" -ForegroundColor Green
 }
@@ -231,6 +232,7 @@ if ($existingMain) {
     }
     $mainResp = Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows" -Headers $authHeaders -Body $mainReq
     $mainId = $mainResp.id
+    $mainReq.expectedVersion = $mainResp.version
     Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows/$mainId/publish" -Headers $authHeaders -Body $mainReq | Out-Null
     Write-Host "Created main workflow: $mainId" -ForegroundColor Green
 }
@@ -250,6 +252,7 @@ if ($includeXl) {
         }
         $xlResp = Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows" -Headers $authHeaders -Body $xlReq
         $xlId = $xlResp.id
+        $xlReq.expectedVersion = $xlResp.version
         Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows/$xlId/publish" -Headers $authHeaders -Body $xlReq | Out-Null
         Write-Host "Created XL workflow: $xlId" -ForegroundColor Green
     }
@@ -270,6 +273,7 @@ if ($includePlanar) {
         }
         $planarResp = Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows" -Headers $authHeaders -Body $planarReq
         $planarId = $planarResp.id
+        $planarReq.expectedVersion = $planarResp.version
         Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows/$planarId/publish" -Headers $authHeaders -Body $planarReq | Out-Null
         Write-Host "Created Planar workflow: $planarId" -ForegroundColor Green
     }

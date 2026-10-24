@@ -53,7 +53,7 @@ Workflows have a per-user edit lock (`CheckedOutByUserId` + `CheckedOutAt`). Mut
 |---|---|
 | `POST /lock` | Atomically sets `IsEnabled=false` + the lock fields. 409 if already locked. |
 | `POST /unlock` | Sets the lock fields to null. `IsEnabled` stays as it is. |
-| `POST /publish` | Atomically: save + `IsEnabled=true` + unlock. The submitted definition is validated first: a weak webhook HMAC secret returns `400 weak_webhook_hmac_secret`, an invalid Quartz cron returns `400 invalid_cron_expression`. |
+| `POST /publish` | Atomically: save + `IsEnabled=true` + unlock. Like `PUT` it requires `expectedVersion`; a stale draft returns `409 workflow_version_conflict`. The submitted definition is validated first: a weak webhook HMAC secret returns `400 weak_webhook_hmac_secret`, an invalid Quartz cron returns `400 invalid_cron_expression`. |
 | `POST /force-unlock` | Admin only. Breaks someone else's lock. |
 
 ## The UX flow
@@ -146,13 +146,13 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflow
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/workflows/21f1c0d4-..." \
   -H 'Content-Type: application/json' \
   -d '{ "name":"Deploy App", "description":"wip",
-        "definitionJson":"{\"nodes\":[...],\"edges\":[...]}" }' -i   # 204
+        "definitionJson":"{\"nodes\":[...],\"edges\":[...]}", "expectedVersion": 3 }' -i   # 204
 
 # Publish — atomically save + enable + unlock. The workflow is productive again.
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../publish" \
   -H 'Content-Type: application/json' \
   -d '{ "name":"Deploy App", "description":null,
-        "definitionJson":"{\"nodes\":[...],\"edges\":[...]}" }'
+        "definitionJson":"{\"nodes\":[...],\"edges\":[...]}", "expectedVersion": 4 }'
 
 # Exit without publishing: unlock only — the workflow stays disabled
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../unlock"

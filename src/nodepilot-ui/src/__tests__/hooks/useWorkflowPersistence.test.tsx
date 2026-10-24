@@ -21,10 +21,14 @@ vi.mock('../../stores/confirmStore', async (importOriginal) => {
 });
 import { confirmDialog } from '../../stores/confirmStore';
 
-vi.mock('../../api/client', () => ({
-  api: { put: vi.fn(), post: vi.fn() },
-}));
-import { api } from '../../api/client';
+vi.mock('../../api/client', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../../api/client')>();
+  return { ...mod, api: { put: vi.fn(), post: vi.fn() } };
+});
+import { api, ApiError } from '../../api/client';
+
+vi.mock('../../stores/toastStore', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+import { toast } from '../../stores/toastStore';
 
 import { useWorkflowPersistence } from '../../hooks/useWorkflowPersistence';
 import { useCanvasConnect } from '../../hooks/useCanvasConnect';
@@ -76,7 +80,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
           canvasRef: { current: null }, screenToFlowPosition: (position) => position });
         return { persistence, connect };
       }, { wrapper: makeWrapper() });
-      act(() => { result.current.persistence.syncFromServer('Saved workflow'); });
+      act(() => { result.current.persistence.syncFromServer('Saved workflow', 4); });
       act(() => {
         if (operation === 'quick-connect') result.current.connect.setQuickConnect({
           fromNodeId: 'step-1', fromHandleId: null, screenX: 0, screenY: 0, flowPosition: { x: 20, y: 20 },
@@ -109,7 +113,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
       { wrapper, initialProps: { label: 'revision-a' } },
     );
 
-    act(() => { expect(result.current.syncFromServer('Initial name')).toBe(true); });
+    act(() => { expect(result.current.syncFromServer('Initial name', 4)).toBe(true); });
     act(() => { result.current.markDirty(); result.current.save(); });
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     expect(vi.mocked(api.put).mock.calls[0][1]).toMatchObject({
@@ -126,7 +130,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     });
     // The stale success must neither mark the newer edit clean nor let a refetch replace it.
     expect(result.current.isDirty).toBe(true);
-    expect(result.current.syncFromServer('Stale server name')).toBe(false);
+    expect(result.current.syncFromServer('Stale server name', 4)).toBe(false);
 
     await act(async () => second.resolve({}));
     await waitFor(() => expect(result.current.isDirty).toBe(false));
@@ -143,7 +147,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
       { wrapper, initialProps: { label: 'published-snapshot' } },
     );
 
-    act(() => { expect(result.current.syncFromServer('Initial name')).toBe(true); });
+    act(() => { expect(result.current.syncFromServer('Initial name', 4)).toBe(true); });
     act(() => { result.current.rename('Published name'); result.current.publish(); });
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     rerender({ label: 'newer-local-revision' });
@@ -151,7 +155,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     await act(async () => publish.resolve({}));
 
     await waitFor(() => expect(result.current.isDirty).toBe(true));
-    expect(result.current.syncFromServer('Stale server name')).toBe(false);
+    expect(result.current.syncFromServer('Stale server name', 4)).toBe(false);
     expect(result.current.name).toBe('Newer local name');
     expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({
       name: 'Published name',
@@ -159,10 +163,55 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     });
   });
 
+  it('sends the synced server version and advances it after each successful save', async () => {
+    vi.mocked(api.put).mockResolvedValue(undefined);
+    const { result } = renderPersistence();
+    act(() => { expect(result.current.syncFromServer('Initial', 7)).toBe(true); });
+
+    act(() => { result.current.markDirty(); result.current.save(); });
+    await waitFor(() => expect(result.current.isDirty).toBe(false));
+    act(() => { result.current.markDirty(); result.current.save(); });
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
+
+    expect(vi.mocked(api.put).mock.calls.map(([, body]) => (body as { expectedVersion: number }).expectedVersion))
+      .toEqual([7, 8]);
+  });
+
+  it('publishes with the version the draft is based on', async () => {
+    vi.mocked(api.post).mockResolvedValue({ version: 6 });
+    const { result } = renderPersistence();
+    act(() => { expect(result.current.syncFromServer('Initial', 5)).toBe(true); });
+    act(() => result.current.publish());
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ expectedVersion: 5 });
+  });
+
+  it('keeps a stale draft dirty and stops autosave after a version conflict', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.put).mockRejectedValue(
+        new ApiError('Workflow was updated concurrently.', 409, 'workflow_version_conflict'));
+      const { result } = renderPersistence();
+      act(() => { expect(result.current.syncFromServer('Initial', 1)).toBe(true); });
+      act(() => result.current.markDirty());
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(api.put).toHaveBeenCalledTimes(1);
+      expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('saved elsewhere'));
+      expect(result.current.isDirty).toBe(true);
+
+      act(() => result.current.markDirty());
+      await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+      expect(api.put).toHaveBeenCalledTimes(1);
+      // A newer server state is adopted only when the editor syncs again (reload).
+      expect(result.current.syncFromServer('Newer elsewhere', 2)).toBe(false);
+    } finally { vi.useRealTimers(); }
+  });
+
   it('applies one async graph token at most once and exposes it to a same-tick Save', async () => {
     vi.mocked(api.put).mockResolvedValue({});
     const { result } = renderPersistence();
-    act(() => { expect(result.current.syncFromServer('Initial')).toBe(true); });
+    act(() => { expect(result.current.syncFromServer('Initial', 4)).toBe(true); });
     const token = result.current.beginAsyncGraphEdit();
 
     act(() => {
@@ -189,11 +238,11 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
       }),
       { wrapper, initialProps: { workflowId: 'wf-1' } },
     );
-    act(() => { expect(result.current.syncFromServer('First')).toBe(true); });
+    act(() => { expect(result.current.syncFromServer('First', 4)).toBe(true); });
     const staleToken = result.current.beginAsyncGraphEdit();
 
     rerender({ workflowId: 'wf-2' });
-    act(() => { expect(result.current.syncFromServer('Second')).toBe(true); });
+    act(() => { expect(result.current.syncFromServer('Second', 4)).toBe(true); });
     act(() => {
       expect(result.current.applyAsyncGraphEdit(staleToken!, [editableNode('stale-layout')], [])).toBe(false);
     });
@@ -204,7 +253,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     const publish = deferred<unknown>();
     vi.mocked(api.post).mockImplementationOnce(() => publish.promise);
     const { result } = renderPersistence();
-    act(() => { expect(result.current.syncFromServer('Initial')).toBe(true); });
+    act(() => { expect(result.current.syncFromServer('Initial', 4)).toBe(true); });
     const token = result.current.beginAsyncGraphEdit();
 
     act(() => result.current.publish());
@@ -226,15 +275,15 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
       }),
       { wrapper: makeWrapper(), initialProps: { workflowId: 'wf-1' } },
     );
-    act(() => { result.current.syncFromServer('First'); result.current.markDirty(); result.current.save(); });
+    act(() => { result.current.syncFromServer('First', 4); result.current.markDirty(); result.current.save(); });
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     act(() => result.current.publish());
     // In-app navigation may continue after the user confirms discarding the old draft.
     rerender({ workflowId: 'wf-2' });
-    act(() => { result.current.syncFromServer('Second'); });
+    act(() => { result.current.syncFromServer('Second', 4); });
     if (returnToOriginal) {
       rerender({ workflowId: 'wf-1' });
-      act(() => { result.current.syncFromServer('First reopened'); });
+      act(() => { result.current.syncFromServer('First reopened', 4); });
     }
     await act(async () => saving.resolve({}));
     await waitFor(() => expect(result.current.isPublishing).toBe(false));
@@ -246,7 +295,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     vi.mocked(api.put).mockImplementationOnce(() => saving.promise);
     vi.mocked(api.post).mockResolvedValue({});
     const { result, unmount } = renderPersistence();
-    act(() => { result.current.syncFromServer('First'); result.current.markDirty(); result.current.save(); });
+    act(() => { result.current.syncFromServer('First', 4); result.current.markDirty(); result.current.save(); });
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     act(() => result.current.publish());
     unmount();
