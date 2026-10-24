@@ -117,6 +117,12 @@ begrenzt. Auch Bestandslisten zu Workflows, Läufen oder Maschinen verwenden die
 DB-Quelle. Ordnerrechte erweitern den Zugriff nicht auf SQL. Der Wissens-Assistent
 ändert keine Workflows und startet keine Reparaturen.
 
+Der gemeinsame SQL-Guard für Wissensassistent und Admin-Konsole lehnt im Lesemodus
+PostgreSQL-Escape-Strings (`E'…'`/`e'…'`) vor der Ausführung ausdrücklich ab.
+Standard-SQL-Literale mit verdoppelten Apostrophen bleiben unterstützt. Die abweichende
+[PostgreSQL-Escape-Syntax](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-STRINGS-ESCAPE)
+wird vom verwendeten Lexer nicht interpretiert.
+
 ## Fehlerbehandlung
 
 | HTTP | Code | Ursache |

@@ -10,9 +10,12 @@ namespace NodePilot.Core.Security;
 public static class SqlStatementInspector
 {
     private const string UnicodeEscapedIdentifierMarker = "<unicode-escaped-identifier>";
+    private const string EscapeStringLiteralMarker = "<escape-string-literal>";
 
     private static readonly HashSet<string> UnicodeEscapedIdentifierMarkers =
         new([UnicodeEscapedIdentifierMarker], StringComparer.Ordinal);
+    private static readonly HashSet<string> EscapeStringLiteralMarkers =
+        new([EscapeStringLiteralMarker], StringComparer.Ordinal);
 
     private static readonly HashSet<string> DynamicDataExporters = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -51,6 +54,10 @@ public static class SqlStatementInspector
     /// </summary>
     public static bool ContainsUnicodeEscapedIdentifier(string sql)
         => ReferencesAnyIdentifier(sql, UnicodeEscapedIdentifierMarkers);
+
+    /// <summary>PostgreSQL E-strings use backslash escaping, outside this lexer's literal grammar.</summary>
+    public static bool ContainsEscapeStringLiteral(string sql)
+        => ReferencesAnyIdentifier(sql, EscapeStringLiteralMarkers);
 
     /// <summary>
     /// True when <paramref name="second"/> follows <paramref name="first"/> as consecutive
@@ -155,6 +162,13 @@ public static class SqlStatementInspector
                     else i++;
                 }
                 continue;
+            }
+
+            if (sql[i] is 'E' or 'e' && i + 1 < sql.Length && sql[i + 1] == '\'')
+            {
+                yield return new SqlIdentifier(EscapeStringLiteralMarker, Quoted: false);
+                // Unsupported syntax ends reliable inspection; the read guard rejects the marker.
+                yield break;
             }
 
             if (sql[i] == '\'')
