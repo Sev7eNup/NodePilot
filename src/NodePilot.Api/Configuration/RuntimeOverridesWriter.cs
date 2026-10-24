@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Configuration.Json;
 using NodePilot.Core.Interfaces;
 
 namespace NodePilot.Api.Configuration;
@@ -127,11 +128,11 @@ public sealed class RuntimeOverridesWriter
 
     internal static void ReplaceWithoutBackup(string path, JsonObject root)
     {
+        var content = SerializeAndValidate(root);
         var temporary = path + ".migration." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            File.WriteAllText(temporary, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.WriteAllBytes(temporary, content);
             try { File.Replace(temporary, path, destinationBackupFileName: null); }
             catch (Exception ex) when (ex is IOException or PlatformNotSupportedException or UnauthorizedAccessException)
             {
@@ -147,13 +148,40 @@ public sealed class RuntimeOverridesWriter
     /// </summary>
     public JsonObject ReadOrEmpty()
     {
-        if (!File.Exists(_path)) return new JsonObject();
+        var nodeOptions = new JsonNodeOptions { PropertyNameCaseInsensitive = true };
+        if (!File.Exists(_path)) return new JsonObject(nodeOptions);
         var raw = File.ReadAllText(_path);
-        if (string.IsNullOrWhiteSpace(raw)) return new JsonObject();
-        var parsed = JsonNode.Parse(raw) as JsonObject
+        if (string.IsNullOrWhiteSpace(raw)) return new JsonObject(nodeOptions);
+        var parsed = JsonNode.Parse(raw, documentOptions:
+            new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }) as JsonObject
             ?? throw new InvalidOperationException(
                 $"Runtime overrides file '{_path}' must contain a JSON object at the root.");
-        return parsed;
+        return NormalizeConfigurationKeys(parsed).AsObject();
+    }
+
+    private static JsonNode NormalizeConfigurationKeys(JsonNode node)
+    {
+        if (node is JsonObject source)
+        {
+            var result = new JsonObject(new JsonNodeOptions { PropertyNameCaseInsensitive = true });
+            MergeConfigurationObject(result, source);
+            return result;
+        }
+        if (node is JsonArray array)
+            return new JsonArray(array.Select(child => child is null ? null : NormalizeConfigurationKeys(child)).ToArray());
+        return node.DeepClone();
+    }
+
+    private static void MergeConfigurationObject(JsonObject target, JsonObject source)
+    {
+        foreach (var (key, value) in source)
+        {
+            // IConfiguration permits case-variant sections when their leaf keys are disjoint.
+            if (target[key] is JsonObject existing && value is JsonObject nested)
+                MergeConfigurationObject(existing, nested);
+            else
+                target.Add(key, value is null ? null : NormalizeConfigurationKeys(value));
+        }
     }
 
     /// <summary>
@@ -463,9 +491,9 @@ public sealed class RuntimeOverridesWriter
 
     private void WriteAtomic(JsonObject root)
     {
+        var content = SerializeAndValidate(root);
         var tmp = _path + ".tmp";
-        var json = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(tmp, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllBytes(tmp, content);
 
         if (!File.Exists(_path))
         {
@@ -495,6 +523,16 @@ public sealed class RuntimeOverridesWriter
         }
 
         RotateBackups();
+    }
+
+    private static byte[] SerializeAndValidate(JsonObject root)
+    {
+        var content = Encoding.UTF8.GetBytes(root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        // The encrypting production provider uses this parser before decrypting leaf values.
+        using var provider = new JsonConfigurationProvider(new JsonConfigurationSource());
+        using var stream = new MemoryStream(content, writable: false);
+        provider.Load(stream);
+        return content;
     }
 
     private void RotateBackups()

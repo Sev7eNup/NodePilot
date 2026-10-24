@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Configuration;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Configuration;
@@ -31,6 +32,88 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
     {
         var path = Path.Combine(_tempDir, subPath ?? "appsettings.runtime.json");
         return new RuntimeOverridesWriter(path, NullLogger<RuntimeOverridesWriter>.Instance);
+    }
+
+    [Fact]
+    public void TryUpdateSectionAtomic_LowerCaseSection_RemainsLoadable()
+    {
+        var writer = NewWriter();
+        File.WriteAllText(writer.OverridesPath, """{"stats":{"RefreshIntervalMinutes":5,"WindowDays":7}}""");
+        var result = writer.TryUpdateSectionAtomic("Stats", writer.ComputeSectionEtag("Stats"),
+            new JsonObject { ["RefreshIntervalMinutes"] = 10, ["WindowDays"] = 7 },
+            null, "admin", DateTimeOffset.UtcNow);
+
+        result.Success.Should().BeTrue();
+        var config = new ConfigurationBuilder().AddJsonFile(writer.OverridesPath).Build();
+        using var disposable = (IDisposable)config;
+        config["Stats:RefreshIntervalMinutes"].Should().Be("10");
+        config["Stats:WindowDays"].Should().Be("7");
+        writer.ReadOrEmpty().Count(pair => pair.Key.Equals("Stats", StringComparison.OrdinalIgnoreCase)).Should().Be(1);
+    }
+
+    [Fact]
+    public void TryUpdateSectionAtomic_MixedCaseNestedPath_PreservesSiblingAndReadsExistingValue()
+    {
+        var writer = NewWriter();
+        File.WriteAllText(writer.OverridesPath,
+            """{"retention":{"executions":{"MaxAgeDays":7},"auditlog":{"MaxAgeDays":90}}}""");
+        (writer.ReadSection("Retention:Executions")?["MaxAgeDays"]?.GetValue<int>()).Should().Be(7);
+
+        var result = writer.TryUpdateSectionAtomic("Retention:Executions", writer.ComputeSectionEtag("Retention:Executions"),
+            new JsonObject { ["MaxAgeDays"] = 14 }, null, "admin", DateTimeOffset.UtcNow);
+
+        result.Success.Should().BeTrue();
+        var config = new ConfigurationBuilder().AddJsonFile(writer.OverridesPath).Build();
+        using var disposable = (IDisposable)config;
+        config["Retention:Executions:MaxAgeDays"].Should().Be("14");
+        config["Retention:AuditLog:MaxAgeDays"].Should().Be("90");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Write_DuplicateFlattenedKeys_RejectsCandidateAndPreservesOriginal(bool replace)
+    {
+        var writer = NewWriter();
+        const string original = """{"Stats":{"WindowDays":7}}""";
+        File.WriteAllText(writer.OverridesPath, original);
+        var invalid = new JsonObject
+        {
+            ["Stats"] = new JsonObject { ["WindowDays"] = 14 },
+            ["stats:windowdays"] = 30
+        };
+
+        var act = () =>
+        {
+            if (replace) writer.ReplaceAll(invalid);
+            else writer.MutateAndWrite(root => root["stats:windowdays"] = 30);
+        };
+
+        act.Should().Throw<FormatException>();
+        File.ReadAllText(writer.OverridesPath).Should().Be(original);
+        Directory.GetFiles(_tempDir, "*.bak.*").Should().BeEmpty();
+        Directory.GetFiles(_tempDir, "*.tmp").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TryUpdateSectionAtomic_DisjointCaseVariantSections_MergesTheirExistingValues()
+    {
+        var writer = NewWriter();
+        File.WriteAllText(writer.OverridesPath,
+            """{"retention":{"executions":{"MaxAgeDays":7}},"Retention":{"auditlog":{"MaxAgeDays":90}}}""");
+        var before = new ConfigurationBuilder().AddJsonFile(writer.OverridesPath).Build();
+        using var beforeDisposable = (IDisposable)before;
+        before["Retention:Executions:MaxAgeDays"].Should().Be("7");
+        before["Retention:AuditLog:MaxAgeDays"].Should().Be("90");
+
+        var result = writer.TryUpdateSectionAtomic("Retention:Executions", writer.ComputeSectionEtag("Retention:Executions"),
+            new JsonObject { ["MaxAgeDays"] = 14 }, null, "admin", DateTimeOffset.UtcNow);
+
+        result.Success.Should().BeTrue();
+        var after = new ConfigurationBuilder().AddJsonFile(writer.OverridesPath).Build();
+        using var afterDisposable = (IDisposable)after;
+        after["Retention:Executions:MaxAgeDays"].Should().Be("14");
+        after["Retention:AuditLog:MaxAgeDays"].Should().Be("90");
     }
 
     [Fact]
