@@ -22,6 +22,22 @@ namespace NodePilot.Api.Tests.Ai;
 /// </summary>
 public class SqlKnowledgeReaderTests
 {
+    [Fact]
+    public async Task ExecuteRead_EscapeStringBeforeAliasedSecret_IsRejectedBeforeDatabaseExecution()
+    {
+        using var db = TestDbFactory.Create();
+        db.Users.Add(new User { Username = "admin", PasswordHash = "synthetic-secret-do-not-export" });
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var result = await NewReader(db).ExecuteReadAsync(
+            """SELECT E'\'' AS marker, "PasswordHash" AS harmless FROM "Users" -- '""",
+            TestContext.Current.CancellationToken);
+
+        result.Error.Should().Contain("Escape-string literals are not allowed");
+        result.Rows.Should().BeEmpty();
+        result.Columns.Should().BeEmpty();
+    }
+
     private sealed class FakeScopeFactory : IServiceScopeFactory
     {
         private readonly NodePilotDbContext _db;
