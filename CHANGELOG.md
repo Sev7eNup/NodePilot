@@ -85,6 +85,10 @@ exhaustive.
 - `zod` moves to 4.6.7 in the UI and the documentation site (GHSA-mrhx-c7xc-m3w5, memory exhaustion on
   oversized collections). It is only a development dependency through the ESLint React hooks plugin and
   is not part of the shipped bundles; the CI audit step rejects it all the same.
+- `undici` moves to 8.12.3 in the UI test environment (through jsdom) and to 7.30.1 in the desktop packaging
+  tree (through `@electron/get`) after three advisories for versions up to 8.12.1 and 7.30.0 (unbounded
+  memory in the EventSource parser, an SRI bypass, an unhandled error on excessive content encodings). Neither
+  copy is part of the shipped bundles.
 - `dompurify` in the UI moves to 3.4.17, which closes three critical advisories in 3.4.16 and earlier
   (`SAFE_FOR_TEMPLATES` bypass in shadow roots, `IN_PLACE` hook leaving event handlers armed, SMIL `href`
   guard skipped for XHTML).

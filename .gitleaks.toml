@@ -39,6 +39,14 @@ paths = ['''^tests/NodePilot\.Ai\.Tests/WorkflowSecretContentTests\.cs$''']
 regexes = ['''^\s*\[InlineData\(''']
 
 [[allowlists]]
+description = "Tailwind classes for the credential object kind in the dependency icons"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^src/nodepilot-ui/src/components/dependencies/DependencyObjectIcon\.tsx$''']
+regexes = ['''^\s*credential:\s*'bg-fuchsia-''']
+
+[[allowlists]]
 description = "Synthetic webhook HMAC test secrets"
 targetRules = ["generic-api-key"]
 condition = "AND"
