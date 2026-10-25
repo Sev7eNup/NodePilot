@@ -101,7 +101,7 @@ and otherwise remains an external SQL/integration fixture.
 The catalog and gate live in `computer-use/README.md`, `catalog.py` and `gate.py`. It includes all
 current routes, 35 node types (29 activities + 6 triggers), 23 settings sections, 10 skins + system, both locales, role boundaries,
 backup/restore, integrations, tray actions and resilience cases. The complete catalog currently
-contains 164 human-operated cases. `--pilot` selects a small diagnostic subset only. Every passed case requires a native Computer-Use session receipt,
+contains 167 human-operated cases. `--pilot` selects a small diagnostic subset only. Every passed case requires a native Computer-Use session receipt,
 screenshots, explicit checkpoint assertions, timing counters and cleanup evidence. Missing
 integrations, an interrupted session, an incomplete catalog or changed release bytes blocks the run.
 

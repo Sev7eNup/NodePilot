@@ -6,7 +6,7 @@ Ein Muster-Workflow, der jede Activity, jeden Edge-Condition-Operator und jede C
 
 | Datei | Zweck |
 |---|---|
-| `main.json` | Haupt-Workflow (37 Nodes, ~55 Edges) |
+| `main.json` | Haupt-Workflow (39 Nodes, ~55 Edges) |
 | `child.json` | Kleiner Sub-Workflow (3 Nodes), den der Haupt-Workflow via `startWorkflow` aufruft |
 | `seed.ps1` | Seed-Script — meldet sich an, erstellt und veröffentlicht die Demo-Workflows |
 
@@ -31,9 +31,9 @@ Bei bereits existierenden Workflows gleichen Namens wird gefragt: `k` = behalten
 
 ## Was der Workflow zeigt
 
-### Activities (alle 18)
+### Activities (17)
 
-`manualTrigger`, `log`, `delay`, `runScript`, `fileOperation`, `folderOperation`, `serviceManagement`, `registryOperation`, `wmiQuery`, `startProgram`, `junction`, `restApi`, `sql`, `xmlQuery`, `jsonQuery`, `emailNotification`, `startWorkflow`, `returnData`.
+`manualTrigger`, `log`, `delay`, `runScript`, `fileOperation`, `serviceManagement`, `registryOperation`, `wmiQuery`, `startProgram`, `junction`, `restApi`, `sql`, `xmlQuery`, `jsonQuery`, `emailNotification`, `startWorkflow`, `returnData`.
 
 ### Edge-Condition-Operatoren (alle 14)
 
@@ -85,6 +85,6 @@ Jeder Phase-E-Branch in `main.json` ist eine Kondition, die einen oder mehrere d
 |---|---|
 | `waitNofM`-Config-Key | `requiredCount` (NICHT `n` — ein unbekannter Schlüssel fällt auf den Default 1 zurück) |
 | Boolean-Truthiness | Leer, `"false"` (case-insensitive), `"0"` = falsy. Alles andere truthy. PowerShell-`[string]$true` = `"True"` → truthy ✓ |
-| `runScript`-Param-Capture | Alle lokal deklarierten Variablen werden automatisch als `param.*` exponiert (ProcessExecutionEngine hängt einen Capture-Block ans Script). Kein Marker nötig. |
+| `runScript`-Param-Capture | Variablen, die das Skript selbst zuweist, werden automatisch als `param.*` exponiert (PowerShellScriptWrapper: Injektion im äußeren, Skript und Capture im inneren Scope); durchgereichte Upstream-Parameter und PowerShell-Automatiken nicht. Kein Marker nötig. |
 | `{{var.output}}` in Script-Text | Wird als PowerShell-single-quoted-String eingesetzt (`'value'`). Nicht selbst zusätzlich quoten. |
 | `targetMachineId: "localhost"` | Löst Localhost-Bypass aus → läuft in-process ohne WinRM-Session. Ideal für Demo. |

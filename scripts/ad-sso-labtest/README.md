@@ -89,14 +89,14 @@ Zertifikatswarnungs-Interstitial dazwischenkommt.
 
 | Konto | Gruppen | Zweck |
 |---|---|---|
-| `svc-npdir` | – | LDAPS-Service-Bind |
-| `np.alice` | **nur** `NodePilot-Admins` (in `NodePilot-Access`) | Happy path, transitives Mapping → Admin |
-| `np.carol` | `NodePilot-Access` | Viewer-Default (kein RoleMapping-Treffer) |
-| `np.bob` | keine | AllowedGroup-Gate: 401, **kein** JIT-Row |
-| `np.dave` | `NodePilot-Access` | Race-Drill (bis W18 unberührt lassen) |
-| `np.erin` | `NodePilot-Access` | Disable-/Entzugs-Drills |
+| `svc-nptest-dir` | – | LDAPS-Service-Bind |
+| `nptest.alice` | **nur** `NPTest-Admins` (in `NPTest-Access`) | Happy path, transitives Mapping → Admin |
+| `nptest.carol` | `NPTest-Access` | Viewer-Default (kein RoleMapping-Treffer) |
+| `nptest.bob` | keine | AllowedGroup-Gate: 401, **kein** JIT-Row |
+| `nptest.dave` | `NPTest-Access` | Race-Drill (bis W18 unberührt lassen) |
+| `nptest.erin` | `NPTest-Access` | Disable-/Entzugs-Drills |
 
-Das Nesting ist essenziell: alice ist **nur** in `NodePilot-Admins`. Ein erfolgreicher
+Das Nesting ist essenziell: alice ist **nur** in `NPTest-Admins`. Ein erfolgreicher
 Login beweist damit, dass NodePilot transitive `tokenGroups` liest statt bloß `memberOf`.
 
 ## Skripte
@@ -292,7 +292,7 @@ Passwortpfad braucht. Die Windows-only-Topologie prüft W23 separat.
 `ExternalAuthorizationStalenessService` nicht und die Revocation-Drills messen nichts.
 Vorab `/healthz/leader` → 200 prüfen.
 
-### 9. Suite laufen lassen (npcli01, lokal interaktiv als np.alice)
+### 9. Suite laufen lassen (npcli01, lokal interaktiv als nptest.alice)
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\ad-sso-live-test.ps1 `
@@ -366,13 +366,13 @@ Nicht skriptbar — Belege gehören nach `evidence/`:
 | W21 | Kerberos überlebt die GPO | W5 mit aktiver Deny-GPO → 200 |
 | W23 | Windows-only-Topologie | Neustart mit `Ldap__Enabled=false` → Boot ok, SSO ok, `methods.ldap=false`, `/healthz/directory` weiter `Healthy` |
 | W24 | Restart-Semantik | `Windows__Enabled=false` **ohne** Restart → `methods` meldet weiter `windows=true` (Prozessstart-Snapshot); nach Restart `windows=false` und Endpoint 404 |
-| W26 | Username-Kollision | Lokalen User `np.alice@np.lab` ohne External Identity anlegen, SSO mit anderer SID → 401, Audit `USER_WINDOWS_REFUSED_COLLISION`, **kein** Auto-Merge |
-| W27 | SPN-Duplikat (destruktiv, zuletzt) | `setspn -A HTTP/npapi01.np.lab NPLAB\np.bob`, W5 wiederholen → Kerberos bricht; danach `setspn -D`. Zweck: das Fehlerbild dokumentieren |
+| W26 | Username-Kollision | Lokalen User `nptest.alice@np.lab` ohne External Identity anlegen, SSO mit anderer SID → 401, Audit `USER_WINDOWS_REFUSED_COLLISION`, **kein** Auto-Merge |
+| W27 | SPN-Duplikat (destruktiv, zuletzt) | `setspn -A HTTP/npapi01.np.lab NPLAB\nptest.bob`, W5 wiederholen → Kerberos bricht; danach `setspn -D`. Zweck: das Fehlerbild dokumentieren |
 
 ### Reihenfolge-Abhängigkeiten
 
-W0/W4 vor PHASE B · W1–W12 in Reihe · W13/W15/W16 nur mit `np.erin` (nie mit alice, sonst
-ist der Admin weg) · W18 vor jedem anderen `np.dave`-Kontakt · **W19 zwingend vor W20**
+W0/W4 vor PHASE B · W1–W12 in Reihe · W13/W15/W16 nur mit `nptest.erin` (nie mit alice, sonst
+ist der Admin weg) · W18 vor jedem anderen `nptest.dave`-Kontakt · **W19 zwingend vor W20**
 (danach ist der App-Zweig tot) · W17/W23/W24 brauchen Neustarts, ans Ende · W27 ganz zuletzt.
 
 ## Stolperfallen

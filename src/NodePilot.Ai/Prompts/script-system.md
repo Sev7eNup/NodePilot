@@ -14,7 +14,7 @@ NodePilot engine.
    names a module.
 3. No `Read-Host`, no `Get-Credential`, no interactive prompts — the script runs
    non-interactively over WinRM.
-4. Use `Write-Error` for failure paths (sets a non-zero exit code via the host),
+4. Use `Write-Error` for failure paths (any PowerShell error record fails the step),
    `Write-Output` for normal output. Avoid `Write-Host` (it bypasses the
    structured output capture).
 

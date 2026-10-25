@@ -1,16 +1,16 @@
 # NodePilot Stress-Test Workflow
 
-Künstlicher Last-Workflow: fächert von `log-start` auf **11 parallele Branches** auf, fängt sie mit `junction-all` (`waitAll`) wieder ein. Nutzt ausschließlich Engine-local Activities + `runScript` mit `targetMachineId: "localhost"` (In-Process-Bypass) — **kein WinRM-Target nötig**.
+Künstlicher Last-Workflow: fächert von `log-start` auf **11 parallele Branches** auf, fängt sie mit `junction-all` (`waitAll`) wieder ein. Nutzt ausschließlich Engine-local Activities + `runScript` mit `targetMachineId: "localhost"` (Localhost-Bypass) — **kein WinRM-Target nötig**.
 
 ## Branches (alle parallel)
 
 | # | Activity | Workload |
 |---|---|---|
 | 1 | `runScript` | Primzahl-Sieb bis 2·10⁶ |
-| 2 | `runScript` | Σ√i für i=1..10⁷ |
-| 3 | `runScript` | SHA-256 200 000× verkettet |
-| 4 | `runScript` | 50 000 Regex-Matches auf generierten Log-Lines |
-| 5 | `runScript` | 250×250 Matrix-Multiplikation |
+| 2 | `runScript` | Σ√i für i=1..5·10⁶ je Durchlauf |
+| 3 | `runScript` | SHA-256 verkettet, in 50 000er-Blöcken |
+| 4 | `runScript` | Regex-Matches auf generierten Log-Lines, 25 000 je Durchlauf |
+| 5 | `runScript` | 200×200 Matrix-Multiplikation |
 | 6 | `runScript` | Sort 10⁶ Integers |
 | 7 | `jsonQuery` | `$.items[?(@.val > 50)].id` auf 20-Item-Array |
 | 8 | `jsonQuery` | `$..name` auf verschachtelter Org-Struktur |
@@ -18,7 +18,7 @@ Künstlicher Last-Workflow: fächert von `log-start` auf **11 parallele Branches
 | 10 | `xmlQuery` | `sum(//host[@up='y']/@cpu)` (XPath-Aggregat) |
 | 11 | `delay` | 55 s |
 
-Alle 6 `runScript`-Branches laufen **in-process** → die API erzeugt 6 gleichzeitige PowerShell-Runspaces, die eine Weile ~alle Cores beschäftigen.
+Alle 6 `runScript`-Branches laufen lokal auf dem API-Host (`engine: auto` → je ein Windows-PowerShell-5.1-Prozess) → 6 gleichzeitige `powershell.exe`-Prozesse, die eine Weile ~alle Cores beschäftigen.
 
 ## Import
 
