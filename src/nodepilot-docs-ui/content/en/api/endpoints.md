@@ -128,6 +128,8 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflow
 curl -s -b cookie.jar "$NP/api/workflows/21f1c0d4-.../coverage?windowDays=7" | jq
 ```
 
+Instead of `configOverride`, which replaces only `data.config` of the saved node, `stepOverride` sends the complete current `node.data` (activity type, config, machine, credential, output variable); omitted target or credential fields clear the saved values. The two overrides are mutually exclusive, and either requires Edit permission plus your own active edit lock. A selected machine that no longer exists is rejected.
+
 ## Import/export
 
 | Endpoint | Purpose |
