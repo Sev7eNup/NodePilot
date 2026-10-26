@@ -77,6 +77,9 @@ Planned version: **1.5.3**.
   reload and was missing from historical step-test context (#573).
 - Find and replace changes every match. The list still shows the first 50 and now says how many more
   there are; Replace All used to stop after those 50 (#598).
+- Step tests pass mocked `manual.*` values to the step as trigger input and honour a mocked
+  `.success` of `false`. Both used to be dropped, so a test could resolve different values than a
+  real run (#605).
 
 ### Security
 
