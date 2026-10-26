@@ -88,6 +88,8 @@ Planned version: **1.5.3**.
 - Publish and enable reject a `waitNofM` junction whose `requiredCount` exceeds its enabled inputs
   (`400 invalid_junction_required_count`). Such a junction was skipped with everything after it on
   every run, without a failed step. Saving a draft stays permissive (#586).
+- A file watcher with `changed` or `any` starts a workflow once per write. Events inside the debounce
+  window did not reach the snapshot, so the next reconcile pass delivered the same write again (#583).
 
 ### Security
 
