@@ -80,6 +80,8 @@ Planned version: **1.5.3**.
 - Step tests pass mocked `manual.*` values to the step as trigger input and honour a mocked
   `.success` of `false`. Both used to be dropped, so a test could resolve different values than a
   real run (#605).
+- `np maintenance create|update --days` rejects an unknown day name before anything is sent. It used
+  to drop the token silently, which left that day outside a blackout window (#623).
 
 ### Security
 

@@ -118,13 +118,14 @@ public sealed class MaintenanceCreateCommand : BaseCommand<MaintenanceWriteSetti
         var recurrence = s.Recurrence ?? "Weekly";
         if (!MaintenanceCommandHelpers.TryParseTime(s.Start, out var startMin, out var err1)) { writer.Error(err1); return ExitCodes.Error; }
         if (!MaintenanceCommandHelpers.TryParseTime(s.End, out var endMin, out var err2)) { writer.Error(err2); return ExitCodes.Error; }
+        if (!MaintenanceCommandHelpers.TryParseDays(s.Days, out var daysMask, out var err3)) { writer.Error(err3); return ExitCodes.Error; }
         var targets = MaintenanceCommandHelpers.BuildTargets(scope, s.Folders, s.Workflows);
 
         var req = new CreateMaintenanceWindowRequest(
             s.Name, s.Description, !s.Disabled,
             s.Mode ?? "Blackout", scope, recurrence,
             s.OneTimeStart, s.OneTimeEnd,
-            MaintenanceCommandHelpers.MaskFromDays(s.Days), startMin, endMin,
+            daysMask, startMin, endMin,
             s.Cron, s.DurationMinutes, s.TimeZoneId, targets);
 
         var api = ClientFactory.Create(session);
@@ -140,6 +141,8 @@ public sealed class MaintenanceUpdateCommand : BaseCommand<MaintenanceUpdateSett
     public MaintenanceUpdateCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, MaintenanceUpdateSettings s, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
+        if (!MaintenanceCommandHelpers.TryParseDays(s.Days, out var daysMask, out var daysError)) { writer.Error(daysError); return ExitCodes.Error; }
+
         var api = ClientFactory.Create(session);
         var current = (await api.ListMaintenanceWindowsAsync(ct)).FirstOrDefault(x => x.Id == s.Id);
         if (current is null) { writer.Error($"Maintenance window {s.Id} not found."); return ExitCodes.Error; }
@@ -167,7 +170,7 @@ public sealed class MaintenanceUpdateCommand : BaseCommand<MaintenanceUpdateSett
             recurrence,
             s.OneTimeStart ?? current.OneTimeStartUtc,
             s.OneTimeEnd ?? current.OneTimeEndUtc,
-            s.Days is not null ? MaintenanceCommandHelpers.MaskFromDays(s.Days) : current.WeeklyDaysMask,
+            s.Days is not null ? daysMask : current.WeeklyDaysMask,
             startMin, endMin,
             s.Cron ?? current.CronExpression,
             s.DurationMinutes ?? current.DurationMinutes,
@@ -217,13 +220,26 @@ internal static class MaintenanceCommandHelpers
         ["sat"] = 6, ["saturday"] = 6,
     };
 
-    public static int MaskFromDays(string? days)
+    /// <summary>
+    /// Parses a comma-separated day list into the weekday bit mask. An unknown token fails the
+    /// whole list: silently dropping it would leave that day outside a blackout window.
+    /// </summary>
+    public static bool TryParseDays(string? days, out int mask, out string error)
     {
-        if (string.IsNullOrWhiteSpace(days)) return 0;
-        var mask = 0;
+        mask = 0;
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(days)) return true; // optional
         foreach (var token in days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            if (DayBits.TryGetValue(token, out var bit)) mask |= 1 << bit;
-        return mask;
+        {
+            if (!DayBits.TryGetValue(token, out var bit))
+            {
+                error = $"Invalid day '{token}'. Expected Sun, Mon, Tue, Wed, Thu, Fri or Sat.";
+                mask = 0;
+                return false;
+            }
+            mask |= 1 << bit;
+        }
+        return true;
     }
 
     public static bool TryParseTime(string? hhmm, out int? minuteOfDay, out string error)
