@@ -88,7 +88,7 @@
   {
     "slug": "first-workflow",
     "status": "published",
-    "next": true,
+    "next": false,
     "source": "erster-workflow",
     "solution": "powershell-automation",
     "docs": "getting-started/quickstart",
@@ -259,8 +259,8 @@
   },
   {
     "slug": "powershell-51-and-7",
-    "status": "draft",
-    "next": false,
+    "status": "published",
+    "next": true,
     "source": "powershell-51-und-7",
     "solution": "powershell-automation",
     "docs": "activities-reference",
@@ -273,13 +273,13 @@
       "first-workflow",
       "verify-results"
     ],
-    "publishedAt": null,
-    "modifiedAt": null,
+    "publishedAt": "2026-10-25",
+    "modifiedAt": "2026-10-25",
     "text": {
       "de": {
         "title": "PowerShell 5.1 und 7: Die Laufzeit gehört zum Auftrag",
         "seoTitle": "PowerShell 5.1 vs. 7: Unterschiede vor dem Wechsel testen",
-        "summary": "PowerShell 5.1 oder 7? Welche Unterschiede ein Wechsel bringt, warum Module im Kompatibilitätsmodus anders arbeiten und was vorher zu testen ist.",
+        "summary": "PowerShell 5.1 und 7 vergleichen: Laufzeit prüfen, ein Inventarskript mit beiden Versionen testen und den Remote-Endpunkt gezielt auswählen.",
         "lead": "Was muss ich beim Wechsel zwischen PowerShell 5.1 und 7 testen?",
         "category": "PRAXIS",
         "indexTitle": "PowerShell 5.1 und 7: Die Laufzeit gehört zum Auftrag",
@@ -288,7 +288,7 @@
       "en": {
         "title": "PowerShell 5.1 and 7: the runtime is part of the job",
         "seoTitle": "PowerShell 5.1 vs 7: test the differences before switching",
-        "summary": "PowerShell 5.1 or 7? Which differences a switch brings, why modules behave differently in compatibility mode and what to test before you move your scripts.",
+        "summary": "Compare PowerShell 5.1 and 7: identify the runtime, test an inventory script in both versions and select the intended remote endpoint.",
         "lead": "What should I test when switching between PowerShell 5.1 and 7?",
         "category": "PRACTICE",
         "indexTitle": "PowerShell 5.1 and 7: the runtime is part of the job",

@@ -1,46 +1,74 @@
 # PowerShell 5.1 und 7: Die Laufzeit gehört zum Auftrag
 
+Eine zusätzliche PowerShell-7-Installation stellt bestehende Skriptaufrufe nicht automatisch um. Windows PowerShell 5.1 startet über `powershell.exe`, PowerShell 7 über `pwsh.exe`. Beide können nebeneinander laufen, während eine geplante Aufgabe weiterhin die bisherige Laufzeit verwendet. [Microsoft: Migration zu PowerShell 7](https://learn.microsoft.com/en-us/powershell/scripting/whats-new/migrating-from-windows-powershell-51-to-powershell-7).
+
+## Die Laufzeit am Ausführungsort feststellen
+
+Die folgende Abfrage gehört in den tatsächlichen Auftrag, beispielsweise als vorübergehende Diagnoseausgabe einer geplanten Aufgabe. Sie erfasst auch das ausführende Konto, dessen Berechtigungen das Ergebnis beeinflussen können.
+
 ```powershell
 [pscustomobject]@{
     Version = $PSVersionTable.PSVersion.ToString()
     Edition = $PSVersionTable.PSEdition
     Process = (Get-Process -Id $PID).Path
+    Account = [Security.Principal.WindowsIdentity]::GetCurrent().Name
     Is64Bit = [Environment]::Is64BitProcess
 }
 ```
 
-Diese Abfrage gehört in den Prozess, der das Skript später tatsächlich ausführt. Ihre Ausgabe auf dem eigenen Arbeitsplatz beantwortet nicht, welche Laufzeit eine geplante Aufgabe, ein Dienst oder eine Remotesitzung verwendet.
+Unter 5.1 steht bei `Edition` der Wert `Desktop`, unter 7 der Wert `Core`. Prozesspfad und Architektur helfen, abweichende Aufrufe einzugrenzen. Eine Prüfung im eigenen Terminal bestätigt allerdings nur dessen Umgebung.
 
-Windows PowerShell 5.1 und PowerShell 7 können nebeneinander installiert sein. Dabei bezeichnet `powershell.exe` die Windows-PowerShell-Laufzeit, während PowerShell 7 über `pwsh.exe` gestartet wird. Eine zusätzliche Installation stellt bestehende Aufträge nicht automatisch um. [Microsoft: Migration von Windows PowerShell zu PowerShell 7](https://learn.microsoft.com/en-us/powershell/scripting/whats-new/migrating-from-windows-powershell-51-to-powershell-7).
+## Dasselbe Skriptergebnis unter 5.1 und 7 vergleichen
 
-## Ein kleiner Vergleich mit klaren Grenzen
+Für einen ersten Vergleich genügt ein kleines Inventarskript. Als `Inventory.ps1` gespeichert, liest es den lokalen Computernamen sowie Bezeichnung und Version des Betriebssystems. Es verändert keine Systemeinstellungen und gibt die ausgewählten Felder als JSON zurück.
 
-Für ein bestehendes Inventarskript lässt sich eine Prüfung aufbauen, ohne sofort den gesamten Betrieb zu verändern. Eine Kopie läuft gegen dieselben freigegebenen Testziele unter beiden Laufzeiten. Zu jedem Ergebnis werden die Modulversionen und die Identität festgehalten. Andernfalls könnte ein Berechtigungsunterschied fälschlich als Laufzeitproblem erscheinen.
+```powershell
+$ErrorActionPreference = 'Stop'
+Get-CimInstance -ClassName Win32_OperatingSystem |
+    Select-Object CSName, Caption, Version |
+    ConvertTo-Json -Compress
+```
 
-| Prüfpunkt | Was verglichen wird |
+Der folgende Aufruf läuft auf demselben Windows-Rechner im Verzeichnis der Datei. Beide PowerShell-Versionen müssen über `PATH` erreichbar sein. `-NoProfile` verhindert Einflüsse persönlicher Profile, `-NonInteractive` unterbindet interaktive Rückfragen.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$ps51 = & powershell.exe -NoProfile -NonInteractive -File .\Inventory.ps1
+if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell failed.' }
+
+$ps7 = & pwsh.exe -NoProfile -NonInteractive -File .\Inventory.ps1
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell 7 failed.' }
+
+Compare-Object ($ps51 | ConvertFrom-Json) ($ps7 | ConvertFrom-Json) `
+    -Property CSName, Caption, Version -CaseSensitive
+```
+
+Ohne Ausgabe stimmen die drei verglichenen Werte überein. Abweichungen erscheinen mit `<=` für die 5.1-Seite und `=>` für die 7-Seite. Das prüft die ausgewählten Daten nach der JSON-Konvertierung, nicht die ursprünglichen .NET-Objekttypen. [Microsoft: Compare-Object](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/compare-object).
+
+Beim eigenen Skript gehören auch Modulversionen, fehlende Zugriffsrechte und unerreichbare Ziele in die Prüfung. Dateiausgaben brauchen zusätzlich einen Vergleich von Format und Kodierung. Ein erfolgreicher Lauf allein deckt diese Fälle nicht ab.
+
+Besondere Aufmerksamkeit brauchen Module, die mit `Import-Module -UseWindowsPowerShell` geladen werden. Sie laufen in einer lokalen Windows-PowerShell-5.1-Hintergrundsitzung. Durch die Serialisierung können zurückgegebene Objekte ihre Methoden verlieren, obwohl das Lesen ihrer Eigenschaften funktioniert. Ein erfolgreicher Import bestätigt daher noch nicht die Kompatibilität des Skripts. [Microsoft: Windows PowerShell Compatibility](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_windows_powershell_compatibility).
+
+## Den Remote-Endpunkt ausdrücklich wählen
+
+Bei Remoting über WinRM bestimmt der Endpunkt die entfernte Laufzeit. Das folgende Beispiel setzt einen bereits registrierten Endpunkt `PowerShell.7`, erreichbares WinRM und die erforderlichen Zugriffsrechte voraus. `srv-app01` ist durch den vorgesehenen Testhost zu ersetzen.
+
+```powershell
+Invoke-Command -ComputerName 'srv-app01' `
+    -ConfigurationName 'PowerShell.7' -ErrorAction Stop `
+    -ScriptBlock { $PSVersionTable.PSVersion.ToString() }
+```
+
+Erwartet wird eine Versionsnummer aus der Reihe `7.x`. Ein lokal gestartetes `pwsh.exe` reicht dafür nicht aus. Die Einrichtung erfolgt auf dem Ziel mit `Enable-PSRemoting` aus der vorgesehenen PowerShell-Version und mit Administratorrechten. Dabei werden auch WinRM und Firewallregeln konfiguriert. [Microsoft: Enable-PSRemoting](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/enable-psremoting).
+
+Für NodePilot gilt die Engine-Auswahl nur bei lokalen Skriptschritten:
+
+| Ausführung | Verwendete Laufzeit |
 |---|---|
-| Modulimport | Lässt sich die vorgesehene Modulversion im tatsächlichen Prozess laden? |
-| Ausgabe | Stimmen Eigenschaften, Datentypen und die Anzahl der Ergebnisse überein? |
-| Fehlerfall | Erkennt die übergeordnete Steuerung fehlende Rechte und unerreichbare Ziele? |
-| Dateiaustausch | Entsprechen Kodierung und Format den Erwartungen des Empfängers? |
-| Unbeaufsichtigter Start | Funktioniert der Aufruf ohne das persönliche PowerShell-Profil? |
+| Lokal, `engine: auto` | Standardmäßig Windows PowerShell 5.1 |
+| Lokal, `engine: powershell` | Ausdrücklich Windows PowerShell 5.1 |
+| Lokal, `engine: pwsh` | Separater PowerShell-7-Prozess, Installation erforderlich |
+| Lokal, `engine: runspace` | Eingebettete PowerShell 7 mit Einschränkungen bei der Modulnutzung |
+| Remote über NodePilot | Derzeit Windows PowerShell 5.1 über `Microsoft.PowerShell` |
 
-Die Tabelle ist eine Abnahmehilfe, keine Behauptung, dass jedes Skript an diesen Stellen scheitert. Sie lenkt die Prüfung auf jene Eigenschaften, die ein nachfolgender Prozess tatsächlich verwendet. Ein optisch gleiches Konsolenergebnis kann beispielsweise unterschiedliche Objekttypen verbergen.
-
-## Ein importiertes Modul kann in einem anderen Prozess arbeiten
-
-PowerShell 7 bietet unter Windows eine Kompatibilitätsfunktion für Windows-PowerShell-Module. Mit `Import-Module -UseWindowsPowerShell` kann ein Modul über eine Hintergrundsitzung in Windows PowerShell 5.1 eingebunden werden. Dabei kommt implizites Remoting zum Einsatz. Die zurückgegebenen Objekte können deserialisiert sein und damit ihre ursprünglichen Methoden verlieren. [Microsoft: Windows PowerShell Compatibility](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_windows_powershell_compatibility).
-
-Für ein Skript, das nur ausgewählte Eigenschaften liest, kann das ausreichen. Ruft es dagegen Objektmethoden auf oder erwartet einen bestimmten lebenden .NET-Typ, muss genau dieser Teil geprüft werden. Ein erfolgreicher Import ist noch kein vollständiger Kompatibilitätsnachweis.
-
-Im Prüfprotokoll sollte deshalb stehen, ob ein Modul nativ geladen wird oder über die Kompatibilitätssitzung arbeitet. Diese Unterscheidung erklärt später auch, weshalb zwei vermeintlich gleiche PowerShell-7-Aufträge unterschiedliche Voraussetzungen besitzen.
-
-## Die Umstellung endet beim letzten Aufrufer
-
-Nach erfolgreicher Prüfung wird der ausführende Prozess ausdrücklich umgestellt. Bei einer geplanten Aufgabe betrifft das den Programmpfad und die Argumente. Bei Remoting entscheidet der ausgewählte Endpunkt über die entfernte Laufzeit. Ein lokal gestartetes `pwsh.exe` erzwingt keine PowerShell-7-Sitzung auf dem Zielserver.
-
-`Enable-PSRemoting` richtet Endpunkte für die Installation ein, in der der Befehl ausgeführt wird. Die Registrierung und die Berechtigung des vorgesehenen Endpunkts müssen daher Teil der Bereitstellung sein. [Microsoft: Enable-PSRemoting](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/enable-psremoting).
-
-Für einen begrenzten Übergangszeitraum können geprüfte Aufträge unter PowerShell 7 laufen, während dokumentierte Abhängigkeiten unter 5.1 verbleiben. Zu dieser Ausnahme gehören ein Verantwortlicher und ein nachvollziehbarer Grund. Sie sollte nicht nur deshalb bestehen bleiben, weil niemand den alten Aufruf mehr zuordnen kann.
-
-Auch bei einem in NodePilot eingebundenen Skript gehört die tatsächlich verwendete Laufzeit in die Abnahme. Maßgeblich ist der ausführende Prozess beziehungsweise Remote-Endpunkt, nicht die zuletzt auf dem Server installierte PowerShell-Version.
+Das Remoting-Beispiel zeigt somit einen eigenständigen PowerShell-Aufruf. Eine PowerShell-7-Installation auf dem Ziel ändert die Remote-Ausführung in NodePilot nicht. Einzelheiten stehen in der [Activity-Referenz](https://www.nodepilot.run/docs/de/activities-reference/).
