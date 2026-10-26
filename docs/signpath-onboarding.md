@@ -3,7 +3,8 @@
 The Foundation accepted NodePilot on 26 October 2026. The OSS organization is
 `NodePilot.run [OSS]` (`e64c0f9b-346e-4e60-bce6-8791970f5567`), not the separately
 created `NodePilot.run` organization. Membership and the `CI builds` notification
-address are confirmed.
+address are confirmed. The SignPath GitHub App is installed with access restricted
+to `Sev7eNup/NodePilot`, and the CI token is stored in GitHub Actions secrets.
 
 ## First signing run
 
@@ -31,13 +32,22 @@ test and release policies; the latter remains subject to SignPath's release cont
 
 The workflow pins the test certificate thumbprint
 `1E3876C87EF8D2B73F940F80674D5B81C2AA3649`. It temporarily trusts that exact public
-certificate in the disposable runner's current-user store, verifies Authenticode,
+certificate in the disposable runner's local-machine store, verifies Authenticode,
 then removes it in `finally`. It never installs a certificate on an end user's
-machine. Checksums are calculated after signing. The result includes the signing
+machine. The machine store avoids the interactive confirmation required by the
+current-user root store. The verification step has a five-minute timeout.
+Checksums are calculated after signing. The result includes the signing
 request URL, source commit, certificate thumbprint, and executable checksum.
 Neither the workflow nor its test artifact is a production release.
 
 ## Review and production integration
+
+The first request completed successfully in SignPath on 26 October 2026:
+`a4361446-00ae-4e7c-a212-7faf6a2ecb86`. Its source is commit `119e6f6`, built by
+[GitHub run 40314013517, attempt 2](https://github.com/Sev7eNup/NodePilot/actions/runs/40314013517/attempts/2).
+The subsequent Windows verification step stalled; this is not yet a successful
+end-to-end workflow result. The workflow correction uses the machine certificate
+store and adds progress messages so a stall can be located precisely.
 
 After the run succeeds, inspect the request's GitHub origin in SignPath. Send the
 Foundation the workflow/run and signing-request links for its review. Repository

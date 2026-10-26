@@ -70,6 +70,7 @@ jobs:
           output-artifact-directory: artifacts/signed
 
       - name: Verify test signature and record evidence
+        timeout-minutes: 5
         env:
           SIGNING_REQUEST_URL: ${{ steps.signing.outputs.signing-request-web-url }}
         run: |
@@ -80,22 +81,27 @@ jobs:
           }
           $expectedThumbprint = '1E3876C87EF8D2B73F940F80674D5B81C2AA3649'
           $signedPath = Join-Path $PWD 'artifacts/signed/NodePilot.Switcher.exe'
+          Write-Output 'Reading the returned Authenticode signature.'
           $signature = Get-AuthenticodeSignature -LiteralPath $signedPath
           if ($null -eq $signature.SignerCertificate -or
               $signature.SignerCertificate.Thumbprint -ne $expectedThumbprint) {
             throw 'The returned executable is not signed by the expected SignPath test certificate.'
           }
 
-          # Trust only the pinned test certificate, only during verification on this disposable runner.
-          $certificateStore = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root', 'CurrentUser')
+          # The machine store avoids interactive current-user root-store confirmation dialogs.
+          # Trust only the pinned certificate on this disposable GitHub-hosted runner.
+          $certificateStore = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine')
           $certificateStore.Open('ReadWrite')
           try {
+            Write-Output 'Temporarily trusting the pinned test certificate on the disposable runner.'
             $certificateStore.Add($signature.SignerCertificate)
+            Write-Output 'Verifying the signed executable.'
             $verified = Get-AuthenticodeSignature -LiteralPath $signedPath
             if ($verified.Status -ne 'Valid') {
               throw "Authenticode verification failed: $($verified.Status) - $($verified.StatusMessage)"
             }
           } finally {
+            Write-Output 'Removing the temporary test certificate.'
             $certificateStore.Remove($signature.SignerCertificate)
             $certificateStore.Close()
           }
