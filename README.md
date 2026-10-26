@@ -31,7 +31,7 @@ It is the product's own frontend on an in-memory backend, so anything that genui
 
 ## Product tour
 
-[![Watch the NodePilot product tour, Workflow Designer with PowerShell, File Copy and an LLM summary](src/nodepilot-docs-ui/pages-media/product-tour-poster.png)](https://www.nodepilot.run/media/nodepilot-product-tour.mp4)
+[![Watch the NodePilot product tour, Workflow Designer with a health-check workflow: parallel checks, an LLM summary and a decision](docs/images/designer-dark.png)](https://www.nodepilot.run/media/nodepilot-product-tour.mp4)
 
 **[Watch product video](https://www.nodepilot.run/media/nodepilot-product-tour.mp4)**
 
@@ -41,7 +41,7 @@ It is the product's own frontend on an in-memory backend, so anything that genui
 <details open>
 <summary><b>🎨 Workflow Designer</b></summary>
 
-![Workflow Designer, parallel fan-out/fan-in, live properties panel, seven-cluster toolbar](docs/images/designer-dark.png)
+![Workflow Designer, parallel fan-out/fan-in, decision branches, live properties panel, seven-cluster toolbar](docs/images/designer-properties-dark.png)
 
 </details>
 
