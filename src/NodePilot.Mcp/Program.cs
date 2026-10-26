@@ -36,6 +36,7 @@ var mcp = builder.Services
     .WithTools<WorkflowEditTools>()
     .WithTools<ExecutionTools>()
     .WithTools<TelemetryTools>()
+    .WithTools<DependencyTools>()
     .WithTools<SupportingDataTools>()
     .WithTools<AgentTools>()
     .WithTools<AlertingTools>()

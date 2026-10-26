@@ -104,7 +104,9 @@ before retrying a start whose response was lost.
 - On `publish_workflow`/`update_workflow_definition`/`apply_workflow_patch`, real secrets are
   **restored from the stored version** by node id (including masks nested in condition/case arrays)
   — the agent's `***` never overwrites them, and a
-  secret the agent invents on a new node is rejected (masked + noted).
+  secret the agent invents on a new node is rejected (masked + noted). A `***` with no stored
+  value behind it (for example a condition literal copied onto a new edge id) rejects the whole
+  operation, because it would otherwise be saved as the literal `***`.
 - Credentials carry no password field; secret global values arrive masked. Create/update accept
   secrets write-only.
 
@@ -116,7 +118,14 @@ Large free-text fields (stdout/stderr, return data, audit details, diagnostics) 
 
 ## Tool catalog
 
-100 default tools across 11 groups, plus 13 gated destructive tools (113 total). (Roles refer to the
+The dependency group adds three read-only tools: `list_dependency_objects`, `get_dependencies`
+and `get_dependency_evidence`. They expose the same permission-filtered static reports as
+the UI, including per-object usage and problem counts, the `problems`/`unused` filters,
+direct/indirect relationships, possible agent calls, evidence, bounded
+analysis and revision-bound pagination. See [Dependencies](dependencies.md) for the scope
+and CLI/API mapping. They never return credential values or script bodies.
+
+103 default tools across 12 groups, plus 13 gated destructive tools (116 total). (Roles refer to the
 authenticated user.)
 
 ### Discovery

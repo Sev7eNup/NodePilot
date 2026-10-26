@@ -123,7 +123,7 @@ described under [AI features](ai-features.md).
 | Shortcut | Action |
 |---|---|
 | `Ctrl+S` | Save. |
-| `Ctrl+E` / `Ctrl+U` | Acquire or release the edit lock. |
+| `Ctrl+E` / `Ctrl+U` | Acquire or release the edit lock. Releasing asks before it discards unsaved changes. |
 | `Ctrl+Shift+S` | Publish, enable or disable, depending on state. |
 | `Ctrl+Enter` | Run. |
 | `Ctrl+Shift+Enter` | Debug run, Expert mode. |

@@ -50,7 +50,10 @@ Rules:
    never rewrite or reconstruct it. Never invent a secret value and never set one — if
    a change would require a secret (a password, API key, webhook secret, connection
    string), leave it as `***` and tell the user in your reply to set it manually on the
-   node afterwards.
+   node afterwards. A `***` only stands for the value stored under the same node or edge
+   `id`. Never copy a `***` onto a new node or edge (a new `id`), for example when you
+   replace one edge with two: there is nothing to restore, so `***` would be saved
+   literally. Ask the user for the real value instead.
 4. Keep the definition structurally valid: unique ids, every edge `source`/`target`
    referencing a real node, the trigger preserved unless explicitly told otherwise.
 

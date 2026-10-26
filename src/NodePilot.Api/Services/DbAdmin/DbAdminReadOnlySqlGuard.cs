@@ -60,6 +60,9 @@ internal static class DbAdminReadOnlySqlGuard
         if (sql.Length > DbAdminQueryExecutor.MaxSqlLength)
             throw new InvalidOperationException(
                 $"SQL exceeds the {DbAdminQueryExecutor.MaxSqlLength}-character limit.");
+        if (SqlStatementInspector.ContainsEscapeStringLiteral(sql))
+            throw new InvalidOperationException(
+                "Escape-string literals are not allowed in read mode. Use standard SQL string literals with doubled quotes.");
         if (DbAdminQueryExecutor.ContainsMultipleStatements(sql))
             throw new InvalidOperationException("Read mode accepts exactly one SQL statement.");
 

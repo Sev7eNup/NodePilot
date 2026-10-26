@@ -188,7 +188,7 @@ public sealed class WorkflowPublishCommand : BaseCommand<WorkflowPublishSettings
 
         var api = ClientFactory.Create(session);
         var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
-        var req = new PublishWorkflowRequest(settings.Name ?? w.Name, settings.Description ?? w.Description, json);
+        var req = new PublishWorkflowRequest(settings.Name ?? w.Name, settings.Description ?? w.Description, json, w.Version);
         var published = await api.PublishWorkflowAsync(w.Id, req, ct);
         writer.Success($"Workflow [bold]{Markup.Escape(published.Name)}[/] published (Version {published.Version}, Enabled).");
         return ExitCodes.Success;

@@ -838,6 +838,22 @@ public class DbAdminControllerTests
         }
     }
 
+    [Fact]
+    public async Task ExecuteQuery_ReadMode_EscapeStringBeforeAliasedSecret_IsRejectedBeforeDatabaseExecution()
+    {
+        var (ctrl, db) = NewController();
+        db.Users.Add(AdminUser());
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var result = await ctrl.ExecuteQuery(new DbAdminQueryRequest(
+            """SELECT E'\'' AS marker, "PasswordHash" AS harmless FROM "Users" -- '""", null),
+            TestContext.Current.CancellationToken);
+
+        var error = result.Should().BeOfType<ConflictObjectResult>().Subject.Value
+            .Should().BeOfType<DbAdminQueryError>().Subject;
+        error.Message.Should().Contain("Escape-string literals are not allowed");
+    }
+
     // ── Secret-column containment (mirrors SqlKnowledgeReader; keeps the MCP run_readonly_sql
     //    tool and the UI query pane from pulling secrets out of the DB) ──────────────────────
 

@@ -90,7 +90,7 @@ export function buildFolders(now: number): SharedFolder[] {
 
 const CREDENTIAL_SPECS = [
   { key: 'svc-automation', name: 'Service Automation', username: 'svc_nodepilot', domain: 'CONTOSO', expiresInDays: 148 },
-  { key: 'sccm-admin', name: 'SCCM Site Admin', username: 'sccm_admin', domain: 'CONTOSO', expiresInDays: 21 },
+  { key: 'sccm-admin', name: 'SCCM Site Admin', username: 'sccm_admin', domain: 'CONTOSO', expiresInDays: 9 },
   { key: 'local-fallback', name: 'Local Fallback', username: 'Administrator', domain: null, expiresInDays: null },
 ];
 

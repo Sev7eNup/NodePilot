@@ -17,6 +17,7 @@ const ROUTES = [
   '/executions',
   '/operations',
   '/machines',
+  '/credentials',
   '/global-variables',
   '/custom-activities',
   '/maintenance-windows',
@@ -272,6 +273,7 @@ test.describe('published browser demo', () => {
    */
   const EDITABLE_ROUTES = [
     '/machines',
+    '/credentials',
     '/global-variables',
     '/custom-activities',
     '/users',
@@ -317,6 +319,7 @@ test.describe('published browser demo', () => {
    */
   const SAVE_ROUTES = [
     { route: '/machines', field: 'name' },
+    { route: '/credentials', field: 'name' },
     { route: '/global-variables', field: 'name' },
   ];
 
@@ -339,7 +342,9 @@ test.describe('published browser demo', () => {
       await settle(page);
 
       const saved = await page.evaluate(({ value, name }) => {
-        const panel = document.querySelector('.np-modal-panel');
+        // Credentials edit inline in a labelled group instead of a modal.
+        const panel = document.querySelector('.np-modal-panel')
+          ?? document.querySelector('[role="group"][aria-label]');
         if (!panel) return 'no editor opened';
         const input = panel.querySelector<HTMLInputElement>(`input[name="${name}"]`)
           ?? panel.querySelector<HTMLInputElement>('input[type="text"]');

@@ -5,6 +5,8 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 import deCommon from './locales/de/common.json';
 import deAgents from './locales/de/agents.json';
 import enAgents from './locales/en/agents.json';
+import deDependencies from './locales/de/dependencies.json';
+import enDependencies from './locales/en/dependencies.json';
 import deNav from './locales/de/nav.json';
 import deAuth from './locales/de/auth.json';
 import deDashboard from './locales/de/dashboard.json';
@@ -71,6 +73,7 @@ export type AppLang = (typeof SUPPORTED_LANGS)[number];
 
 export const resources = {
   de: {
+    dependencies: deDependencies,
     agents: deAgents,
     common: deCommon,
     nav: deNav,
@@ -104,6 +107,7 @@ export const resources = {
     metrics: deMetrics,
   },
   en: {
+    dependencies: enDependencies,
     agents: enAgents,
     common: enCommon,
     nav: enNav,

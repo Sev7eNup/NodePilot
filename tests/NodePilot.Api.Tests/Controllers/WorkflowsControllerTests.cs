@@ -499,7 +499,7 @@ public class WorkflowsControllerTests
         await db.SaveChangesAsync();
 
         var h = NewController(db);
-        var request = new UpdateWorkflowRequest("Updated", "New desc", "{\"updated\":true}");
+        var request = new UpdateWorkflowRequest("Updated", "New desc", "{\"updated\":true}", ExpectedVersion: 1);
 
         // Act
         var result = await h.Workflows.Update(workflow.Id, request, CancellationToken.None);
@@ -537,7 +537,7 @@ public class WorkflowsControllerTests
 
         var result = await h.Workflows.Update(
             workflow.Id,
-            new UpdateWorkflowRequest("Updated", null, invalidDefinition),
+            new UpdateWorkflowRequest("Updated", null, invalidDefinition, ExpectedVersion: 1),
             CancellationToken.None);
 
         result.Should().BeOfType<BadRequestObjectResult>();
@@ -553,7 +553,7 @@ public class WorkflowsControllerTests
         // Arrange
         var db = CreateContext();
         var h = NewController(db);
-        var request = new UpdateWorkflowRequest("Updated", null, "{}");
+        var request = new UpdateWorkflowRequest("Updated", null, "{}", ExpectedVersion: 1);
 
         // Act
         var result = await h.Workflows.Update(Guid.NewGuid(), request, CancellationToken.None);
@@ -842,7 +842,7 @@ public class WorkflowsControllerTests
 
         await h.Workflows.Update(
             workflow.Id,
-            new UpdateWorkflowRequest("Original v2", "updated", OneNodeDef),
+            new UpdateWorkflowRequest("Original v2", "updated", OneNodeDef, ExpectedVersion: 1),
             CancellationToken.None);
 
         // Live row advanced.
@@ -876,7 +876,7 @@ public class WorkflowsControllerTests
 
         await h.Workflows.Update(
             workflow.Id,
-            new UpdateWorkflowRequest("Legacy v2", null, """{"nodes":[],"edges":[]}"""),
+            new UpdateWorkflowRequest("Legacy v2", null, """{"nodes":[],"edges":[]}""", ExpectedVersion: 1),
             CancellationToken.None);
 
         db.ChangeTracker.Clear();
@@ -919,7 +919,7 @@ public class WorkflowsControllerTests
 
         var result = await h.Workflows.Update(
             workflow.Id,
-            new UpdateWorkflowRequest("Updated", null, OneNodeDef),
+            new UpdateWorkflowRequest("Updated", null, OneNodeDef, ExpectedVersion: 1),
             CancellationToken.None);
 
         result.Should().BeOfType<ConflictObjectResult>();

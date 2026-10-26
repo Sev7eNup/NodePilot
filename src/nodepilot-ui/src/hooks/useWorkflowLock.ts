@@ -41,7 +41,7 @@ export function useWorkflowLock({ workflowId, workflow, currentUserId, roleCanWr
   const canWrite = roleCanWrite && isLockedByMe;
 
   const lock = useCallback(() => { lockMutation.mutate(); }, [lockMutation]);
-  const unlock = useCallback(() => { unlockMutation.mutate(); }, [unlockMutation]);
+  const unlockAsync = useCallback(() => unlockMutation.mutateAsync(), [unlockMutation]);
   const forceUnlock = useCallback(() => { forceUnlockMutation.mutate(); }, [forceUnlockMutation]);
   const disable = useCallback(() => { disableMutation.mutate(); }, [disableMutation]);
   const enable = useCallback(() => { enableMutation.mutate(); }, [enableMutation]);
@@ -52,7 +52,7 @@ export function useWorkflowLock({ workflowId, workflow, currentUserId, roleCanWr
     isLockedByOther,
     canWrite,
     lock,
-    unlock,
+    unlockAsync,
     forceUnlock,
     disable,
     enable,

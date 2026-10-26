@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation, Trans } from 'react-i18next';
+import { DependencyLink } from '../components/dependencies/DependencyLink';
 import { useColumnResize } from '../hooks/useColumnResize';
 import { api, downloadFromApi } from '../api/client';
 import { getPage, type PagedResponse } from '../api/paging';
@@ -875,6 +876,7 @@ export function WorkflowsPage() {
                   />
                 </span>
                 <span className="text-sm font-semibold text-on-surface truncate">{w.name}</span>
+                <DependencyLink kind="workflow" id={w.id} />
                 <span className="text-[10px] font-medium text-outline bg-surface-container rounded px-1.5 py-0.5 shrink-0">v{w.version}</span>
               </div>
               {w.description && <p className="text-xs text-outline mt-0.5 truncate" title={w.description}>{w.description}</p>}
@@ -1118,6 +1120,7 @@ export function WorkflowsPage() {
                       >
                         {w.name}
                       </button>
+                      <DependencyLink kind="workflow" id={w.id} />
                       <span className="text-[10px] font-medium text-outline bg-surface-container rounded px-1.5 py-0.5 shrink-0">
                         v{w.version}
                       </span>

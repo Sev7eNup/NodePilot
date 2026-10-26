@@ -4,6 +4,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using NodePilot.Core.Execution;
 using NodePilot.Engine.Security;
 
 namespace NodePilot.Engine.PowerShell;
@@ -17,6 +18,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
 {
     private readonly string _executable;
     private readonly ILogger _logger;
+    private readonly int _maxCapturedOutputChars;
 
     // Grace period for the stdout/stderr drain AFTER the script process has exited (isolated: and
     // its job tree has been terminated). A read still open then is held by an inherited pipe
@@ -114,25 +116,29 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     // NodePilot.Engine.Tests access; production still uses the CreatePwsh/CreateWindowsPowerShell
     // factory methods.
     internal ProcessExecutionEngine(string engineType, string executable, bool available, ILogger logger,
-        TimeSpan? isolatedDrainGrace = null)
+        TimeSpan? isolatedDrainGrace = null, int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit)
     {
         EngineType = engineType;
         _executable = executable;
         IsAvailable = available;
         _logger = logger;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCapturedOutputChars);
+        _maxCapturedOutputChars = maxCapturedOutputChars;
         _isolatedDrainGrace = isolatedDrainGrace is { } g && g > TimeSpan.Zero ? g : TimeSpan.FromSeconds(5);
     }
 
-    public static ProcessExecutionEngine CreatePwsh(ILogger logger, TimeSpan? isolatedDrainGrace = null)
+    public static ProcessExecutionEngine CreatePwsh(ILogger logger, TimeSpan? isolatedDrainGrace = null,
+        int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit)
     {
         var path = FindExecutable("pwsh.exe", "pwsh");
-        return new ProcessExecutionEngine("pwsh", path ?? "pwsh.exe", path is not null, logger, isolatedDrainGrace);
+        return new ProcessExecutionEngine("pwsh", path ?? "pwsh.exe", path is not null, logger, isolatedDrainGrace, maxCapturedOutputChars);
     }
 
-    public static ProcessExecutionEngine CreateWindowsPowerShell(ILogger logger, TimeSpan? isolatedDrainGrace = null)
+    public static ProcessExecutionEngine CreateWindowsPowerShell(ILogger logger, TimeSpan? isolatedDrainGrace = null,
+        int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit)
     {
         var path = FindExecutable("powershell.exe", "powershell");
-        return new ProcessExecutionEngine("powershell", path ?? "powershell.exe", path is not null, logger, isolatedDrainGrace);
+        return new ProcessExecutionEngine("powershell", path ?? "powershell.exe", path is not null, logger, isolatedDrainGrace, maxCapturedOutputChars);
     }
 
     public async Task<PowerShellExecutionResult> ExecuteAsync(PowerShellExecutionRequest request, CancellationToken ct)
@@ -181,14 +187,9 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             // background program the script started without a new window (Start-Process
             // -NoNewWindow, cmd /c start) inherits the pipes and would hold the step until it exits.
             using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            var stdout = new StringBuilder();
-            var stderr = new StringBuilder();
-            var stdoutClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var stderrClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var budget = new ScriptOutputBudget(_maxCapturedOutputChars);
             var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            process.OutputDataReceived += (_, e) => Collect(stdout, stdoutClosed, e.Data);
-            process.ErrorDataReceived += (_, e) => Collect(stderr, stderrClosed, e.Data);
             process.Exited += (_, _) => exited.TrySetResult();
 
             _logger.LogDebug("Starting {Engine}: {File}", EngineType, tempScript);
@@ -200,10 +201,10 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             {
                 process.Start();
             }
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+            var stdout = new OutputCapture(process.StandardOutput, ct, budget.CreateBuffer());
+            var stderr = new OutputCapture(process.StandardError, ct, budget.CreateBuffer());
 
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, budget.LimitReached);
             if (request.Timeout is { } configuredTimeout)
                 cts.CancelAfter(configuredTimeout);
 
@@ -220,11 +221,16 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 // The process is killed either way; only the verdict differs.
                 if (ct.IsCancellationRequested)
                     throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+                if (budget.Exceeded)
+                {
+                    await DrainReadsAsync(stdout, stderr, _isolatedDrainGrace, ct);
+                    return EngineFailure(budget.Error, sw.Elapsed);
+                }
                 return new PowerShellExecutionResult
                 {
                     Success = false,
                     ExitCode = -1,
-                    Output = Snapshot(stdout).TrimEnd(),
+                    Output = stdout.Text.TrimEnd(),
                     Error = $"Script execution timed out after {request.Timeout!.Value.TotalSeconds:0}s",
                     TimedOut = true,
                     Duration = sw.Elapsed,
@@ -233,11 +239,8 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
 
             // The script has exited, so everything it wrote is in the pipes. A read still open
             // after the grace is held by a background program; keep what has been collected.
-            try
-            {
-                await Task.WhenAll(stdoutClosed.Task, stderrClosed.Task).WaitAsync(_isolatedDrainGrace, ct);
-            }
-            catch (TimeoutException)
+            var drain = await DrainReadsAsync(stdout, stderr, _isolatedDrainGrace, ct);
+            if (drain.DrainTimedOut)
             {
                 _logger.LogDebug(
                     "{Engine} (pid {Pid}): output stayed open {Grace:0}s after the script exited; a background " +
@@ -246,8 +249,9 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             }
 
             sw.Stop();
-            var stdoutText = Snapshot(stdout);
-            var stderrText = StripSerializedStreams(Snapshot(stderr)).TrimEnd();
+            if (budget.Exceeded) return EngineFailure(budget.Error, sw.Elapsed);
+            var stdoutText = stdout.Text;
+            var stderrText = StripSerializedStreams(stderr.Text).TrimEnd();
             return new PowerShellExecutionResult
             {
                 // Error-based success, as over WinRM (!HadErrors): the script failed if it wrote
@@ -302,11 +306,12 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
 
             // Start draining the pipes IMMEDIATELY and concurrently with the wait — a noisy script
             // would otherwise deadlock once the pipe buffers fill (child blocks writing, we block
-            // on exit). Mirrors BeginOutputReadLine on the non-isolated path.
-            var stdoutCapture = new OutputCapture(launched.StandardOutput, ct);
-            var stderrCapture = new OutputCapture(launched.StandardError, ct);
+            // on exit). Both process paths use fixed-size reads, including lines without a newline.
+            using var budget = new ScriptOutputBudget(_maxCapturedOutputChars);
+            var stdoutCapture = new OutputCapture(launched.StandardOutput, ct, budget.CreateBuffer());
+            var stderrCapture = new OutputCapture(launched.StandardError, ct, budget.CreateBuffer());
 
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, budget.LimitReached);
             if (request.Timeout is { } configuredTimeout)
                 cts.CancelAfter(configuredTimeout);
 
@@ -319,7 +324,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             catch (OperationCanceledException)
             {
                 userCancel = ct.IsCancellationRequested;
-                timedOut = !userCancel;
+                timedOut = !userCancel && !budget.Exceeded;
             }
 
             // Step-end semantics: the step ends when the ROOT process exits (or we time out /
@@ -363,6 +368,8 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             // Thrown after the drain above so the job object is already closed and the tree reaped.
             if (userCancel || ct.IsCancellationRequested)
                 throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+
+            if (budget.Exceeded) return EngineFailure(budget.Error, sw.Elapsed);
 
             if (timedOut)
             {
@@ -462,13 +469,15 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
 
     internal sealed class OutputCapture
     {
-        private readonly StringBuilder _output = new();
+        private readonly ScriptOutputBudget.Buffer _output;
         internal Task Completion { get; }
-        internal string Text => Snapshot(_output);
+        internal string Text => _output.Text;
 
-        internal OutputCapture(TextReader reader, CancellationToken ct)
+        internal OutputCapture(TextReader reader, CancellationToken ct, ScriptOutputBudget.Buffer? output = null)
         {
+            _output = output ?? new ScriptOutputBudget().CreateBuffer();
             Completion = ReadAsync(reader, ct);
+            ObserveAbandonedRead(Completion);
         }
 
         private async Task ReadAsync(TextReader reader, CancellationToken ct)
@@ -477,22 +486,9 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             int count;
             while ((count = await reader.ReadAsync(buffer.AsMemory(), ct).ConfigureAwait(false)) != 0)
             {
-                lock (_output) _output.Append(buffer, 0, count);
+                _output.Append(buffer.AsSpan(0, count));
             }
         }
-    }
-
-    // Line callbacks of one stream arrive in order, but a snapshot may be taken while they still
-    // run, hence the lock. A null line is the stream's end.
-    private static void Collect(StringBuilder sink, TaskCompletionSource closed, string? line)
-    {
-        if (line is null) { closed.TrySetResult(); return; }
-        lock (sink) sink.AppendLine(line);
-    }
-
-    private static string Snapshot(StringBuilder sink)
-    {
-        lock (sink) return sink.ToString();
     }
 
     /// <summary>

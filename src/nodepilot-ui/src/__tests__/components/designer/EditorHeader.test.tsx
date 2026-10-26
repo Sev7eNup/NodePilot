@@ -61,6 +61,7 @@ function defaultProps(over: Partial<EditorLifecycle> = {}): EditorHeaderProps {
       save: vi.fn(),
       lock: vi.fn(),
       unlock: vi.fn(),
+      replaceDraft: vi.fn(),
       forceUnlock: vi.fn(),
       disable: vi.fn(),
       requestPublish: vi.fn(),
@@ -179,6 +180,20 @@ describe('EditorHeader — designer back button (location.state)', () => {
     renderWithState(undefined);
     fireEvent.click(getBackButton());
     expect(capturedPathname).toBe('/workflows');
+  });
+
+  it('dependencyEntry_returnsToTheOriginalHistoryEntry', () => {
+    renderWithState(
+      { fromDependencies: true },
+      [
+        { pathname: '/dependencies', search: '?kind=machine&id=host&view=map&related=workflow:wf-current' },
+        { pathname: '/workflows/wf-current', state: { fromDependencies: true } },
+      ], 1,
+    );
+    const back = screen.getByRole('button', { name: 'Back to dependencies' });
+    expect(back).not.toBeDisabled();
+    fireEvent.click(back);
+    expect(capturedPathname).toBe('/dependencies');
   });
 
   it('withoutFromWorkflow_rendersOnlyTheArrow', () => {

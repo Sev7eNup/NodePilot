@@ -73,6 +73,7 @@ foreach ($workflow in @($bundle.workflows)) {
     Write-Host "Erstellt: $($workflow.name)"
     $existing += $current
     if ($workflow.isEnabled -eq $true) {
+      $body.expectedVersion = $current.version
       $current = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/publish" -Body $body -Headers $headers
       Write-Host "Veroeffentlicht und aktiviert: $($workflow.name)"
     }
@@ -80,7 +81,8 @@ foreach ($workflow in @($bundle.workflows)) {
   else {
     # Existing workflows require an edit lock. Publish saves the definition, enables it and
     # releases the lock in one step, so a re-run cannot leave a workflow half updated.
-    Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/lock" -Headers $headers | Out-Null
+    $current = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/lock" -Headers $headers
+    $body.expectedVersion = $current.version
     $current = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/publish" -Body $body -Headers $headers
     Write-Host "Aktualisiert und aktiviert: $($workflow.name)"
   }

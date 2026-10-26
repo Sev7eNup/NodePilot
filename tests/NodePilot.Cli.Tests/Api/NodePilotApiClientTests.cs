@@ -198,7 +198,7 @@ public sealed class NodePilotApiClientTests : IDisposable
                .RespondWith(Response.Create().WithStatusCode(200).WithBody(SampleSingleBody(id, "Build")));
 
         var w = await _client.PublishWorkflowAsync(id,
-            new PublishWorkflowRequest("Build", "desc", "{\"nodes\":[]}"), CancellationToken.None);
+            new PublishWorkflowRequest("Build", "desc", "{\"nodes\":[]}", ExpectedVersion: 1), CancellationToken.None);
         w.Id.Should().Be(id);
     }
 
@@ -210,7 +210,7 @@ public sealed class NodePilotApiClientTests : IDisposable
                .RespondWith(Response.Create().WithStatusCode(403));
 
         var ex = await Assert.ThrowsAsync<ApiException>(() =>
-            _client.PublishWorkflowAsync(id, new PublishWorkflowRequest("x", null, "{}"), CancellationToken.None));
+            _client.PublishWorkflowAsync(id, new PublishWorkflowRequest("x", null, "{}", ExpectedVersion: 1), CancellationToken.None));
         ex.IsForbidden.Should().BeTrue();
     }
 

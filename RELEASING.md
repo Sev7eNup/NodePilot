@@ -88,11 +88,13 @@ $sig.SignerCertificate.Thumbprint   # must equal the shipped .cer's thumbprint
 
 ## 6. Run the release lab
 
-Before anything is tagged, the signed setups from `out\` are installed on the Hyper-V lab. The server setup runs in every identity/database combination, fresh and as an update from the previous release, each followed by an uninstall. The desktop setup goes through install, over-install, uninstall and reinstall. Checks, lab prerequisites and pass criteria are described in [`scripts/release-lab/README.md`](scripts/release-lab/README.md).
+Before anything is tagged, the signed setups from `out\` are installed on the Hyper-V lab. Both desktop and server setups must test direct upgrades from **each of the five latest published stable versions before the candidate** to the candidate. Each upgrade starts from a clean checkpoint with that source version installed; do not chain the versions. The server setup runs all four identity/database combinations for every source version (20 upgrade cases), plus the fresh-install scenarios, each followed by an uninstall. The desktop setup runs five upgrade cases in addition to install, over-install, uninstall and reinstall. Checks, lab prerequisites and pass criteria are described in [`scripts/release-lab/README.md`](scripts/release-lab/README.md).
+
+Before running, compare the published releases with the five `upgradeReleases` entries in the lab config and supply the original server and desktop installers for those versions. Missing installers, failed or skipped required upgrade cases block the release; an N/A does not satisfy an upgrade path. Record source version, candidate version and result for every case in the release evidence.
 
 ```powershell
-.\scripts\release-lab\server\Invoke-ServerMatrix.ps1  -ConfigPath <lab config> -ArtifactDir .\out -Version 1.2.11
-.\scripts\release-lab\desktop\Invoke-DesktopMatrix.ps1 -ConfigPath <lab config> -ArtifactDir .\out -Version 1.2.11
+.\scripts\release-lab\server\Invoke-ServerMatrix.ps1  -ConfigPath <lab config> -ArtifactDir .\out -Version <candidate version>
+.\scripts\release-lab\desktop\Invoke-DesktopMatrix.ps1 -ConfigPath <lab config> -ArtifactDir .\out -Version <candidate version>
 ```
 
 Afterwards the same server setup is installed as an update on the lab's long-running instance, against which the workflow test suite (`scripts/test-suite/`, see [`docs/workflow-tests.md`](docs/workflow-tests.md)) runs. Because that instance runs with production hardening, it needs the following once:

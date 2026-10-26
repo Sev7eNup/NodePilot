@@ -4,6 +4,7 @@ using System.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Exceptions;
+using NodePilot.Core.Execution;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 
@@ -16,6 +17,7 @@ public class WinRmSessionFactory : IRemoteSessionFactory
     private readonly ICredentialStore _credentialStore;
     private readonly IConfiguration? _configuration;
     private readonly ILogger<WinRmSessionFactory>? _logger;
+    private readonly int _maxCapturedOutputChars;
 
     public WinRmSessionFactory(ICredentialStore credentialStore)
         : this(credentialStore, null, null) { }
@@ -28,6 +30,8 @@ public class WinRmSessionFactory : IRemoteSessionFactory
         _credentialStore = credentialStore;
         _configuration = configuration;
         _logger = logger;
+        _maxCapturedOutputChars = configuration?.GetValue<int?>(ScriptOutputBudget.ConfigurationKey) ?? ScriptOutputBudget.DefaultLimit;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(_maxCapturedOutputChars);
     }
 
     // virtual: lets test subclasses replace the real WinRM connect logic without the pool having
@@ -185,7 +189,7 @@ public class WinRmSessionFactory : IRemoteSessionFactory
         RemoteMetrics.SessionOpenDuration.Record(connectStopwatch.Elapsed.TotalMilliseconds, okTag, authTag);
         RemoteMetrics.SessionsActive.Add(1);
 
-        return new WinRmSession(runspace, machine.Hostname);
+        return new WinRmSession(runspace, machine.Hostname, _maxCapturedOutputChars);
     }
 
     /// <summary>

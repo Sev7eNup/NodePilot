@@ -10,9 +10,21 @@ installation could complete, LocalSystem against a local SQL Server rolled back,
 
 ## What is checked
 
+Both setups must upgrade directly from **each of the five latest published stable versions before
+the candidate** to the candidate. The five sources are release versions, not five consecutive patch
+numbers; they may cross minor or major version boundaries. Each path starts from a clean checkpoint,
+installs its source release and then the candidate. Do not chain intermediate upgrades.
+
+The lab config's `upgradeReleases` array supplies exactly five distinct source versions and their
+original published installers. Before each release, the operator checks this list against the
+published releases; the scripts validate its count, distinct older versions and installer files,
+but do not fetch the release history. Missing installers or a required upgrade that cannot run
+block the release. N/A is not accepted for an upgrade case.
+
 ### Server setup (`server/Invoke-ServerMatrix.ps1`, lab server VM)
 
-Each scenario starts from the clean checkpoint.
+Each scenario starts from the clean checkpoint. U1-U4 run once per source version: **20 upgrade
+cases**, with IDs such as `U1-from-1.4.5`. All other scenarios run once (30 server scenarios total).
 
 | Id | Identity | Database | Path | Then |
 |---|---|---|---|---|
@@ -20,10 +32,10 @@ Each scenario starts from the clean checkpoint.
 | F2 | LocalSystem | SQL Server | fresh install | uninstall with `/PURGEDATA=1` |
 | F3 | gMSA | PostgreSQL | fresh install | uninstall keeping data |
 | F4 | LocalSystem | PostgreSQL, port omitted | fresh install | uninstall with `/PURGEDATA=1` |
-| U1 | gMSA | SQL Server | previous release, then update | uninstall with `/PURGEDATA=1` |
-| U2 | LocalSystem | SQL Server | previous release, then update | uninstall keeping data |
-| U3 | gMSA | PostgreSQL | previous release, then update | uninstall with `/PURGEDATA=1` |
-| U4 | LocalSystem | PostgreSQL | previous release, then update | uninstall keeping data |
+| U1 | gMSA | SQL Server | each of the five source releases, then direct update | uninstall with `/PURGEDATA=1` |
+| U2 | LocalSystem | SQL Server | each of the five source releases, then direct update | uninstall keeping data |
+| U3 | gMSA | PostgreSQL | each of the five source releases, then direct update | uninstall with `/PURGEDATA=1` |
+| U4 | LocalSystem | PostgreSQL | each of the five source releases, then direct update | uninstall keeping data |
 | I1 | LocalSystem, then gMSA | SQL Server | fresh install | a second installation as the gMSA over it |
 | S1 | LocalSystem | SQL Server on another host | fresh install | uninstall with `/PURGEDATA=1` |
 | R1 | gMSA | SQL Server | fresh install | the VM restarts |
@@ -75,7 +87,10 @@ the run *Succeeded* and no error entry. A failed run lists its failed steps in `
 | T6 | install after the purge | setup token again, the old admin is gone |
 | T7 | uninstall keeping data, install with `/DISCARDDATA=1` | fresh database, the previous admin is gone |
 | T8 | uninstall, `/PURGEDATA=1` | nothing left |
-| U1 | from the clean checkpoint: the previous release, an admin and a workflow, then this release over it | the admin signs in, pre-update backup, a workflow runs, no error entry; uninstall with `/PURGEDATA=1` |
+| U1 (five runs) | restore the clean checkpoint for each source release, install it, create an admin and a workflow, then install the candidate directly over it | the admin signs in, pre-update backup, a workflow runs, no error entry; uninstall with `/PURGEDATA=1` |
+
+The five upgrade cases have IDs such as `U1-from-1.4.5`, with separate logs and source/target
+versions in `summary.md`. Every phase must return a passing summary; missing output fails the run.
 
 Interactive pages (uninstall question, leftover-data page, the wizard itself) are not reachable over
 PowerShell Direct and are not covered.
@@ -112,17 +127,18 @@ integrations, an interrupted session, an incomplete catalog or changed release b
 Copy-Item scripts\release-lab\release-lab.example.json C:\lab-cred\release-lab.json
 
 # after deploy\Build-Artifact.ps1 has written .\out
-.\scripts\release-lab\server\Invoke-ServerMatrix.ps1  -ConfigPath C:\lab-cred\release-lab.json -ArtifactDir .\out -Version 1.4.1
-.\scripts\release-lab\desktop\Invoke-DesktopMatrix.ps1 -ConfigPath C:\lab-cred\release-lab.json -ArtifactDir .\out -Version 1.4.1
+.\scripts\release-lab\server\Invoke-ServerMatrix.ps1  -ConfigPath C:\lab-cred\release-lab.json -ArtifactDir .\out -Version 1.4.6
+.\scripts\release-lab\desktop\Invoke-DesktopMatrix.ps1 -ConfigPath C:\lab-cred\release-lab.json -ArtifactDir .\out -Version 1.4.6
 ```
 
 Both need an elevated session on the Hyper-V host (checkpoint restore) and run independently, so
-they can run at the same time. The server matrix takes about 1.5 h (fourteen VM restores and
-installs, each with a two-minute observation window), the desktop run about an hour. Results, logs
-and a `summary.md` land in `%TEMP%\nodepilot-release-lab\<version>\`. Either script exits 1 if
-anything failed.
+they can run at the same time. Plan for 30 server scenarios and the desktop lifecycle plus five
+independent upgrade runs, including the two-minute observation windows. Results, logs and a
+`summary.md` with source version, target version and verdict land in
+`%TEMP%\nodepilot-release-lab\<version>\`. Either script exits nonzero if anything required failed.
 
-`-Only F1,A` runs a subset while fixing something; the release itself needs the full run.
+Server `-Only F1,A` runs a subset while fixing something; `-Only U1` runs U1 for all five sources.
+Subset summaries are marked diagnostic; the release itself needs the full run.
 
 ## Lab prerequisites
 
@@ -138,10 +154,15 @@ anything failed.
   account running the matrix is sysadmin. If its TLS certificate is self-signed, export the public
   part and name it in `remoteSql.trustCertificate`; the matrix imports it into the server VM's
   `LocalMachine\Root` after each restore, so the checkpoint stays untouched.
-- **Previous release**: the server and desktop setups of the release before this one, for U1-U4 and
-  the desktop U1. The `previousRelease` flags in the config describe what that release needs; for 1.4.0 the runtimes
-  have to be preinstalled, LocalSystem needs `NT AUTHORITY\SYSTEM` granted by hand, and PostgreSQL
-  installs cannot complete (U3/U4 report N/A).
+- **Five source releases**: the original server and desktop installers from the five latest
+  published stable releases before the candidate, configured in `upgradeReleases` (replaces the
+  single `previousRelease` object). The example versions 1.4.5 through 1.4.1 illustrate a 1.4.6
+  candidate; replace them with the actual five releases for each run. Each entry has a `version`,
+  `serverSetup`, `desktopSetup`, and the boolean flags `preinstallRuntimes`,
+  `preGrantSystemForLocalSql`, `canInstallPostgres` describing that source release. The scripts
+  reject fewer or more than five entries, duplicate/current/newer versions, reused installer paths
+  and missing installer files before changing a VM. A source that cannot complete its PostgreSQL
+  installation (`canInstallPostgres=false`) fails U3/U4 instead of skipping them.
 
 ## Known lab quirks
 

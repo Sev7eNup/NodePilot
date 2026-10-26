@@ -1,4 +1,4 @@
-import { metricsSections, navGroups, systemSettingsLabels } from './navigation';
+import { isNavItemVisibleForRole, metricsSections, navGroups, systemSettingsLabels } from './navigation';
 
 export type BreadcrumbItem = { labelKey: string; to?: string };
 
@@ -19,7 +19,7 @@ export function resolveBreadcrumbs(
   const visibleGroups = navGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !item.adminOnly || role === 'Admin'),
+      items: group.items.filter((item) => isNavItemVisibleForRole(item, role)),
     }))
     .filter((group) => group.items.length > 0);
   const candidates = visibleGroups.flatMap((group) => group.items.map((item) => ({ group, item })));

@@ -1,4 +1,5 @@
 {
+  "dependencyStepMissing": "Die Fundstelle wurde geändert: Dieser Schritt ist im aktuellen Workflow nicht mehr vorhanden.",
   "newWorkflow": "Neuer Workflow",
   "untitled": "Ohne Titel",
   "save": "Speichern",
@@ -53,6 +54,7 @@
   "redo": "Wiederherstellen",
   "backTo": "Zurück zu: {{name}}",
   "backToWorkflowList": "Zurück zur Workflow-Liste",
+  "backToDependencies": "Zurück zu Abhängigkeiten",
   "workflowNamePlaceholder": "Workflow-Name…",
   "undoTooltip": "Rückgängig (Ctrl+Z)",
   "redoTooltip": "Wiederherstellen (Ctrl+Y / Ctrl+Shift+Z)",
@@ -137,6 +139,7 @@
   "unsavedChanges": "Du hast nicht gespeicherte Änderungen.",
   "discardChanges": "Änderungen verwerfen?",
   "discardChangesConfirm": "Du hast nicht gespeicherte Änderungen. Wirklich verwerfen?",
+  "versionConflict": "Der Workflow wurde inzwischen an anderer Stelle gespeichert. Dein Entwurf bleibt erhalten, wird aber nicht mehr automatisch gespeichert. Lade den Workflow neu, um den aktuellen Stand zu sehen.",
   "fitView": "An Ansicht anpassen",
   "zoomIn": "Vergrößern",
   "zoomOut": "Verkleinern",

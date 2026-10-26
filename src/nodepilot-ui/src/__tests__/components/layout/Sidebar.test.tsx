@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
@@ -22,11 +22,21 @@ function patchFetch() {
 // The dedicated counts endpoint the badges read — three numbers, not the dashboard payload.
 const STATS = { workflowsTotal: 24, runningCount: 3, machinesTotal: 128 };
 const RULES = Array.from({ length: 7 }, (_, i) => ({ id: `r${i}`, name: `rule ${i}` }));
+const DAY = 86_400_000;
+const credential = (id: string, offsetDays: number) =>
+  ({ id, name: id, username: 'svc', domain: null, expiresAt: new Date(Date.now() + offsetDays * DAY).toISOString() });
+// One expired and one inside the 14-day window count; the third expires much later.
+const CREDENTIALS = [credential('expired', -1), credential('soon', 5), credential('later', 100)];
 
 const server = setupServer(
   http.get(`${BASE}/api/stats/sidebar-counts`, () => HttpResponse.json(STATS)),
   http.get(`${BASE}/api/alerting/rules`, () => HttpResponse.json(RULES)),
+  http.get(`${BASE}/api/credentials`, () => HttpResponse.json(CREDENTIALS)),
 );
+
+function requestedCredentials() {
+  return vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).includes('/credentials'));
+}
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
 afterEach(() => {
@@ -132,6 +142,27 @@ describe('Sidebar', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
+  it('shows the number of expired and expiring credentials as a warning badge', async () => {
+    renderSidebar('Operator');
+    const link = await screen.findByRole('link', { name: /credentials/i });
+    expect(link).toHaveAttribute('href', '/credentials');
+    await waitFor(() => expect(link.querySelector('.np-nav-badge')).toHaveTextContent('2'));
+    expect(link.querySelector('.np-nav-badge')).toHaveClass('is-alerts');
+  });
+
+  it('hides the credentials badge when nothing is expired or expiring', async () => {
+    let served = false;
+    server.use(http.get(`${BASE}/api/credentials`, () => {
+      served = true;
+      return HttpResponse.json([credential('later', 100)]);
+    }));
+    renderSidebar('Admin');
+    const link = await screen.findByRole('link', { name: /credentials/i });
+    await waitFor(() => expect(served).toBe(true));
+    await act(async () => {});
+    expect(link.querySelector('.np-nav-badge')).toBeNull();
+  });
+
   it('hides admin-only items and the alerts badge for a Viewer', async () => {
     renderSidebar('Viewer');
     // sidebar-counts is open to every role, so the workflows badge still resolves.
@@ -141,6 +172,9 @@ describe('Sidebar', () => {
     // Admin-only nav items are filtered out.
     expect(screen.queryByText('Users')).not.toBeInTheDocument();
     expect(screen.queryByText('Audit Log')).not.toBeInTheDocument();
+    // Credentials are Admin/Operator-only like their API: no entry and no request.
+    expect(screen.queryByText('Credentials')).not.toBeInTheDocument();
+    expect(requestedCredentials()).toBe(false);
     // Non-admin content stays; Administration survives because Settings is not admin-only.
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Administration')).toBeInTheDocument();

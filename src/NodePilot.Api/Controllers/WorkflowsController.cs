@@ -511,6 +511,8 @@ public class WorkflowsController : WorkflowsControllerBase
         if (await RequireWorkflowAccessAsync(workflow, ResourceOp.Edit, ct) is { } denied) return denied;
 
         if (await EnsureWriteLockAsync(workflow, ct) is { } locked) return locked;
+        // The guarded update below also matches on workflow.Version, so this check is atomic.
+        if (request.ExpectedVersion != workflow.Version) return await WorkflowMutationConflictAsync(id, ct);
         var lockOwnerId = this.GetCurrentUserId();
 
         var sizeError = ValidateDefinitionJson(request.DefinitionJson);

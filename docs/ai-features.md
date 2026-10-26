@@ -1,138 +1,143 @@
-# NodePilot KI-Features
+# NodePilot AI Features
 
-NodePilot unterstützt die Erstellung von Skripten und Workflows sowie die Analyse
-vorhandener Abläufe. Die KI ist standardmäßig deaktiviert und benötigt ein aktives
-LLM-Profil. Im Entwicklungsprofil ist `Llm:Enabled` bereits eingeschaltet.
+NodePilot supports creating scripts and workflows and analyzing existing flows. AI is
+disabled by default and requires an active LLM profile. In the development profile,
+`Llm:Enabled` is already switched on.
 
-## Funktionen
+## Features
 
-| Funktion | Verwendung |
+| Feature | Usage |
 |---|---|
-| Skriptgenerierung | Im Skripteditor PowerShell aus einer Beschreibung erzeugen und am Cursor einfügen oder das Skript ersetzen. Die Übermittlung des vorhandenen Skripts erfordert pro Aufruf eine ausdrückliche Freigabe. |
-| Workflow-Generierung | Auf der Workflow-Übersicht einen Ablauf beschreiben, die Vorschau prüfen und daraus einen Workflow erstellen. |
-| Workflow-Assistent | Im Designer den geöffneten Workflow erklären, Fehler untersuchen und Änderungen vorschlagen lassen. Vorschläge lassen sich einzeln übernehmen, verfeinern oder rückgängig machen. |
-| Wissens-Assistent | Unter `/ai-chat` oder im Chat-Widget Fragen zu Dokumentation, Konfiguration und Betrieb stellen. Im Designer steht stattdessen der Workflow-Assistent bereit. |
-| `llmQuery` | Innerhalb eines Workflows eine Modellanfrage ausführen. |
-| `aiAgent` und `aiAgentTeam` | Aufgaben mit ausgewählten Werkzeugen bearbeiten lassen. Einrichtung und Grenzen stehen unter [KI-Agenten](ai-agents.md). |
+| Script generation | In the script editor, generate PowerShell from a description and insert it at the cursor or replace the script. Sending the existing script requires explicit approval on each call. |
+| Workflow generation | On the workflow overview, describe a flow, review the preview, and create a workflow from it. |
+| Workflow assistant | In the designer, have the open workflow explained, investigate errors, and get changes proposed. Proposals can be applied, refined, or undone individually. |
+| Knowledge assistant | Under `/ai-chat` or in the chat widget, ask questions about documentation, configuration, and operations. In the designer, the workflow assistant is available instead. |
+| `llmQuery` | Run a model request inside a workflow. |
+| `aiAgent` and `aiAgentTeam` | Have tasks handled with selected tools. Setup and limits are described under [AI Agents](ai-agents.md). |
 
-Alle Rollen dürfen den Workflow-Assistenten zum Erklären verwenden. Generierung und
-Übernahme von Vorschlägen sind Admins und Operatoren vorbehalten. Änderungen landen
-zunächst im Canvas und durchlaufen anschließend den üblichen Ablauf mit Edit-Lock,
-Speichern und Veröffentlichen. Veraltete Vorschläge werden blockiert.
+All roles may use the workflow assistant for explanations. Generation and applying
+proposals are reserved for admins and operators. Changes first land in the canvas and
+then go through the usual flow of edit lock, save, and publish. Stale proposals are blocked.
 
-## Konfiguration
+## Configuration
 
-Profile werden unter **Settings / System / Integrations / LLM** angelegt und getestet.
-`Llm:Enabled=true` aktiviert die Funktionen, `Llm:ActiveProfileId` wählt das verwendete
-Profil. Fehlt diese Auswahl oder verweist sie auf kein vorhandenes Profil, antwortet
-die KI mit `503 LLM_NO_ACTIVE_PROFILE`. Der Dienst startet weiterhin.
+Profiles are created and tested under **Settings / System / Integrations / LLM**.
+`Llm:Enabled=true` enables the features, `Llm:ActiveProfileId` selects the profile in use.
+If this selection is missing or points to no existing profile, AI responds with
+`503 LLM_NO_ACTIVE_PROFILE`. The service still starts.
 
-Die Verbindungen liegen unter `Llm:Profiles:<id>`. Frische Installationen enthalten
-keine Profile. In der Oberfläche angelegte Profile bleiben vollständig verwaltbar,
-während Profile aus der Basis-Konfiguration dort bearbeitet, aber nicht gelöscht werden können.
+Connections live under `Llm:Profiles:<id>`. Fresh installations contain no profiles.
+Profiles created in the UI remain fully manageable, while profiles from the base
+configuration can be edited there but not deleted.
 
-| Profilschlüssel | Standard | Bedeutung |
+| Profile key | Default | Meaning |
 |---|---|---|
-| `Name` | Leer | Anzeigename. Die Profil-Id bleibt beim Umbenennen erhalten. |
-| `BaseUrl` | OpenAI Cloud | Adresse des OpenAI-kompatiblen Endpunkts. |
-| `ApiKey` | `null` | Zugangsschlüssel, sofern der Anbieter ihn verlangt. |
-| `Model` | `gpt-5.5` | Modell für Generierung und Chats. |
-| `MaxTokens` | `128000` | Ausgabelimit, gültig von `256` bis `1000000`. Es muss zum Modell passen und bezeichnet nicht dessen Kontextfenster. |
-| `TimeoutSeconds` | `90` | Zeitbudget für die Modellantwort. Der Verbindungsaufbau hat eigene Fristen. |
-| `EnableToolCalling` | `false` | Erlaubt den Chats lesende Werkzeuge. Das Modell muss Function Calling unterstützen. |
-| `ToolCallMaxDepth` | `6` | Höchstens 1 bis 10 Modellrunden pro Chat-Turn. Die letzte Runde liefert eine Textantwort ohne weitere Werkzeuge. |
-| `ShareScriptsWithAssistant` | `true` | Gibt Skripte, SQL und Programmargumente für den Workflow-Assistenten frei. |
+| `Name` | Empty | Display name. The profile ID is kept when renamed. |
+| `BaseUrl` | OpenAI cloud | Address of the OpenAI-compatible endpoint. |
+| `ApiKey` | `null` | Access key, if the provider requires one. |
+| `Model` | `gpt-5.5` | Model for generation and chats. |
+| `MaxTokens` | `128000` | Output limit, valid from `256` to `1000000`. It must fit the model and does not denote its context window. |
+| `TimeoutSeconds` | `90` | Time budget for the model response. Connection setup has its own deadlines. |
+| `EnableToolCalling` | `false` | Allows the chats to use read-only tools. The model must support function calling. |
+| `ToolCallMaxDepth` | `6` | At most 1 to 10 model rounds per chat turn. The last round returns a text answer without further tools. |
+| `ShareScriptsWithAssistant` | `true` | Releases scripts, SQL, and program arguments to the workflow assistant. |
 
-API-Schlüssel lassen sich über `Llm__Profiles__<id>__ApiKey` bereitstellen.
-Klartextschlüssel in Settings-Dateien lösen beim Start eine Hardening-Warnung aus.
-Profil- und Proxyänderungen in der Admin-Oberfläche greifen beim nächsten Aufruf.
+API keys can be provided via `Llm__Profiles__<id>__ApiKey`.
+Plaintext keys in settings files trigger a hardening warning at startup.
+Profile and proxy changes in the admin UI take effect on the next call.
 
-### Endpunkt und Verbindungsformat
+### Endpoint and Connection Format
 
-`BaseUrl` erfordert HTTPS. HTTP ist nur für literale Loopback-Ziele erlaubt, die den
-ausgehenden Proxy umgehen. Beispiele für lokale Endpunkte sind
-`http://localhost:11434/v1` und `http://localhost:1234/v1`.
+`BaseUrl` requires HTTPS. HTTP is only allowed for literal loopback targets, which bypass the
+outbound proxy. Examples of local endpoints are
+`http://localhost:11434/v1` and `http://localhost:1234/v1`.
 
-| Ende der `BaseUrl` | Verwendung |
+| End of `BaseUrl` | Usage |
 |---|---|
-| `/responses` | Responses-Anfragen an genau diese URL. |
-| `/chat/completions` | Chat-Completions-Anfragen an genau diese URL. |
-| Anderer Pfad, etwa `/v1` | Chat Completions mit angehängtem `/chat/completions`. |
+| `/responses` | Responses requests to exactly this URL. |
+| `/chat/completions` | Chat Completions requests to exactly this URL. |
+| Any other path, such as `/v1` | Chat Completions with `/chat/completions` appended. |
 
-URLs mit Query-String werden nicht unterstützt. Alle Profiladressen werden beim
-Speichern und Start auf gesperrte Metadata-Ziele geprüft. Bei Responses-Anfragen
-setzt NodePilot `store: false`.
+URLs with a query string are not supported. All profile addresses are checked for blocked
+metadata targets on save and at startup. For Responses requests,
+NodePilot sets `store: false`.
 
 ### Proxy
 
-`Llm:Proxy` gilt installationsweit für die LLM-Aufrufe. `Mode` wählt `Off` als
-Standard, `System` für die Proxykonfiguration des Dienstkontos oder `Custom`.
-Bei `Custom` ist `Address` erforderlich. `BypassList` nimmt Hostnamen und Shell-Globs
-auf, während bei `System` die Ausnahmen des Betriebssystems gelten.
+`Llm:Proxy` applies installation-wide to the LLM calls. `Mode` selects `Off` as the
+default, `System` for the proxy configuration of the service account, or `Custom`.
+`Custom` requires `Address`. `BypassList` takes host names and shell globs,
+while with `System` the exceptions of the operating system apply.
 
-Für die Anmeldung stehen `Username` und `Password` oder `UseDefaultCredentials=true`
-mit der Windows-Identität des Dienstkontos bereit. Das Passwort kann über
-`Llm__Proxy__Password` gesetzt werden. Änderungen an den Windows-Proxy-Einstellungen
-selbst erfordern einen Dienstneustart. Ein Proxy ersetzt keine fehlende Netzfreigabe.
+For authentication, `Username` and `Password` or `UseDefaultCredentials=true`
+with the Windows identity of the service account are available. The password can be set via
+`Llm__Proxy__Password`. Changes to the Windows proxy settings
+themselves require a service restart. A proxy does not replace a missing network approval.
 
-## Datenfreigabe und Rechte
+## Data Sharing and Permissions
 
-Der Workflow-Assistent maskiert benannte Secrets vor dem Modellaufruf. Bei aktiviertem
-`ShareScriptsWithAssistant` erhält der Anbieter jedoch Skripte, SQL und Argumente,
-soweit die Secret-Erkennung sie nicht maskiert. Diese Erkennung ist heuristisch.
-Ein Wechsel von Profil, Endpunkt oder Freigabeschalter nimmt den bisherigen
-Chatverlauf aus dem nächsten Aufruf.
+The workflow assistant masks named secrets before the model call. With
+`ShareScriptsWithAssistant` enabled, however, the provider receives scripts, SQL, and arguments
+to the extent that secret detection does not mask them. This detection is heuristic.
+Changing the profile, endpoint, or sharing switch excludes the previous
+chat history from the next call.
 
-Die Skriptgenerierung übermittelt das aktuelle Skript nur mit der gesonderten Freigabe
-`IncludeCurrentScript=true`. Upstream-Variablen erhält sie als Schema ohne deren Werte.
-Generierte Skripte werden vor einer Ausführung im Editor angezeigt. Vorschläge des
-Workflow-Assistenten erhalten beim Zusammenführen vorhandene Secrets und Layouts.
-Änderungen an maskierten Bedingungen müssen gegebenenfalls manuell erfolgen.
+Script generation sends the current script only with the separate approval
+`IncludeCurrentScript=true`. It receives upstream variables as a schema without their values.
+Generated scripts are shown in the editor before they are run. Proposals of the
+workflow assistant keep existing secrets and layouts when merged.
+Changes to masked conditions may have to be made manually.
 
-KI-Endpunkte sind auf 20 Anfragen pro Minute und IP begrenzt. Audit-Einträge erfassen
-die jeweilige Aktion und Metadaten, aber keinen Prompt-Text. Weitere Vertrauensgrenzen
-beschreibt das [Threat Model](threat-model.md).
+AI endpoints are limited to 20 requests per minute and IP. Audit entries record
+the respective action and metadata, but no prompt text. Further trust boundaries
+are described in the [Threat Model](threat-model.md).
 
-## Lesende Werkzeuge und Wissensquellen
+## Read-only Tools and Knowledge Sources
 
-Mit `EnableToolCalling=true` kann der Workflow-Assistent den Ablauf analysieren,
-Activity-Typen nachschlagen und Ausführungsdetails zur Fehlersuche lesen.
-Ausführungshistorie ist nur bei gespeicherten Workflows mit entsprechendem
-Folder-Read-Recht verfügbar. Ergebnisse werden maskiert und in ihrem Umfang begrenzt.
+With `EnableToolCalling=true`, the workflow assistant can analyze the flow,
+look up activity types, and read execution details for troubleshooting.
+Execution history is only available for saved workflows with the corresponding
+folder read permission. Results are masked and limited in size.
 
-Der globale Wissens-Assistent benötigt zusätzlich `AiKnowledge:Enabled`.
-Die Quellen werden in der Sektion `AiKnowledge` verwaltet:
+The global knowledge assistant additionally requires `AiKnowledge:Enabled`.
+The sources are managed in the `AiKnowledge` section:
 
-| Quelle | Einstellung | Zugriff |
+| Source | Setting | Access |
 |---|---|---|
-| Dokumentation | `DocsEnabled`, standardmäßig an | Dokumentationssuche. |
-| Workflows und Betrieb | `OperationalEnabled`, standardmäßig an | Innerhalb der Ordnerberechtigungen. |
-| Quellcode | `SourceCodeEnabled`, standardmäßig aus | Admin und Operator. |
-| Datenbank / text2sql | `DbEnabled`, standardmäßig aus | Ausschließlich globale Admins, zusätzlich `EnableToolCalling=true`. |
-| Systemkonfiguration | Für berechtigte Rollen verfügbar | Admin und Operator. |
+| Documentation | `DocsEnabled`, on by default | Documentation search. |
+| Workflows and operations | `OperationalEnabled`, on by default | Within the folder permissions. |
+| Source code | `SourceCodeEnabled`, off by default | Admin and Operator. |
+| Database / text2sql | `DbEnabled`, off by default | Global admins only, plus `EnableToolCalling=true`. |
+| System configuration | Available to authorized roles | Admin and Operator. |
 
-Bei text2sql übersetzt das Modell eine Frage in SQL, das NodePilot lesend prüft und
-ausführt. Geschützte Spalten sind gesperrt, Ergebnisse maskiert und auf 200 Zeilen
-begrenzt. Auch Bestandslisten zu Workflows, Läufen oder Maschinen verwenden diese
-DB-Quelle. Ordnerrechte erweitern den Zugriff nicht auf SQL. Der Wissens-Assistent
-ändert keine Workflows und startet keine Reparaturen.
+With text2sql, the model translates a question into SQL, which NodePilot checks as read-only and
+runs. Protected columns are blocked, results are masked and limited to 200 rows.
+Inventory lists of workflows, runs, or machines also use this
+DB source. Folder permissions do not extend access to SQL. The knowledge assistant
+does not change workflows and does not start repairs.
 
-## Fehlerbehandlung
+In read mode, the shared SQL guard for the knowledge assistant and the admin console explicitly rejects
+PostgreSQL escape strings (`E'…'`/`e'…'`) before execution.
+Standard SQL literals with doubled apostrophes remain supported. The differing
+[PostgreSQL escape syntax](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-STRINGS-ESCAPE)
+is not interpreted by the lexer in use.
 
-| HTTP | Code | Ursache |
+## Error Handling
+
+| HTTP | Code | Cause |
 |---|---|---|
-| 503 | `LLM_DISABLED` | KI deaktiviert. |
-| 503 | `LLM_NO_ACTIVE_PROFILE` | Kein gültiges aktives Profil. |
-| 503 | `LLM_UNREACHABLE` | Endpunkt nicht erreichbar. |
-| 503 | `LLM_TIMEOUT` | Zeitbudget der Modellantwort überschritten. |
-| 503 | `LLM_UNAUTHORIZED` | Zugangsschlüssel fehlt oder wird abgelehnt. |
-| 503 | `LLM_RATE_LIMITED` | Anbieter drosselt Anfragen. |
-| 502 | `LLM_MALFORMED_RESPONSE` | Unbrauchbares Antwortformat. |
-| 502 | `LLM_UPSTREAM_ERROR` | Fehler des Anbieters oder der Übertragung. |
-| 429 | Kein eigener Code | Lokales Anfragelimit erreicht. |
+| 503 | `LLM_DISABLED` | AI disabled. |
+| 503 | `LLM_NO_ACTIVE_PROFILE` | No valid active profile. |
+| 503 | `LLM_UNREACHABLE` | Endpoint unreachable. |
+| 503 | `LLM_TIMEOUT` | Time budget of the model response exceeded. |
+| 503 | `LLM_UNAUTHORIZED` | Access key missing or rejected. |
+| 503 | `LLM_RATE_LIMITED` | Provider throttles requests. |
+| 502 | `LLM_MALFORMED_RESPONSE` | Unusable response format. |
+| 502 | `LLM_UPSTREAM_ERROR` | Error of the provider or the transport. |
+| 429 | No dedicated code | Local request limit reached. |
 
-Verbindungsfehler nennen die betroffene Stufe. DNS und TCP haben jeweils 15 Sekunden,
-der TLS-Handshake 30 Sekunden Zeit. `TimeoutSeconds` betrifft die anschließende
-Modellantwort. Zertifikate werden gegen den Maschinen-Trust-Store geprüft, weshalb
-eine interne CA auf dem NodePilot-Host unter `LocalMachine\Root` vorhanden sein muss.
-Details zu Adressen und Verbindungsdauer protokolliert `NodePilot.Ai.LlmConnect` auf `Debug`.
+Connection errors name the affected stage. DNS and TCP each have 15 seconds,
+the TLS handshake 30 seconds. `TimeoutSeconds` applies to the model response
+that follows. Certificates are checked against the machine trust store, so
+an internal CA must be present on the NodePilot host under `LocalMachine\Root`.
+`NodePilot.Ai.LlmConnect` logs details on addresses and connection duration at `Debug`.

@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useSearchParams } from 'react-router';
 import { AgentCanvasExecutionContext } from '../components/designer/agents/AgentRunPanel';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -168,6 +168,9 @@ export function WorkflowEditorPage() {
 function WorkflowEditorInner() {
   const { t } = useTranslation(['editor', 'workflows', 'common']);
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const focusNode = searchParams.get('focusNode');
+  const focusedDependencyRef = useRef<string | null>(null);
   const { screenToFlowPosition, fitView, setCenter } = useReactFlow();
   // Quantized, so the page re-renders on a few zoom steps instead of every wheel tick.
   const zoomStep = useStore((s) => quantizeZoom(s.transform[2]));
@@ -356,7 +359,7 @@ function WorkflowEditorInner() {
 
   useEffect(() => {
     if (workflow) {
-      if (!syncFromServer(workflow.name)) return;
+      if (!syncFromServer(workflow.name, workflow.version)) return;
       resetPasteCount();
       pushRecentWorkflow(workflow.id);
       try {
@@ -645,6 +648,21 @@ function WorkflowEditorInner() {
     setSearchOpen(false);
     setSearchInput('');
   }, [nodes, setCenter, setSearchOpen, setSearchInput]);
+
+  useEffect(() => {
+    if (!focusNode || !workflow || nodes.length === 0 || seededWorkflowIdRef.current !== workflow.id) return;
+    const key = `${workflow.id}:${focusNode}`;
+    if (focusedDependencyRef.current === key) return;
+    const node = nodes.find(n => n.id === focusNode);
+    if (!node) { focusedDependencyRef.current = key; toast.info(t('editor:dependencyStepMissing')); return; }
+    // Focus after the initial canvas fit; selection never requests an edit lock.
+    const timer = setTimeout(() => {
+      focusedDependencyRef.current = key;
+      jumpToNode(node);
+      setNodes(current => current.map(n => ({ ...n, selected: n.id === focusNode })));
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [focusNode, workflow, nodes, jumpToNode, setNodes, t]);
 
   const jumpToEdge = useCallback((e: Edge) => {
     const src = nodes.find((n) => n.id === e.source);

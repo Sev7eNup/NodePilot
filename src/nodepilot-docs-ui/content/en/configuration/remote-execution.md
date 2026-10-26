@@ -27,6 +27,8 @@ Which account carries the WinRM connection depends solely on whether a credentia
 
 Credential resolution has **two levels**: credential on the node → the machine's `DefaultCredentialId` → the service identity. There is no global default credential. Deleting a credential silently clears the machine's reference to it, and the machine falls back to the service identity.
 
+Admins and Operators manage credentials under **Infrastructure → Credentials**; Viewers do not see the menu entry because the API refuses them the list. Only an Admin can delete. An optional expiry date feeds the `credential-expiring` system policy. The badge on the menu entry counts expired accounts and those with at most 14 whole days left, using the same calculation as the policy's preset. **Show dependencies** on each row lists the machines and steps that use a credential — the place to look before deleting one.
+
 On the target system the account in use — stored credential or service identity alike — needs a reachable WinRM endpoint and access to it:
 
 ```powershell

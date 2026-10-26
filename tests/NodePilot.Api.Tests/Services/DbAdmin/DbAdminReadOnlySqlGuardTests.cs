@@ -13,6 +13,28 @@ namespace NodePilot.Api.Tests.Services.DbAdmin;
 public class DbAdminReadOnlySqlGuardTests
 {
     [Theory]
+    [InlineData("SELECT E'hello'")]
+    [InlineData("SELECT e'hello'")]
+    [InlineData("""SELECT E'\'' AS marker, "PasswordHash" AS harmless FROM "Users" -- '""")]
+    [InlineData("""WITH data AS (SELECT e'\'' AS marker, "PasswordHash" AS harmless FROM "Users" -- '""" + "\n) SELECT harmless FROM data")]
+    public void Validate_RejectsUnsupportedEscapeStringSyntax(string sql)
+    {
+        var act = () => DbAdminReadOnlySqlGuard.Validate(sql);
+        act.Should().Throw<InvalidOperationException>().WithMessage("*Escape-string literals are not allowed*");
+    }
+
+    [Theory]
+    [InlineData("SELECT 'Dianne''s horse'")]
+    [InlineData("SELECT 'E''hello''' AS text")]
+    [InlineData("SELECT $$ E'hello' $$ AS text")]
+    [InlineData("SELECT $tag$ E'hello' $tag$ AS text")]
+    [InlineData("SELECT 1 /* E'hello' */")]
+    [InlineData("SELECT 1 -- E'hello'")]
+    [InlineData("SELECT \"E'hello'\" FROM Workflows")]
+    public void Validate_OrdinaryLiteralsAndQuotedEscapeText_RemainAllowed(string sql)
+        => FluentActions.Invoking(() => DbAdminReadOnlySqlGuard.Validate(sql)).Should().NotThrow();
+
+    [Theory]
     [InlineData("SELECT * FROM Users")]
     [InlineData("SELECT u.* FROM Users u")]
     [InlineData("SELECT TOP (10) * FROM Users")]

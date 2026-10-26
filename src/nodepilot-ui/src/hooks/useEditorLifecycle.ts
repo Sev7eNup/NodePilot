@@ -4,6 +4,7 @@ import type { Workflow } from '../types/api';
 import { lintWorkflow, type LintResult } from '../lib/workflowLint';
 import { getPrePublishLint } from '../lib/prePublishChecks';
 import { confirmDialog } from '../stores/confirmStore';
+import { toast } from '../stores/toastStore';
 import type { useWorkflowLock } from './useWorkflowLock';
 import type { useWorkflowPersistence } from './useWorkflowPersistence';
 
@@ -31,7 +32,10 @@ export interface EditorLifecycle {
   isForceUnlocking: boolean;
   save: () => void;
   lock: () => void;
+  /** Ends editing: asks before discarding a dirty draft, then unlocks and adopts the server state. */
   unlock: () => void;
+  /** See useWorkflowPersistence.replaceDraft; used by version restore. */
+  replaceDraft: (operation: () => Promise<unknown>) => Promise<void>;
   forceUnlock: () => void;
   disable: () => void;
   /**
@@ -48,7 +52,7 @@ interface UseEditorLifecycleArgs {
   canWrite: boolean;
   isTidying: boolean;
   lockState: ReturnType<typeof useWorkflowLock>;
-  persistence: Pick<ReturnType<typeof useWorkflowPersistence>, 'isDirty' | 'isSaving' | 'isPublishing' | 'save' | 'publish'>;
+  persistence: Pick<ReturnType<typeof useWorkflowPersistence>, 'isDirty' | 'isSaving' | 'isPublishing' | 'save' | 'publish' | 'replaceDraft'>;
   /** The graph as it is right now, for the pre-publish lint. */
   getLiveGraph: () => { nodes: Node[]; edges: Edge[] };
   allWorkflows: Array<{ id: string; name: string }> | undefined;
@@ -66,10 +70,19 @@ export function useEditorLifecycle({
 }: UseEditorLifecycleArgs) {
   const { t } = useTranslation(['editor', 'common']);
   const {
-    isLockedByMe, isLockedByOther, lock, unlock, forceUnlock, disable, enable,
+    isLockedByMe, isLockedByOther, lock, unlockAsync, forceUnlock, disable, enable,
     isLocking, isUnlocking, isForceUnlocking, isDisabling, isEnabling,
   } = lockState;
-  const { isDirty, isSaving, isPublishing, save, publish } = persistence;
+  const { isDirty, isSaving, isPublishing, save, publish, replaceDraft } = persistence;
+
+  const endEditing = async () => {
+    if (isDirty && !(await confirmDialog(t('editor:endEditingDirtyConfirm')))) return;
+    try {
+      await replaceDraft(unlockAsync);
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  };
 
   // On a productive workflow the toggle is a kill switch and stays direct: stopping production
   // is not an "is everything ready" question.
@@ -107,7 +120,8 @@ export function useEditorLifecycle({
     isUnlocking: isUnlocking || isTidying,
     isPublishing: isPublishing || isTidying,
     isEnabling, isDisabling, isForceUnlocking,
-    save, lock, unlock, forceUnlock, disable,
+    save, lock, forceUnlock, disable, replaceDraft,
+    unlock: () => { void endEditing(); },
     requestPublish: () => { void requestPublish(); },
   };
 
@@ -121,7 +135,7 @@ export function useEditorLifecycle({
       if (roleCanWrite && !isLockedByMe && !isLockedByOther && !isLocking) lock();
     },
     triggerUnlock: () => {
-      if (isLockedByMe && !isUnlocking && !isTidying) unlock();
+      if (isLockedByMe && !isUnlocking && !isTidying) void endEditing();
     },
     triggerForceUnlock: async () => {
       if (!isAdmin || !isLockedByOther || isForceUnlocking) return;

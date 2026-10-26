@@ -2158,6 +2158,60 @@ describe('WorkflowEditorPage — characterization (autosave + run + unload)', ()
     await waitFor(() => expect(putCalled).toBe(true));
   });
 
+  it('End editing on a dirty draft discards it and shows the saved workflow', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let putCalled = false;
+    server.use(
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, async () => { putCalled = true; return HttpResponse.json(MOCK_WORKFLOW); }),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/unlock`, () => HttpResponse.json(MOCK_DISABLED)),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByDisplayValue('Smoke Workflow')).toBeInTheDocument());
+    fireEvent.change(screen.getByDisplayValue('Smoke Workflow'), { target: { value: 'Discarded draft' } });
+
+    server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_DISABLED)));
+    fireEvent.click(screen.getByRole('button', { name: /^End/i }));
+
+    await waitFor(() => expect(screen.getByDisplayValue('Smoke Workflow')).toBeInTheDocument());
+    await act(async () => { vi.advanceTimersByTime(6000); });
+    expect(putCalled).toBe(false);
+    const unload = new Event('beforeunload', { cancelable: true });
+    globalThis.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+  });
+
+  it('restoring a version over a dirty draft adopts the restored version and never saves the draft', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const putNames: string[] = [];
+    const restored = { ...MOCK_WORKFLOW, name: 'Restored v1', version: 3 };
+    server.use(
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+        putNames.push(((await request.json()) as { name: string }).name);
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.get(`${BASE}/api/workflows/wf-smoke-1/versions`, () =>
+        HttpResponse.json([{ version: 2, isCurrent: true }, { version: 1, isCurrent: false }])),
+      http.get(`${BASE}/api/workflows/wf-smoke-1/versions/1`, () =>
+        HttpResponse.json({ definition: { nodes: [], edges: [] } })),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/rollback/1`, () => {
+        server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(restored)));
+        return HttpResponse.json(restored);
+      }),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByDisplayValue('Smoke Workflow')).toBeInTheDocument());
+    fireEvent.change(screen.getByDisplayValue('Smoke Workflow'), { target: { value: 'Unsaved draft' } });
+
+    await openToolsMenu();
+    fireEvent.click(screen.getByTitle(/Diff against/));
+    fireEvent.click(await screen.findByText('Version 1'));
+    fireEvent.click(await screen.findByRole('button', { name: /Restore v1/ }));
+
+    await waitFor(() => expect(screen.getByDisplayValue('Restored v1')).toBeInTheDocument());
+    await act(async () => { vi.advanceTimersByTime(6000); });
+    expect(putNames).not.toContain('Unsaved draft');
+  });
+
   it('Test on a dirty, writable workflow saves (PUT) before calling /execute', async () => {
     const lockedEnabled = { ...MOCK_WORKFLOW, isEnabled: true }; // locked-by-test-user + enabled
     const order: string[] = [];

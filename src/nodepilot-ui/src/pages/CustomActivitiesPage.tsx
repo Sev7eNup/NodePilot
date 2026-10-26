@@ -16,6 +16,7 @@ import { ACTIVITY_ICON_COMPONENTS, FALLBACK_ACTIVITY_ICON, CUSTOM_ACTIVITY_ICON_
 import { useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { DependencyLink } from '../components/dependencies/DependencyLink';
 import CodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { powerShell } from '@codemirror/legacy-modes/mode/powershell';
@@ -362,6 +363,7 @@ export function CustomActivitiesPage() {
                     <div className="flex items-center gap-2">
                       <IconGlyph token={e.icon} size={18} className="text-indigo-500" color={e.color ?? undefined} />
                       <span className="text-sm font-medium text-on-surface">{e.name}</span>
+                      <DependencyLink kind="customActivity" id={e.id} />
                     </div>
                   </td>
                   <td className="px-4 py-2"><code className="text-xs font-mono text-on-surface-variant">{e.key}</code></td>

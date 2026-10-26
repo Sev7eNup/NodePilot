@@ -745,14 +745,14 @@ describe('PowerManagementConfig', () => {
   it('defaultsToShutdown_showsDelayAndForce', () => {
     wrap(<PowerManagementConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.getByText('Delay (seconds)')).toBeInTheDocument();
-    expect(screen.getByText(/Force close running apps/i)).toBeInTheDocument();
+    expect(screen.getByText('Force close running apps')).toBeInTheDocument();
   });
 
   it('logoffAction_hidesDelayAndForce', () => {
     // logoff, abort and hibernate ignore delay and force, so those fields stay hidden.
     wrap(<PowerManagementConfig config={{ action: 'logoff' }} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.queryByText('Delay (seconds)')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Force close running apps/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Force close running apps')).not.toBeInTheDocument();
   });
 
   it('actionChange_emitsPatch', () => {

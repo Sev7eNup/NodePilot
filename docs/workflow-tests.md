@@ -1,242 +1,242 @@
-# NodePilot Test-Suite
+# NodePilot Test Suite
 
-51 generierte Workflows unter [`scripts/test-suite/`](../scripts/test-suite/), die jede
-Activity-Variante, jeden Trigger, jeden Edge-Operator und jedes Retry-Backoff **im Takt gegen
-die laufende Engine** ausführen und ihr Ergebnis prüfen. Live-Installation im Ordner
+51 generated workflows under [`scripts/test-suite/`](../scripts/test-suite/) that run every
+activity variant, every trigger, every edge operator and every retry backoff **on a fixed cadence against
+the running engine** and check the result. Live installation in the folder
 `/Test_Workflows`.
 
-Der Unterschied zu den drei Vorgänger-Generationen (`scripts/test-runbooks/`,
-`scripts/muster-*.json`, `scripts/continuous-test-1min/`, alle abgelöst): die Suite ist
-**generiert**, sie ist **selbstprüfend**, und ein Guard-Test in CI beweist, dass jede
-behauptete Abdeckung auch wirklich erreichbar und geprüft ist.
+The difference from the three predecessor generations (`scripts/test-runbooks/`,
+`scripts/muster-*.json`, `scripts/continuous-test-1min/`, all superseded): the suite is
+**generated**, it is **self-checking**, and a guard test in CI proves that every
+claimed coverage is actually reachable and checked.
 
-## Zwei Verträge
+## Two Contracts
 
-Die Engine kennt keinen „behandelten Fehler": `WorkflowEngine` zählt am Ende alle
-fehlgeschlagenen Steps und setzt den Lauf bei jedem Treffer auf `Failed` — eine
-`.failed`-Kante routet weiter, rettet den Status aber nicht. Ein absichtlicher Fehler kann
-deshalb nicht in einem Workflow stehen, der grün bleiben soll.
+The engine has no notion of a "handled failure": `WorkflowEngine` counts all failed
+steps at the end and sets the run to `Failed` on any hit — a `.failed` edge keeps routing
+but does not rescue the status. An intentional failure therefore cannot live in a workflow
+that is supposed to stay green.
 
-| Vertrag | Namensraum | Erwarteter Status | Wer urteilt |
+| Contract | Namespace | Expected status | Who judges |
 |---|---|---|---|
-| **positiv** | `[TestSuite] <typ>` | `Succeeded` | der Workflow selbst: ein `assert`-Knoten wirft bei Abweichung |
-| **negativ** | `[TestSuite-Neg] <bereich>` | `Failed`, mit **genau** den deklarierten Fehl-Steps | `Verify-TestSuite.ps1` gegen das Manifest |
-| **invasiv** | `[TestSuite-Inv] <typ>` | `Succeeded` | wie positiv, aber nur auf Hosts, die es freigeschaltet haben |
+| **positive** | `[TestSuite] <type>` | `Succeeded` | the workflow itself: an `assert` node throws on deviation |
+| **negative** | `[TestSuite-Neg] <area>` | `Failed`, with **exactly** the declared failing steps | `Verify-TestSuite.ps1` against the manifest |
+| **invasive** | `[TestSuite-Inv] <type>` | `Succeeded` | like positive, but only on hosts that have enabled it |
 
-Der Verifier prüft beim Negativ-Vertrag die **Menge der fehlgeschlagenen StepIds**, nicht nur
-den Status. Ein Lauf, der aus einem anderen Grund scheitert, gilt als Defekt der Suite.
+For the negative contract the verifier checks the **set of failed StepIds**, not just
+the status. A run that fails for a different reason counts as a defect of the suite.
 
-## `suite-manifest.json` ist die Abdeckungsquelle
+## `suite-manifest.json` is the coverage source
 
-Nicht die Workflow-JSONs und nicht diese Datei, sondern
+Not the workflow JSONs and not this file, but
 [`scripts/test-suite/suite-manifest.json`](../scripts/test-suite/suite-manifest.json).
-Es ist Eingabe des Guard-Tests **und** des Verifiers. Jeder Fall nennt Dimension, Wert,
-Profil, erwarteten Ausgang, Workflow, Knoten und wer ihn prüft.
+It is input to the guard test **and** to the verifier. Every case names dimension, value,
+profile, expected outcome, workflow, node and who checks it.
 
-**Vier Profile:**
+**Four profiles:**
 
-| Profil | Bedeutung |
+| Profile | Meaning |
 |---|---|
-| `continuous` | läuft überall, keine externe Voraussetzung |
-| `integration` | braucht ein zweites System (SMTP-Senke, Datenbank, LLM-Endpunkt, Proxy) oder Produktions-Härtung; fehlt es, wird der Workflow **installiert aber deaktiviert** statt rot |
-| `invasive` | verändert den Host (Dienst anlegen, Task registrieren); opt-in über `NP_TESTSUITE_INVASIVE` |
-| `excluded` | läuft nie — jeder Eintrag trägt `reason` und, wo vorhanden, `coveredBy` auf den Unit-Test, der stattdessen abdeckt |
+| `continuous` | runs everywhere, no external prerequisite |
+| `integration` | needs a second system (SMTP sink, database, LLM endpoint, proxy) or production hardening; if it is missing, the workflow is **installed but disabled** instead of red |
+| `invasive` | changes the host (create a service, register a task); opt-in via `NP_TESTSUITE_INVASIVE` |
+| `excluded` | never runs — every entry carries `reason` and, where available, `coveredBy` pointing to the unit test that covers it instead |
 
-Bewusst ausgeschlossen sind unter anderem: `delay > 86400` (klemmt auf 24 h und würde einen
-Runner-Slot blockieren), vier der fünf `powerManagement`-Aktionen (nehmen den Host herunter),
-`scheduledTask runLevel: highest` (Ergebnis hängt vom Privilegienniveau ab, also nicht
-deterministisch), `runScript engine=pwsh` (PowerShell 7 ist nicht garantiert),
-`restApi`-Redirects und die 16-MiB-Kappung.
+Deliberately excluded are, among others: `delay > 86400` (clamps to 24 h and would block a
+runner slot), four of the five `powerManagement` actions (they take the host down),
+`scheduledTask runLevel: highest` (the result depends on the privilege level, so it is not
+deterministic), `runScript engine=pwsh` (PowerShell 7 is not guaranteed),
+`restApi` redirects and the 16 MiB cap.
 
-## Konventionen
+## Conventions
 
-| Aspekt | Regel |
+| Aspect | Rule |
 |---|---|
-| **Generiert** | Quelle sind die `spec_*.py`-Module; die JSONs sind Artefakte. Eine Handänderung wird beim nächsten `build_suite.py` überschrieben. |
-| **Naming** | `[TestSuite] <typ>` / `[TestSuite-Neg] <bereich>` / `[TestSuite-Inv] <typ>` — Sortier-Anker und Filter-Hook. |
+| **Generated** | The source is the `spec_*.py` modules; the JSONs are artefacts. A manual change is overwritten by the next `build_suite.py`. |
+| **Naming** | `[TestSuite] <type>` / `[TestSuite-Neg] <area>` / `[TestSuite-Inv] <type>` — sort anchor and filter hook. |
 | **Folder** | `/Test_Workflows`. |
-| **Target Machine** | `targetMachineId: "localhost"` — In-Proc-Bypass, keine Credentials, kein WinRM. Ausnahme: die beiden `script parity remote`-Workflows zielen auf `{{globals.NP_TESTSUITE_REMOTE_MACHINE}}`. |
-| **Assertion** | `Varianten → cleanup → assert(runScript) → returnData`. Der `assert`-Knoten ist Graph-Nachfahre aller Varianten und liest deren Ergebnisse direkt; `runScript`-Erfolg ist fehlerbasiert, ein `throw` macht den Lauf rot. |
-| **Cleanup vor Assertion** | damit eine rote Assertion keine Reste hinterlässt. Unbedenklich, weil die Assertion den Databus liest, nicht die Platte. |
-| **Eigenes `outputVariable`** | pro Variantenknoten; sonst kollidieren gleichnamige Params im Junction-Merge. |
-| **Nur Ahnen-Referenzen** | ein Verweis auf einen Parallelzweig löst nie auf und ist bei `runScript` ein harter Fehler. |
-| **Parallelität** | `MaxConcurrentExecutions = 1` je Workflow, gesetzt über `PUT /{id}/concurrency-limit`. |
+| **Target machine** | `targetMachineId: "localhost"` — in-proc bypass, no credentials, no WinRM. Exception: the two `script parity remote` workflows target `{{globals.NP_TESTSUITE_REMOTE_MACHINE}}`. |
+| **Assertion** | `Variants → cleanup → assert(runScript) → returnData`. The `assert` node is a graph descendant of all variants and reads their results directly; `runScript` success is error-based, a `throw` turns the run red. |
+| **Cleanup before assertion** | so that a red assertion leaves no leftovers. Harmless, because the assertion reads the data bus, not the disk. |
+| **Own `outputVariable`** | per variant node; otherwise same-named params collide in the junction merge. |
+| **Ancestor references only** | a reference to a parallel branch never resolves and is a hard error in `runScript`. |
+| **Parallelism** | `MaxConcurrentExecutions = 1` per workflow, set via `PUT /{id}/concurrency-limit`. |
 
 ### Sandbox
 
-| Ressource | Regel |
+| Resource | Rule |
 |---|---|
-| Lauf-Sandbox | `C:\Temp\NP-TestSuite\runs\<cid>\`, `HKCU:\SOFTWARE\NP-TestSuite\<cid>`, Dienst `NPTestSvc_<cid8>`, Task `\NodePilot-TestSuite\<cid8>` — am Ende jedes Laufs weg |
-| **Dauer-Fixtures** | `C:\Temp\NP-TestSuite\runtime\{watch,db,acks}\` — **vom Cleanup ausgenommen**. Der File-Watcher-Pfad und die Sentinel-Datenbank müssen den laufenden Trigger-Quellen erhalten bleiben. |
-| Janitor | erster Knoten jedes Laufs räumt Reste älter als 1 h, verwaiste `NPTestSvc_*` und Tasks unter `\NodePilot-TestSuite\` |
-| Residuen-Prüfung | als `runScript`-Knoten **im API-Prozess** — das `HKCU` des Dienstkontos ist nicht das des Administrators |
+| Run sandbox | `C:\Temp\NP-TestSuite\runs\<cid>\`, `HKCU:\SOFTWARE\NP-TestSuite\<cid>`, service `NPTestSvc_<cid8>`, task `\NodePilot-TestSuite\<cid8>` — gone at the end of every run |
+| **Permanent fixtures** | `C:\Temp\NP-TestSuite\runtime\{watch,db,acks}\` — **excluded from cleanup**. The file-watcher path and the sentinel database must be preserved for the running trigger sources. |
+| Janitor | the first node of every run removes leftovers older than 1 h, orphaned `NPTestSvc_*` services and tasks under `\NodePilot-TestSuite\` |
+| Residue check | as a `runScript` node **in the API process** — the `HKCU` of the service account is not the administrator's |
 
-Der Korrelations-ID-Ansatz (`generateText mode=guid` als zweiter Knoten) ist der Grund, warum
-zwei überlappende Läufe nie auf demselben Namen kollidieren.
+The correlation-ID approach (`generateText mode=guid` as the second node) is the reason why
+two overlapping runs never collide on the same name.
 
-## Trigger: das Ack-Protokoll
+## Triggers: the ack protocol
 
-Die fünf passiven Trigger haben keinen eigenen Takt und lassen sich auch nicht sinnvoll von
-Hand starten — ein manuell gestarteter Lauf trägt keinen einzigen der Trigger-Parameter, die
-der Workflow beweisen soll. Ein authentifizierter Rückruf in die API scheidet aus:
-`/api/executions` verlangt `[Authorize]`, ein `restApi`-Step hat keine dauerhafte Session, und
-ein Admin-Token gehört nicht in Workflow-JSON.
+The five passive triggers have no cadence of their own and cannot sensibly be started by
+hand either — a manually started run carries none of the trigger parameters the
+workflow is supposed to prove. An authenticated callback into the API is ruled out:
+`/api/executions` requires `[Authorize]`, a `restApi` step has no durable session, and
+an admin token does not belong in workflow JSON.
 
-Stattdessen Korrelations-ID plus Quittungsdateien:
+Instead: correlation ID plus acknowledgement files:
 
 ```
-[TestSuite] trigger drivers   (alle 10 Min)
-  └─ cid erzeugen
-  └─ Datei runtime/watch/<cid>.txt schreiben        → fileWatcherTrigger
-  └─ Sentinel in runtime/db/sentinel.sqlite auf <cid> setzen → databaseTrigger
-  └─ POST auf /api/webhooks/<id>/suite mit {"cid":…} → webhookTrigger
-  └─ startWorkflow auf den manual-Trigger-Workflow   → manualTrigger
-  └─ 60 s warten
-  └─ runtime/acks/<typ>/<cid> einsammeln
+[TestSuite] trigger drivers   (every 10 min)
+  └─ create cid
+  └─ write file runtime/watch/<cid>.txt                → fileWatcherTrigger
+  └─ set sentinel in runtime/db/sentinel.sqlite to <cid> → databaseTrigger
+  └─ POST to /api/webhooks/<id>/suite with {"cid":…}   → webhookTrigger
+  └─ startWorkflow on the manual-trigger workflow      → manualTrigger
+  └─ wait 60 s
+  └─ collect runtime/acks/<type>/<cid>
 ```
 
-Jeder ausgelöste Workflow liest seine Korrelations-ID aus den eigenen Trigger-Parametern und
-legt die Quittung ab. Beim `databaseTrigger` **ist** die ID der Sentinel-Wert — die Quelle
-reicht nichts anderes weiter.
+Each triggered workflow reads its correlation ID from its own trigger parameters and
+writes the acknowledgement. For the `databaseTrigger` the ID **is** the sentinel value — the source
+passes on nothing else.
 
-**Eine verpasste Runde wird toleriert.** `DatabaseTriggerSource` re-baselined die erste
-Beobachtung nach jedem Start bewusst ohne zu feuern; nach einem API-Neustart fehlt deshalb
-genau eine Quittung. Erst die zweite Runde in Folge lässt den Driver werfen (Zähler in
+**One missed round is tolerated.** `DatabaseTriggerSource` deliberately re-baselines the first
+observation after every start without firing; after an API restart, exactly one
+acknowledgement is therefore missing. Only the second consecutive round makes the driver throw (counter in
 `runtime/acks/consecutive-misses.txt`).
 
-Das Webhook-Secret liegt **nicht** im Repo: die generierte Datei trägt einen Platzhalter, den
-`Install-TestSuite.ps1` beim Installieren durch den Wert der globalen Variablen
-`NP_TESTSUITE_WEBHOOK_SECRET` ersetzt (beim ersten Lauf aus einem CSPRNG erzeugt).
+The webhook secret is **not** in the repo: the generated file carries a placeholder that
+`Install-TestSuite.ps1` replaces during installation with the value of the global variable
+`NP_TESTSUITE_WEBHOOK_SECRET` (generated from a CSPRNG on first run).
 
-## Takt
+## Cadence
 
-Ein `scheduleTrigger` pro Workflow, 7-Feld-Quartz-Cron, Minuten-Offsets gestaffelt.
+One `scheduleTrigger` per workflow, 7-field Quartz cron, minute offsets staggered.
 
-| Stufe | Cron | Inhalt |
+| Tier | Cron | Content |
 |---|---|---|
-| A — 5 Min | `0 0/5` … `0 4/5 * * * ? *` | leichte Engine-Typen, Dateisystem, ControlFlow, Edge-Conditions, Variable-Resolution |
-| B — 15 Min | `0 5/15`, `0 10/15 * * * ? *` | zipOperation, sql, powerManagement, die fünf Negativ-Workflows |
-| C — 30 Min | `0 7/30`, `0 22/30 * * * ? *` | integration und invasive |
-| D — 10 Min | `0 3/10 * * * ? *` | trigger drivers |
+| A — 5 min | `0 0/5` … `0 4/5 * * * ? *` | light engine types, file system, ControlFlow, edge conditions, variable resolution |
+| B — 15 min | `0 5/15`, `0 10/15 * * * ? *` | zipOperation, sql, powerManagement, the five negative workflows |
+| C — 30 min | `0 7/30`, `0 22/30 * * * ? *` | integration and invasive |
+| D — 10 min | `0 3/10 * * * ? *` | trigger drivers |
 
-`build_suite.py` bricht ab, wenn ein Workflow mehr als die **Hälfte** seines Intervalls
-veranschlagt — darüber staut sich der nächste Lauf hinter `MaxConcurrentExecutions=1` als
-`DeferredByConcurrencyLimit` auf, statt laut zu scheitern.
+`build_suite.py` aborts if a workflow budgets more than **half** of its interval — beyond that
+the next run piles up behind `MaxConcurrentExecutions=1` as
+`DeferredByConcurrencyLimit` instead of failing loudly.
 
-## Betrieb
+## Operation
 
 ```powershell
-# Generieren (nach jeder Spec-Änderung)
+# Generate (after every spec change)
 python scripts/test-suite/build_suite.py
 
-# Installieren - idempotent, legt fehlende Globals an
+# Install - idempotent, creates missing globals
 ./scripts/test-suite/Install-TestSuite.ps1 -Password '<admin>'
 ./scripts/test-suite/Install-TestSuite.ps1 -Password '<admin>' -Profiles continuous,integration,invasive
 
-# Urteilen
-./scripts/test-suite/Verify-TestSuite.ps1 -Password '<admin>' -Once            # jetzt starten
-./scripts/test-suite/Verify-TestSuite.ps1 -Password '<admin>' -WindowMinutes 60  # Abnahme
+# Judge
+./scripts/test-suite/Verify-TestSuite.ps1 -Password '<admin>' -Once            # start now
+./scripts/test-suite/Verify-TestSuite.ps1 -Password '<admin>' -WindowMinutes 60  # acceptance
 
-# Einzelner Workflow als Assertion
-np workflow run '[TestSuite] textFileEdit' --wait     # Exit 0 = alle Assertions gehalten
+# Single workflow as an assertion
+np workflow run '[TestSuite] textFileEdit' --wait     # exit 0 = all assertions held
 ```
 
-**Auf einer installierten, produktionsgehärteten Instanz** (Release-Gate, `RELEASING.md` Schritt 6)
-läuft die Suite nur mit drei Vorbereitungen vollständig grün:
+**On an installed, production-hardened instance** (release gate, `RELEASING.md` step 6)
+the suite runs fully green only with three preparations:
 
-| Braucht | Warum |
+| Needs | Why |
 |---|---|
-| `Trigger:Database:Connections:np-testsuite-sentinel` = `Data Source=C:\Temp\NP-TestSuite\runtime\db\sentinel.sqlite` in `appsettings.Production.json` | Produktion akzeptiert beim `databaseTrigger` nur benannte Verbindungen; Dev bringt den Schlüssel in `appsettings.Development.json` mit |
-| der eigene Hostname in `RestApi:AllowedHosts` und `WaitForCondition:AllowedHosts` | restApi- und Probe-Fälle rufen die Instanz selbst |
-| `-ProbeUrl` auf einen **anderen** Host (Global `NP_TESTSUITE_PROBE_URL`), dieser Host in `WaitForCondition:AllowedHosts` | Windows löst den eigenen Namen auch auf link-lokale Adressen auf, die der httpOk-Probe immer sperrt |
+| `Trigger:Database:Connections:np-testsuite-sentinel` = `Data Source=C:\Temp\NP-TestSuite\runtime\db\sentinel.sqlite` in `appsettings.Production.json` | Production accepts only named connections for the `databaseTrigger`; Dev ships the key in `appsettings.Development.json` |
+| the host's own hostname in `RestApi:AllowedHosts` and `WaitForCondition:AllowedHosts` | restApi and probe cases call the instance itself |
+| `-ProbeUrl` pointing to a **different** host (global `NP_TESTSUITE_PROBE_URL`), that host in `WaitForCondition:AllowedHosts` | Windows also resolves its own name to link-local addresses, which the httpOk probe always blocks |
 
-Der Unbekannt-Pfad-Fall der Negativ-Suite nutzt einen `/api`-Pfad: außerhalb von `/api` liefert eine
-installierte Instanz die Web-App mit 200 aus.
+The unknown-path case of the negative suite uses an `/api` path: outside `/api` an
+installed instance serves the web app with 200.
 
-**Installer-Reihenfolge** (die drei Fallen, die alle Vorgänger getroffen haben):
+**Installer order** (the three traps that hit all predecessors):
 
-1. Ein per `POST /api/workflows` erzeugter Workflow ist **bereits vom Ersteller ausgecheckt** —
-   ein folgendes `/lock` liefert 409. Neu → `POST` + `/publish`; vorhanden → `/lock` + `/publish`.
-2. `00-child-echo` muss **vor** seinen Eltern existieren und **enabled** sein: `forEach` und
-   `startWorkflow` lösen es by-name auf und scheitern an einem deaktivierten Kind.
-3. `MaxConcurrentExecutions` steht nicht im Publish-Body und braucht seinen eigenen Endpunkt.
+1. A workflow created via `POST /api/workflows` is **already checked out by its creator** —
+   a following `/lock` returns 409. New → `POST` + `/publish`; existing → `/lock` + `/publish`.
+2. `00-child-echo` must exist **before** its parents and be **enabled**: `forEach` and
+   `startWorkflow` resolve it by name and fail on a disabled child.
+3. `MaxConcurrentExecutions` is not in the publish body and needs its own endpoint.
 
-Der Import-Endpunkt ist bewusst **nicht** der Installationsweg: er kennt kein Update-in-place
-und erzeugt bei Namenskollision `(Imported 2)`.
+The import endpoint is deliberately **not** the installation path: it has no update-in-place
+and produces `(Imported 2)` on a name collision.
 
-`-RemoveLegacy` entfernt die abgelösten `Test — *`, `[Dauertest 1m] *` und `Muster — *`
-Workflows aus der Instanz. Nie automatisch.
+`-RemoveLegacy` removes the superseded `Test — *`, `[Dauertest 1m] *` and `Muster — *`
+workflows from the instance. Never automatically.
 
-## Guard-Test
+## Guard Test
 
 [`TestSuiteCoverageTests`](../tests/NodePilot.Engine.Tests/Activities/TestSuiteCoverageTests.cs)
-in `NodePilot.Engine.Tests`. Er prüft mehr als „der Wert kommt irgendwo vor" — genau daran ist
-die alte Suite zerfallen:
+in `NodePilot.Engine.Tests`. It checks more than "the value occurs somewhere" — that is exactly how
+the old suite fell apart:
 
-1. jeder Typ aus `activity-config-reference.json` hat mindestens einen Fall;
-2. jeder Fall zeigt auf einen Knoten, der existiert, **nicht deaktiviert** ist und **von einem
-   aktiven Trigger erreichbar** ist (echter Graph-Walk, keine deaktivierte Kante unterwegs);
-3. der `assert`-Knoten referenziert wirklich die `outputVariable` des Falls — oder die eines
-   ausdrücklich benannten Zeugen (`assertedVia`), etwa das `exists` nach einem `create`;
-4. ausgeschlossene Fälle tragen einen Grund, und ein angegebenes `coveredBy` existiert;
-5. genau ein Trigger je Workflow, Cron aus der Stufenliste, Laufzeitbudget eingehalten,
-   Namensschema, keine hängenden Kanten, Fan-in nur auf `junction`, Positionen auf dem 20-px-Raster;
-6. kein `ack`-Skript liest eine eigene Variable, bevor es sie zuweist — ein vor der Zuweisung
-   gelesener Name ist immer `$null`, und die Quittung wird dann nie geschrieben.
+1. every type from `activity-config-reference.json` has at least one case;
+2. every case points to a node that exists, is **not disabled** and is **reachable from an
+   active trigger** (a real graph walk, no disabled edge on the way);
+3. the `assert` node really references the case's `outputVariable` — or that of an
+   explicitly named witness (`assertedVia`), such as the `exists` after a `create`;
+4. excluded cases carry a reason, and a given `coveredBy` exists;
+5. exactly one trigger per workflow, cron from the tier list, runtime budget respected,
+   naming scheme, no dangling edges, fan-in only on `junction`, positions on the 20 px grid;
+6. no `ack` script reads a variable of its own before assigning it — a name read before
+   assignment is always `$null`, and the acknowledgement is then never written.
 
-Fälle, die ausdrücklich `Skipped` erwarten (deaktivierte Kante, deaktivierter Knoten, nicht
-erfüllte `.failed`-Bedingung), sind von Punkt 2 ausgenommen — dort ist die Unerreichbarkeit
-genau das Prüfziel.
+Cases that explicitly expect `Skipped` (disabled edge, disabled node, unmet
+`.failed` condition) are exempt from point 2 — there, unreachability is exactly
+the thing under test.
 
-## PowerShell-Parität: lokal wie remote
+## PowerShell Parity: Local and Remote
 
-`spec_parity.py` hält fest, dass ein lokaler Skript-Step so endet wie dasselbe Skript über WinRM.
+`spec_parity.py` establishes that a local script step ends the same way as the same script over WinRM.
 
-| Workflow | Profil | Prüft |
+| Workflow | Profile | Checks |
 |---|---|---|
-| `[TestSuite] script parity` | continuous | Vorlagen an jeder Stelle eines Worts, Umlaute über den Datenbus, Windows-Module im 5.1-Prozess, Ausgabe als Objekttext ohne Host-/Warnzeilen, Exit-Code nach `exit` und `return`, Arbeitsverzeichnis wie im Pool, Temp-Skript schon während des Laufs weg, Hintergrundprogramm hält den Step nicht, `startProgram` in OEM und UTF-8, `waitForCondition`-Skript in 5.1 |
-| `[TestSuite-Neg] script parity` | continuous | jeder Fehlereintrag, natives stderr, `throw` mit erhaltenen Werten, Parse-Fehler, Exit-Code nach `return`, Wort mit eigenen Anführungszeichen, nicht ausführbare Bedingung, Programm-Timeout mit Teilausgabe |
-| `[TestSuite] script parity remote` | integration | dieselben Prüfungen über WinRM als Referenzseite, dazu Datenbus lokal → remote → lokal |
-| `[TestSuite-Neg] script parity remote` | integration | die Referenz-Fehlschläge über WinRM |
+| `[TestSuite] script parity` | continuous | templates at any position within a word, umlauts over the data bus, Windows modules in the 5.1 process, output as object text without host/warning lines, exit code after `exit` and `return`, working directory as in the pool, temp script already gone during the run, background program does not hold the step, `startProgram` in OEM and UTF-8, `waitForCondition` script in 5.1 |
+| `[TestSuite-Neg] script parity` | continuous | every error entry, native stderr, `throw` with preserved values, parse error, exit code after `return`, word with its own quotation marks, non-executable condition, program timeout with partial output |
+| `[TestSuite] script parity remote` | integration | the same checks over WinRM as the reference side, plus data bus local → remote → local |
+| `[TestSuite-Neg] script parity remote` | integration | the reference failures over WinRM |
 
-Die Remote-Workflows brauchen das Global `NP_TESTSUITE_REMOTE_MACHINE`: Name oder Hostname einer
-registrierten Maschine mit Default-Credential. Ohne es werden sie installiert, aber nicht aktiviert.
-Die Maschinen-Policy `AllSigned` prüft das Release-Lab-Szenario **P1** (`scripts/release-lab/`),
-weil sie den Host verändert.
+The remote workflows need the global `NP_TESTSUITE_REMOTE_MACHINE`: name or hostname of a
+registered machine with a default credential. Without it they are installed but not enabled.
+The machine policy `AllSigned` is checked by the release-lab scenario **P1** (`scripts/release-lab/`),
+because it changes the host.
 
-## Beim Bauen der Suite gefunden und behoben
+## Found and Fixed While Building the Suite
 
-Die Suite hat zwei Engine-Defekte zutage gefördert, beide im PowerShell-Wrapper:
+The suite uncovered two engine defects, both in the PowerShell wrapper:
 
-- **`$LASTEXITCODE` überlebte die Wiederverwendung eines Pool-Runspaces.** Gemessen an
-  `[TestSuite] runScript`: `v5` und `v6` führen kein natives Kommando aus und meldeten trotzdem
-  `exitCode: 3` aus `v4`s `cmd /c exit 3` — quer über Executions hinweg sogar in einem anderen
-  Workflow. `successExitCodes` bewertete damit einen fremden Wert.
-- **Injizierte Upstream-Parameter kamen als eigene Outputs wieder heraus** und schaukelten sich
-  entlang der Kette auf (`v4` speicherte 24 Keys, drei davon aus dem Step selbst).
+- **`$LASTEXITCODE` survived the reuse of a pool runspace.** Measured on
+  `[TestSuite] runScript`: `v5` and `v6` run no native command and still reported
+  `exitCode: 3` from `v4`'s `cmd /c exit 3` — across executions, even in a different
+  workflow. `successExitCodes` thereby evaluated a foreign value.
+- **Injected upstream parameters came back out as outputs of their own** and built up
+  along the chain (`v4` stored 24 keys, three of them from the step itself).
 
-Beides ist gefixt: der Wrapper setzt `$LASTEXITCODE` und `$Error` vor dem Skript zurück und
-trennt Injektion und User-Skript in zwei geschachtelte Scopes, sodass `Get-Variable -Scope Local`
-genau das Zugewiesene liefert. Gehütet von `WrapperScopeAndExitCodeTests` und
+Both are fixed: the wrapper resets `$LASTEXITCODE` and `$Error` before the script and
+separates injection and user script into two nested scopes, so that `Get-Variable -Scope Local`
+returns exactly what was assigned. Guarded by `WrapperScopeAndExitCodeTests` and
 `PowerShellReservedVariablesParityTests`.
 
-## Bekannte Grenzen
+## Known Limits
 
-- **`integration`- und `invasive`-Profile werden auf einer Dev-Instanz nie ausgeführt.**
-  `appsettings.Development.json` lockert `RejectTraversal`, `DisallowShellExecute`,
-  `SqlActivity:RequireConnectionRef` und `Trigger:Database:RequireConnectionRef` bewusst — die
-  zugehörigen Ablehnungen sind auf einem Dev-Host nicht beobachtbar und liegen deshalb in
+- **The `integration` and `invasive` profiles are never executed on a dev instance.**
+  `appsettings.Development.json` deliberately relaxes `RejectTraversal`, `DisallowShellExecute`,
+  `SqlActivity:RequireConnectionRef` and `Trigger:Database:RequireConnectionRef` — the
+  corresponding rejections are not observable on a dev host and therefore live in
   `[TestSuite-Neg] production guards`.
-- **`emailNotification`** braucht eine SMTP-Senke (z. B. smtp4dev), **`llmQuery`** braucht
-  `Llm:Enabled` und ein aktives Profil, die **Event-Log-Quelle** `NodePilot-TestSuite` muss
-  einmalig elevated registriert werden, und die beiden invasiven Workflows brauchen ein
-  privilegiertes Dienstkonto.
-- **`serviceManagement` start/stop/restart** laufen nicht gegen einen von der Suite gewählten
-  Dienst. Ein cmd.exe-Fixture antwortet dem SCM nie (Fehler 1053); echtes Zyklen braucht einen
-  Dienst, den der Host-Betreiber über `NP_TESTSUITE_SERVICE_TARGET` selbst benennt.
+- **`emailNotification`** needs an SMTP sink (e.g. smtp4dev), **`llmQuery`** needs
+  `Llm:Enabled` and an active profile, the **event log source** `NodePilot-TestSuite` must be
+  registered once, elevated, and the two invasive workflows need a
+  privileged service account.
+- **`serviceManagement` start/stop/restart** do not run against a service chosen by the suite.
+  A cmd.exe fixture never answers the SCM (error 1053); real cycling needs a
+  service that the host operator names themselves via `NP_TESTSUITE_SERVICE_TARGET`.
 
-## Referenzen
+## References
 
-- Workflow-JSON-Format und Activity-Typen: [CLAUDE.md](../CLAUDE.md)
-- Layout-Styleguide: [docs/workflow-styleguide.md](workflow-styleguide.md)
-- Activity-Config-Keys: [docs/claude-reference.md](claude-reference.md)
+- Workflow JSON format and activity types: [CLAUDE.md](../CLAUDE.md)
+- Layout styleguide: [docs/workflow-styleguide.md](workflow-styleguide.md)
+- Activity config keys: [docs/claude-reference.md](claude-reference.md)

@@ -114,8 +114,9 @@ public static class WorkflowDefinitionPatcher
         {
             if (item.ValueKind != JsonValueKind.Object || JsonNode.Parse(item.GetRawText()) is not JsonObject obj) continue;
             JsonObject? source = null;
-            if (IdOf(obj) is { } id) originalById.TryGetValue(id, out source);
-            MergeObject(obj, source, notes);
+            var id = IdOf(obj);
+            if (id is not null) originalById.TryGetValue(id, out source);
+            MergeObject(obj, source, notes, id);
             result.Add(obj);
         }
         return result;
@@ -137,7 +138,7 @@ public static class WorkflowDefinitionPatcher
             ?? throw new ArgumentException("upsert item must have a non-empty string 'id'.");
         var existing = list.FirstOrDefault(x => IdOf(x) == id);
         var merged = (JsonObject)proposed.DeepClone();
-        MergeObject(merged, existing, notes);
+        MergeObject(merged, existing, notes, id);
         if (existing is null)
             list.Add(merged);
         else
@@ -146,7 +147,7 @@ public static class WorkflowDefinitionPatcher
 
     // Backfill untouched fields from the original + protect secret keys (adapted from the API
     // merge).
-    private static void MergeObject(JsonObject target, JsonObject? source, List<string> notes)
+    private static void MergeObject(JsonObject target, JsonObject? source, List<string> notes, string? itemId)
     {
         if (source is not null)
             foreach (var (key, sourceVal) in source)
@@ -166,6 +167,8 @@ public static class WorkflowDefinitionPatcher
             {
                 if (sourceChild is not null && !IsMask(sourceChild))
                     target[key] = sourceChild.DeepClone();
+                else if (sourceChild is null)
+                    RejectMaskWithoutOriginal(key, itemId, notes);
                 continue;
             }
 
@@ -177,12 +180,12 @@ public static class WorkflowDefinitionPatcher
 
             if (targetVal is JsonObject targetObj)
             {
-                MergeObject(targetObj, sourceChild as JsonObject, notes);
+                MergeObject(targetObj, sourceChild as JsonObject, notes, itemId);
                 continue;
             }
 
             if (targetVal is JsonArray targetArray)
-                MergeNestedArray(targetArray, sourceChild as JsonArray, notes);
+                MergeNestedArray(targetArray, sourceChild as JsonArray, notes, itemId, key);
         }
     }
 
@@ -207,6 +210,20 @@ public static class WorkflowDefinitionPatcher
         }
     }
 
+    // A mask with nothing to restore would be saved as the literal "***", for example a condition
+    // operand copied onto a new edge, so the whole operation is refused. A named secret keeps the
+    // mask with a note, as when the agent invents a secret value.
+    private static void RejectMaskWithoutOriginal(string key, string? itemId, List<string> notes)
+    {
+        if (WorkflowSecretKeys.SecretConfigKeys.Contains(key))
+        {
+            notes.Add($"Secret '{key}' must be set manually — the agent may not assign secret values.");
+            return;
+        }
+        throw new ArgumentException(
+            $"'{key}' on '{itemId ?? "?"}' is '***' but has no stored value to restore. Masked values cannot be copied onto new nodes or edges; send the real value instead. Nothing was saved.");
+    }
+
     // Null and the empty string count as "no secret set".
     private static bool HasValue(JsonNode? node)
         => node is not null && !(node is JsonValue value && value.TryGetValue(out string? text) && string.IsNullOrEmpty(text));
@@ -217,7 +234,8 @@ public static class WorkflowDefinitionPatcher
     // Nested condition/case arrays have no stable item identity. If a redacted array still
     // contains a mask, retain the whole original array so a reorder cannot attach a secret to the
     // wrong case. Otherwise recurse by index to keep named-secret protection for nested objects.
-    private static void MergeNestedArray(JsonArray target, JsonArray? source, List<string> notes)
+    private static void MergeNestedArray(
+        JsonArray target, JsonArray? source, List<string> notes, string? itemId, string key)
     {
         if (source is not null && ContainsMask(target))
         {
@@ -234,15 +252,15 @@ public static class WorkflowDefinitionPatcher
             switch (targetItem)
             {
                 case JsonObject targetObject:
-                    MergeObject(targetObject, sourceItem as JsonObject, notes);
+                    MergeObject(targetObject, sourceItem as JsonObject, notes, itemId);
                     break;
                 case JsonArray targetArray:
-                    MergeNestedArray(targetArray, sourceItem as JsonArray, notes);
+                    MergeNestedArray(targetArray, sourceItem as JsonArray, notes, itemId, key);
                     break;
                 case JsonValue targetValue when targetValue.TryGetValue(out string? value)
-                                               && value == SecretMask
-                                               && sourceItem is not null:
-                    target[index] = sourceItem.DeepClone();
+                                               && value == SecretMask:
+                    if (sourceItem is not null) target[index] = sourceItem.DeepClone();
+                    else RejectMaskWithoutOriginal(key, itemId, notes);
                     break;
             }
         }

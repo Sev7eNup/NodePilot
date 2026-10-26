@@ -4,9 +4,9 @@ import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 /**
  * Part 20 — Machines and Credentials (E2ETests.md).
  *
- * Machines live on /machines (MachinesPage); credentials are managed inline on the /settings
- * page in the PersonalSettings section. There is no backend: every /api call is a per-test
- * page.route mock layered over the hermetic catch-all in fixtures/mockApi.ts.
+ * Machines live on /machines (MachinesPage); credentials on /credentials (CredentialsPage,
+ * Admin and Operator only). There is no backend: every /api call is a per-test page.route mock
+ * layered over the hermetic catch-all in fixtures/mockApi.ts.
  *
  * The SPA renders English under Playwright but German elsewhere, so every visible-text selector
  * is bilingual. Machine and credential dialogs carry no accessible name, so they are scoped by
@@ -269,10 +269,9 @@ test.describe('Teil 20 — Machines & Credentials', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
     });
 
-    await page.goto('/settings');
+    await page.goto('/credentials');
 
-    // Credentials section header.
-    await expect(page.getByRole('heading', { name: /^credentials$/i })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/no credentials stored|keine credentials gespeichert/i)).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: /add credential|credential hinzufügen/i }).click();
 
     await page.getByPlaceholder(/credential name|name des credentials/i).fill('DomainAdmin');
@@ -311,7 +310,7 @@ test.describe('Teil 20 — Machines & Credentials', () => {
       return route.fallback();
     });
 
-    await page.goto('/settings');
+    await page.goto('/credentials');
     await expect(page.getByText('ToDelete')).toBeVisible({ timeout: 15_000 });
 
     // The delete button is the trash icon in the credential row (icon-only, no title) —
@@ -325,7 +324,8 @@ test.describe('Teil 20 — Machines & Credentials', () => {
     await expect(page.getByText('ToDelete')).toHaveCount(0);
   });
 
-  test('20.3b — Viewer sees no credential write/delete controls', async ({ page }) => {
+  test('20.3b — Viewer gets neither the menu entry nor the page', async ({ page }) => {
+    let credentialsRequested = false;
     await page.route('**/api/auth/me', (route) =>
       route.fulfill({
         status: 200,
@@ -333,19 +333,41 @@ test.describe('Teil 20 — Machines & Credentials', () => {
         body: JSON.stringify({ ...MOCK_USER, role: 'Viewer' }),
       }),
     );
+    await page.route('**/api/credentials', (route) => {
+      credentialsRequested = true;
+      return route.fulfill({ status: 403, body: '' });
+    });
+
+    // The API refuses Viewers, so the route sends them to the dashboard.
+    await page.goto('/credentials');
+    await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
+    await expect(page.getByRole('link', { name: /^dashboard$/i })).toBeVisible();
+    await expect(page.locator('.np-sidebar a[href="/credentials"]')).toHaveCount(0);
+    expect(credentialsRequested).toBe(false);
+  });
+
+  test('20.3c — the menu entry counts expired and expiring credentials', async ({ page }) => {
+    const day = 86_400_000;
     await page.route('**/api/credentials', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([credentialJson({ id: 'ro-c', name: 'ReadOnlyCred' })]),
+        body: JSON.stringify([
+          credentialJson({ id: 'c-expired', name: 'svc-old', expiresAt: new Date(Date.now() - day).toISOString() }),
+          credentialJson({ id: 'c-soon', name: 'svc-soon', expiresAt: new Date(Date.now() + 5.5 * day).toISOString() }),
+          credentialJson({ id: 'c-later', name: 'svc-later', expiresAt: new Date(Date.now() + 100 * day).toISOString() }),
+        ]),
       }),
     );
 
-    await page.goto('/settings');
-    await expect(page.getByText('ReadOnlyCred')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('button', { name: /add credential|credential hinzufügen/i })).toHaveCount(0);
-    // No delete trash button inside the credential row for a Viewer.
-    await expect(page.getByText('ReadOnlyCred').locator('../..').getByRole('button')).toHaveCount(0);
+    await page.goto('/');
+    const entry = page.locator('.np-sidebar a[href="/credentials"]');
+    await expect(entry.locator('.np-nav-badge')).toHaveText('2', { timeout: 15_000 });
+
+    await entry.click();
+    await expect(page).toHaveURL(/\/credentials$/);
+    await expect(page.locator('.np-row', { hasText: 'svc-old' }).getByText(/^expired$|^abgelaufen$/i)).toBeVisible();
+    await expect(page.locator('.np-row', { hasText: 'svc-soon' }).getByText(/expires in 5d|läuft ab in 5d/i)).toBeVisible();
   });
 
   test('20.1g — editing a machine PUTs the changed fields and the row updates', async ({ page }) => {
