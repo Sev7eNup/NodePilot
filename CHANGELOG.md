@@ -75,6 +75,8 @@ Planned version: **1.5.3**.
 - Output parameters above the persisted size limit are stored as valid JSON. Oversized values are cut
   with a visible marker and small ones stay intact; before, the whole set became unreadable after a
   reload and was missing from historical step-test context (#573).
+- Find and replace changes every match. The list still shows the first 50 and now says how many more
+  there are; Replace All used to stop after those 50 (#598).
 
 ### Security
 

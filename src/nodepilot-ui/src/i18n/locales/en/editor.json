@@ -352,7 +352,8 @@
     "edgeLabels": "Edge labels",
     "configValues": "Config values",
     "emptyHint": "Enter a search term to find matches across nodes and config fields.",
-    "noMatches": "No matches found."
+    "noMatches": "No matches found.",
+    "resultsLimited": "Showing the first {{shown}} of {{count}} matches. Replace All changes every match."
   },
   "help": {
     "title": "Keyboard shortcuts",
