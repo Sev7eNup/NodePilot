@@ -351,7 +351,7 @@ function setGallery(key: ScreenKey): void {
   renderGalleryCaption()
   $<HTMLAnchorElement>('#gallery-source-link').href = sourceUrl(key)
   $<HTMLAnchorElement>('#gallery-fallback-link').href = sourceUrl(key)
-  // The bundled file, not GitHub: opening it shows the screenshot at its full 2544px, where the
+  // The bundled file, not GitHub: opening it shows the screenshot at its full 2640px, where the
   // UI text in it stays readable.
   $<HTMLAnchorElement>('#gallery-full-size-link').href = imageAttributes(imageKey(key), basePath, true).src
   loadOriginalImage(galleryImage, $('#gallery-image-holder'), key)
