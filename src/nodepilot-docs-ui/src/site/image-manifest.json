@@ -20,13 +20,13 @@
     ]
   },
   "ai": {
-    "width": 2550,
-    "height": 1272,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2550
+      2880
     ]
   },
   "designer-light": {
@@ -50,13 +50,13 @@
     ]
   },
   "ai-light": {
-    "width": 2550,
-    "height": 1272,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2550
+      2880
     ]
   },
   "dashboard": {
