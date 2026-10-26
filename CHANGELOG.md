@@ -12,6 +12,63 @@ exhaustive.
 
 ## [Unreleased]
 
+### Added
+
+- **Dependencies page.** A new Monitoring entry shows which saved workflows, machines, credentials,
+  global variables and custom activities depend on each other, with the exact step as evidence and a
+  deep link into the designer. The object list shows usage and problem counts, filters by objects
+  with problems or without detected use, and sorts by usage; the map shows both directions and
+  expands further levels on demand. Available as `GET /api/dependencies/...`, as
+  `np dependencies list|show|evidence` and as the MCP tools `list_dependency_objects`,
+  `get_dependencies` and `get_dependency_evidence`. The browser demo derives the same reports.
+
+### Changed
+
+- **Saves from a stale draft are rejected.** `PUT /api/workflows/{id}` and `publish` now require
+  `expectedVersion`, the workflow version the draft is based on. A mismatch returns
+  `409 workflow_version_conflict` before anything is written, so a second tab can no longer overwrite
+  a save it never saw. The designer keeps the draft, shows a message and stops autosave until the
+  workflow is reloaded. The CLI and the MCP server send the version they read; own scripts against
+  the API must send it too (#609).
+- Credentials moved out of the settings into their own menu entry under Infrastructure, visible to
+  Admin and Operator, with a badge for expired and expiring accounts. The badge rounds days the same
+  way as the credential-expiry alert, and the alert's link now opens the page.
+- Captured script output is capped at 16,777,216 characters per execution across all streams
+  (`Engine:MaxCapturedOutputChars`, restart required). The limit applies to process, runspace and
+  WinRM execution alike; a step that exceeds it fails with an output-limit error instead of growing
+  the server's memory without bound (#572).
+- A delayed shutdown or restart in `powerManagement` is rejected unless "Force close applications"
+  is on. Windows forces applications closed for any delay, so the previous setting silently lost
+  unsaved work on the target. To wait without forcing, put a Delay step before it (#613).
+- Release acceptance tests direct upgrades from each of the last five published stable versions to
+  the candidate: 20 server and five desktop upgrade cases, none of them skippable.
+- The repository documentation (contributor guides, `docs/`, READMEs) is now in English. The German
+  pages of the documentation website stay German.
+- The website's article on PowerShell 5.1 and 7 was rewritten around checking the runtime, testing
+  an inventory script in both versions and choosing the remote endpoint.
+
+### Fixed
+
+- Ending an edit or restoring a version replaces the local draft. The discarded draft used to stay on
+  the canvas, and autosave wrote it back a few seconds later, also over a just-restored version (#596).
+- Find and replace changes only the selected config field. Replacing one match used to rewrite every
+  string in that node's config that contained the search text (#597).
+- Values the AI chat and the MCP server only see masked (`***`) are no longer saved as literal `***`
+  when they are copied onto a new node or edge. The chat flags each such value in the review, and the
+  MCP patcher rejects the change (#582).
+- System backups are exported from one consistent database snapshot. A configuration change during
+  the export could produce a backup that reported success but could not be restored (#608).
+- Saving settings checks the complete runtime configuration with the production loader before
+  replacing the file, and matches existing keys case-insensitively like .NET does. A manually written
+  section with different casing could otherwise leave a file that failed to load on the next reload or
+  restart (#611).
+
+### Security
+
+- Read-only SQL (the admin SQL console and the database source of the AI knowledge assistant) rejects
+  PostgreSQL escape strings (`E'…'`), which could hide protected columns from the sensitive-column
+  check. Both paths remain global-Admin only (#612).
+
 ## [1.5.2] - 2026-10-24
 
 ### Added
