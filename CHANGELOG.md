@@ -85,6 +85,9 @@ Planned version: **1.5.3**.
 - The audit log's time filters and export use the instant you picked. The page sent the local time
   without an offset and the server read it as UTC, so the window was shifted by the time-zone offset
   (#599).
+- Publish and enable reject a `waitNofM` junction whose `requiredCount` exceeds its enabled inputs
+  (`400 invalid_junction_required_count`). Such a junction was skipped with everything after it on
+  every run, without a failed step. Saving a draft stays permissive (#586).
 
 ### Security
 
