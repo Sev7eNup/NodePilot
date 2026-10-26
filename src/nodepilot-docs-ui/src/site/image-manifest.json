@@ -1,22 +1,22 @@
 {
   "designer": {
-    "width": 2640,
-    "height": 1695,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2640
+      2880
     ]
   },
   "logs": {
-    "width": 2640,
-    "height": 1695,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2640
+      2880
     ]
   },
   "ai": {
@@ -30,23 +30,23 @@
     ]
   },
   "designer-light": {
-    "width": 2640,
-    "height": 1695,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2640
+      2880
     ]
   },
   "logs-light": {
-    "width": 2640,
-    "height": 1695,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2640
+      2880
     ]
   },
   "ai-light": {
@@ -60,23 +60,23 @@
     ]
   },
   "dashboard": {
-    "width": 2640,
-    "height": 1695,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2640
+      2880
     ]
   },
   "liveops": {
-    "width": 2640,
-    "height": 1695,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2640
+      2880
     ]
   },
   "first-workflow-designer": {
