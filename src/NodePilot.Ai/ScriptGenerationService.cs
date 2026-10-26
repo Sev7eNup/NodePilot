@@ -53,6 +53,7 @@ public sealed class ScriptGenerationService
         long totalChars = 0;
         string? model = null;
         int? promptTokens = null, completionTokens = null;
+        string? finishReason = null;
 
         var llm = _llmFactory.Create();
         await foreach (var evt in llm.StreamAsync(
@@ -63,6 +64,7 @@ public sealed class ScriptGenerationService
                 model = evt.Model;
                 promptTokens = evt.PromptTokens;
                 completionTokens = evt.CompletionTokens;
+                finishReason = evt.FinishReason;
                 break;
             }
             if (evt.ContentDelta is not { Length: > 0 } delta) continue;
@@ -94,6 +96,12 @@ public sealed class ScriptGenerationService
                 yield return ScriptStreamEvent.Delta(emit);
             }
         }
+
+        // A script cut off at the output limit can be valid PowerShell that silently lacks its
+        // later checks or cleanup, so it must not end as a successful generation.
+        if (finishReason == "length")
+            throw new LlmException(LlmErrorKind.MalformedResponse,
+                "The model stopped at its output limit before the script was complete.");
 
         // If no \n ever arrived (a single-line script with no fence), everything sits in the
         // first-line buffer and is treated as the body.

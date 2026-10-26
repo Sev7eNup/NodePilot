@@ -67,6 +67,9 @@ Planned version: **1.5.3**.
 - Registry activity paths such as `HKEY_LOCAL_MACHINE\…` are rewritten to the `Registry::` provider
   path. They were passed on unchanged and resolved as a file system path, so reads looked in the wrong
   place and `createKey`/`deleteKey` could create or remove directories (#614).
+- AI script generation that stops at the model's output limit ends with an error instead of a
+  successful result. The script editor restores the original script and says so, rather than leaving
+  a cut-off script that can be saved and run (#610).
 
 ### Security
 

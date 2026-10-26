@@ -28,6 +28,7 @@
     "regenerate": "Regenerate",
     "tokenUsed": "Tokens: {{tokens}} · {{ms}} ms",
     "errorPrefix": "AI error: {{message}}",
+    "originalRestored": "The original script was restored.",
     "disabled": "AI features are disabled. Enable them via <code>Llm:Enabled=true</code> in the backend config.",
     "warningPrefix": "Note:",
     "reviewWarning": "Read AI output before saving. Malicious instructions may be injected via upstream data."
