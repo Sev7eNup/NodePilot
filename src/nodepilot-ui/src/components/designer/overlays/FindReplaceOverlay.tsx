@@ -2,7 +2,7 @@ import { ArrowsHorizontal, Close, Search } from '@carbon/icons-react';
 import { useRef, useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type Node, type Edge } from '@xyflow/react';
-import { findMatches, applyReplaceAll, type MatchLocation, type FindReplaceScopes } from '../../../lib/findReplace';
+import { findMatches, applyReplaceAll, MAX_DISPLAYED_MATCHES, type MatchLocation, type FindReplaceScopes } from '../../../lib/findReplace';
 
 export function FindReplaceOverlay({ nodes, edges, onApply, onClose, canWrite }: Readonly<{
   canWrite: boolean;
@@ -30,6 +30,8 @@ export function FindReplaceOverlay({ nodes, edges, onApply, onClose, canWrite }:
     () => findMatches(searchValue, nodes, edges, scopes),
     [searchValue, nodes, edges, scopes],
   );
+
+  const shownMatches = matches.slice(0, MAX_DISPLAYED_MATCHES);
 
   useEffect(() => setSelectedIdx(0), [matches.length]);
 
@@ -153,7 +155,7 @@ export function FindReplaceOverlay({ nodes, edges, onApply, onClose, canWrite }:
           ) : matches.length === 0 ? (
             <div className="px-4 py-5 text-center text-xs font-label text-on-surface-variant">{t('findReplaceOverlay.noMatches')}</div>
           ) : (
-            matches.map((m, i) => (
+            shownMatches.map((m, i) => (
               <button
                 key={`${m.nodeId ?? m.edgeId}-${m.kind}-${m.configKeyPath ?? ''}-${i}`}
                 type="button"
@@ -171,6 +173,11 @@ export function FindReplaceOverlay({ nodes, edges, onApply, onClose, canWrite }:
                 </div>
               </button>
             ))
+          )}
+          {matches.length > shownMatches.length && (
+            <div className="px-4 py-2 text-center text-[10px] font-label text-on-surface-variant">
+              {t('findReplaceOverlay.resultsLimited', { shown: shownMatches.length, count: matches.length })}
+            </div>
           )}
         </div>
       </div>
