@@ -1,0 +1,184 @@
+--- a/src/nodepilot-docs-ui/src/site/blog-catalog.json
++++ b/src/nodepilot-docs-ui/src/site/blog-catalog.json
+@@ -233,7 +233,7 @@
+       "winrm-https"
+     ],
+     "publishedAt": "2026-10-18",
+-    "modifiedAt": null,
++    "modifiedAt": "2026-11-01",
+     "text": {
+       "de": {
+         "title": "gMSA: Dienstkonten ohne manuell verteilte Kennwörter",
+@@ -262,7 +262,7 @@
+   {
+     "slug": "powershell-51-and-7",
+     "status": "published",
+-    "next": true,
++    "next": false,
+     "source": "powershell-51-und-7",
+     "solution": "powershell-automation",
+     "docs": "activities-reference",
+@@ -278,7 +278,7 @@
+       "powershell-execution-policy"
+     ],
+     "publishedAt": "2026-10-25",
+-    "modifiedAt": "2026-10-25",
++    "modifiedAt": "2026-11-01",
+     "text": {
+       "de": {
+         "title": "PowerShell 5.1 und 7: Die Laufzeit gehört zum Auftrag",
+@@ -478,7 +478,7 @@
+   },
+   {
+     "slug": "ai-workflows",
+-    "status": "draft",
++    "status": "published",
+     "next": false,
+     "source": "ki-nodepilot",
+     "solution": "powershell-automation",
+@@ -493,26 +493,26 @@
+       "failure-analysis",
+       "powershell-try-catch"
+     ],
+-    "publishedAt": null,
+-    "modifiedAt": null,
+-    "text": {
+-      "de": {
+-      "title": "AI Workflow Automation für Windows: vom Prompt zum geprüften PowerShell-Ablauf",
+-      "seoTitle": "AI Workflow Automation für Windows mit PowerShell",
+-      "summary": "AI Workflow Automation für Windows: einen PowerShell-Dienstcheck entwerfen, den Code prüfen und Erfolg sowie Fehler mit einem JSON-Bericht nachvollziehen.",
+-      "lead": "Wie wird aus einem KI-Prompt ein überprüfbarer PowerShell-Workflow?",
+-        "category": "PRAXIS",
+-      "indexTitle": "AI Workflow Automation: vom Prompt zum geprüften Ablauf",
+-      "teaser": "Ein Dienstcheck mit überprüfbarer Ausgabe und bewusstem Fehlerfall."
+-      },
+-      "en": {
+-      "title": "AI workflow automation for Windows: from a prompt to verified PowerShell",
+-      "seoTitle": "AI workflow automation for Windows with PowerShell",
+-      "summary": "AI workflow automation for Windows: generate a PowerShell service check, review its code and verify success and failure through a structured JSON report.",
+-      "lead": "How do you turn an AI prompt into a verifiable PowerShell workflow?",
+-        "category": "PRACTICE",
+-      "indexTitle": "AI workflow automation: from a prompt to a verified task",
+-      "teaser": "A service check with observable output and a deliberate failure case."
++    "publishedAt": "2026-11-01",
++    "modifiedAt": null,
++    "text": {
++      "de": {
++        "title": "AI Workflow Automation für Windows: vom Prompt zum geprüften PowerShell-Ablauf",
++        "seoTitle": "AI Workflow Automation für Windows mit PowerShell",
++        "summary": "AI Workflow Automation für Windows: einen PowerShell-Dienstcheck entwerfen, den Code prüfen und Erfolg sowie Fehler mit einem JSON-Bericht nachvollziehen.",
++        "lead": "Wie wird aus einem KI-Prompt ein überprüfbarer PowerShell-Workflow?",
++        "category": "PRAXIS",
++        "indexTitle": "AI Workflow Automation: vom Prompt zum geprüften Ablauf",
++        "teaser": "Ein Dienstcheck mit überprüfbarer Ausgabe und bewusstem Fehlerfall."
++      },
++      "en": {
++        "title": "AI workflow automation for Windows: from a prompt to verified PowerShell",
++        "seoTitle": "AI workflow automation for Windows with PowerShell",
++        "summary": "AI workflow automation for Windows: generate a PowerShell service check, review its code and verify success and failure through a structured JSON report.",
++        "lead": "How do you turn an AI prompt into a verifiable PowerShell workflow?",
++        "category": "PRACTICE",
++        "indexTitle": "AI workflow automation: from a prompt to a verified task",
++        "teaser": "A service check with observable output and a deliberate failure case."
+       }
+     },
+     "docsTitle": {
+@@ -737,8 +737,8 @@
+   },
+   {
+     "slug": "gmsa-scheduled-task",
+-    "status": "draft",
+-    "next": false,
++    "status": "published",
++    "next": true,
+     "source": "gmsa-scheduled-task",
+     "solution": "powershell-automation",
+     "docs": "configuration/remote-execution",
+@@ -754,7 +754,7 @@
+       "powershell-try-catch",
+       "powershell-execution-policy"
+     ],
+-    "publishedAt": null,
++    "publishedAt": "2026-11-01",
+     "modifiedAt": null,
+     "text": {
+       "de": {
+@@ -827,7 +827,7 @@
+   },
+   {
+     "slug": "powershell-try-catch",
+-    "status": "draft",
++    "status": "published",
+     "next": false,
+     "source": "powershell-try-catch",
+     "solution": "powershell-automation",
+@@ -842,7 +842,7 @@
+       "powershell-execution-policy",
+       "ai-workflows"
+     ],
+-    "publishedAt": null,
++    "publishedAt": "2026-11-01",
+     "modifiedAt": null,
+     "text": {
+       "de": {
+@@ -871,7 +871,7 @@
+   },
+   {
+     "slug": "powershell-execution-policy",
+-    "status": "draft",
++    "status": "published",
+     "next": false,
+     "source": "powershell-execution-policy",
+     "solution": "powershell-automation",
+@@ -886,7 +886,7 @@
+       "gmsa-scheduled-task",
+       "powershell-51-and-7"
+     ],
+-    "publishedAt": null,
++    "publishedAt": "2026-11-01",
+     "modifiedAt": null,
+     "text": {
+       "de": {
+--- a/src/nodepilot-docs-ui/content/blog/gmsa-service-accounts.de.md
++++ b/src/nodepilot-docs-ui/content/blog/gmsa-service-accounts.de.md
+@@ -71,3 +71,5 @@
+ Wird der Export über NodePilot angestoßen, müssen dessen Ausführungsidentität und die Identität des eigentlichen Exportdienstes weiterhin getrennt betrachtet werden. Aus der Unterstützung eines gMSA durch den Zieldienst folgt keine allgemeine Unterstützung dieses Kontotyps in beliebigen Zugangsdatenfeldern.
+ 
+ Der NodePilot-Dienst selbst kann ebenfalls unter einem gMSA laufen. Das Setup trägt dafür eine Abhängigkeit zum Netlogon-Dienst ein, damit das verwaltete Kennwort beim Systemstart bereits abrufbar ist.
++
++Für einen konkreten unbeaufsichtigten Auftrag zeigt die [gMSA-Aufgabenanleitung](https://www.nodepilot.run/blog/gmsa-scheduled-task/), wie Konto, Aufgabenplanung und tatsächlicher Zielzugriff zusammen geprüft werden.
+--- a/src/nodepilot-docs-ui/content/blog/gmsa-service-accounts.en.md
++++ b/src/nodepilot-docs-ui/content/blog/gmsa-service-accounts.en.md
+@@ -71,3 +71,5 @@
+ If NodePilot triggers the export, its execution identity and that of the export service still need separate consideration. A target service's support for gMSA does not establish general support for that account type in arbitrary credential fields.
+ 
+ The NodePilot service itself can also run under a gMSA. Setup adds a dependency on the Netlogon service so that the managed password can already be retrieved at system start.
++
++For a concrete unattended job, the [gMSA scheduled task guide](https://www.nodepilot.run/en/blog/gmsa-scheduled-task/) shows how to verify the account, task configuration and actual destination access together.
+--- a/src/nodepilot-docs-ui/content/blog/powershell-51-and-7.de.md
++++ b/src/nodepilot-docs-ui/content/blog/powershell-51-and-7.de.md
+@@ -72,3 +72,5 @@
+ | Remote über NodePilot | Derzeit Windows PowerShell 5.1 über `Microsoft.PowerShell` |
+ 
+ Das Remoting-Beispiel zeigt somit einen eigenständigen PowerShell-Aufruf. Eine PowerShell-7-Installation auf dem Ziel ändert die Remote-Ausführung in NodePilot nicht. Einzelheiten stehen in der [Activity-Referenz](https://www.nodepilot.run/docs/de/activities-reference/).
++
++Startet die ausgewählte Laufzeit das Skript nicht, hilft die [Diagnose der Execution Policy](https://www.nodepilot.run/blog/powershell-execution-policy/). Für unbeaufsichtigte Ausführungen ergänzen die [gMSA-Aufgabenanleitung](https://www.nodepilot.run/blog/gmsa-scheduled-task/) und der [try/catch-Praxisartikel](https://www.nodepilot.run/blog/powershell-try-catch/) die Prüfung von Identität und Fehlerverhalten.
+--- a/src/nodepilot-docs-ui/content/blog/powershell-51-and-7.en.md
++++ b/src/nodepilot-docs-ui/content/blog/powershell-51-and-7.en.md
+@@ -72,3 +72,5 @@
+ | Remote through NodePilot | Currently Windows PowerShell 5.1 through `Microsoft.PowerShell` |
+ 
+ The remoting example therefore shows an independent PowerShell invocation. Installing PowerShell 7 on the target does not change remote execution in NodePilot. The [Activity reference](https://www.nodepilot.run/docs/en/activities-reference/) provides the details.
++
++If the selected runtime will not start the script, use the [execution policy diagnosis](https://www.nodepilot.run/en/blog/powershell-execution-policy/). For unattended runs, the [gMSA scheduled task guide](https://www.nodepilot.run/en/blog/gmsa-scheduled-task/) and [try/catch tutorial](https://www.nodepilot.run/en/blog/powershell-try-catch/) extend the checks to identity and error behavior.
+--- a/src/nodepilot-docs-ui/src/site/blog-build.test.mjs
++++ b/src/nodepilot-docs-ui/src/site/blog-build.test.mjs
+@@ -28,7 +28,7 @@
+       it('emits complete articles and respects publication state', () => {
+         const sitemap = readFileSync(join(root, 'sitemap.xml'), 'utf8')
+         const index = parseHTML(readFileSync(join(root, 'blog/index.html'), 'utf8')).document
+-        expect(index.querySelectorAll('.blog-index-row').length).toBe(preview ? 21 : 8)
++        expect(index.querySelectorAll('.blog-index-row').length).toBe(preview ? 21 : 12)
+         expect(index.querySelectorAll('.blog-index-row[data-category="hintergrund"]').length).toBe(preview ? 3 : 1)
+         for (const article of articles) {
+           expect(allPages.some(page => page.path === article.docs), article.docs).toBe(true)
