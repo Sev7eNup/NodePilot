@@ -145,7 +145,7 @@ for (const back of ['designer', 'browser'] as const) {
     await expect(page.locator('.react-flow__node[data-id="step-archive"]')).toHaveClass(/selected/);
     if (back === 'designer') await page.getByRole('button', { name: 'Zurück zu Abhängigkeiten' }).click();
     else await page.goBack();
-    await expect(page).toHaveURL(new URL(origin, 'http://localhost:5173').href);
+    await expect(page).toHaveURL(new URL(origin, page.url()).href);
     await expect(page.getByRole('textbox', { name: 'Objekt suchen' })).toHaveValue('FS-PROD');
     await expect(page.getByRole('button', { name: 'Maschinen', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('complementary', { name: 'Warum betroffen?' })).toBeVisible();
