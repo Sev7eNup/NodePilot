@@ -170,6 +170,68 @@ public class WorkflowEngineTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_OutputParametersOverTheLimit_PersistValidJsonWithSmallValuesIntact()
+    {
+        var hugeValue = new string('x', 50_000);
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityResult
+            {
+                Success = true,
+                OutputParameters = new() { ["host"] = "srv01", ["dump"] = hugeValue, ["freeGb"] = "7" }
+            });
+
+        var workflow = CreateWorkflow(BuildLinearWorkflow());
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "u", CancellationToken.None);
+        var step = _db.StepExecutions.Single(s => s.WorkflowExecutionId == execution.Id && s.StepId == "step-1");
+
+        step.OutputParametersJson!.Length.Should().BeLessThan(11_000);
+        using var doc = JsonDocument.Parse(step.OutputParametersJson!);
+        doc.RootElement.GetProperty("host").GetString().Should().Be("srv01");
+        doc.RootElement.GetProperty("freeGb").GetString().Should().Be("7");
+        var dump = doc.RootElement.GetProperty("dump").GetString()!;
+        dump.Should().StartWith("xxx");
+        dump.Should().EndWith("[truncated, full length was 50000 chars]");
+
+        // The historical step-test context must still expose every parameter, not drop them all.
+        var context = await new StepTestContextProvider(_db, new StubGlobalVariableStore())
+            .GetContextAsync(workflow.Id, "step-3", execution.Id, CancellationToken.None);
+        context.Variables.Single(v => v.Key == "step-1.param.host").Value.Should().Be("srv01");
+        context.Variables.Single(v => v.Key == "step-1.param.freeGb").Value.Should().Be("7");
+        context.Variables.Should().NotContain(v => v.Key.EndsWith("<invalid>"));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OutputParametersWithinTheLimit_PersistUnchanged()
+    {
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityResult
+            {
+                Success = true,
+                OutputParameters = new() { ["list"] = "[1,2,3]", ["host"] = new string('h', 9_000) }
+            });
+
+        var workflow = CreateWorkflow(BuildSingleNodeWorkflow());
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "u", CancellationToken.None);
+        var step = _db.StepExecutions.Single(s => s.WorkflowExecutionId == execution.Id && s.StepId == "step-1");
+
+        using var doc = JsonDocument.Parse(step.OutputParametersJson!);
+        doc.RootElement.GetProperty("list").GetString().Should().Be("[1,2,3]");
+        doc.RootElement.GetProperty("host").GetString().Should().HaveLength(9_000);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_SensitiveOutputParameterName_IsRedactedBeforePersistence()
     {
         _mockExecutor.Setup(e => e.ExecuteAsync(
