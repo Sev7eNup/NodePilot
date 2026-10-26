@@ -65,8 +65,8 @@ ready within five minutes, and logs no error entry.
 
 **A** passes when `Start-Service` returns within 30 s while the database is down, the wait line
 names the connection error, and the service becomes ready on its own once the database is back,
-without an error entry. **B** passes when the setup refuses before installing anything and says the
-certificate's revocation status could not be checked.
+without an error entry. **B** passes when the setup refuses before installing anything and its abort message
+names the failed certificate revocation validation.
 
 **P1** sets the machine execution policy to `AllSigned` the way a GPO does, then runs
 `allsigned-workflow.json` instead of the smoke workflow: a script step in the default Windows

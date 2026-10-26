@@ -12,6 +12,8 @@ exhaustive.
 
 ## [Unreleased]
 
+Planned version: **1.5.3**.
+
 ### Added
 
 - **Dependencies page.** A new Monitoring entry shows which saved workflows, machines, credentials,
