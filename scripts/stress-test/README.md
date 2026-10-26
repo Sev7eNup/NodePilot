@@ -1,47 +1,47 @@
 # NodePilot Stress-Test Workflow
 
-Künstlicher Last-Workflow: fächert von `log-start` auf **11 parallele Branches** auf, fängt sie mit `junction-all` (`waitAll`) wieder ein. Nutzt ausschließlich Engine-local Activities + `runScript` mit `targetMachineId: "localhost"` (In-Process-Bypass) — **kein WinRM-Target nötig**.
+Artificial load workflow: fans out from `log-start` into **11 parallel branches** and collects them again with `junction-all` (`waitAll`). Uses only engine-local activities + `runScript` with `targetMachineId: "localhost"` (in-process bypass) — **no WinRM target needed**.
 
-## Branches (alle parallel)
+## Branches (all parallel)
 
 | # | Activity | Workload |
 |---|---|---|
-| 1 | `runScript` | Primzahl-Sieb bis 2·10⁶ |
-| 2 | `runScript` | Σ√i für i=1..10⁷ |
-| 3 | `runScript` | SHA-256 200 000× verkettet |
-| 4 | `runScript` | 50 000 Regex-Matches auf generierten Log-Lines |
-| 5 | `runScript` | 250×250 Matrix-Multiplikation |
-| 6 | `runScript` | Sort 10⁶ Integers |
-| 7 | `jsonQuery` | `$.items[?(@.val > 50)].id` auf 20-Item-Array |
-| 8 | `jsonQuery` | `$..name` auf verschachtelter Org-Struktur |
+| 1 | `runScript` | Prime sieve up to 2·10⁶ |
+| 2 | `runScript` | Σ√i for i=1..10⁷ |
+| 3 | `runScript` | SHA-256 chained 200,000× |
+| 4 | `runScript` | 50,000 regex matches on generated log lines |
+| 5 | `runScript` | 250×250 matrix multiplication |
+| 6 | `runScript` | Sort 10⁶ integers |
+| 7 | `jsonQuery` | `$.items[?(@.val > 50)].id` on a 20-item array |
+| 8 | `jsonQuery` | `$..name` on a nested org structure |
 | 9 | `xmlQuery` | `//host[@up='y']/@name` |
-| 10 | `xmlQuery` | `sum(//host[@up='y']/@cpu)` (XPath-Aggregat) |
+| 10 | `xmlQuery` | `sum(//host[@up='y']/@cpu)` (XPath aggregate) |
 | 11 | `delay` | 55 s |
 
-Alle 6 `runScript`-Branches laufen **in-process** → die API erzeugt 6 gleichzeitige PowerShell-Runspaces, die eine Weile ~alle Cores beschäftigen.
+All 6 `runScript` branches run **in-process** → the API spawns 6 concurrent PowerShell runspaces that keep ~all cores busy for a while.
 
 ## Import
 
-Die Datei ist eine reine Workflow-Definition (nicht das Export-Envelope). Der Launcher
-meldet sich an, erstellt oder sperrt den Workflow und veröffentlicht die Definition,
-bevor er die parallelen Ausführungen startet. Fremde Bearbeitungssperren und mehrdeutige
-Workflow-Namen führen zum Abbruch.
+The file is a plain workflow definition (not the export envelope). The launcher
+signs in, creates or locks the workflow and publishes the definition
+before it starts the parallel executions. Foreign edit locks and ambiguous
+workflow names abort the run.
 
 ```powershell
 ./scripts/stress-test/launch-40x.ps1 -BaseUrl http://localhost:5000 -User admin
-# PowerShell fragt das erforderliche Passwort ab.
+# PowerShell prompts for the required password.
 ```
 
-Alternativ: `python scripts/stress-test/launch-40x.py`. Die Python-Clients verwenden
-`NODEPILOT_URL` (Standard `http://localhost:5000`), `NODEPILOT_USER` (Standard `admin`)
-und `NODEPILOT_PASSWORD`; ohne Passwortvariable fragen sie interaktiv danach.
-`launch-50-master.py` startet einen bereits veröffentlichten Workflow anhand
-`NODEPILOT_STRESS_WORKFLOW`. Die Launcher liefern einen Fehler-Exitcode, wenn ein Start
-oder eine Ausführung fehlschlägt oder bis zur Deadline kein Erfolg feststeht.
+Alternatively: `python scripts/stress-test/launch-40x.py`. The Python clients use
+`NODEPILOT_URL` (default `http://localhost:5000`), `NODEPILOT_USER` (default `admin`)
+and `NODEPILOT_PASSWORD`; without the password variable they prompt interactively.
+`launch-50-master.py` starts an already published workflow by means of
+`NODEPILOT_STRESS_WORKFLOW`. The launchers return an error exit code if a start
+or an execution fails or if no success is established by the deadline.
 
-Die sechs CPU-Branches und die Verzögerung sind auf 55 Sekunden ausgelegt;
-die Gesamtlaufzeit beträgt typischerweise etwa 55–60 Sekunden. Live-Fortschritt via SignalR.
+The six CPU branches and the delay are designed for 55 seconds;
+the total runtime is typically about 55–60 seconds. Live progress via SignalR.
 
-## Warnung
+## Warning
 
-Die 6 CPU-Burn-Branches **setzen die API-Host-CPU unter Volllast**. Auf einem Dev-Rechner ist das unkritisch, aber in Produktion vorher mindestens `Engine:Debug:*`-Limits und `Retention:*`-Services im Blick behalten — und ein laufender Stress-Test blockiert kein anderes Workflow-Execute, aber Response-Latenzen des Backends steigen sichtbar.
+The 6 CPU-burn branches **put the API host CPU under full load**. On a dev machine that is harmless, but in production first keep an eye on at least the `Engine:Debug:*` limits and `Retention:*` services — and a running stress test does not block any other workflow execute, but backend response latencies rise visibly.

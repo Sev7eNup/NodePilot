@@ -1,246 +1,245 @@
-# Windows-SSO/Kerberos-Feldtest gegen echtes AD (Hyper-V-Lab)
+# Windows SSO/Kerberos field test against a real AD (Hyper-V lab)
 
-Wire-Level-Verifikation des NodePilot-Windows-SSO-Pfads (`POST /api/auth/windows`,
-Negotiate/Kerberos) gegen ein **echtes** Active Directory. Schließt die Lücke, dass alle
-Backend-Tests an einem synthetischen `ClaimsPrincipal` bzw. an der
-`ILdapConnectionAdapter`-Seam enden — es gibt dort keinen einzigen echten Handshake.
+Wire-level verification of the NodePilot Windows SSO path (`POST /api/auth/windows`,
+Negotiate/Kerberos) against a **real** Active Directory. Closes the gap that all
+backend tests end at a synthetic `ClaimsPrincipal` or at the
+`ILdapConnectionAdapter` seam — there is not a single real handshake there.
 
-> **Status: Kerberos-Kern am 2026-08-02 gegen echtes AD verifiziert.** Lauf gegen
-> Windows Server 2025 (`corp.contoso.com`, Domain-/Forest-Mode 2016, ein DC), NodePilot
-> unter einem gMSA auf einem Member-Server, Test von einem domänengejointen Windows-11-
-> Client: **22 PASS / 1 FAIL / 6 SKIP**. Der eine FAIL war ein falsch übergebener
-> Break-Glass-Parameter, kein Produktfehler.
+> **Status: Kerberos core verified against a real AD on 2026-08-02.** Run against
+> Windows Server 2025 (`corp.contoso.com`, domain/forest mode 2016, one DC), NodePilot
+> under a gMSA on a member server, test from a domain-joined Windows 11
+> client: **22 PASS / 1 FAIL / 6 SKIP**. The one FAIL was a wrongly passed
+> break-glass parameter, not a product defect.
 >
-> Weiterhin offen: HAProxy-Pfad, Multi-DC-Konsens, OIDC/SCIM, HA-Restart, sowie
-> W15/W16 (Revocation), W14 (DC-Ausfall), W20/W21 (Restrict-NTLM-GPO), W22 und der
-> Browser-Beleg W6b/W6c. Das Preview-Label kann deshalb **präzisiert, aber nicht
-> gestrichen** werden.
+> Still open: HAProxy path, multi-DC consensus, OIDC/SCIM, HA restart, as well as
+> W15/W16 (revocation), W14 (DC outage), W20/W21 (Restrict-NTLM GPO), W22 and the
+> browser evidence W6b/W6c. The preview label can therefore be **refined, but not
+> removed**.
 >
-> **Wichtig zum Browser-Pfad:** der Lab-Lauf belegt den HTTP-Stack, **nicht** den Browser.
-> Ein erster manueller Versuch am 2026-08-02 öffnete einen Credential-Dialog, weil die
-> Browser-Policy auf dem Client nie gesetzt war; der stille zweite Versuch nach einem
-> Logout war der Credential-Cache der Browser-Sitzung, kein SSO. W6b ist damit **offen**,
-> nicht bestanden — und wurde um genau dieses Kriterium geschärft.
+> **Important regarding the browser path:** the lab run proves the HTTP stack, **not** the browser.
+> A first manual attempt on 2026-08-02 opened a credential dialog because the
+> browser policy had never been set on the client; the silent second attempt after a
+> logout was the credential cache of the browser session, not SSO. W6b is therefore **open**,
+> not passed — and was sharpened by exactly this criterion.
 
-### Ergebnisse des Lab-Laufs 2026-08-02
+### Results of the lab run 2026-08-02
 
-| Punkt | Beleg |
+| Item | Evidence |
 |---|---|
-| **W6a Kerberos** | Nach dem Login steht `Server: HTTP/cm1.corp.contoso.com @ CORP.CONTOSO.COM` im Ticket-Cache — ein echtes Service-Ticket, kein NTLM |
-| **W5d transitive Gruppen** | `nptest.alice` ist **ausschließlich** in `NPTest-Admins`; das Admission-Gate steht auf `NPTest-Access`. Login liefert 200 + Role=Admin ⇒ `tokenGroups` wird transitiv aufgelöst, nicht `memberOf`. Audit: `oldGroupSidsCount: 4` |
-| **W9 Identitätsgleichheit** | Derselbe Mensch über beide Pfade ⇒ **dieselbe UserId**. Audit zeigt `LOGIN_SUCCESS … source: "Ldap"` und `source: "Windows"` auf einer Identität |
-| W5a Ambient-Pfad | Der Pfad, den der Browser-Button geht, liefert 200 |
-| W5c / W8 | `np_auth` httpOnly + `np_csrf` gesetzt, kein Token im Body; JWT enthält **keine** Gruppen-/SID-Claims |
-| W10 | Re-Login ⇒ `USER_WINDOWS_JIT_UPDATED`, gleiche UserId, kein Duplikat |
-| W11 / W12 | `carol` → Viewer; `bob` → 401 mit Audit `USER_DIRECTORY_ACCESS_REFUSED / reason=no_allowed_directory_group` |
-| W13 | Deaktiviertes AD-Konto ⇒ kein Login |
-| W18 | 5 parallele Erst-Logins ⇒ alle 200, genau ein JIT-Create |
-| W25 | SSO ohne `np_csrf` ⇒ 200, kein 403 |
-| W2 | `/healthz/directory` `Healthy` über echtes LDAPS gegen die Enterprise-CA |
-| **W19 unschlüssig** | 401, aber **ohne** Ablehnungsmeldung und ohne `windows_ntlm_disabled` im Audit — der Server hat gar keinen NTLM-Versuch gesehen. Siehe „Falscher PASS" unten |
+| **W6a Kerberos** | After login, `Server: HTTP/cm1.corp.contoso.com @ CORP.CONTOSO.COM` is in the ticket cache — a real service ticket, not NTLM |
+| **W5d transitive groups** | `nptest.alice` is **only** in `NPTest-Admins`; the admission gate is set to `NPTest-Access`. Login returns 200 + Role=Admin ⇒ `tokenGroups` is resolved transitively, not `memberOf`. Audit: `oldGroupSidsCount: 4` |
+| **W9 identity equality** | The same person through both paths ⇒ **the same UserId**. Audit shows `LOGIN_SUCCESS … source: "Ldap"` and `source: "Windows"` on one identity |
+| W5a ambient path | The path the browser button takes returns 200 |
+| W5c / W8 | `np_auth` httpOnly + `np_csrf` set, no token in the body; JWT contains **no** group/SID claims |
+| W10 | Re-login ⇒ `USER_WINDOWS_JIT_UPDATED`, same UserId, no duplicate |
+| W11 / W12 | `carol` → Viewer; `bob` → 401 with audit `USER_DIRECTORY_ACCESS_REFUSED / reason=no_allowed_directory_group` |
+| W13 | Disabled AD account ⇒ no login |
+| W18 | 5 parallel first logins ⇒ all 200, exactly one JIT create |
+| W25 | SSO without `np_csrf` ⇒ 200, no 403 |
+| W2 | `/healthz/directory` `Healthy` over real LDAPS against the enterprise CA |
+| **W19 inconclusive** | 401, but **without** a rejection message and without `windows_ntlm_disabled` in the audit — the server did not see any NTLM attempt at all. See "False PASS" below |
 
-Auf einem WORKGROUP-Rechner ohne KDC wurde zusätzlich verifiziert: **W0** (Boot bricht bei
-`AllowNtlmFallback=true` ab), der **Zwei-Phasen-Bootstrap** (Bootstrap-Admin erhält
-`IsBreakGlass=true`), `/healthz/ready` bleibt bei totem DC 200 — und dort **fiel der
-App-Level-NTLM-Zweig wirklich**: 401 mit *„Kerberos required — NTLM fallback is disabled"*
-plus Audit `reason=windows_ntlm_disabled, mechanism=NTLM`. Der Check ist also **nicht
-inert**; er ließ sich im Lab nur nicht auslösen.
+On a WORKGROUP machine without a KDC the following was additionally verified: **W0** (boot aborts with
+`AllowNtlmFallback=true`), the **two-phase bootstrap** (bootstrap admin receives
+`IsBreakGlass=true`), `/healthz/ready` stays 200 with a dead DC — and there the
+**app-level NTLM branch actually triggered**: 401 with *"Kerberos required — NTLM fallback is disabled"*
+plus audit `reason=windows_ntlm_disabled, mechanism=NTLM`. So the check is **not
+inert**; it just could not be triggered in the lab.
 
-### Falscher PASS: warum W19 im Lab nichts beweist
+### False PASS: why W19 proves nothing in the lab
 
-Der Negotiate-Handler challenged mit `WWW-Authenticate: Negotiate`. Ein `CredentialCache`,
-der nur für das Paket `NTLM` registriert ist, findet dafür keinen Eintrag und schickt
-**überhaupt keinen** `Authorization`-Header — der Server sieht nie einen NTLM-Versuch und
-antwortet mit einem leeren 401. Die Probe meldete daraufhin PASS, obwohl im Audit keine
-einzige `windows_ntlm_disabled`-Zeile stand.
+The Negotiate handler challenges with `WWW-Authenticate: Negotiate`. A `CredentialCache`
+registered only for the `NTLM` package finds no entry for it and sends
+**no** `Authorization` header at all — the server never sees an NTLM attempt and
+answers with an empty 401. The probe then reported PASS although the audit contained not
+a single `windows_ntlm_disabled` line.
 
-`Invoke-NtlmProbe.ps1` verlangt jetzt zusätzlich die **Ablehnungsmeldung der Anwendung** im
-Body; ein 401 ohne sie gilt als *unschlüssig*, nicht als Erfolg. Um W19 im Lab wirklich zu
-belegen, braucht es `-Mode Alias`: einen A-Record auf dieselbe IP, für den **kein**
-HTTP-SPN existiert, plus diesen Namen als zweite SAN im Kestrel-Zertifikat. Dann scheitert
-die SPN-Suche, SPNEGO fällt auf NTLM zurück, und die Anwendung kommt überhaupt erst zum Zug.
+`Invoke-NtlmProbe.ps1` now additionally requires the **application's rejection message** in the
+body; a 401 without it counts as *inconclusive*, not as success. To really prove W19 in the lab,
+`-Mode Alias` is needed: an A record for the same IP for which **no**
+HTTP SPN exists, plus this name as a second SAN in the Kestrel certificate. Then
+the SPN lookup fails, SPNEGO falls back to NTLM, and the application gets its turn at all.
 
-**Ergänzt** `scripts/ldap-testdc/` (LDAP-Passwortpfad gegen Samba, 13/13 PASS am
-2026-07-24). Der dortige Samba-DC kann bewusst kein Kerberos: der Negotiate-Handshake
-braucht Domain-Join, und ASP.NET Negotiate nutzt auf Windows SSPI, nicht GSSAPI/Keytab.
+**Complements** `scripts/ldap-testdc/` (LDAP password path against Samba, 13/13 PASS on
+2026-07-24). The Samba DC there deliberately cannot do Kerberos: the Negotiate handshake
+needs a domain join, and ASP.NET Negotiate uses SSPI on Windows, not GSSAPI/keytab.
 
-**Ersetzt NICHT** den vollständigen Feldtest aus `docs/ldap-windows-sso.md` (10-Punkte-
-Matrix). Nicht abgedeckt: HAProxy-Pfad (Punkt 3 bleibt halb offen), Multi-DC-Konsens
-(Punkte 1/6), OIDC/SCIM (8/9), HA-Restart (10). Das Preview-Label kann nach einem grünen
-Lauf **präzisiert, aber nicht gestrichen** werden.
+**Does NOT replace** the complete field test from `docs/ldap-windows-sso.md` (10-point
+matrix). Not covered: HAProxy path (point 3 stays half open), multi-DC consensus
+(points 1/6), OIDC/SCIM (8/9), HA restart (10). After a green
+run the preview label can be **refined, but not removed**.
 
-## Lab-Topologie
+## Lab topology
 
-| Rolle | FQDN | Aufgabe |
+| Role | FQDN | Task |
 |---|---|---|
 | DC | `dc01.np.lab` | AD DS, DNS, LDAPS:636 |
-| API-Member | `npapi01.np.lab` | NodePilot-API (Kestrel HTTPS:443), Postgres |
-| Client | `npcli01.np.lab` | Edge/Chrome, Testsuite |
-| NTLM-Alias | `npapi01-ntlm.np.lab` | **A-Record auf dieselbe IP, ohne SPN** |
+| API member | `npapi01.np.lab` | NodePilot API (Kestrel HTTPS:443), Postgres |
+| Client | `npcli01.np.lab` | Edge/Chrome, test suite |
+| NTLM alias | `npapi01-ntlm.np.lab` | **A record for the same IP, without SPN** |
 
-Realm `NP.LAB`, NetBIOS `NPLAB`, BaseDn `DC=np,DC=lab`, UPN-Suffix `np.lab`.
+Realm `NP.LAB`, NetBIOS `NPLAB`, BaseDn `DC=np,DC=lab`, UPN suffix `np.lab`.
 
-Der NTLM-Alias ist der Kern des Negativtests: gleiche IP, kein `HTTP/`-SPN → SPNEGO fällt
-deterministisch auf NTLM zurück, TLS bleibt gültig (Alias als zweite SAN im
-Kestrel-Zertifikat). Sauberer als der Zugriff per IP-Adresse, weil kein
-Zertifikatswarnungs-Interstitial dazwischenkommt.
+The NTLM alias is the core of the negative test: same IP, no `HTTP/` SPN → SPNEGO falls back
+deterministically to NTLM, TLS stays valid (alias as a second SAN in the
+Kestrel certificate). Cleaner than access by IP address, because no
+certificate warning interstitial gets in the way.
 
-## Testverzeichnis
+## Test directory
 
-| Konto | Gruppen | Zweck |
+| Account | Groups | Purpose |
 |---|---|---|
-| `svc-npdir` | – | LDAPS-Service-Bind |
-| `np.alice` | **nur** `NodePilot-Admins` (in `NodePilot-Access`) | Happy path, transitives Mapping → Admin |
-| `np.carol` | `NodePilot-Access` | Viewer-Default (kein RoleMapping-Treffer) |
-| `np.bob` | keine | AllowedGroup-Gate: 401, **kein** JIT-Row |
-| `np.dave` | `NodePilot-Access` | Race-Drill (bis W18 unberührt lassen) |
-| `np.erin` | `NodePilot-Access` | Disable-/Entzugs-Drills |
+| `svc-npdir` | – | LDAPS service bind |
+| `np.alice` | **only** `NodePilot-Admins` (in `NodePilot-Access`) | Happy path, transitive mapping → Admin |
+| `np.carol` | `NodePilot-Access` | Viewer default (no RoleMapping hit) |
+| `np.bob` | none | AllowedGroup gate: 401, **no** JIT row |
+| `np.dave` | `NodePilot-Access` | Race drill (leave untouched until W18) |
+| `np.erin` | `NodePilot-Access` | Disable/revocation drills |
 
-Das Nesting ist essenziell: alice ist **nur** in `NodePilot-Admins`. Ein erfolgreicher
-Login beweist damit, dass NodePilot transitive `tokenGroups` liest statt bloß `memberOf`.
+The nesting is essential: alice is **only** in `NodePilot-Admins`. A successful
+login therefore proves that NodePilot reads transitive `tokenGroups` rather than just `memberOf`.
 
-## Skripte
+## Scripts
 
-| Datei | Host | Zweck |
+| File | Host | Purpose |
 |---|---|---|
-| `Setup-LabDirectory.ps1` | dc01 | OU, Gruppen (inkl. Nesting), User, UPNs — idempotent |
-| `Get-LabSids.ps1` | dc01 | SIDs auslesen, `-AsEnvBlock` rendert den PHASE-B-Env-Block |
-| `Setup-ApiHost.ps1` | npapi01 | Read-only-Preflight: Domain-Join, Zeitversatz, DNS/CNAME, SPN-Lage, Etypes, Zert-SAN, LDAPS-Bind, Firewall |
-| `Set-BrowserSsoPolicy.ps1` | npcli01 | `AuthServerAllowlist` + ZoneMap, `-Remove` zum Zurückbauen |
-| `ad-sso-live-test.ps1` | npcli01 | Hauptsuite (W1–W25) |
-| `Invoke-NtlmProbe.ps1` | npcli01 | Erzwungener NTLM-Request (W19) |
-| `Get-KerberosEvidence.ps1` | beide | klist / Security-4624 / NTLM-Operational / SPN-Stand → `evidence/` |
-| `Assert-DbState.ps1` | npapi01 | DB-Belege (Identität, Gate, Race, Revocation, NTLM, Audit) |
+| `Setup-LabDirectory.ps1` | dc01 | OU, groups (incl. nesting), users, UPNs — idempotent |
+| `Get-LabSids.ps1` | dc01 | Read SIDs, `-AsEnvBlock` renders the PHASE B env block |
+| `Setup-ApiHost.ps1` | npapi01 | Read-only preflight: domain join, time skew, DNS/CNAME, SPN situation, etypes, cert SAN, LDAPS bind, firewall |
+| `Set-BrowserSsoPolicy.ps1` | npcli01 | `AuthServerAllowlist` + ZoneMap, `-Remove` to roll back |
+| `ad-sso-live-test.ps1` | npcli01 | Main suite (W1–W25) |
+| `Invoke-NtlmProbe.ps1` | npcli01 | Forced NTLM request (W19) |
+| `Get-KerberosEvidence.ps1` | both | klist / Security 4624 / NTLM operational / SPN state → `evidence/` |
+| `Assert-DbState.ps1` | npapi01 | DB evidence (identity, gate, race, revocation, NTLM, audit) |
 
-## Ablauf
+## Procedure
 
-### 1. Zeitsynchronisation (zuerst!)
+### 1. Time synchronization (first!)
 
-Kerberos toleriert ±5 min. Ein größerer Versatz liefert `KRB_AP_ERR_SKEW` und sieht im
-Fehlerbild aus wie „SPN falsch". **Messen, nicht pauschal umkonfigurieren:**
+Kerberos tolerates ±5 min. A larger skew yields `KRB_AP_ERR_SKEW` and in the
+failure pattern looks like "SPN wrong". **Measure, do not reconfigure across the board:**
 
 ```powershell
 $cred = Import-CliXml C:\lab-cred\hyd.xml
 $a = Invoke-Command -VMName <DC>  -Credential $cred -ScriptBlock { (Get-Date).ToUniversalTime() }
 $b = Invoke-Command -VMName <API> -Credential $cred -ScriptBlock { (Get-Date).ToUniversalTime() }
-"Versatz: {0:N1}s (Grenze 300s)" -f ($b - $a).TotalSeconds
+"Skew: {0:N1}s (limit 300s)" -f ($b - $a).TotalSeconds
 ```
 
-> Die verbreitete Empfehlung, in den Gästen die Hyper-V-Zeitsynchronisation zu
-> deaktivieren, gilt **nicht pauschal**. Hinter einem privaten Switch ohne NTP-Ausgang ist
-> der IC-Provider oft die *einzige* Zeitquelle. Im vermessenen Lab lief der DC auf
-> Stratum 6 über „VM IC Time Synchronization Provider", der Versatz zwischen DC und
-> API-Host betrug **0,3 Sekunden** — Deaktivieren hätte die Synchronisation zerstört
-> statt sie zu verbessern.
+> The common recommendation to disable Hyper-V time synchronization in the
+> guests does **not apply across the board**. Behind a private switch without an NTP uplink,
+> the IC provider is often the *only* time source. In the measured lab the DC ran on
+> stratum 6 via "VM IC Time Synchronization Provider", the skew between DC and
+> API host was **0.3 seconds** — disabling it would have destroyed the synchronization
+> instead of improving it.
 >
-> Die Zeit**zone** ist irrelevant: Kerberos rechnet in UTC. Im Lab meldeten die Gäste
-> `Pacific Standard Time` bei einer lokalen Anzeige in MESZ, der UTC-Versatz lag trotzdem
-> unter einer Sekunde. Nie aus der lokalen Uhrzeit auf Skew schließen.
+> The time**zone** is irrelevant: Kerberos computes in UTC. In the lab the guests reported
+> `Pacific Standard Time` with a local display in CEST, the UTC skew was still
+> under a second. Never infer skew from the local time of day.
 
-### 2. Verzeichnis auf dem DC
+### 2. Directory on the DC
 
 ```powershell
 .\Setup-LabDirectory.ps1
-.\Get-LabSids.ps1                 # Übersicht
-.\Get-LabSids.ps1 -AsEnvBlock     # Env-Block für PHASE B
+.\Get-LabSids.ps1                 # overview
+.\Get-LabSids.ps1 -AsEnvBlock     # env block for PHASE B
 ```
 
-Die Domain-SID ist pro Provisionierung neu — SIDs **nie** hartkodieren.
+The domain SID is new per provisioning — **never** hardcode SIDs.
 
-### 3. LDAPS auf dem DC
+### 3. LDAPS on the DC
 
-Entweder AD CS als Enterprise-Root (der DC zieht automatisch ein
-`Kerberos Authentication`-Zertifikat, LDAPS ist danach ohne weiteres Zutun aktiv), oder
-self-signed mit `CN=dc01.np.lab`, passender SAN und EKU *Server Authentication* in
-`LocalMachine\My` des DC.
+Either AD CS as an enterprise root (the DC automatically pulls a
+`Kerberos Authentication` certificate, LDAPS is then active without further action), or
+self-signed with `CN=dc01.np.lab`, a matching SAN and EKU *Server Authentication* in
+`LocalMachine\My` of the DC.
 
-Die Root-CA muss in `LocalMachine\Root` des **API-Hosts** liegen. Es gibt keinen
-In-App-Bypass — die Zertifikatsvalidierung ist unbedingt.
+The root CA must be in `LocalMachine\Root` of the **API host**. There is no
+in-app bypass — certificate validation is unconditional.
 
-### 4. Preflight auf npapi01 (elevated)
+### 4. Preflight on npapi01 (elevated)
 
 ```powershell
 .\Setup-ApiHost.ps1 -ApiFqdn npapi01.np.lab -NtlmAliasFqdn npapi01-ntlm.np.lab -DcFqdn dc01.np.lab
 ```
 
-Jeder `FAIL` erzeugt später ein Kerberos-Fehlerbild, das wie ein Produktdefekt aussieht.
-Ohne grünen Preflight nicht weitermachen.
+Every `FAIL` later produces a Kerberos failure pattern that looks like a product defect.
+Do not continue without a green preflight.
 
-**Dienst-Identität — zwei Varianten:**
+**Service identity — two variants:**
 
-*Variante A (Empfehlung für den Erstdurchlauf): LocalSystem / Maschinenkonto.* Beim
-Domain-Join registriert Windows `HOST/npapi01.np.lab`; `HOST` ist über `sPNMappings` auf
-`http` gemappt, der KDC stellt das Ticket für `HTTP/npapi01.np.lab` also **implizit** aus.
-Kein `setspn` nötig — das eliminiert die häufigste Fehlerursache.
+*Variant A (recommended for the first run): LocalSystem / machine account.* On
+domain join Windows registers `HOST/npapi01.np.lab`; `HOST` is mapped to
+`http` via `sPNMappings`, so the KDC issues the ticket for `HTTP/npapi01.np.lab` **implicitly**.
+No `setspn` needed — that eliminates the most common cause of failure.
 
-*Variante B (Pflicht-Nachlauf, weil so dokumentiert): gMSA.* Ein expliziter SPN gewinnt
-gegen den impliziten HOST-Alias:
+*Variant B (mandatory follow-up run, because it is documented that way): gMSA.* An explicit SPN wins
+over the implicit HOST alias:
 
 ```powershell
-Add-KdsRootKey -EffectiveTime ((Get-Date).AddHours(-10))   # Lab-Abkürzung
+Add-KdsRootKey -EffectiveTime ((Get-Date).AddHours(-10))   # lab shortcut
 New-ADServiceAccount svc-nodepilot -DNSHostName npapi01.np.lab `
     -PrincipalsAllowedToRetrieveManagedPassword 'NPAPI01$'
 setspn -S HTTP/npapi01.np.lab NPLAB\svc-nodepilot$
-setspn -Q HTTP/npapi01.np.lab   # muss GENAU einen Treffer zeigen
+setspn -Q HTTP/npapi01.np.lab   # must show EXACTLY one hit
 ```
 
-`-S` statt `-A` ist nicht kosmetisch: `-A` legt Duplikate an, und ein doppelter SPN führt
-zu `KRB_AP_ERR_MODIFIED` oder zum **stillen** NTLM-Fallback.
+`-S` instead of `-A` is not cosmetic: `-A` creates duplicates, and a duplicate SPN leads
+to `KRB_AP_ERR_MODIFIED` or to a **silent** NTLM fallback.
 
-Matrix komplett unter Variante A fahren, danach W5/W6/W19/W20 unter Variante B
-wiederholen — sonst bleibt der dokumentierte Produktionspfad unbelegt.
+Run the complete matrix under variant A, then repeat W5/W6/W19/W20 under variant B
+— otherwise the documented production path stays unproven.
 
-### 5. NTLM-Policy (GPO auf der npapi01-OU)
+### 5. NTLM policy (GPO on the npapi01 OU)
 
 *Computer Configuration → Windows Settings → Security Settings → Local Policies →
 Security Options*
 
-1. **Zuerst Auditmodus:** *Restrict NTLM: Audit Incoming NTLM Traffic* =
-   `Enable auditing for all accounts` → Event **8004**.
-2. **Erst nach W19 durchsetzen:** *Restrict NTLM: Incoming NTLM traffic* =
-   `Deny all accounts` → Event **4004**, Registry
+1. **Audit mode first:** *Restrict NTLM: Audit Incoming NTLM Traffic* =
+   `Enable auditing for all accounts` → event **8004**.
+2. **Enforce only after W19:** *Restrict NTLM: Incoming NTLM traffic* =
+   `Deny all accounts` → event **4004**, registry
    `HKLM\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0\RestrictReceivingNTLMTraffic = 2`.
 
-**Reihenfolge ist zwingend.** Mit aktiver Deny-GPO weist bereits SSPI
-(`AcceptSecurityContext`) NTLM ab — der Applikationszweig in `AuthController.WindowsLogin`,
-der `windows_ntlm_disabled` auditiert, ist dann **unerreichbar**. W19 (App lehnt ab) und
-W20 (OS lehnt ab) belegen zusammen Punkt 4 der Feldtest-Matrix; einer allein nicht.
+**The order is mandatory.** With the Deny GPO active, SSPI itself
+(`AcceptSecurityContext`) already rejects NTLM — the application branch in `AuthController.WindowsLogin`
+that audits `windows_ntlm_disabled` is then **unreachable**. W19 (app rejects) and
+W20 (OS rejects) together prove point 4 of the field test matrix; neither alone does.
 
-`Authentication:Windows:NtlmDisabledByPolicy=true` ist eine Operator-**Attestierung**,
-keine Durchsetzung. Erst Schritt 2 belegt sie.
+`Authentication:Windows:NtlmDisabledByPolicy=true` is an operator **attestation**,
+not enforcement. Only step 2 proves it.
 
-### 6. Browser-Policy auf npcli01 (elevated)
+### 6. Browser policy on npcli01 (elevated)
 
 ```powershell
 .\Set-BrowserSsoPolicy.ps1 -ApiFqdn npapi01.np.lab
 ```
 
-Danach Edge/Chrome **komplett** neu starten und `edge://policy` prüfen —
-`AuthServerAllowlist` muss als *Applied* erscheinen (Screenshot = Evidenz).
+Then restart Edge/Chrome **completely** and check `edge://policy` —
+`AuthServerAllowlist` must appear as *Applied* (screenshot = evidence).
 
-Bewusst **nicht** gesetzt: `AuthNegotiateDelegateAllowlist` (Delegation ist hier weder
-nötig noch erwünscht) und `AuthSchemes` (der Browser ist der falsche Ort, um NTLM zu
-blocken — SPNEGO transportiert NTLM auch unter `negotiate`; dafür ist Schritt 5 zuständig).
+Deliberately **not** set: `AuthNegotiateDelegateAllowlist` (delegation is neither
+needed nor wanted here) and `AuthSchemes` (the browser is the wrong place to
+block NTLM — SPNEGO also carries NTLM under `negotiate`; step 5 is responsible for that).
 
-### 7. PHASE A — API ohne SSO, Break-Glass bootstrappen
+### 7. PHASE A — API without SSO, bootstrap break-glass
 
-Die Break-Glass-Invariante bricht den Boot ab, wenn bei aktivem externem Provider kein
-aktiver lokaler Admin mit Passwort und `IsBreakGlass=true` existiert. Mit aktivem SSO ist
-der Bootstrap unerreichbar. **Die Reihenfolge ist Pflicht.**
+The break-glass invariant aborts the boot if, with an active external provider, no
+active local admin with a password and `IsBreakGlass=true` exists. With SSO active
+the bootstrap is unreachable. **The order is mandatory.**
 
-**Zuerst das Token-Verzeichnis korrekt anlegen.** `RestrictedFileWriter` prüft **jeden**
-übergeordneten Ordner und verweigert, sobald ein nicht vertrauenswürdiger Principal dort
-`Delete`/`CreateFiles` besitzt. Ein NTFS-Pfad allein genügt nicht: `%TEMP%` trägt
-typischerweise fremde ACEs, und ein frisch unter `C:\ProgramData` angelegter Ordner erbt
-`Write` für `BUILTIN\Benutzer`. Ohne diesen Schritt startet die API zwar, protokolliert
-aber „could not be written with restrictive ACLs" und **der Bootstrap ist deaktiviert**:
+**First create the token directory correctly.** `RestrictedFileWriter` checks **every**
+parent folder and refuses as soon as an untrusted principal has `Delete`/`CreateFiles` there.
+An NTFS path alone is not enough: `%TEMP%` typically carries foreign ACEs, and a folder freshly
+created under `C:\ProgramData` inherits `Write` for `BUILTIN\Benutzer`. Without this step the API does start,
+but logs "could not be written with restrictive ACLs" and **the bootstrap is disabled**:
 
 ```powershell
 $dir = 'C:\ProgramData\NodePilot-Labtest'
 New-Item -ItemType Directory -Path $dir -Force | Out-Null
 $me  = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
 $acl = New-Object System.Security.AccessControl.DirectorySecurity
-$acl.SetAccessRuleProtection($true, $false)   # Vererbung aus, nichts uebernehmen
+$acl.SetAccessRuleProtection($true, $false)   # inheritance off, take nothing over
 $acl.SetOwner($me)
 foreach ($sid in @($me,
                    (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-18')),
@@ -269,30 +268,30 @@ Invoke-RestMethod -Uri https://npapi01.np.lab/api/auth/login -Method Post `
   -Body (@{ username='breakglass.admin'; password='Boot#20260802!Adm1n' } | ConvertTo-Json)
 ```
 
-Läuft der Dienst als LocalSystem/gMSA, ist die Token-Datei per Owner-only-ACL auch für
-Admins nicht direkt lesbar → per Backup-Semantik lesen:
+If the service runs as LocalSystem/gMSA, the token file with an owner-only ACL is not directly
+readable even for admins → read it with backup semantics:
 `robocopy C:\ProgramData\NodePilot-Labtest $env:TEMP admin-setup.token /B`
 
-### 8. PHASE B — API mit LDAPS + Windows-SSO neu starten
+### 8. PHASE B — restart the API with LDAPS + Windows SSO
 
-Env-Block aus `Get-LabSids.ps1 -AsEnvBlock` übernehmen, zusätzlich die Kestrel-Variablen
-aus Phase A beibehalten. Env-Vars gewinnen gegen `appsettings.runtime.json`
-(Deployment-Policy > UI) — die Dev-Konfiguration bleibt unberührt.
+Take over the env block from `Get-LabSids.ps1 -AsEnvBlock` and additionally keep the Kestrel variables
+from phase A. Env vars win over `appsettings.runtime.json`
+(deployment policy > UI) — the dev configuration stays untouched.
 
-**Warum LDAPS trotz „nur Windows-SSO" Pflicht ist:** Der Boot-Validator läuft bereits bei
-`Ldap:Enabled || Windows:Enabled` und fordert Endpoints, `BaseDn`, Service-Bind und
-mindestens eine `AllowedGroupSids`. Zur Laufzeit macht der Controller bei **jedem**
-Windows-Login einen autoritativen LDAPS-`LookupBySubjectAsync` — Kerberos-PAC-Gruppen
-werden bewusst nicht getraut, weil sie stundenalt sein können.
+**Why LDAPS is mandatory despite "Windows SSO only":** The boot validator already runs for
+`Ldap:Enabled || Windows:Enabled` and demands endpoints, `BaseDn`, service bind and
+at least one `AllowedGroupSids`. At run time the controller performs an authoritative LDAPS
+`LookupBySubjectAsync` on **every** Windows login — Kerberos PAC groups
+are deliberately not trusted because they can be hours old.
 
-`Ldap:Enabled=true` ist für den Lauf nötig, weil W9 (Identitätsgleichheit) den
-Passwortpfad braucht. Die Windows-only-Topologie prüft W23 separat.
+`Ldap:Enabled=true` is needed for the run because W9 (identity equality) requires the
+password path. W23 tests the Windows-only topology separately.
 
-`Cluster:Enabled` auf `false` lassen — sonst laufen `DirectorySynchronizationService` und
-`ExternalAuthorizationStalenessService` nicht und die Revocation-Drills messen nichts.
-Vorab `/healthz/leader` → 200 prüfen.
+Leave `Cluster:Enabled` at `false` — otherwise `DirectorySynchronizationService` and
+`ExternalAuthorizationStalenessService` do not run and the revocation drills measure nothing.
+Check `/healthz/leader` → 200 beforehand.
 
-### 9. Suite laufen lassen (npcli01, lokal interaktiv als np.alice)
+### 9. Run the suite (npcli01, locally interactive as np.alice)
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\ad-sso-live-test.ps1 `
@@ -300,113 +299,113 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\ad-sso-live-test.ps1 `
     -DbPassword '<postgres-pw>' -DbName nodepilot_adssotest
 ```
 
-Drills separat, weil langlaufend bzw. störend:
+Drills separately, because they are long-running or disruptive:
 
 ```powershell
 .\ad-sso-live-test.ps1 -IncludeOutageDrill -DcVmName dc01 -HyperVHost <hv-host>
 .\ad-sso-live-test.ps1 -IncludeRevocationDrill -RevocationWorkflowId <guid>   # 3-16 min
-.\ad-sso-live-test.ps1 -IncludeRateLimitDrill                                 # drosselt die IP ~60 s
+.\ad-sso-live-test.ps1 -IncludeRateLimitDrill                                 # throttles the IP for ~60 s
 ```
 
-### 10. Evidenz sichern
+### 10. Secure the evidence
 
 ```powershell
-.\Get-KerberosEvidence.ps1 -Role Client              # auf npcli01
-.\Get-KerberosEvidence.ps1 -Role Server              # auf npapi01, elevated
+.\Get-KerberosEvidence.ps1 -Role Client              # on npcli01
+.\Get-KerberosEvidence.ps1 -Role Server              # on npapi01, elevated
 .\Assert-DbState.ps1 -DbPassword '<pw>' -DbName nodepilot_adssotest
 ```
 
-### 11. Aufräumen
+### 11. Clean up
 
 ```powershell
 .\Set-BrowserSsoPolicy.ps1 -Remove                   # npcli01
-# Variante-C-SPNs (falls die API zwischendurch als Domänenbenutzer lief) zurückbauen:
-setspn -D HTTP/npapi01.np.lab NPLAB\<konto>
-# Test-DB: DROP DATABASE nodepilot_adssotest WITH (FORCE);
+# Remove variant C SPNs (if the API ran as a domain user in between):
+setspn -D HTTP/npapi01.np.lab NPLAB\<account>
+# Test DB: DROP DATABASE nodepilot_adssotest WITH (FORCE);
 Remove-Item -Recurse -Force 'C:\ProgramData\NodePilot-Labtest'
 ```
 
-## Testmatrix
+## Test matrix
 
-Automatisiert in `ad-sso-live-test.ps1`:
+Automated in `ad-sso-live-test.ps1`:
 
-| # | Szenario | Erwartung |
+| # | Scenario | Expectation |
 |---|---|---|
 | W1 | `/api/auth/methods` | `windows=true`, `windowsEndpoint=/api/auth/windows` |
-| W2 | `/healthz/{live,ready,directory,leader}` | alle 200, directory `Healthy` |
-| W3 | Break-Glass-Login trotz aktivem SSO | 200, Admin |
-| W5 | **Happy Path Kerberos** | 200, Role **Admin** (nur transitiv!), `np_auth` httpOnly + `np_csrf`, **kein** Token im Body |
-| W6a | `klist tickets` | Service-Ticket `HTTP/npapi01.np.lab` vorhanden |
-| W7 | `/api/auth/me` mit SSO-Cookie | 200, korrekte Identität |
-| W8 | JWT-Payload dekodiert | **keine** Gruppen-/SID-Claims (Positivform siehe unten) |
-| W9 | LDAP-Login derselben Person | gleiche `userId`, genau eine `ExternalIdentity` |
-| W10 | Zweiter SSO-Login | gleiche `userId` (JIT-Update, kein Duplikat) |
-| W11 | carol | 200, Role Viewer |
-| W12 | bob | 401, **kein** User-Row |
-| W25 | SSO ohne `np_csrf` | 200 (Cookie-Bootstrap-Ausnahme), kein 403 |
-| W13 | `-IncludeDisableDrill` | deaktiviertes AD-Konto → kein Login |
-| W14 | `-IncludeOutageDrill` | DC weg → **503** fail-closed, Break-Glass bleibt 200, `/healthz/ready` bleibt 200 |
-| W15/16 | `-IncludeRevocationDrill` | Gruppenentzug → Session revoked ≤ 15 min, Execution gestoppt |
-| W18 | `-IncludeRaceDrill` | 5 parallele Erst-Logins → genau 1 User, 1 Identity, 1 `USER_WINDOWS_JIT_CREATED` |
-| W19 | `-IncludeNtlmProbe` | erzwungenes NTLM → 401, kein `np_auth`, Audit `windows_ntlm_disabled` |
-| W22 | `-IncludeRateLimitDrill` | 429; misst, wie viele Tokens ein SSO-Login kostet |
+| W2 | `/healthz/{live,ready,directory,leader}` | all 200, directory `Healthy` |
+| W3 | Break-glass login despite active SSO | 200, Admin |
+| W5 | **Happy path Kerberos** | 200, role **Admin** (only transitively!), `np_auth` httpOnly + `np_csrf`, **no** token in the body |
+| W6a | `klist tickets` | Service ticket `HTTP/npapi01.np.lab` present |
+| W7 | `/api/auth/me` with SSO cookie | 200, correct identity |
+| W8 | JWT payload decoded | **no** group/SID claims (see below for the positive form) |
+| W9 | LDAP login of the same person | same `userId`, exactly one `ExternalIdentity` |
+| W10 | Second SSO login | same `userId` (JIT update, no duplicate) |
+| W11 | carol | 200, role Viewer |
+| W12 | bob | 401, **no** user row |
+| W25 | SSO without `np_csrf` | 200 (cookie bootstrap exception), no 403 |
+| W13 | `-IncludeDisableDrill` | disabled AD account → no login |
+| W14 | `-IncludeOutageDrill` | DC gone → **503** fail-closed, break-glass stays 200, `/healthz/ready` stays 200 |
+| W15/16 | `-IncludeRevocationDrill` | group removal → session revoked ≤ 15 min, execution stopped |
+| W18 | `-IncludeRaceDrill` | 5 parallel first logins → exactly 1 user, 1 identity, 1 `USER_WINDOWS_JIT_CREATED` |
+| W19 | `-IncludeNtlmProbe` | forced NTLM → 401, no `np_auth`, audit `windows_ntlm_disabled` |
+| W22 | `-IncludeRateLimitDrill` | 429; measures how many tokens an SSO login costs |
 
-### Manuelle Testpunkte
+### Manual test points
 
-Nicht skriptbar — Belege gehören nach `evidence/`:
+Not scriptable — evidence belongs in `evidence/`:
 
-| # | Szenario | Vorgehen / Beleg |
+| # | Scenario | Procedure / evidence |
 |---|---|---|
-| W0 | Boot-Validator | PHASE B mit `Authentication__Windows__AllowNtlmFallback=true` starten → Startabbruch („Kerberos-only"). Danach zurücksetzen |
-| W4 | Break-Glass-Invariante | Zweit-DB mit einem User ohne `IsBreakGlass`, SSO an → Startabbruch vor SSO-Traffic |
-| W6b | **Browser-SSO ohne Prompt** | **Vorbedingung:** Browser-Policy gesetzt (`Set-BrowserSsoPolicy.ps1`), **alle** Browser-Prozesse beendet (`Get-Process msedge \| Stop-Process -Force`), `cmdkey /list` ohne Eintrag für die Origin, kein ESSO-/Credential-Filler installiert. Dann Edge starten, `edge://policy` zeigt `AuthServerAllowlist` als *Applied*, `/login` öffnen, SSO-Button klicken. **Bestanden ist nur ein Login ganz OHNE Credential-Dialog** — ein 200 allein genügt nicht. Zusätzlich Fiddler: zwei Legs, `401 WWW-Authenticate: Negotiate` → `200` mit `Authorization: Negotiate YII...` (SPNEGO, **nicht** `TlRMTVNTUA==` = NTLMSSP). Evidenz: `.saz`, `edge://policy`-Screenshot, Dashboard-Screenshot |
-| W6c | **Gegenprobe zu W6b** | `Set-BrowserSsoPolicy.ps1 -Remove`, erneut **kalt** starten, klicken → der Dialog **muss** zurückkommen. Ohne diesen Punkt bleibt „kein Dialog" ein Zufallsbefund: ein warmer Cache, ein gespeichertes Kennwort oder ein Credential-Filler erzeugen dasselbe Bild. Danach Policy wiederherstellen |
-| W17 | Kein Falsch-Tombstoning | `BaseDn` auf eine leere OU biegen, Neustart, einen Sync-Zyklus abwarten → Log „all-not-found pass rejected", `IsTombstoned`-Count unverändert |
-| W20 | NTLM-Negativ (OS-Ebene) | Deny-GPO aktiv, W19 wiederholen → 401 aus dem Handler, **kein** App-Audit; Event 4004 |
-| W21 | Kerberos überlebt die GPO | W5 mit aktiver Deny-GPO → 200 |
-| W23 | Windows-only-Topologie | Neustart mit `Ldap__Enabled=false` → Boot ok, SSO ok, `methods.ldap=false`, `/healthz/directory` weiter `Healthy` |
-| W24 | Restart-Semantik | `Windows__Enabled=false` **ohne** Restart → `methods` meldet weiter `windows=true` (Prozessstart-Snapshot); nach Restart `windows=false` und Endpoint 404 |
-| W26 | Username-Kollision | Lokalen User `np.alice@np.lab` ohne External Identity anlegen, SSO mit anderer SID → 401, Audit `USER_WINDOWS_REFUSED_COLLISION`, **kein** Auto-Merge |
-| W27 | SPN-Duplikat (destruktiv, zuletzt) | `setspn -A HTTP/npapi01.np.lab NPLAB\np.bob`, W5 wiederholen → Kerberos bricht; danach `setspn -D`. Zweck: das Fehlerbild dokumentieren |
+| W0 | Boot validator | Start PHASE B with `Authentication__Windows__AllowNtlmFallback=true` → startup abort ("Kerberos-only"). Reset afterwards |
+| W4 | Break-glass invariant | Second DB with a user without `IsBreakGlass`, SSO on → startup abort before SSO traffic |
+| W6b | **Browser SSO without prompt** | **Precondition:** browser policy set (`Set-BrowserSsoPolicy.ps1`), **all** browser processes terminated (`Get-Process msedge \| Stop-Process -Force`), `cmdkey /list` without an entry for the origin, no ESSO/credential filler installed. Then start Edge, `edge://policy` shows `AuthServerAllowlist` as *Applied*, open `/login`, click the SSO button. **Only a login with NO credential dialog at all passes** — a 200 alone is not enough. Additionally Fiddler: two legs, `401 WWW-Authenticate: Negotiate` → `200` with `Authorization: Negotiate YII...` (SPNEGO, **not** `TlRMTVNTUA==` = NTLMSSP). Evidence: `.saz`, `edge://policy` screenshot, dashboard screenshot |
+| W6c | **Control test for W6b** | `Set-BrowserSsoPolicy.ps1 -Remove`, start **cold** again, click → the dialog **must** come back. Without this point, "no dialog" remains a chance finding: a warm cache, a saved password or a credential filler produce the same picture. Afterwards restore the policy |
+| W17 | No false tombstoning | Point `BaseDn` at an empty OU, restart, wait for one sync cycle → log "all-not-found pass rejected", `IsTombstoned` count unchanged |
+| W20 | NTLM negative (OS level) | Deny GPO active, repeat W19 → 401 from the handler, **no** app audit; event 4004 |
+| W21 | Kerberos survives the GPO | W5 with the Deny GPO active → 200 |
+| W23 | Windows-only topology | Restart with `Ldap__Enabled=false` → boot ok, SSO ok, `methods.ldap=false`, `/healthz/directory` still `Healthy` |
+| W24 | Restart semantics | `Windows__Enabled=false` **without** restart → `methods` keeps reporting `windows=true` (process-start snapshot); after restart `windows=false` and endpoint 404 |
+| W26 | Username collision | Create a local user `np.alice@np.lab` without an external identity, SSO with a different SID → 401, audit `USER_WINDOWS_REFUSED_COLLISION`, **no** auto-merge |
+| W27 | SPN duplicate (destructive, last) | `setspn -A HTTP/npapi01.np.lab NPLAB\np.bob`, repeat W5 → Kerberos breaks; afterwards `setspn -D`. Purpose: document the failure pattern |
 
-### Reihenfolge-Abhängigkeiten
+### Order dependencies
 
-W0/W4 vor PHASE B · W1–W12 in Reihe · W13/W15/W16 nur mit `np.erin` (nie mit alice, sonst
-ist der Admin weg) · W18 vor jedem anderen `np.dave`-Kontakt · **W19 zwingend vor W20**
-(danach ist der App-Zweig tot) · W17/W23/W24 brauchen Neustarts, ans Ende · W27 ganz zuletzt.
+W0/W4 before PHASE B · W1–W12 in sequence · W13/W15/W16 only with `np.erin` (never with alice, otherwise
+the admin is gone) · W18 before any other `np.dave` contact · **W19 strictly before W20**
+(afterwards the app branch is dead) · W17/W23/W24 need restarts, put them at the end · W27 dead last.
 
-## Stolperfallen
+## Pitfalls
 
-| Symptom / Risiko | Ursache & Fix |
+| Symptom / risk | Cause & fix |
 |---|---|
-| Diffuse 401 trotz korrektem SPN | **HTTP/2.** Das HTTP/1.1-Pinning greift nur bei `Kestrel:Https:Enabled=true` **und** `Authentication:Windows:Enabled=true` (`KestrelHttpsConfigurator.cs:92/138`). `dotnet run --urls https://...` umgeht den Pfad, ALPN handelt h2 aus. Entweder `Kestrel__Https__Enabled=true` oder bewusst Klartext-HTTP |
-| `KRB_AP_ERR_SKEW`, sieht aus wie „SPN falsch" | Zeitversatz > 5 min. **UTC-Versatz messen** (Schritt 1) statt blind die IC-Zeitsync abzuschalten — hinter einem privaten Switch ist sie oft die einzige Quelle |
-| **gMSA/Dienstkonto ohne SPN** ⇒ Kerberos scheitert still | Läuft der Dienst unter einem gMSA oder Domänenbenutzer, deckt das `HOST/`-SPN des **Computerkontos** ihn nicht ab: das Ticket ist mit dem Schlüssel des Computerkontos verschlüsselt und für den Dienstprozess unlesbar. SPNEGO fällt auf NTLM zurück, der Test meldet fälschlich „NTLM-Ablehnung funktioniert". Prüfen mit `setspn -L '<DOMAIN>\<gmsa>$'`, setzen mit `setspn -S HTTP/<fqdn> '<DOMAIN>\<gmsa>$'` |
-| TLS bricht mit „underlying connection was closed: An unexpected error occurred on a send" | **Kein TLS-Problem.** In einem Remote-Runspace (`Invoke-Command`) kann `ServerCertificateValidationCallback = { $true }` nicht laufen — „There is no Runspace available to run scripts in this thread" —, der Callback wirft und die Verbindung bricht. Richtige Lösung: das Zertifikat auf dem Client wirklich vertrauen (`LocalMachine\Root`), nicht die Validierung umgehen. Gegenprobe: `curl.exe` ohne `-k` |
-| Suite bricht mit „running scripts is disabled on this system" ab | Execution Policy des Clients. Über einen Child-Prozess starten: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File …`; die Kerberos-Tickets der Anmeldesitzung bleiben dabei erhalten |
-| **Credential-Dialog beim Klick auf den SSO-Button** | Die Origin steht nicht in `AuthServerAllowlist` bzw. nicht in der Intranet-Zone. Der Browser weist das vorhandene Ticket dann **nicht** automatisch vor und fragt stattdessen. `Set-BrowserSsoPolicy.ps1` ausführen, Browser **komplett** neu starten, `edge://policy` auf *Applied* prüfen |
-| **Erster Klick fragt, zweiter nicht** | Der HTTP-Auth-Credential-Cache der Browser-**Sitzung**. Ein NodePilot-Logout beendet die Anwendungssession, nicht diesen Cache. Das ist **kein** SSO-Beleg — nur ein Kaltstart aller Browser-Prozesse macht den Test aussagekräftig |
-| **Still trotz Kaltstart, obwohl keine Policy gesetzt ist** | Persistenter Eintrag in der Windows-Anmeldeinformationsverwaltung („Anmeldedaten speichern" im Dialog) oder ein ESSO-/Credential-Filler auf dem Endgerät. Beides füllt das Kennwort ein und **maskiert damit die fehlende Policy**. `cmdkey /list` an der Konsole prüfen; der Nachweis ist nur auf einem Client ohne Ausfüllwerkzeug zu führen |
-| W19 meldet 401, aber das Audit bleibt leer | Unbeantwortete `Negotiate`-Challenge, kein NTLM-Versuch. `-Mode Alias` mit SPN-freiem A-Record nutzen — siehe „Falscher PASS" oben |
-| Zugriff **vom API-Host selbst** fällt auf NTLM/401 | LSA-Loopback-Prüfung. Immer von npcli01 testen. `DisableLoopbackCheck` **nicht** setzen — das verfälscht das Ergebnis und ist eine Sicherheitsregression |
-| `localhost` statt FQDN | Kein `HTTP/localhost`-SPN. Für LDAP zusätzlich `::1`-Auflösung → `LdapException 81`. Überall FQDNs |
-| Kerberos bricht **still** auf NTLM | SPN-Duplikat oder SPN auf dem falschen Konto. `setspn -S` (nie `-A`), `setspn -X` vor jedem Lauf. Variante-C-SPNs nach dem Umbau löschen |
-| SPN passt nicht zum aufgerufenen Namen | **CNAME-Kanonisierung** — Chromium bildet den SPN aus dem A-Record-Ziel. Im Lab direkten A-Record verwenden |
-| TLS-Warnung oder falscher SPN | Zertifikatsname ≠ SPN-Host. Eine Kette: URL-Host = SPN-Host = Zert-SAN; NTLM-Alias als zweite SAN |
-| „Bootstrap token … could not be written with restrictive ACLs" | **NTFS reicht nicht.** `RestrictedFileWriter` prüft jeden Vorfahren auf `Delete`/`CreateFiles` für untrusted Principals. `%TEMP%` fällt an fremden ACEs durch, ein neuer `C:\ProgramData`-Ordner an geerbtem `Write` für `BUILTIN\Benutzer`, ein exFAT-Laufwerk an fehlenden ACLs (Owner „Jeder"). Verzeichnis mit dem Snippet aus Schritt 7 geschützt anlegen. **Die API startet trotzdem** — nur der Bootstrap ist still deaktiviert |
-| Bootstrap liefert 401/503 obwohl Token korrekt | SSO war schon aktiv — PHASE A vor PHASE B |
-| `windows_ntlm_disabled` fehlt im Audit | Deny-GPO ist bereits aktiv, SSPI lehnt vor dem Controller ab. Für W19 in den Auditmodus zurück |
-| `-UseDefaultCredentials` liefert 401 | **Double-Hop.** Über `Enter-PSSession`/WinRM hat der Prozess kein delegierbares TGT. Lokale interaktive Sitzung verwenden |
-| `LdapException 81` „server unavailable" trotz laufendem DC | Maskiert auch Zertifikatsprobleme: DC-SAN, CA-Trust im `LocalMachine\Root` des API-Hosts, FQDN statt IP prüfen |
-| `/api/auth/methods` zeigt alte Werte | `ActiveAuthenticationConfiguration` ist ein Prozessstart-Snapshot. Nach jeder `Authentication:*`-Änderung neu starten |
-| `KDC_ERR_ETYPE_NOSUPP` | RC4-only-Konto plus AES-erzwingende Policy. `Get-ADComputer NPAPI01 -Properties msDS-SupportedEncryptionTypes` |
-| gMSA lässt sich nicht anlegen | KDS-Root-Key braucht 10 h. Im Lab `Add-KdsRootKey -EffectiveTime ((Get-Date).AddHours(-10))` |
-| 429 früher als erwartet | `UseRateLimiter()` steht **vor** `UseAuthentication()` — der anonyme Challenge-Leg verbraucht ebenfalls ein Token. Effektives Budget ≈25 Logins/min/IP statt 50 |
+| Diffuse 401 despite a correct SPN | **HTTP/2.** The HTTP/1.1 pinning only takes effect with `Kestrel:Https:Enabled=true` **and** `Authentication:Windows:Enabled=true` (`KestrelHttpsConfigurator.cs:92/138`). `dotnet run --urls https://...` bypasses the path, ALPN negotiates h2. Either `Kestrel__Https__Enabled=true` or deliberately plain-text HTTP |
+| `KRB_AP_ERR_SKEW`, looks like "SPN wrong" | Time skew > 5 min. **Measure the UTC skew** (step 1) instead of blindly disabling the IC time sync — behind a private switch it is often the only source |
+| **gMSA/service account without SPN** ⇒ Kerberos fails silently | If the service runs under a gMSA or domain user, the `HOST/` SPN of the **computer account** does not cover it: the ticket is encrypted with the key of the computer account and unreadable for the service process. SPNEGO falls back to NTLM, the test wrongly reports "NTLM rejection works". Check with `setspn -L '<DOMAIN>\<gmsa>$'`, set with `setspn -S HTTP/<fqdn> '<DOMAIN>\<gmsa>$'` |
+| TLS fails with "underlying connection was closed: An unexpected error occurred on a send" | **Not a TLS problem.** In a remote runspace (`Invoke-Command`) `ServerCertificateValidationCallback = { $true }` cannot run — "There is no Runspace available to run scripts in this thread" —, the callback throws and the connection breaks. Correct solution: actually trust the certificate on the client (`LocalMachine\Root`), do not bypass validation. Control test: `curl.exe` without `-k` |
+| Suite aborts with "running scripts is disabled on this system" | Execution policy of the client. Start it via a child process: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File …`; the Kerberos tickets of the logon session are preserved |
+| **Credential dialog when clicking the SSO button** | The origin is not in `AuthServerAllowlist` or not in the intranet zone. The browser then does **not** present the existing ticket automatically and prompts instead. Run `Set-BrowserSsoPolicy.ps1`, restart the browser **completely**, check `edge://policy` for *Applied* |
+| **First click prompts, second does not** | The HTTP auth credential cache of the browser **session**. A NodePilot logout ends the application session, not this cache. This is **no** SSO evidence — only a cold start of all browser processes makes the test meaningful |
+| **Silent despite a cold start, although no policy is set** | A persistent entry in the Windows Credential Manager ("Remember my credentials" in the dialog) or an ESSO/credential filler on the endpoint. Both fill in the password and **thereby mask the missing policy**. Check `cmdkey /list` at the console; the proof can only be made on a client without a fill tool |
+| W19 reports 401, but the audit stays empty | Unanswered `Negotiate` challenge, no NTLM attempt. Use `-Mode Alias` with an SPN-free A record — see "False PASS" above |
+| Access **from the API host itself** falls back to NTLM/401 | LSA loopback check. Always test from npcli01. Do **not** set `DisableLoopbackCheck` — it falsifies the result and is a security regression |
+| `localhost` instead of FQDN | No `HTTP/localhost` SPN. For LDAP additionally `::1` resolution → `LdapException 81`. FQDNs everywhere |
+| Kerberos breaks **silently** to NTLM | SPN duplicate or SPN on the wrong account. `setspn -S` (never `-A`), `setspn -X` before every run. Delete variant C SPNs after the rebuild |
+| SPN does not match the called name | **CNAME canonicalization** — Chromium forms the SPN from the A record target. Use a direct A record in the lab |
+| TLS warning or wrong SPN | Certificate name ≠ SPN host. One chain: URL host = SPN host = cert SAN; NTLM alias as a second SAN |
+| "Bootstrap token … could not be written with restrictive ACLs" | **NTFS is not enough.** `RestrictedFileWriter` checks every ancestor for `Delete`/`CreateFiles` for untrusted principals. `%TEMP%` fails on foreign ACEs, a new `C:\ProgramData` folder on inherited `Write` for `BUILTIN\Benutzer`, an exFAT drive on missing ACLs (owner "Everyone"). Create the directory protected with the snippet from step 7. **The API starts anyway** — only the bootstrap is silently disabled |
+| Bootstrap returns 401/503 although the token is correct | SSO was already active — PHASE A before PHASE B |
+| `windows_ntlm_disabled` is missing in the audit | The Deny GPO is already active, SSPI rejects before the controller. Go back to audit mode for W19 |
+| `-UseDefaultCredentials` returns 401 | **Double hop.** Via `Enter-PSSession`/WinRM the process has no delegatable TGT. Use a local interactive session |
+| `LdapException 81` "server unavailable" despite a running DC | Also masks certificate problems: check DC SAN, CA trust in `LocalMachine\Root` of the API host, FQDN instead of IP |
+| `/api/auth/methods` shows old values | `ActiveAuthenticationConfiguration` is a process-start snapshot. Restart after every `Authentication:*` change |
+| `KDC_ERR_ETYPE_NOSUPP` | RC4-only account plus AES-enforcing policy. `Get-ADComputer NPAPI01 -Properties msDS-SupportedEncryptionTypes` |
+| gMSA cannot be created | The KDS root key needs 10 h. In the lab `Add-KdsRootKey -EffectiveTime ((Get-Date).AddHours(-10))` |
+| 429 earlier than expected | `UseRateLimiter()` sits **before** `UseAuthentication()` — the anonymous challenge leg also consumes a token. Effective budget ≈25 logins/min/IP instead of 50 |
 
-### Erwartete JWT-Form (W8)
+### Expected JWT shape (W8)
 
-Der Token trägt die **langen** Claim-URIs, nicht die Kurzformen — gegen die Dev-API am
-2026-08-02 verifiziert:
+The token carries the **long** claim URIs, not the short forms — verified against the dev API on
+2026-08-02:
 
 ```
 http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier
@@ -415,55 +414,55 @@ http://schemas.microsoft.com/ws/2008/06/identity/claims/role
 jti, iat, np_iat_ms, np_session, np_secstamp, exp, iss, aud
 ```
 
-Die Prüfung ist deshalb bewusst eine **Negativ**-Prüfung (kein `group`/`primarysid`/
-`objectsid`/`sid`-Claim) und keine Positiv-Whitelist — letztere wäre gegen jede Änderung
-des `OutboundClaimTypeMap` spröde. In URI-Form heißt ein Gruppen-Claim
-`.../claims/groupsid`, das Muster fängt also beide Schreibweisen.
+The check is therefore deliberately a **negative** check (no `group`/`primarysid`/
+`objectsid`/`sid` claim) and not a positive whitelist — the latter would be brittle against any change
+to the `OutboundClaimTypeMap`. In URI form a group claim is called
+`.../claims/groupsid`, so the pattern catches both spellings.
 
-### Integrated Windows Authentication vs. Credential-Filler (ESSO)
+### Integrated Windows Authentication vs. credential filler (ESSO)
 
-Beide Verfahren führen den Anwender ohne Tippen ins Ziel — sie sind trotzdem nicht dasselbe,
-und die Verwechslung kostet den ganzen Testwert.
+Both methods take the user to the destination without typing — they are still not the same thing,
+and confusing them costs the entire test value.
 
-- **IWA/Kerberos** (das, was NodePilot macht): der Browser weist ein kurzlebiges,
-  dienstgebundenes Ticket vor. **Im gesamten Vorgang existiert kein Passwort.**
-- **Credential-Filler** (Windows-Anmeldeinformationsverwaltung, ESSO-Produkte wie Imprivata,
-  Evidian, NetIQ SecureLogin): ein Kennwort wird in den Dialog eingetragen — nur eben nicht
-  vom Menschen. Legitim und für Anwendungen gedacht, die kein Kerberos können; NodePilot
-  braucht es nicht.
+- **IWA/Kerberos** (what NodePilot does): the browser presents a short-lived,
+  service-bound ticket. **No password exists in the entire process.**
+- **Credential filler** (Windows Credential Manager, ESSO products such as Imprivata,
+  Evidian, NetIQ SecureLogin): a password is entered into the dialog — just not
+  by the human. Legitimate and intended for applications that cannot do Kerberos; NodePilot
+  does not need it.
 
-Für den Test entscheidend: **serverseitig sind beide nicht unterscheidbar.** SSPI erzeugt in
-beiden Fällen ein gültiges Kerberos-AP-REQ, im Audit steht identisch `source: "Windows"`.
-Ein Filler maskiert damit eine fehlende Browser-Policy vollständig. Der Nachweis lässt sich
-deshalb nur clientseitig führen — auf einem Client ohne Ausfüllwerkzeug, mit leerem Tresor
-und nach Kaltstart. Genau dafür existiert die Gegenprobe W6c.
+What matters for the test: **the two cannot be distinguished server-side.** SSPI produces a
+valid Kerberos AP-REQ in both cases, and the audit identically says `source: "Windows"`.
+A filler therefore completely masks a missing browser policy. The proof can consequently
+only be made client-side — on a client without a fill tool, with an empty vault
+and after a cold start. That is exactly why the control test W6c exists.
 
-## Diagnose-Fallen, die kein Produktdefekt sind
+## Diagnostic traps that are not a product defect
 
-- **Die UI verschluckt die Fehlerursache.** `LoginPage` mappt 401 (kein Ticket), 401
-  (NTLM), 401 (keine Gruppe), 503 (DC weg), 404 (SSO aus) und 429 auf **dieselbe**
-  Meldung. Urteile nie aus der UI ableiten, immer aus HTTP-Status + Audit-Zeile.
-- **`windows_directory_unavailable` ist doppeldeutig.** Eine LDAPS-Fehlkonfiguration
-  liefert denselben Reason-Code wie ein echter DC-Ausfall. Für W14 muss
-  `/healthz/directory` vorher `Healthy` gewesen sein, sonst ist das 503 nicht aussagekräftig.
-- **Kollisionen erzeugen kein `LOGIN_FAILED`.** Bei Username-Kollision, Identitätskonflikt
-  und Tombstone schreibt der Controller nur eine Metrik; das Audit kommt aus
-  `ExternalUserMapper` als `USER_WINDOWS_REFUSED_*`. SIEM-Regeln, die nur `LOGIN_*`
-  beobachten, verlieren diese Fälle.
-- **Zwei unabhängige Uhren steuern die Revocation.** `DirectorySynchronizationService`
-  (1–5 min, leader-only) reagiert auf Gruppenentzug/Disable;
-  `ExternalAuthorizationStalenessService` hält die 15-Minuten-Decke und fängt den
-  DC-Ausfall ab. Für die Drills `DirectorySyncIntervalMinutes=1` setzen, aber die
-  15-Minuten-Obergrenze als Bestehensschwelle nehmen.
+- **The UI swallows the cause of the error.** `LoginPage` maps 401 (no ticket), 401
+  (NTLM), 401 (no group), 503 (DC gone), 404 (SSO off) and 429 to the **same**
+  message. Never derive verdicts from the UI, always from HTTP status + audit line.
+- **`windows_directory_unavailable` is ambiguous.** An LDAPS misconfiguration
+  yields the same reason code as a real DC outage. For W14 `/healthz/directory` must
+  have been `Healthy` beforehand, otherwise the 503 is not meaningful.
+- **Collisions do not produce `LOGIN_FAILED`.** For username collision, identity conflict
+  and tombstone the controller writes only a metric; the audit comes from
+  `ExternalUserMapper` as `USER_WINDOWS_REFUSED_*`. SIEM rules that only
+  watch `LOGIN_*` lose these cases.
+- **Two independent clocks control revocation.** `DirectorySynchronizationService`
+  (1–5 min, leader-only) reacts to group removal/disable;
+  `ExternalAuthorizationStalenessService` holds the 15-minute ceiling and catches the
+  DC outage. For the drills set `DirectorySyncIntervalMinutes=1`, but take the
+  15-minute upper bound as the pass threshold.
 
-## Grenzen
+## Limits
 
-- **Kein HAProxy** — Punkt 3 der Feldtest-Matrix (Handshake über den Produktions-Proxy,
-  `http-reuse never`, connection-scoped Negotiate) bleibt offen.
-- **Nur ein DC** — Multi-DC-Konsens (`ReconcileEndpointResults`: jeder Endpoint-Fehler
-  ⇒ 503, **kein** Failover) ist nicht ausübbar. Punkte 1 und 6 bleiben offen, ebenso die
-  in `docs/ldap-windows-sso.md` notierte Design-vs-Doc-Spannung.
-- **Kein OIDC/SCIM** (Punkte 8/9) und **kein HA-Restart** (Punkt 10).
-- Der Browser-Handshake und die GPO-Wirksamkeit bleiben manuell.
-  `Invoke-WebRequest -UseDefaultCredentials` beweist Kerberos auf dem HTTP-Stack, **nicht**
-  die Browser-Policy — beide Nachweise sind nötig, einer ersetzt den anderen nicht.
+- **No HAProxy** — point 3 of the field test matrix (handshake through the production proxy,
+  `http-reuse never`, connection-scoped Negotiate) stays open.
+- **Only one DC** — multi-DC consensus (`ReconcileEndpointResults`: any endpoint failure
+  ⇒ 503, **no** failover) cannot be exercised. Points 1 and 6 stay open, as does the
+  design-vs-doc tension noted in `docs/ldap-windows-sso.md`.
+- **No OIDC/SCIM** (points 8/9) and **no HA restart** (point 10).
+- The browser handshake and the effectiveness of the GPO remain manual.
+  `Invoke-WebRequest -UseDefaultCredentials` proves Kerberos on the HTTP stack, **not**
+  the browser policy — both proofs are needed, one does not replace the other.

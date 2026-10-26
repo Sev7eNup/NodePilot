@@ -1,15 +1,15 @@
 # NodePilot Docs UI
 
-Dokumentations-Website für NodePilot — eine React 19 SPA (Vite + Tailwind CSS 4), die Markdown-Inhalte aus `content/` rendert und die Optik des NodePilot-App-Shell spiegelt: dieselbe Sidebar (292px-Rail mit Brand-Header, Suchfeld, Section-Titles und Icon-Pills), dieselbe schlanke TopBar und dieselben Design-Tokens (Light = Blau, Dark = das Default-Skin **„Azur"**, kühles Graphit + Azur-Akzent).
+Documentation website for NodePilot — a React 19 SPA (Vite + Tailwind CSS 4) that renders Markdown content from `content/` and mirrors the look of the NodePilot app shell: the same sidebar (292px rail with brand header, search field, section titles and icon pills), the same slim TopBar and the same design tokens (light = blue, dark = the default skin **"Azur"**, cool graphite + azure accent).
 
-**Design-Tokens und Sidebar-CSS sind aus `src/nodepilot-ui/src/index.css` kopiert**, nicht importiert (getrennte Vite-Roots, getrenntes `npm ci` in CI). Beim Kopieren werden zwei mechanische Rewrites angewendet, damit ein Re-Sync ein trivialer Diff bleibt — beide sind im Kopf des kopierten Blocks in `src/index.css` dokumentiert:
+**Design tokens and sidebar CSS are copied from `src/nodepilot-ui/src/index.css`**, not imported (separate Vite roots, separate `npm ci` in CI). Two mechanical rewrites are applied when copying so that a re-sync stays a trivial diff — both are documented in the header of the copied block in `src/index.css`:
 
-1. `[data-skin="dark"]` entfällt (die Docs haben nur ein Dark-Skin, kein 10-Skin-System).
-2. Blankes `aside` in Selektoren wird zu `.np-sidebar` (sonst erbt die TOC-Rail in `Toc.tsx` den Rail-Gradient).
+1. `[data-skin="dark"]` is dropped (the docs have only one dark skin, no 10-skin system).
+2. A bare `aside` in selectors becomes `.np-sidebar` (otherwise the TOC rail in `Toc.tsx` inherits the rail gradient).
 
-Im selben Paket liegt außerdem die Projekt-Website (`src/site/`), siehe [Projekt-Website](#projekt-website).
+The same package also contains the project website (`src/site/`), see [Project website](#project-website).
 
-## Entwickeln
+## Development
 
 ```powershell
 cd src\nodepilot-docs-ui
@@ -20,235 +20,234 @@ npm run dev      # http://localhost:5174/docs/
 ## Build
 
 ```powershell
-npm run build    # statischer Output in dist/
-npm run preview  # Build lokal vorschauen
+npm run build    # static output in dist/
+npm run preview  # preview the build locally
 ```
 
-## Projekt-Website
+## Project website
 
-Die Projekt-Website liegt in `src/site/`: Vanilla-TypeScript ohne React und Tailwind, zweisprachig
-(DE/EN), mit eigenem Vite-Build (`vite.site.config.ts`, Output `dist-site/`). Sie ist nie Teil von
-`dist/` und damit nie Teil des Server-Artefakts oder des Desktop-Pakets.
+The project website lives in `src/site/`: vanilla TypeScript without React and Tailwind, bilingual
+(DE/EN), with its own Vite build (`vite.site.config.ts`, output `dist-site/`). It is never part of
+`dist/` and therefore never part of the server artifact or the desktop package.
 
 ```powershell
-npm run dev:site       # nur die Website, http://localhost:5175
-npm run build:site     # Website-Build nach dist-site/
-npm run build:demo     # Browser-Demo im Nachbarpaket bauen (src/nodepilot-ui -> dist-demo/)
-npm run assemble:site  # _site/ aus dist-site/, dist/, dist-demo/ und pages-media/ zusammensetzen (Builds vorher)
-npm run preview:site   # build + build:site + build:demo + assemble:site, danach _site/ auf http://localhost:5175
-npm run build:pages-redirects  # Weiterleitungsseiten für GitHub Pages nach _pages-redirects/
-npm run test:site:e2e  # Playwright-Suite e2e-site/ gegen frisch gebaute Website und Doku
+npm run dev:site       # website only, http://localhost:5175
+npm run build:site     # website build into dist-site/
+npm run build:demo     # build the browser demo in the neighbouring package (src/nodepilot-ui -> dist-demo/)
+npm run assemble:site  # assemble _site/ from dist-site/, dist/, dist-demo/ and pages-media/ (run the builds first)
+npm run preview:site   # build + build:site + build:demo + assemble:site, then serve _site/ on http://localhost:5175
+npm run build:pages-redirects  # redirect pages for GitHub Pages into _pages-redirects/
+npm run test:site:e2e  # Playwright suite e2e-site/ against a freshly built website and docs
 ```
 
-`preview:site` ist die einzige vollständige lokale Vorschau: `docs/`, `demo/` und `media/` gibt es
-nur im zusammengesetzten `_site/`. Jede dieser Eingaben ist Pflicht — eine optionale ließe einen
-Deploy die vorige Fassung stillschweigend weiterveröffentlichen, ohne dass etwas rot wird. Dieses Verzeichnis veröffentlicht `deploy/Publish-Site.ps1` auf dem Webspace.
-GitHub Pages erhält ausschließlich `_pages-redirects/` aus `npm run build:pages-redirects`.
-Der Pages-Workflow baut weder Website noch Demo und benötigt deren Assets nicht.
+`preview:site` is the only complete local preview: `docs/`, `demo/` and `media/` exist
+only in the assembled `_site/`. Every one of these inputs is mandatory — an optional one would let a
+deploy silently keep publishing the previous version without anything turning red. `deploy/Publish-Site.ps1` publishes this directory to the web space.
+GitHub Pages receives only `_pages-redirects/` from `npm run build:pages-redirects`.
+The Pages workflow builds neither the website nor the demo and does not need their assets.
 
-| In `_site/` | Quelle | Adresse |
+| In `_site/` | Source | Address |
 |---|---|---|
-| Wurzel | `dist-site/` | https://www.nodepilot.run/ |
+| Root | `dist-site/` | https://www.nodepilot.run/ |
 | `docs/` | `dist/` | https://www.nodepilot.run/docs/ |
 | `demo/` | `../nodepilot-ui/dist-demo/` | https://www.nodepilot.run/demo/ |
 | `media/` | `pages-media/` | https://www.nodepilot.run/media/nodepilot-product-tour.mp4 |
-| `og-image.png` | `public/og-image.png` | Vorschaubild der Website |
+| `og-image.png` | `public/og-image.png` | Preview image of the website |
 
-**Media-Bereich** (`/tutorials/`, „NodePilot in 2 Minuten"): Die Adresse bleibt für
-bestehende Such- und Direktlinks erhalten; `/media/` liefert die Videodateien.
-`npm run site:videos` liest die
-gerenderten Folgen aus `out/nodepilot-training/` und erledigt drei Dinge:
+**Media section** (`/tutorials/`, "NodePilot in 2 Minuten"): The address is kept for
+existing search results and direct links; `/media/` serves the video files.
+`npm run site:videos` reads the
+rendered episodes from `out/nodepilot-training/` and does three things:
 
-- Es kopiert die MP4s nach `pages-media/training/`. Der Ordner ist gitignored.
-- Es erzeugt die Poster unter `src/site/public/training/`.
-- Es schreibt `src/site/videos.json`.
+- It copies the MP4s to `pages-media/training/`. The folder is gitignored.
+- It generates the posters under `src/site/public/training/`.
+- It writes `src/site/videos.json`.
 
-Die Dateinamen tragen einen Content-Hash. So bekommt ein neu gerendertes Video eine neue Adresse.
-`publishedAt` und `youtube` pflegt man in `videos.json` von Hand; ein neuer Lauf übernimmt diese
-Werte. `deploy/Publish-Site.ps1` lädt nur Videos hoch, die auf dem Server noch fehlen. Das
-geschieht vor allen anderen Dateien. Fehlt danach eines, bricht der Deploy ab, bevor eine Seite
-darauf verweist.
+The file names carry a content hash. This way a newly rendered video gets a new address.
+`publishedAt` and `youtube` are maintained by hand in `videos.json`; a new run keeps these
+values. `deploy/Publish-Site.ps1` uploads only videos that are still missing on the server. This
+happens before all other files. If one is still missing afterwards, the deploy aborts before a page
+references it.
 
-Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/<seite>/`.
+Deep links into the docs have the form `https://www.nodepilot.run/docs/<language>/<page>/`.
 
-- **`NP_SITE_ORIGIN`:** Standard ist `https://www.nodepilot.run`; Canonical, Open Graph,
-  `hreflang`, Sitemaps und der Demo-Link nutzen diesen Ursprung. Die Variable überschreibt
-  ihn für lokale Vorschauen oder andere Webspace-Ziele. `deploy/Publish-Site.ps1` setzt sie
-  aus seiner Konfiguration. Die Demo verwendet feste Pfade unter `/demo/`.
-- **`np-site-root`:** Beim Kopieren nach `_site/docs/` stempelt `assemble-site.mjs` ein
-  `<meta name="np-site-root" content="../">` in die `index.html` — und schlägt fehl, wenn der
-  `</head>`-Anker fehlt. Dasselbe `dist/` wird nämlich ein zweites Mal ausgeliefert, als
-  `wwwroot/docs` im Produkt, wo weder Website noch Demo danebenliegen. `src/lib/siteContext.ts`
-  liest das Meta, und nur wenn es da ist, zeigt die Sidebar die Rückwege zu `../` und `../demo/`.
-  Ein `<meta>` und kein Inline-`<script>`, weil die Doku unter `script-src 'self'` läuft.
+- **`NP_SITE_ORIGIN`:** The default is `https://www.nodepilot.run`; canonical, Open Graph,
+  `hreflang`, sitemaps and the demo link use this origin. The variable overrides
+  it for local previews or other web space targets. `deploy/Publish-Site.ps1` sets it
+  from its configuration. The demo uses fixed paths under `/demo/`.
+- **`np-site-root`:** When copying to `_site/docs/`, `assemble-site.mjs` stamps a
+  `<meta name="np-site-root" content="../">` into `index.html` — and fails if the
+  `</head>` anchor is missing. The same `dist/` is shipped a second time, as
+  `wwwroot/docs` in the product, where neither the website nor the demo sit next to it. `src/lib/siteContext.ts`
+  reads the meta, and only if it is present does the sidebar show the links back to `../` and `../demo/`.
+  A `<meta>` and not an inline `<script>`, because the docs run under `script-src 'self'`.
 
-- **Routen sind echte Adressen.** `/product/`, `/blog/scorch-import/` und so weiter. Die
-  Segmente sind englisch, weil eine Adresse beide Sprachfassungen bedient; `impressum` und
-  `datenschutz` bleiben deutsch, weil es diese Seiten nur auf Deutsch gibt. Nach dem
-  Vite-Build schreibt das Plugin `np-site-prerender` (`vite.site.config.ts`) aus der einen
-  gebauten Hülle je Route eine eigene Datei, dazu `404.html`, `sitemap.xml`, `robots.txt` und `llms.txt`.
-  Die Regeln dafür stehen als reine Funktionen in `src/site/prerender.ts`. Jede Datei bekommt
-  eigenen Titel, eigene Beschreibung und eigene `canonical`-URL und enthält nur ihren eigenen
-  Seitenabschnitt (`keepPage`); Seiten- und Sprachwechsel sind normale Seitenaufrufe.
-  `npm run dev:site` liefert jede Routenadresse mit derselben Hülle, zugeschnitten auf die Route
-  (Plugin `siteDevRoutes`); Artikeltexte gibt es nur im Build.
+- **Routes are real addresses.** `/product/`, `/blog/scorch-import/` and so on. The
+  segments are English because one address serves both language versions; `impressum` and
+  `datenschutz` stay German because these pages exist only in German. After the
+  Vite build, the plugin `np-site-prerender` (`vite.site.config.ts`) writes a separate file per route from the one
+  built shell, plus `404.html`, `sitemap.xml`, `robots.txt` and `llms.txt`.
+  The rules for this are pure functions in `src/site/prerender.ts`. Each file gets
+  its own title, its own description and its own `canonical` URL and contains only its own
+  page section (`keepPage`); page and language switches are normal page loads.
+  `npm run dev:site` serves every route address with the same shell, tailored to the route
+  (plugin `siteDevRoutes`); article texts exist only in the build.
 
-  Weil die Website auch in einem Unterverzeichnis liegen kann, ist in der Quelle
-  jede interne URL relativ zur Wurzel geschrieben. Der Prerender hebt sie je Tiefe an und setzt
-  `<meta name="np-site-base">` auf denselben Präfix; `main.ts` liest das Meta, um aus der Adresse
-  eine Route zu machen, und `setBasePrefix()` gibt es an die Doku-Links weiter. **Wer eine neue
-  Route anlegt, trägt sie in `ROUTE_PATHS` bzw. `ARTICLE_SLUGS` und in `routePages()` ein** —
-  sonst entsteht keine Datei und die Adresse landet auf der 404-Seite.
+  Because the website may also live in a subdirectory, every internal URL in the source is written
+  relative to the root. The prerender raises it per depth and sets
+  `<meta name="np-site-base">` to the same prefix; `main.ts` reads the meta to turn the address
+  into a route, and `setBasePrefix()` passes it on to the docs links. **Whoever adds a new
+  route registers it in `ROUTE_PATHS` or `ARTICLE_SLUGS` and in `routePages()`** —
+  otherwise no file is created and the address ends up on the 404 page.
 
-- **Alte Doku- und Website-Links:** Früher lag die Doku an der Pages-Wurzel
-  (`…/NodePilot/#/en/deployment/logs`), und die Website selbst benutzte Hash-Routen (`#/produkt`).
-  `src/site/public/legacy-docs-redirect.js` läuft als erstes klassisches Script im `<head>` und
-  leitet beides per `location.replace` weiter: einen Hash, dessen erstes Segment keine
-  Website-Route ist, nach `docs/`, jeden anderen auf die echte Adresse — dabei benennt er die
-  früheren deutschen Segmente um (`produkt` → `product`, `erleben` → `walkthrough`,
-  `warum-nodepilot` → `why-nodepilot`). Dieselben Umbenennungen stehen als 301 in
-  `src/site/public/.htaccess`, für Aufrufe ohne Hash. Website-Routen sind
-  `SITE_ROUTE_SEGMENTS` aus `src/site/router.ts` (`walkthrough`, `product`, `blog`, `impressum`,
-  `datenschutz`); dieselbe Liste steht wörtlich im Redirect-Script. Eine neue Route gehört in
-  beide Listen und darf mit keinem Doku-Pfad und keiner Sprache kollidieren.
-- **Hell/Dunkel:** Die Website hat einen Umschalter im Header neben der Sprachwahl. `:root` trägt die
-  hellen Tokens (die der App), `html.dark` die dunklen; `src/site/public/theme-init.js` setzt die
-  Klasse vor dem ersten Paint aus `np-docs-theme` (sonst OS-Einstellung), derselbe Schlüssel wie in den
-  Docs. Neue Farben als Token in **beiden** Blöcken anlegen (`theme-tokens.test.mjs`).
-- **Texte und Sprache:** Website-Texte stehen in `src/site/i18n/de.ts` und `en.ts`.
-  Blogtexte liegen separat in `content/blog/`; `src/site/blog-catalog.json` enthält Metadaten,
-  Verlinkung und Veröffentlichungsstand. Sie werden als vollständiges HTML ausgeliefert und
-  gehören nicht ins gemeinsame JavaScript. Deutsche URLs bleiben bestehen, englische Fassungen
-  liegen unter `/en/`, jeweils mit eigenem Canonical und gegenseitigem `hreflang`.
-  Einstiege ohne Sprachsegment verwenden die bewusst gespeicherte Auswahl (`LANG_STORAGE_KEY`),
-  die Website und Docs teilen; nur die Sprachschalter speichern eine Präferenz. Ohne gespeicherte
-  Auswahl bleibt die Website auf der deutschen Adresse: Eine Weiterleitung nach Browsersprache
-  träfe auch Suchmaschinen-Crawler, die deutsche Seiten dann als englische sähen. Docs-Adressen
-  ohne Sprachsegment nehmen ohne gespeicherte Auswahl die erste unterstützte Browsersprache
-  (DE/EN), sonst Englisch. Ausdrückliche Sprachsegmente
-  (`/en/` auf der Website, `/de/` und `/en/` in den Docs) bleiben maßgeblich und überschreiben
-  die gespeicherte Wahl nicht. Impressum und Datenschutz bleiben ausschließlich deutsch.
-  `NP_BLOG_PREVIEW=1` bindet Entwürfe nur zur lokalen Prüfung ein (`noindex`, ohne Sitemap-Eintrag).
-  Vor der Veröffentlichung die Variable entfernen oder auf `0` setzen. Für freigegebene Artikel
-  `status: published` und das tatsächliche `publishedAt` setzen; `modifiedAt` nur bei einer
-  wirklichen Aktualisierung. `npm run images:site` erzeugt responsive WebP-Varianten automatisch
-  vor dem Website-Build. Einzelheiten: [SEO-Umsetzung](../../docs/seo-local-review.md).
-- **Zwei Grafiken auf der Startseite**, beide als Inline-SVG ohne Bilddatei: das Workflow-Beispiel
-  im Hero (`src/site/graph.ts`) und das Architekturdiagramm darunter (`src/site/topology.ts`). Die
-  Geometrie steht in diesen beiden Dateien als reine Funktionen, `main.ts` schreibt die Koordinaten
-  ins Markup und wählt je nach Breite das weite oder das gestapelte Layout. Beide Animationen
-  laufen nur, solange die Grafik im Sichtfeld ist, und die globale
-  `prefers-reduced-motion`-Regel in `site.css` schaltet sie ab — die Grafiken müssen deshalb ohne
-  Bewegung vollständig lesbar bleiben.
-- **Keine Drittanfragen:** Schriften (`@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-mono`),
-  App-Icon und Screenshots aus `docs/images/` werden mitgebaut, das Video liegt unter `media/`.
-  Google Fonts und `raw.githubusercontent.com` sind tabu; die Datenschutzerklärung verlässt sich
-  darauf.
-- **Rechtstexte:** Impressum (`/impressum/`) und Datenschutz (`/datenschutz/`) rendern
-  `src/site/legal/impressum.de.html` und `src/site/legal/datenschutz.de.html`. Die Texte liefert
-  der Projektinhaber. Sie liegen nur auf Deutsch vor und erscheinen auch in der englischen Ansicht
-  auf Deutsch. Fehlt eine Datei oder ist sie leer, schlägt der Test fehl.
-- **Eigene Domain:** Die Seite läuft unter <https://www.nodepilot.run/>, ausgeliefert von
-  `deploy/Publish-Site.ps1` auf den eigenen Webspace. GitHub Pages leitet alte Links auf die
-  entsprechende Adresse dort weiter, einschließlich historischer Hash-Links und Doku-Deep-Links.
-  Bekannte Pfade erhalten HTML-Seiten mit Canonical, JavaScript-Weiterleitung und Meta-Refresh
-  ohne JavaScript; `404.html` übernimmt übrige Pfade. Es handelt sich um Browser-Weiterleitungen,
-  nicht um HTTP-301. Ziel-Origin ist fest `https://www.nodepilot.run`; Query und Anker bleiben erhalten.
-- **Demo:** Browser-Routing unter `/demo/`, Apache-Fallback nur für Seitenpfade; fehlende Assets
-  bleiben 404. Alte `#/…`-Links werden vor App-Start umgeschrieben. Die Demo bleibt `noindex`.
-- **Umstellung veröffentlichen:** Erst den vollständigen Webspace-Build hochladen und Demo-Deep-Links
-  samt Reload prüfen, danach den Pages-Workflow mit dem Weiterleitungsartefakt veröffentlichen.
-  GitHub-Pages-Einstellung und DNS bleiben unverändert.
+- **Old docs and website links:** The docs used to live at the Pages root
+  (`…/NodePilot/#/en/deployment/logs`), and the website itself used hash routes (`#/produkt`).
+  `src/site/public/legacy-docs-redirect.js` runs as the first classic script in the `<head>` and
+  redirects both via `location.replace`: a hash whose first segment is not a
+  website route goes to `docs/`, every other one to the real address — in doing so it renames the
+  former German segments (`produkt` → `product`, `erleben` → `walkthrough`,
+  `warum-nodepilot` → `why-nodepilot`). The same renames are in
+  `src/site/public/.htaccess` as 301s, for requests without a hash. Website routes are
+  `SITE_ROUTE_SEGMENTS` from `src/site/router.ts` (`walkthrough`, `product`, `blog`, `impressum`,
+  `datenschutz`); the same list appears verbatim in the redirect script. A new route belongs in
+  both lists and must not collide with any docs path or any language.
+- **Light/dark:** The website has a toggle in the header next to the language switch. `:root` carries the
+  light tokens (those of the app), `html.dark` the dark ones; `src/site/public/theme-init.js` sets the
+  class before the first paint from `np-docs-theme` (otherwise the OS setting), the same key as in the
+  docs. Add new colors as a token in **both** blocks (`theme-tokens.test.mjs`).
+- **Texts and language:** Website texts live in `src/site/i18n/de.ts` and `en.ts`.
+  Blog texts are kept separately in `content/blog/`; `src/site/blog-catalog.json` contains metadata,
+  linking and publication status. They are shipped as complete HTML and
+  do not belong in the shared JavaScript. German URLs stay in place, English versions
+  live under `/en/`, each with its own canonical and mutual `hreflang`.
+  Entry points without a language segment use the deliberately stored choice (`LANG_STORAGE_KEY`),
+  which website and docs share; only the language switches store a preference. Without a stored
+  choice, the website stays on the German address: a redirect by browser language
+  would also hit search engine crawlers, which would then see German pages as English ones. Docs addresses
+  without a language segment take the first supported browser language
+  (DE/EN) when there is no stored choice, otherwise English. Explicit language segments
+  (`/en/` on the website, `/de/` and `/en/` in the docs) remain authoritative and do not override
+  the stored choice. Impressum and Datenschutz (imprint and privacy policy) stay exclusively German.
+  `NP_BLOG_PREVIEW=1` includes drafts only for local review (`noindex`, no sitemap entry).
+  Remove the variable or set it to `0` before publishing. For approved articles, set
+  `status: published` and the actual `publishedAt`; set `modifiedAt` only for a
+  real update. `npm run images:site` generates responsive WebP variants automatically
+  before the website build. Details: [SEO implementation](../../docs/seo-local-review.md).
+- **Two graphics on the home page**, both as inline SVG without an image file: the workflow example
+  in the hero (`src/site/graph.ts`) and the architecture diagram below it (`src/site/topology.ts`). The
+  geometry lives in these two files as pure functions, `main.ts` writes the coordinates
+  into the markup and chooses the wide or the stacked layout depending on the width. Both animations
+  run only while the graphic is in view, and the global
+  `prefers-reduced-motion` rule in `site.css` turns them off — the graphics must therefore remain
+  fully readable without motion.
+- **No third-party requests:** Fonts (`@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-mono`),
+  app icon and screenshots from `docs/images/` are built in, the video lives under `media/`.
+  Google Fonts and `raw.githubusercontent.com` are off limits; the privacy policy relies
+  on this.
+- **Legal texts:** Impressum (`/impressum/`) and Datenschutz (`/datenschutz/`) render
+  `src/site/legal/impressum.de.html` and `src/site/legal/datenschutz.de.html`. The texts are supplied by
+  the project owner. They exist only in German and also appear in German in the English view. If a file is missing or empty, the test fails.
+- **Own domain:** The site runs at <https://www.nodepilot.run/>, delivered by
+  `deploy/Publish-Site.ps1` to its own web space. GitHub Pages redirects old links to the
+  corresponding address there, including historical hash links and docs deep links.
+  Known paths get HTML pages with canonical, JavaScript redirect and meta refresh
+  without JavaScript; `404.html` handles the remaining paths. These are browser redirects,
+  not HTTP 301. The target origin is fixed to `https://www.nodepilot.run`; query and anchor are preserved.
+- **Demo:** Browser routing under `/demo/`, Apache fallback only for page paths; missing assets
+  stay 404. Old `#/…` links are rewritten before the app starts. The demo stays `noindex`.
+- **Publishing the switch:** First upload the complete web space build and check demo deep links
+  including reload, then publish the Pages workflow with the redirect artifact.
+  GitHub Pages setting and DNS stay unchanged.
 
-## E2E-Tests der Website
+## Website E2E tests
 
-`e2e-site/` prüft Website und Doku im Browser, jeweils gegen einen frischen Build. Aufruf
-`npm run test:site:e2e`, Config `playwright.site.config.ts`. Sie baut Weiterleitungen, Website und
-Doku und serviert Website (Port 5176) und Doku (Port 5187) getrennt per `vite preview`.
+`e2e-site/` tests website and docs in the browser, each against a fresh build. Invoked with
+`npm run test:site:e2e`, config `playwright.site.config.ts`. It builds redirects, website and
+docs and serves website (port 5176) and docs (port 5187) separately via `vite preview`.
 
-- `docs-routing.spec.ts`: Doku-Deep-Links als eigene Seiten mit erreichbaren Assets, eigene
-  Beschreibung und Übersetzung je Seite, Adresse und Titel beim Navigieren, alte Hash-Adressen.
-- `experience.spec.ts`: geführter Einstieg mit beiden Aufgaben in der aktuellen Sprache und bei
-  schmalen Breiten, Links bleiben nach Seitenwechseln korrekt.
-- `language-preference.spec.ts`: Website-Adressen behalten ihre Sprache, die Doku nimmt die
-  Browsersprache als Vorgabe, nur die Sprachschalter speichern eine Wahl, deutschsprachige
-  Rechtsseiten bleiben erreichbar.
-- `pages-redirects.spec.ts`: alte GitHub-Pages-Links landen auf der passenden kanonischen Adresse,
-  Doku-Seiten auch ohne JavaScript per Meta-Refresh.
-- `seo.spec.ts`: statischer Seiteninhalt, Canonical und Sprachverweise ohne JavaScript,
-  Artikel-Navigation, responsive Bilder (hell und dunkel), der Hell/Dunkel-Umschalter und die
-  Schulungsvideo-Dialoge.
+- `docs-routing.spec.ts`: docs deep links as separate pages with reachable assets, own
+  description and translation per page, address and title while navigating, old hash addresses.
+- `experience.spec.ts`: guided introduction with both tasks in the current language and at
+  narrow widths, links stay correct after page changes.
+- `language-preference.spec.ts`: website addresses keep their language, the docs take the
+  browser language as default, only the language switches store a choice, German-language
+  legal pages stay reachable.
+- `pages-redirects.spec.ts`: old GitHub Pages links land on the matching canonical address,
+  docs pages also without JavaScript via meta refresh.
+- `seo.spec.ts`: static page content, canonical and language links without JavaScript,
+  article navigation, responsive images (light and dark), the light/dark toggle and the
+  training video dialogs.
 
-## Geführter Produkteinstieg
+## Guided product tour
 
-Die Website-Route `/walkthrough/` bietet zehn Aufgaben direkt in der Browserdemo an:
-Workflow-Bau, Fehleranalyse und Dateibereitstellung stehen am Anfang. Danach folgen
-Entscheidung, parallele Arbeit, Dienst-Recovery, Live Ops, Versionsvergleich,
-Maschinenprüfung und Wartungsfenster.
-Jede Karte öffnet `demo/?tour=<id>&lang=de` oder `lang=en`. Die Übersichtsgrafik bleibt
-auf der Startseite.
+The website route `/walkthrough/` offers ten tasks directly in the browser demo:
+workflow building, error analysis and file provisioning come first. They are followed by
+decision, parallel work, service recovery, Live Ops, version comparison,
+machine check and maintenance window.
+Each card opens `demo/?tour=<id>&lang=de` or `lang=en`. The overview graphic stays
+on the home page.
 
-Die Führung in `../nodepilot-ui/demo/ui/tour.ts` begleitet den echten Startdialog und die
-Ausführungshistorie. Die acht weiteren Aufgaben liegen in `../nodepilot-ui/demo/ui/additionalTours.ts`.
-Alle Änderungen und Ausführungen bleiben im Browser-Tab; ein Reload stellt die Seed-Daten wieder her.
-Der Datei-Workflow kommt aus `scripts/example-guided-file-workflow.json`; Registry, Dienst und
-Dateisystem sind simuliert. `Protected` simuliert fehlende Schreibrechte beim Kopieren.
+The tour in `../nodepilot-ui/demo/ui/tour.ts` accompanies the real start dialog and the
+execution history. The eight further tasks live in `../nodepilot-ui/demo/ui/additionalTours.ts`.
+All changes and executions stay in the browser tab; a reload restores the seed data.
+The file workflow comes from `scripts/example-guided-file-workflow.json`; registry, service and
+file system are simulated. `Protected` simulates missing write permissions when copying.
 
-`npm run test:site:e2e` prüft Einstieg, Sprachwechsel und drei Bildschirmgrößen.
-Die eigentliche Führung wird mit `npm --prefix ../nodepilot-ui run test:e2e:demo` geprüft.
-Vor dem ersten Lauf Chromium mit `npx playwright install chromium` installieren.
+`npm run test:site:e2e` checks the introduction, language switching and three screen sizes.
+The tour itself is checked with `npm --prefix ../nodepilot-ui run test:e2e:demo`.
+Before the first run, install Chromium with `npx playwright install chromium`.
 
-## Struktur
+## Structure
 
-Marketingmedien liegen in `pages-media/`. Der normale Build für Server und Desktop enthält sie
-nicht. Erst `scripts/assemble-site.mjs` kopiert sie beim Zusammensetzen von `_site/` nach
-`_site/media/` (siehe [Projekt-Website](#projekt-website)). Die Video-Adresse
-`…/NodePilot/media/nodepilot-product-tour.mp4` und damit der README-Video-Link bleiben dadurch
-stabil. `.gitattributes` schließt `pages-media/` per `export-ignore` aus dem `git archive`-Snapshot
-für `knowledge/source` aus.
+Marketing media live in `pages-media/`. The normal build for server and desktop does not contain
+them. Only `scripts/assemble-site.mjs` copies them to
+`_site/media/` when assembling `_site/` (see [Project website](#project-website)). The video address
+`…/NodePilot/media/nodepilot-product-tour.mp4` and with it the README video link therefore stay
+stable. `.gitattributes` excludes `pages-media/` via `export-ignore` from the `git archive` snapshot
+for `knowledge/source`.
 
-- `src/data/nav.ts` — Seitenbaum, Gruppierung, Sidebar-Icon je Seite, Prev/Next-Logik, `groupOf()` für den Breadcrumb. Das `icon`-Feld ist **required**: `tsc -b` schlägt fehl, sobald eine neue Seite ohne Icon eingetragen wird.
-- `src/lib/content.ts` — lädt nur `content/de/**/*.md` und `content/en/**/*.md` als Raw-Strings; Blogquellen bleiben außerhalb des Doku-/Installer-Bundles
-- `src/lib/useTheme.ts` — Light/Dark-Toggle (LocalStorage). Die Erstauflösung passiert in der externen Datei `public/theme-init.js`, die `index.html` als klassisches Script ohne `defer`/`async` **vor** dem ersten Paint lädt (kein Theme-Flash, kompatibel mit `script-src 'self'`); der Hook seedet aus der gesetzten `html.dark`-Klasse.
+- `src/data/nav.ts` — page tree, grouping, sidebar icon per page, prev/next logic, `groupOf()` for the breadcrumb. The `icon` field is **required**: `tsc -b` fails as soon as a new page is registered without an icon.
+- `src/lib/content.ts` — loads only `content/de/**/*.md` and `content/en/**/*.md` as raw strings; blog sources stay outside the docs/installer bundle
+- `src/lib/useTheme.ts` — light/dark toggle (LocalStorage). The initial resolution happens in the external file `public/theme-init.js`, which `index.html` loads as a classic script without `defer`/`async` **before** the first paint (no theme flash, compatible with `script-src 'self'`); the hook seeds from the set `html.dark` class.
 - `src/components/` — `TopBar`, `Sidebar`, `DocPage`, `Toc`, `SearchModal`
-- `src/index.css` — Tailwind + Design-Tokens (Material-3-Tonal-Palette / Azur) + portierte `.np-sidebar`-, `.np-nav`- und `.np-card`-Blöcke + `.np-prose`
-- `index.html` — SPA-Root (`#root`) + Pre-Hydration-Theme-Script
+- `src/index.css` — Tailwind + design tokens (Material 3 tonal palette / Azur) + ported `.np-sidebar`, `.np-nav` and `.np-card` blocks + `.np-prose`
+- `index.html` — SPA root (`#root`) + pre-hydration theme script
 
-Icons: `@carbon/icons-react` — dieselbe Bibliothek wie die Haupt-UI, und wo eine Docs-Seite auf eine App-Seite abbildet, ist auch dasselbe Glyph gewählt.
+Icons: `@carbon/icons-react` — the same library as the main UI, and where a docs page maps to an app page, the same glyph is chosen as well.
 
-Die Sidebar ist ein einziges `<aside>` für beide Layouts: ab `lg` eine sticky 292px-Rail, darunter ein Off-Canvas-Drawer. Der Mobile-Zweig ist bewusst mit `max-lg:`-Utilities geschrieben (nicht mit `lg:`-Overrides) — ein bis ins Desktop-Layout überlebendes `translate` würde das Element zum Containing-Block für `position: fixed` machen.
+The sidebar is a single `<aside>` for both layouts: from `lg` upward a sticky 292px rail, below that an off-canvas drawer. The mobile branch is deliberately written with `max-lg:` utilities (not with `lg:` overrides) — a `translate` that survives into the desktop layout would turn the element into the containing block for `position: fixed`.
 
-Inhalte in Markdown, gegliedert nach `getting-started/`, `concepts/`, `designer/`, `api/`, `security/`, `enterprise/`, `configuration/`, `deployment/` plus Top-Level-Referenzseiten (`activities-reference`, `triggers`, `cli`, `ai-features`, `observability`, `import-export`).
+Content in Markdown, organised into `getting-started/`, `concepts/`, `designer/`, `api/`, `security/`, `enterprise/`, `configuration/`, `deployment/` plus top-level reference pages (`activities-reference`, `triggers`, `cli`, `ai-features`, `observability`, `import-export`).
 
-Inhaltliche Quelle: `CLAUDE.md` + `docs/` im Repo-Root.
+Content source: `CLAUDE.md` + `docs/` in the repo root.
 
-**Auslieferung im Produkt:** `deploy/Build-Artifact.ps1` und `deploy/desktop/Build-DesktopInstaller.ps1` bauen die Doku mit und legen sie nach `wwwroot/docs`; die API liefert sie unter `/docs` aus, damit eine Installation ohne Internet die Runbooks hat. Deshalb bleibt die Vite-`base` relativ. `-SkipFrontend` überspringt beide npm-Builds, `-SkipNpmCi` gilt für beide.
+**Delivery in the product:** `deploy/Build-Artifact.ps1` and `deploy/desktop/Build-DesktopInstaller.ps1` build the docs along with everything else and place them in `wwwroot/docs`; the API serves them under `/docs` so that an installation without internet has the runbooks. That is why the Vite `base` stays relative. `-SkipFrontend` skips both npm builds, `-SkipNpmCi` applies to both.
 
-## Schreibstil der Inhalte
+## Writing style of the content
 
-Die Seiten unter `content/` sind technische Dokumentation:
+The pages under `content/` are technical documentation:
 
-- keine direkte Anrede mit „du“, „Sie“ oder besitzanzeigenden Anredeformen;
-- neutrale Handlungsformen wie „Öffnen“, „Ausführen“, „Eintragen“ und „Prüfen“;
-- Zweck, Ergebnis und Voraussetzungen vor einer Schrittfolge;
-- Begriffe beim ersten Auftreten erklären;
-- kurze Sätze und jeweils eine technische Aussage pro Absatz;
-- Befehle immer mit Ausführungsort und erwartbarem Ergebnis dokumentieren;
-- Einschränkungen und nicht unterstützte Betriebsformen ausdrücklich nennen;
-- sicherheitsrelevante Beispielwerte als Beispiele kennzeichnen.
+- no direct address with "du", "Sie" or possessive forms of address;
+- neutral action forms such as "Öffnen" (open), "Ausführen" (run), "Eintragen" (enter) and "Prüfen" (check);
+- purpose, result and prerequisites before a sequence of steps;
+- explain terms at their first occurrence;
+- short sentences and one technical statement per paragraph;
+- always document commands with the place of execution and the expected result;
+- state restrictions and unsupported operating modes explicitly;
+- mark security-relevant example values as examples.
 
 ## Routing
 
-Echte Adressen (`/docs/de/getting-started/introduction/`). Jede Adresse ist eine eigene Datei, die
-`scripts/prerender-docs.mjs` nach dem Build schreibt — mit eigenem Titel, eigener Beschreibung,
-kanonischer Adresse und `hreflang`-Paar, dazu `dist/sitemap.xml`. Weil jede Adresse existiert,
-braucht kein Host eine Rewrite-Regel; im Produkt bedient `DocsSiteSetup.cs` sie als Endpunkte,
-weil dort der SPA-Auffangpfad jede endungslose Adresse abfangen würde.
+Real addresses (`/docs/de/getting-started/introduction/`). Each address is a separate file that
+`scripts/prerender-docs.mjs` writes after the build — with its own title, its own description,
+canonical address and `hreflang` pair, plus `dist/sitemap.xml`. Because every address exists,
+no host needs a rewrite rule; in the product, `DocsSiteSetup.cs` serves them as endpoints,
+because there the SPA catch-all would otherwise intercept every address without a file extension.
 
-Denselben Bundle-Stand gibt es an zwei Präfixen (`/docs/` und `/NodePilot/docs/`), deshalb steht
-in jeder Datei ein `np-docs-base`-Meta mit ihrer Tiefe; `src/lib/docsBase.ts` löst es **einmal
-beim Laden** in den Basispfad des Routers auf. Später wäre falsch: der Router ändert die Adresse,
-ohne ein neues Dokument zu laden.
+The same bundle build is available under two prefixes (`/docs/` and `/NodePilot/docs/`), so
+every file contains an `np-docs-base` meta with its depth; `src/lib/docsBase.ts` resolves it **once
+at load time** into the router's base path. Later would be wrong: the router changes the address
+without loading a new document.
 
-Alte `#/…`-Adressen leitet `public/legacy-hash-redirect.js` weiter (erstes, klassisches Skript);
-ohne Sprachsegment auf die Standardsprache. `Ctrl/Cmd+K` öffnet die Suche.
+Old `#/…` addresses are redirected by `public/legacy-hash-redirect.js` (first, classic script);
+without a language segment to the default language. `Ctrl/Cmd+K` opens the search.
