@@ -4,12 +4,12 @@
 
 .DESCRIPTION
   Every scenario starts from the configured clean checkpoint, installs the release's server setup
-  unattended (or the previous release first, then updates), checks health, runs a workflow through
+  unattended (or each of the five previous releases first, then updates), checks health, runs a workflow through
   the dispatch path, watches the service log for error entries, and uninstalls through the setup's
   uninstaller. See ..\README.md for the matrix, the lab prerequisites and the pass criteria.
 
 .EXAMPLE
-  .\Invoke-ServerMatrix.ps1 -ConfigPath C:\lab-cred\release-lab.json -ArtifactDir ..\..\..\out -Version 1.4.1
+  .\Invoke-ServerMatrix.ps1 -ConfigPath C:\lab-cred\release-lab.json -ArtifactDir ..\..\..\out -Version 1.4.6
 #>
 [CmdletBinding()]
 param(
@@ -22,7 +22,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
+. (Join-Path (Split-Path $here -Parent) 'UpgradeReleases.ps1')
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+$upgradeReleases = @(Get-UpgradeReleases -Config $config -Version $Version -SetupKind server)
 $srv = $config.server
 $cred = Import-Clixml $config.credentialPath
 $vm = $srv.vm
@@ -52,6 +54,18 @@ $scenarios = @(
 # -Only arrives as one comma-separated string when the script is started with -File.
 $Only = @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 if ($Only) { $scenarios = @($scenarios | Where-Object { $Only -contains $_.id }) }
+if (-not $scenarios) { throw 'No server scenarios selected.' }
+$scenarios = @(foreach ($scenario in $scenarios) {
+    if ($scenario.upgrade) {
+        foreach ($release in $upgradeReleases) {
+            $expanded = $scenario.Clone()
+            $expanded.id = "$($scenario.id)-from-$($release.version)"
+            $expanded.previousRelease = $release
+            $expanded
+        }
+    }
+    else { $scenario }
+})
 
 function Write-Json([string]$Path, $Object) {
     [IO.File]::WriteAllText($Path, ($Object | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding $false))
@@ -70,7 +84,7 @@ function New-Answers([hashtable]$S, [bool]$ForPrevious, [string]$Identity = $S.i
         $db = [ordered]@{ provider = 'postgres'; postgresHost = $srv.fqdn; postgresDatabase = $p.database
                           postgresUser = $p.role; postgresPassword = $p.rolePassword; postgresRootCertificate = $p.rootCertificate }
         if (-not ($S.omitPort -and -not $ForPrevious)) { $db['postgresPort'] = 5432 }
-        if ($ForPrevious -and -not $config.previousRelease.canInstallPostgres) { $provisioning = [ordered]@{} }
+        if ($ForPrevious -and -not $S.previousRelease.canInstallPostgres) { $provisioning = [ordered]@{} }
         else { $provisioning['postgresSuperUser'] = $p.superUser; $provisioning['postgresSuperPassword'] = $p.superPassword }
     }
     if (-not $ForPrevious) { $provisioning['installDotnetRuntime'] = $true }
@@ -110,11 +124,8 @@ function Restore-CleanVm {
 $results = @()
 foreach ($s in $scenarios) {
     $started = Get-Date
+    $previousRelease = $s.previousRelease
     Write-Host "=== $($s.id) $($s.identity) + $($s.database)$(if ($s.upgrade) { ' (update)' }) $(Get-Date -Format HH:mm:ss)"
-    if ($s.upgrade -and $s.database -eq 'postgres' -and -not $config.previousRelease.canInstallPostgres) {
-        $r = [pscustomobject]@{ id = $s.id; verdict = 'N/A'; note = 'the previous release cannot complete a PostgreSQL installation' }
-        $results += $r; continue
-    }
     if ($s.remoteSql -and -not $config.PSObject.Properties['remoteSql']) {
         $r = [pscustomobject]@{ id = $s.id; verdict = 'N/A'; note = 'no remoteSql configured' }
         $results += $r; continue
@@ -141,15 +152,18 @@ foreach ($s in $scenarios) {
             $remoteLoginExisted = $pre.loginExists
             $remoteSqlCleanupAllowed = $true
         }
+        if ($s.upgrade -and $s.database -eq 'postgres' -and -not $previousRelease.canInstallPostgres) {
+            throw "Required upgrade from $($previousRelease.version) cannot run: the source release cannot complete a PostgreSQL installation."
+        }
         Restore-CleanVm
         $stage = Join-Path $ResultsDir "stage-$($s.id)"
         New-Item -ItemType Directory -Force $stage | Out-Null
         $lab = [ordered]@{
             fqdn = $srv.fqdn; httpsPort = [int]$srv.httpsPort; sqlDatabase = $srv.sqlDatabase
             postgres = $srv.postgres
-            previous = [ordered]@{ preinstallRuntimes = [bool]$config.previousRelease.preinstallRuntimes
-                                   preGrantSystemForLocalSql = [bool]$config.previousRelease.preGrantSystemForLocalSql
-                                   canProvisionPostgres = [bool]$config.previousRelease.canInstallPostgres }
+            previous = [ordered]@{ preinstallRuntimes = [bool]$previousRelease.preinstallRuntimes
+                                   preGrantSystemForLocalSql = [bool]$previousRelease.preGrantSystemForLocalSql
+                                   canProvisionPostgres = [bool]$previousRelease.canInstallPostgres }
         }
         Write-Json (Join-Path $stage 'lab.json') $lab
         $soak = if ($s.check) { 0 } else { $SoakSeconds }
@@ -170,8 +184,8 @@ foreach ($s in $scenarios) {
             Write-Json (Join-Path $stage 'answers-previous.json') (New-Answers $s $true)
             Write-Json (Join-Path $stage 'update.json') ([ordered]@{ schemaVersion = 1; mode = 'update'; installPath = 'C:\Program Files\NodePilot'; serviceName = 'NodePilot' })
             $files += @((Join-Path $stage 'answers-previous.json'), (Join-Path $stage 'update.json'))
-            $copies[$config.previousRelease.serverSetup] = 'previous-server-setup.exe'
-            if ($config.previousRelease.preinstallRuntimes) { Get-ChildItem $payload -Filter '*-runtime-*-win-x64.exe' | ForEach-Object { $files += $_.FullName } }
+            $copies[$previousRelease.serverSetup] = 'previous-server-setup.exe'
+            if ($previousRelease.preinstallRuntimes) { Get-ChildItem $payload -Filter '*-runtime-*-win-x64.exe' | ForEach-Object { $files += $_.FullName } }
         }
         $session = New-PSSession -VMName $vm -Credential $cred
         try {
@@ -245,6 +259,9 @@ foreach ($s in $scenarios) {
             }
         }
     }
+    $r | Add-Member -NotePropertyName id -NotePropertyValue $s.id -Force
+    $r | Add-Member -NotePropertyName sourceVersion -NotePropertyValue $(if ($s.upgrade) { $previousRelease.version } else { '-' }) -Force
+    $r | Add-Member -NotePropertyName targetVersion -NotePropertyValue $Version -Force
     $r | Add-Member -NotePropertyName minutes -NotePropertyValue ([math]::Round(((Get-Date) - $started).TotalMinutes, 1)) -Force
     $r | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $ResultsDir "$($s.id).json") -Encoding utf8
     Write-Host "    -> $($r.verdict)"
@@ -254,12 +271,13 @@ foreach ($s in $scenarios) {
 Stop-VM -Name $vm -TurnOff -Force
 Restore-VMCheckpoint -VMSnapshot (Get-VMCheckpoint -VMName $vm -Name $srv.checkpoint) -Confirm:$false
 
-$summary = @("# Server setup $Version - release lab", '', '| Scenario | Verdict | Details |', '|---|---|---|')
+$summary = @("# Server setup $Version - release lab", '', '| Scenario | Source | Target | Verdict | Details |', '|---|---|---|---|---|')
+if ($Only) { $summary = @('**Partial diagnostic run; not release evidence.**', '') + $summary }
 foreach ($r in $results) {
     $detail = @($r.PSObject.Properties | Where-Object { $_.Name -in 'setupExit', 'healthz', 'execution', 'failedSteps', 'errors', 'uninstallFailed', 'reinstallLogin', 'note', 'error' -and "$($_.Value)" -ne '' } |
         ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
-    $summary += "| $($r.id) | $($r.verdict) | $detail |"
+    $summary += "| $($r.id) | $($r.sourceVersion) | $Version | $($r.verdict) | $detail |"
 }
 $summary | Set-Content (Join-Path $ResultsDir 'summary.md') -Encoding utf8
 $summary | Write-Host
-if (@($results | Where-Object { $_.verdict -notin 'PASS', 'N/A' }).Count) { exit 1 }
+if ($results.Count -ne $scenarios.Count -or @($results | Where-Object { $_.verdict -ne 'PASS' -and -not ($_.id -eq 'S1' -and $_.verdict -eq 'N/A') }).Count) { exit 1 }
