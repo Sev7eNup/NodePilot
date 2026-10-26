@@ -64,6 +64,9 @@ Planned version: **1.5.3**.
   replacing the file, and matches existing keys case-insensitively like .NET does. A manually written
   section with different casing could otherwise leave a file that failed to load on the next reload or
   restart (#611).
+- Registry activity paths such as `HKEY_LOCAL_MACHINE\…` are rewritten to the `Registry::` provider
+  path. They were passed on unchanged and resolved as a file system path, so reads looked in the wrong
+  place and `createKey`/`deleteKey` could create or remove directories (#614).
 
 ### Security
 
