@@ -488,6 +488,63 @@ public class StepTesterTests
         vars["globals.SITE"].Should().Be("mock-site", "non-step-shaped mock keys keep their verbatim mock-wins semantics");
     }
 
+    [Fact]
+    public async Task TestStepAsync_MockedManualInputAndFailedPredecessor_ResolveLikeARealRun()
+    {
+        using var db = TestDbFactory.Create();
+        var workflowId = Guid.NewGuid();
+        var def = JsonSerializer.Serialize(new
+        {
+            nodes = new[]
+            {
+                new
+                {
+                    id = "step-a",
+                    type = "activity",
+                    position = new { x = 0, y = 0 },
+                    data = new { activityType = "captureConfig", config = new { text = "{{manual.greeting}} {{up.success}}" } }
+                }
+            },
+            edges = Array.Empty<object>()
+        });
+        db.Workflows.Add(new Workflow { Id = workflowId, Name = "wf", DefinitionJson = def });
+        await db.SaveChangesAsync();
+
+        var capture = new CaptureConfigActivity();
+        var tester = new StepTester(db, new ActivityRegistry(new IActivityExecutor[] { capture }),
+            new StubGlobalVariableStore(), new ServiceCollection().BuildServiceProvider(), new OutputRedactor());
+
+        var mocks = new Dictionary<string, string>
+        {
+            ["manual.greeting"] = "Hello",
+            ["up.output"] = "x",
+            ["up.success"] = "false",
+        };
+        var result = await tester.TestStepAsync(
+            workflowId, "step-a", DefaultAuthorizationSnapshot, mocks, null, default);
+
+        result.Success.Should().BeTrue();
+        capture.SeenText.Should().Be("Hello false");
+        capture.SeenInputs.Should().NotBeNull();
+        capture.SeenInputs!["greeting"].Should().Be("Hello");
+        capture.SeenPredecessorSuccess.Should().BeFalse();
+    }
+
+    private sealed class CaptureConfigActivity : IActivityExecutor
+    {
+        public string? SeenText { get; private set; }
+        public IReadOnlyDictionary<string, string>? SeenInputs { get; private set; }
+        public bool? SeenPredecessorSuccess { get; private set; }
+        public string ActivityType => "captureConfig";
+        public Task<ActivityResult> ExecuteAsync(StepExecutionContext context, JsonElement config, CancellationToken ct)
+        {
+            SeenText = config.GetProperty("text").GetString();
+            SeenInputs = context.InputParameters;
+            SeenPredecessorSuccess = context.PreviousResults?.TryGetValue("up", out var up) == true ? up.Success : null;
+            return Task.FromResult(new ActivityResult { Success = true, Output = "captured" });
+        }
+    }
+
     /// <summary>
     /// Records the variables dict an executor receives, so tests can assert on the exact
     /// assembly semantics without going through activity output.

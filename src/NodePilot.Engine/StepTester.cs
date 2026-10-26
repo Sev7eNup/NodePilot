@@ -167,11 +167,12 @@ public class StepTester : IStepTester
 
         // Convert flat mock dict to ActivityResult dict for JSON config resolution
         var fakeResults = BuildFakeResults(mockVariables ?? []);
+        var manualInputs = ExtractManualInputs(mockVariables ?? []);
 
         // Build variables through the production resolver so step tests share alias, success,
         // and sensitive-name behavior. Reapply mock-only keys so explicit overrides still win.
         var variables = VariableResolver.BuildStepVariables(
-            inputParameters: null,
+            inputParameters: manualInputs,
             globalVariables: globalVars,
             previousResults: fakeResults,
             outputNameByStepId: definition.OutputNameByStepId);
@@ -186,7 +187,7 @@ public class StepTester : IStepTester
         // Resolve config through the same policy as production StepRunner. In particular,
         // sql/databaseTrigger query text must not be template-expanded in step-test mode.
         var configForExecution = StepRunner.ResolveConfigForExecution(
-            node.Type, node.Data.Config, fakeResults, definition.OutputVariableToStepId, globalVars);
+            node.Type, node.Data.Config, fakeResults, definition.OutputVariableToStepId, globalVars, manualInputs);
 
         var context = new StepExecutionContext
         {
@@ -207,6 +208,7 @@ public class StepTester : IStepTester
             PreviousResults = fakeResults,
             OutputVariableToStepId = definition.OutputVariableToStepId,
             GlobalVariables = globalVars,
+            InputParameters = manualInputs,
         };
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -282,14 +284,34 @@ public class StepTester : IStepTester
             var parts = key.Split('.', 3);
             if (parts.Length < 2) continue;
             var name = parts[0];
+            // manual.* is trigger input, not a step result; see ExtractManualInputs.
+            if (string.Equals(name, ManualPrefix, StringComparison.OrdinalIgnoreCase)) continue;
             if (!results.TryGetValue(name, out var ar))
                 results[name] = ar = new ActivityResult { Success = true };
 
             if (parts[1] == "output") ar.Output = value;
             else if (parts[1] == "error") ar.ErrorOutput = value;
+            else if (parts[1] == "success" && bool.TryParse(value.Trim(), out var success)) ar.Success = success;
             else if (parts[1] == "param" && parts.Length == 3) ar.OutputParameters[parts[2]] = value;
         }
         return results;
+    }
+
+    private const string ManualPrefix = "manual";
+
+    /// <summary>Mocked <c>manual.X</c> keys become the run's input parameters, as in production.</summary>
+    private static Dictionary<string, string>? ExtractManualInputs(Dictionary<string, string> mockVars)
+    {
+        Dictionary<string, string>? inputs = null;
+        foreach (var (key, value) in mockVars)
+        {
+            var parts = key.Split('.', 2);
+            if (parts.Length != 2 || parts[1].Length == 0
+                || !string.Equals(parts[0], ManualPrefix, StringComparison.OrdinalIgnoreCase)) continue;
+            inputs ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            inputs[parts[1]] = value;
+        }
+        return inputs;
     }
 }
 
