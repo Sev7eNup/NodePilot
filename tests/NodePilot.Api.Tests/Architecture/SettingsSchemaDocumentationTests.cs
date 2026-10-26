@@ -20,7 +20,7 @@ public sealed class SettingsSchemaDocumentationTests
         var restart = SettingsSchema.Sections.Count(s => !s.IsHotReloadable);
 
         var claudeMd = File.ReadAllText(Path.Combine(ProductionSources.RepoRoot(), "CLAUDE.md"));
-        var match = Regex.Match(claudeMd, @"(\d+) Sektionen sind hot-reloadable, (\d+) restart-pflichtig");
+        var match = Regex.Match(claudeMd, @"(\d+) sections are hot-reloadable, (\d+) require a restart");
 
         match.Success.Should().BeTrue(
             "CLAUDE.md must still carry the hot-reload split claim — if the phrasing changed, " +

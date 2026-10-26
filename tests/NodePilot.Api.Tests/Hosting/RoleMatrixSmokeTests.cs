@@ -9,7 +9,7 @@ using Xunit;
 namespace NodePilot.Api.Tests.Hosting;
 
 /// <summary>
-/// Pins the documented role matrix (CLAUDE.md "## Autorisierung") end-to-end: real users
+/// Pins the documented role matrix (CLAUDE.md "## Authorization") end-to-end: real users
 /// seeded with the production BCrypt path, real logins through POST /api/auth/login, real
 /// cookie and CSRF handling, and real [Authorize(Roles=...)] evaluation by the authorization
 /// middleware. Direct-controller tests can't cover this, since they hand-craft

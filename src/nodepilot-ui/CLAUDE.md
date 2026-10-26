@@ -1,134 +1,132 @@
-# nodepilot-ui — Frontend-Konventionen
+# nodepilot-ui — Frontend Conventions
 
-Gilt für `src/nodepilot-ui/`. Projektweite Regeln stehen in der Root-`CLAUDE.md`.
+Applies to `src/nodepilot-ui/`. Project-wide rules are in the root `CLAUDE.md`.
 
-## Struktur
+## Structure
 
-- **Neue Seite:** in `src/pages/`, Route in `App.tsx`
-- **Neuer Custom Node:** in `src/components/designer/nodes/`, in der `nodeTypes` Map registrieren
-- **Neue Activity (UI-Seite):** Eintrag in `library/activityCategories.ts` (`buildActivityCategories`) + `*Config`-Komponente unter `properties/activities|triggers/` + eine Zeile in `properties/activityConfigMap.ts` — `PropertiesPanel.tsx` wird **nicht** editiert. Katalog-Spiegel `lib/activityCatalog.generated.ts` von Hand pflegen (kein Codegen-Skript); `ActivityCatalogFrontendSyncTests` erzwingt Gleichstand mit dem Backend-Katalog. Der Spiegel trägt **kein** `prompt`-Feld mehr — es gibt keine Prompt-Ausschlussliste, jede Activity ist der KI bekannt. Downstream-Outputs in `describeNodeOutputs` in `lib/upstreamVariables.ts`.
+- **New page:** in `src/pages/`, route in `App.tsx`
+- **New custom node:** in `src/components/designer/nodes/`, register in the `nodeTypes` map
+- **New activity (UI side):** entry in `library/activityCategories.ts` (`buildActivityCategories`) + `*Config` component under `properties/activities|triggers/` + one line in `properties/activityConfigMap.ts` — `PropertiesPanel.tsx` is **not** edited. Maintain the catalogue mirror `lib/activityCatalog.generated.ts` by hand (no codegen script); `ActivityCatalogFrontendSyncTests` enforces parity with the backend catalogue. The mirror carries **no** `prompt` field any more — there is no prompt exclusion list, every activity is known to the AI. Downstream outputs in `describeNodeOutputs` in `lib/upstreamVariables.ts`.
 
-## Stack-Regeln
+## Stack Rules
 
-- UI-Strings über `react-i18next` (Namespaces je `src/i18n/locales/{de,en}/`, Default DE) — neue sichtbare Strings in **beide** Sprachen.
-- **Farben immer über Design-Tokens/CSS-Variablen** — nie Tailwind-Farbliterale hardcoden (`text-gray-900`, `bg-white` brechen die Dark-Skins). Natives `<select>`: `option:hover` ist in Chromium nicht stylbar → Custom-Dropdown-Komponente verwenden.
-- Client-State via Zustand-Stores (`src/stores/`), Server-State via TanStack React Query (`refetchOnWindowFocus:false`, SignalR invalidiert Caches).
-- **Typografie:** `IBM Plex Sans Variable` (`--font-headline`/`--font-body`/`--font-label`, alle drei identisch) + `IBM Plex Mono` (`--font-mono`), deklariert im `@theme` von `index.css`. Beide self-hosted über fontsource — **keine externen Font-Requests**: die Prod-CSP kennt kein `font-src` und fällt auf `default-src 'self'`, ein CDN-Font wäre in Produktion geblockt. Body trägt ein `font-size-adjust` als einzigen Dichte-Ausgleich (Plex hat eine kleinere x-Höhe als das früher genutzte Inter); Monospace ist davon ausgenommen. Monaco kann keine CSS-Variable verwerten und hält den Stack als `MONO_FONT_STACK` in `lib/monacoSetup.ts` — `fontTokens.test.ts` hält beide Seiten deckungsgleich. Die Doku-Website fährt bewusst ein eigenes Type-System (Geist + JetBrains Mono).
+- UI strings via `react-i18next` (namespaces per `src/i18n/locales/{de,en}/`, default DE) — new visible strings in **both** languages.
+- **Colours always via design tokens/CSS variables** — never hardcode Tailwind colour literals (`text-gray-900`, `bg-white` break the dark skins). Native `<select>`: `option:hover` is not stylable in Chromium → use the custom dropdown component.
+- Client state via Zustand stores (`src/stores/`), server state via TanStack React Query (`refetchOnWindowFocus:false`, SignalR invalidates caches).
+- **Typography:** `IBM Plex Sans Variable` (`--font-headline`/`--font-body`/`--font-label`, all three identical) + `IBM Plex Mono` (`--font-mono`), declared in the `@theme` of `index.css`. Both are self-hosted via fontsource — **no external font requests**: the prod CSP has no `font-src` and falls back to `default-src 'self'`, so a CDN font would be blocked in production. Body carries a `font-size-adjust` as the only density compensation (Plex has a smaller x-height than the previously used Inter); monospace is exempt. Monaco cannot use a CSS variable and keeps the stack as `MONO_FONT_STACK` in `lib/monacoSetup.ts` — `fontTokens.test.ts` keeps both sides identical. The docs website deliberately runs its own type system (Geist + JetBrains Mono).
 
-- **Design-Tokens in JS:** Der Prod-Build minifiziert das CSS mit Lightning CSS und kürzt Farben **innerhalb** von Custom-Properties (`#ffffff` → `#fff`, `#ff0000` → `red`), der Dev-Server nicht — ein roher Token-Wert ist also keine verlässliche Hex-Farbe. Jeder JS-Leser eines `--color-*`-Tokens normalisiert deshalb über `cssColorToHex` aus `lib/cssColor.ts`: die Monaco-Theme-Bridge in `designer/ScriptEditorDialog.tsx` (Monaco akzeptiert nur 6-/8-stelliges Hex und **wirft** sonst) und die ECharts-Tokens in `lib/chartTheme.ts`. Der Helfer beherrscht Hex, `rgb()/rgba()` und benannte Farben; `oklch()`/`color-mix()` liefern bewusst `null` → Fallback des Aufrufers. Regressionsschutz ist `e2e/script-editor.spec.ts`, weil nur die E2E-Suite gegen das **gebaute** Bundle fährt.
+- **Design tokens in JS:** The prod build minifies the CSS with Lightning CSS and shortens colours **inside** custom properties (`#ffffff` → `#fff`, `#ff0000` → `red`); the dev server does not — a raw token value is therefore not a reliable hex colour. Every JS reader of a `--color-*` token therefore normalises via `cssColorToHex` from `lib/cssColor.ts`: the Monaco theme bridge in `designer/ScriptEditorDialog.tsx` (Monaco accepts only 6-/8-digit hex and **throws** otherwise) and the ECharts tokens in `lib/chartTheme.ts`. The helper handles hex, `rgb()/rgba()` and named colours; `oklch()`/`color-mix()` deliberately return `null` → fallback of the caller. Regression protection is `e2e/script-editor.spec.ts`, because only the E2E suite runs against the **built** bundle.
 
-- **Formularfelder — zwei Ebenen, nicht eine.** Welche gilt, entscheidet die Fläche darunter:
-  - **`.input-field`** (index.css) für Felder auf einer angehobenen Fläche: Designer-Property-Panels, `.np-card`. Der Stil ist *versenkt* (dunkler als der Container + Inset-Schatten) und **setzt diese Anhebung voraus**. Handgebaute `border …`-Ketten sind dort falsch.
-  - **Umriss-Kette** `px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500` (+ `w-full`, bei `<select>` zusätzlich `bg-surface-lowest`) für **Seiten-Dialoge** — `ModalShell` sitzt auf `surface-lowest`, und die Panel-Anhebung `.np-modal-panel` existiert **nur in den Dark-Skins**. Ein `.input-field` malt sich dort in Panel-Farbe: auf `light-grey` ein flacher beiger Kasten auf Weiß, der beim Fokus *heller* wird als das Panel und seine Kontur verliert. So halten es GlobalVariablesPage, MachinesPage, UsersPage, MaintenanceWindowsPage, die Alerting-Editoren und CustomActivitiesPage.
-  - `focus:ring-blue-500` ist hier **kein** Farbliteral-Verstoß: index.css remappt die Blau-Ring-Utilities über `np-accent-remap` auf `--np-accent-ring`, der Ring folgt also dem Skin-Akzent.
-  - **Breite nie in eine geteilte Feld-Konstante backen.** Zwei konkurrierende Utilities derselben Tailwind-Layer werden über ihre Reihenfolge im generierten Stylesheet aufgelöst, nicht über die Klassen-Attribut-Reihenfolge — `w-full` in der Konstante und `w-28` am Feld ist ein Münzwurf. Ebenso: `.input-field` ist **unlayered** und schlägt damit *jede* Utility aus `@layer utilities`; ein `w-28 text-xs` daneben ist wirkungslos.
+- **Form fields — two levels, not one.** Which one applies is decided by the surface underneath:
+  - **`.input-field`** (index.css) for fields on a raised surface: designer property panels, `.np-card`. The style is *sunken* (darker than the container + inset shadow) and **presupposes this raising**. Hand-built `border …` chains are wrong there.
+  - **Outline chain** `px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500` (+ `w-full`, for `<select>` additionally `bg-surface-lowest`) for **page dialogs** — `ModalShell` sits on `surface-lowest`, and the panel raise `.np-modal-panel` exists **only in the dark skins**. An `.input-field` paints itself in panel colour there: on `light-grey` a flat beige box on white that becomes *lighter* than the panel on focus and loses its outline. This is how GlobalVariablesPage, MachinesPage, UsersPage, MaintenanceWindowsPage, the alerting editors and CustomActivitiesPage do it.
+  - `focus:ring-blue-500` is **not** a colour-literal violation here: index.css remaps the blue ring utilities via `np-accent-remap` to `--np-accent-ring`, so the ring follows the skin accent.
+  - **Never bake width into a shared field constant.** Two competing utilities of the same Tailwind layer are resolved by their order in the generated stylesheet, not by the order in the class attribute — `w-full` in the constant and `w-28` on the field is a coin toss. Likewise: `.input-field` is **unlayered** and therefore beats *every* utility from `@layer utilities`; a `w-28 text-xs` next to it has no effect.
 
 ## E2E (Playwright)
 
-Hermetische Specs in `e2e/` — alle APIs via `page.route` gemockt (kein Backend/Postgres nötig; Predicate-Catch-All in `e2e/fixtures/mockApi.ts`). **Vor neuen Specs: `e2e/README.md` lesen.** Fast-Iteration gegen laufenden Dev-Server (kein Build): `npx playwright test <spec> --config=playwright.dev.config.ts`.
+Hermetic specs in `e2e/` — all APIs mocked via `page.route` (no backend/Postgres needed; predicate catch-all in `e2e/fixtures/mockApi.ts`). **Before writing new specs: read `e2e/README.md`.** Fast iteration against a running dev server (no build): `npx playwright test <spec> --config=playwright.dev.config.ts`.
 
-## Browser-Demo (`demo/`)
+## Browser Demo (`demo/`)
 
-Dieselbe SPA gegen ein In-Memory-Backend, veröffentlicht auf www.nodepilot.run unter `/demo/`. Kein
-Server, keine DB — der Zustand lebt pro Tab und ein Reload stellt den Seed wieder her.
+The same SPA against an in-memory backend, published on www.nodepilot.run under `/demo/`. No
+server, no DB — state lives per tab and a reload restores the seed.
 
-- **Entry und Build:** `demo.html` → `demo/main.demo.ts` → dritter Vite-Build
-  (`vite.demo.config.ts` → `dist-demo/`, `npm run build:demo`). `demo/` liegt bewusst **neben**
-  `src/` und `e2e/`, nicht darin. Der Produkt-Build kann den Demo-Code nicht enthalten, weil
-  `index.html` ihn nie referenziert; `ci.yml` prüft das am gebauten `dist/` per Sentinel.
-  Vorbild ist `src/preview/` mit `skin-preview.html` — Extra-Entries, die nie in `dist/` landen.
-- **Abhängigkeitsrichtung ist ausschließlich `demo/` → `src/`.** `src/` importiert nie aus
-  `demo/`; stattdessen injiziert der Demo-Entry: `setExecutionHubFactory` (`lib/hubConnection.ts`),
-  `setDocsHref` (`lib/docsLink.ts`) und `isolateAuthBoundaryTransport` (`security/authBoundary.ts`).
-  `isolation.test.ts` hält die Richtung fest.
-- **Interception ist ein `fetch`-Patch, kein Service Worker.** Gründe: kein mitzulieferndes
-  `mockServiceWorker.js`, kein Worker-Lebenszyklus mit veralteten Mocks nach einem Redeploy, keine
-  Registrierungsreihenfolge gegen das Modul-scope-`fetch` in `src/main.tsx`. (Der Scope eines
-  Workers hätte `/api` **nicht** verhindert — das Argument ist Wartbarkeit, nicht Reichweite.)
-- **`__NP_DEMO__`** wählt die Router-Basis `/demo` statt `/`. Apache liefert bei Demo-Seitenpfaden
-  die Demo-Startdatei aus; Assets nutzen `/demo/`. Alte Hash-Links normalisiert der Demo-Entry. In `vite.config.ts` **und**
-  `vitest.config.ts` auf `'false'` definiert — fehlt das zweite, bricht jeder Test, der `App`
-  importiert, mit einem `ReferenceError`, der nach etwas anderem aussieht.
-- **Tab-Isolation ist nicht gratis.** Echte Anmelde-, Abmelde- und Sitzungswechsel leeren in anderen
-  Tabs die Caches und bauen geschützte Komponenten neu auf. Reines Beobachten derselben Sitzung
-  beim Öffnen eines Tabs erhält Entwürfe. Die unabhängigen Demo-Welten dürfen auch echte
-  Auth-Wechsel nicht teilen; deshalb legt der Entry den Transport beidseitig still.
-- **Seed:** die Workflow-JSONs aus `demo/seed/fixtures/` und `scripts/` — im Demo-Paket entsteht **kein**
-  Graph. Nodes mit mehreren eingehenden Kanten bekommen beim Laden eine `waitAll`-Junction (wie
-  Designer und SCOrch-Import), sonst blockiert der Pre-Publish-Check. Die Reihenfolge in
-  `seed/graphs.ts` ist tragend: `seed/executions.ts` indiziert seine Kadenz nach Position, und nur
-  Slot 0 und 2 liegen im 30-Minuten-Fenster von Live-Ops. **Nur `seed/entities.ts` und
-  `seed/graphs.ts` enthalten gesetzte Fakten** — Historie, Dashboard und Zähler werden daraus
-  abgeleitet, sonst zeigt eine Seite 14 Läufe und die nächste 15.
-- **Lauf:** `run/player.ts` simuliert den **aktuellen** Canvas-Graphen (über
-  `lib/workflowSimulation.ts`), nicht ein aufgezeichnetes Skript — ein selbst gebauter Workflow
-  läuft damit genauso. Jeder Schritt wird **erst in die Welt geschrieben, dann als Event
-  zugestellt**: der Ops-Feed invalidiert bei jedem Event Query-Keys, und der Refetch trifft das
-  Fake-Backend.
-- **Lebenszyklus echt statt abgekürzt:** Lock deaktiviert den Workflow (atomar, wie im Produkt),
-  und `useWorkflowExecution` verweigert den Lauf — Bearbeiten → Veröffentlichen → Ausführen ist
-  deshalb die Kette, die der Smoke-Test abgeht.
-- **Jede Mutation wird bedient oder benennt ihre Absage.** Ein Knopf, der weder wirkt noch sich
-  erklärt, ist der Defekt — nicht die fehlende Funktion. Serverseitiges antwortet über
-  `notInDemo(<Aktion>)` (`net/respond.ts`); der Fallback in `net/install.ts` ist die Notbremse, kein
-  Entwurf. **Das gilt auch für Downloads:** `downloadFromApi` wirft, und ein Button, der sein
-  Promise nicht behandelt, verwandelt die Absage in eine unbehandelte Rejection.
-- **Der Smoke-Test speichert wirklich.** Routen abzulaufen findet nur Endpunkte, die beim Laden
-  gerufen werden, und einen Editor zu öffnen beweist nichts über das Speichern — beide Lücken
-  hatten genau dort ihren Ursprung. Deshalb: ein echtes Speichern je Seite plus gezielte Tests für
-  Rollback, Verschieben, rekursives Löschen und die abgelehnten Downloads.
-- **Admin-Settings werden bedient, nicht gesperrt.** `demo/handlers/settings.ts` liefert pro
-  Sektion die produkteigenen Defaults (dieselben Literale, die die Karten als Fallback tragen),
-  Schreiben antwortet 501. Das ist Pflicht, kein Komfort: `useSectionForm` ersetzt seinen
-  Fallback durch `data.payload`, sobald eine Antwort kommt, und mehrere Karten lesen
-  verschachtelt (`payload.proxy.password`) — ein Teil-Envelope crasht die Seite, statt sie
-  abzuschwächen.
-- **Antwortformate gegen den echten Consumer prüfen, nicht gegen sich selbst.** Die teuren Fehler
-  waren allesamt Schlüssel-Differenzen, die ein Test gegen die eigene Handler-Form nie sieht:
-  `{folderId}` statt `{targetFolderId}`, `id` statt `workflowId`/`executionId`, Arrays statt
-  nach Step-ID indizierter Objekte, `{type,event}` statt `{type,evt}`. Die Tests fahren deshalb
-  über `api/client.ts`, `api/paging.ts`, `api/sharedFolders.ts`, `api/adminSettings.ts` und den
-  echten `useLiveOpsFeed`-Hook.
-- **Der Smoke-Test war dreifach blind — jede Blindheit hat einen echten Crash durchgelassen:**
-  1. `waitForLoadState('networkidle')` ist hier bedeutungslos. Der gepatchte `fetch` erreicht nie
-     das Netz, Playwright sieht null Requests und meldet sofort „idle", während die Seite noch auf
-     Daten wartet. Deshalb veröffentlicht `net/install.ts` die Zähler `__npDemoPending` und
-     `__npDemoCompleted`; der Test wartet auf **Ruhe nach Aktivität** (auf „nichts in flight"
-     allein zu warten ist bei t=0 trivial erfüllt, bevor die erste Anfrage überhaupt startet).
-  2. Ein reiner Hash-Wechsel ist eine Same-Document-Navigation — React montiert die neue Route
-     womöglich erst nach der Prüfung. Der Walk hängt deshalb pro Route eine eigene Query an und
-     erzwingt damit einen echten Seitenaufbau.
-  3. Ein 404-Bild protokolliert nichts; es rendert still seinen Alt-Text. Geprüft wird deshalb
-     **jedes** `<img>` auf jeder Route, nicht das erste in der Sidebar.
-- **Eine Error-Boundary macht einen Crash unsichtbar.** React reicht den Fehler an die Boundary
-  statt ans Fenster, `pageerror` feuert nicht, und ein Routen-Durchlauf meldet „sauber". Der
-  Smoke-Test prüft deshalb zusätzlich, dass keine Boundary gerendert ist — und geht die
-  Settings-**Unterreiter** einzeln ab, weil der Crash hinter dem System-Tab lag. Gematcht wird auf
-  den Seitentext, **nicht** auf `[role="alert"]`: das Standard-Fehlerelement von React Router trägt
-  diese Rolle nicht — und genau darüber rutschte die abgestürzte Alerting-Seite als „sauber" durch.
-  Die Routen zeigen als `errorElement` inzwischen den lokalisierten Fallback der App; der Textmatch
-  deckt ihn in beiden Sprachen und den Router-Standard ab.
-- **Ein `<a href="/api/…">` geht nie durch den `fetch`-Patch.** Es ist eine Dokument-Navigation:
-  unter einem Unterpfad landet der Besucher auf der 404 des Hosts, und die In-Memory-Welt ist beim
-  Zurückkommen neu aufgebaut. `demo/net/anchors.ts` fängt deshalb jeden gleich-origin-Klick ab, der
-  das Demo-Verzeichnis verlassen würde, holt ihn über den Patch und speichert eine Antwort mit
-  `Content-Disposition` als Blob. Der Audit-Export ist der heute existierende Fall; der Guard deckt
-  die Klasse. Der Smoke-Test lässt nur Anker nach `/api/` als „abfangbar" durchgehen und prüft am
-  Verhalten, dass der Export nicht navigiert.
-- **Unbekannte Schreibzugriffe antworten 501, nie 200.** Ein stiller Erfolg ließ das Löschen
-  eines Benutzers gelingen, während sich nichts änderte.
-- **Tests:** `npx vitest run src/__tests__/demo` und
-  `npm run test:e2e:demo` (baut `dist-demo` und serviert es unter einem **Unterpfad** — an der
-  Wurzel würden Basis-Pfad-Fehler nicht auffallen). Unbehandelte Endpoints loggen
-  `[demo] unhandled …`; der Smoke-Test bricht auf jede solche Zeile.
-- **Geführter Einstieg:** `?tour=file&lang=de|en` begleitet den nativen Startdialog und die
-  Ausführungshistorie; `?tour=diagnose` öffnet einen vorbereiteten Kopierfehler.
-  `demo/ui/tour.ts` bleibt außerhalb des React-Produktbaums. Der Graph kommt aus
-  `scripts/example-guided-file-workflow.json`; `demo/run/fileScenario.ts` leitet seine
-  simulierten Ausgaben aus den Startparametern ab. `Protected` scheitert bei File Copy,
-  nachfolgende Steps laufen nicht. Retry behält die ursprünglichen Eingaben.
-  Die geführten Szenarien sind in `e2e-demo/guided-tour.spec.ts` abgesichert.
-  Acht weitere Aufgaben (`?tour=build|decision|parallel|service|live|versions|machine|maintenance`)
-  liegen in `demo/ui/additionalTours.ts`, ihre Seed-Daten in `demo/seed/missionFixtures.ts` und die
-  Laufsimulation in `demo/run/missionScenarios.ts`; abgesichert in `e2e-demo/additional-tours.spec.ts`.
-  Die Website-Route `/walkthrough/` verlinkt alle zehn Aufgaben.
+- **Entry and build:** `demo.html` → `demo/main.demo.ts` → third Vite build
+  (`vite.demo.config.ts` → `dist-demo/`, `npm run build:demo`). `demo/` deliberately sits **next to**
+  `src/` and `e2e/`, not inside them. The product build cannot contain the demo code, because
+  `index.html` never references it; `ci.yml` checks this on the built `dist/` via a sentinel.
+  The model is `src/preview/` with `skin-preview.html` — extra entries that never land in `dist/`.
+- **The dependency direction is exclusively `demo/` → `src/`.** `src/` never imports from
+  `demo/`; instead the demo entry injects: `setExecutionHubFactory` (`lib/hubConnection.ts`),
+  `setDocsHref` (`lib/docsLink.ts`) and `isolateAuthBoundaryTransport` (`security/authBoundary.ts`).
+  `isolation.test.ts` pins the direction.
+- **Interception is a `fetch` patch, not a service worker.** Reasons: no `mockServiceWorker.js` to
+  ship, no worker lifecycle with stale mocks after a redeploy, no registration order against the
+  module-scope `fetch` in `src/main.tsx`. (A worker's scope would **not** have prevented intercepting
+  `/api` — the argument is maintainability, not reach.)
+- **`__NP_DEMO__`** selects the router base `/demo` instead of `/`. Apache serves the demo start file
+  for demo page paths; assets use `/demo/`. The demo entry normalises old hash links. Defined as `'false'` in `vite.config.ts` **and**
+  `vitest.config.ts` — if the second is missing, every test that imports `App` breaks
+  with a `ReferenceError` that looks like something else.
+- **Tab isolation is not free.** Real sign-in, sign-out and session changes empty the caches in other
+  tabs and rebuild protected components. Merely observing the same session
+  when opening a tab preserves drafts. The independent demo worlds must not share even real
+  auth changes; the entry therefore silences the transport in both directions.
+- **Seed:** the workflow JSONs from `demo/seed/fixtures/` and `scripts/` — **no** graph is created in the demo package.
+  Nodes with several incoming edges get a `waitAll` junction on load (like the
+  designer and SCOrch import), otherwise the pre-publish check blocks. The order in
+  `seed/graphs.ts` is load-bearing: `seed/executions.ts` indexes its cadence by position, and only
+  slots 0 and 2 fall in the 30-minute window of Live-Ops. **Only `seed/entities.ts` and
+  `seed/graphs.ts` contain fixed facts** — history, dashboard and counters are derived from them,
+  otherwise one page shows 14 runs and the next 15.
+- **Run:** `run/player.ts` simulates the **current** canvas graph (via
+  `lib/workflowSimulation.ts`), not a recorded script — a self-built workflow
+  therefore runs the same way. Each step is **first written to the world, then delivered as an
+  event**: the ops feed invalidates query keys on every event, and the refetch hits the
+  fake backend.
+- **Real lifecycle instead of shortcuts:** Lock disables the workflow (atomically, as in the product),
+  and `useWorkflowExecution` refuses the run — edit → publish → execute is
+  therefore the chain the smoke test walks.
+- **Every mutation is served or names its refusal.** A button that neither works nor explains
+  itself is the defect — not the missing feature. Server-side things answer via
+  `notInDemo(<action>)` (`net/respond.ts`); the fallback in `net/install.ts` is the emergency brake, not a
+  design. **This also applies to downloads:** `downloadFromApi` throws, and a button that does not
+  handle its promise turns the refusal into an unhandled rejection.
+- **The smoke test really saves.** Walking routes only finds endpoints that are called on load, and
+  opening an editor proves nothing about saving — both gaps originated exactly there. Hence: one real
+  save per page plus targeted tests for rollback, move, recursive delete and the rejected downloads.
+- **Admin settings are served, not blocked.** `demo/handlers/settings.ts` returns the product's own
+  defaults per section (the same literals the cards carry as fallback),
+  writing answers 501. This is mandatory, not a convenience: `useSectionForm` replaces its
+  fallback with `data.payload` as soon as a response arrives, and several cards read
+  nested (`payload.proxy.password`) — a partial envelope crashes the page instead of degrading it.
+- **Check response formats against the real consumer, not against themselves.** The expensive bugs
+  were all key differences that a test against the handler's own shape never sees:
+  `{folderId}` instead of `{targetFolderId}`, `id` instead of `workflowId`/`executionId`, arrays instead of
+  objects indexed by step ID, `{type,event}` instead of `{type,evt}`. The tests therefore run
+  through `api/client.ts`, `api/paging.ts`, `api/sharedFolders.ts`, `api/adminSettings.ts` and the
+  real `useLiveOpsFeed` hook.
+- **The smoke test was blind in three ways — each blindness let a real crash through:**
+  1. `waitForLoadState('networkidle')` is meaningless here. The patched `fetch` never reaches
+     the network, Playwright sees zero requests and immediately reports "idle" while the page is still
+     waiting for data. `net/install.ts` therefore publishes the counters `__npDemoPending` and
+     `__npDemoCompleted`; the test waits for **quiet after activity** (waiting only for "nothing in flight"
+     is trivially satisfied at t=0, before the first request has even started).
+  2. A mere hash change is a same-document navigation — React may mount the new route only
+     after the check. The walk therefore appends its own query to each route, which forces a
+     real page load.
+  3. A 404 image logs nothing; it silently renders its alt text. **Every** `<img>` on every
+     route is therefore checked, not the first one in the sidebar.
+- **An error boundary makes a crash invisible.** React hands the error to the boundary
+  instead of the window, `pageerror` does not fire, and a route walk reports "clean". The
+  smoke test therefore additionally checks that no boundary is rendered — and walks the
+  settings **sub-tabs** individually, because the crash lay behind the System tab. Matching is on
+  the page text, **not** on `[role="alert"]`: React Router's default error element does not carry
+  this role — and that is exactly how the crashed alerting page slipped through as "clean".
+  The routes now show the app's localised fallback as `errorElement`; the text match
+  covers it in both languages and the router default.
+- **An `<a href="/api/…">` never goes through the `fetch` patch.** It is a document navigation:
+  under a subpath the visitor lands on the host's 404, and the in-memory world is rebuilt on
+  return. `demo/net/anchors.ts` therefore intercepts every same-origin click that would leave
+  the demo directory, fetches it through the patch and stores a response with
+  `Content-Disposition` as a blob. The audit export is the case that exists today; the guard covers
+  the class. The smoke test lets only anchors to `/api/` pass as "interceptable" and checks by
+  behaviour that the export does not navigate.
+- **Unknown writes answer 501, never 200.** A silent success let deleting a
+  user succeed while nothing changed.
+- **Tests:** `npx vitest run src/__tests__/demo` and
+  `npm run test:e2e:demo` (builds `dist-demo` and serves it under a **subpath** — at the root,
+  base-path errors would go unnoticed). Unhandled endpoints log
+  `[demo] unhandled …`; the smoke test fails on any such line.
+- **Guided entry:** `?tour=file&lang=de|en` accompanies the native start dialog and the
+  execution history; `?tour=diagnose` opens a prepared copy error.
+  `demo/ui/tour.ts` stays outside the React product tree. The graph comes from
+  `scripts/example-guided-file-workflow.json`; `demo/run/fileScenario.ts` derives its
+  simulated outputs from the start parameters. `Protected` fails at File Copy,
+  subsequent steps do not run. Retry keeps the original inputs.
+  The guided scenarios are covered in `e2e-demo/guided-tour.spec.ts`.
+  Eight further tasks (`?tour=build|decision|parallel|service|live|versions|machine|maintenance`)
+  are in `demo/ui/additionalTours.ts`, their seed data in `demo/seed/missionFixtures.ts` and the
+  run simulation in `demo/run/missionScenarios.ts`; covered in `e2e-demo/additional-tours.spec.ts`.
+  The website route `/walkthrough/` links all ten tasks.
