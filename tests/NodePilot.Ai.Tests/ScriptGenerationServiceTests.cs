@@ -134,6 +134,38 @@ public class ScriptGenerationServiceTests
         ex.Kind.Should().Be(LlmErrorKind.Unreachable);
     }
 
+    [Fact]
+    public async Task StreamAsync_FinishReasonLength_FailsInsteadOfReportingASuccessfulDone()
+    {
+        var fake = new FakeLlmClient().EnqueueToolCallStreamWithFinish(
+            Array.Empty<LlmToolCall>(), "length", "$h = Get-Date\n", "Write-Output $h\n");
+        var events = new List<ScriptStreamEvent>();
+
+        var act = async () =>
+        {
+            await foreach (var e in NewService(fake).StreamAsync(NewRequest(), CancellationToken.None))
+                events.Add(e);
+        };
+
+        var ex = await act.Should().ThrowAsync<LlmException>();
+        ex.Which.Kind.Should().Be(LlmErrorKind.MalformedResponse);
+        ex.Which.Message.Should().Contain("output limit");
+        events.Should().NotContain(e => e is ScriptStreamEvent.DoneEvent);
+    }
+
+    [Fact]
+    public async Task StreamAsync_FinishReasonStop_CompletesNormally()
+    {
+        var fake = new FakeLlmClient().EnqueueToolCallStreamWithFinish(
+            Array.Empty<LlmToolCall>(), "stop", "$h = Get-Date");
+        var events = new List<ScriptStreamEvent>();
+
+        await foreach (var e in NewService(fake).StreamAsync(NewRequest(), CancellationToken.None))
+            events.Add(e);
+
+        events.Last().Should().BeOfType<ScriptStreamEvent.DoneEvent>();
+    }
+
     [Theory]
     [InlineData("$x = 1\n```", "$x = 1")]
     [InlineData("$x = 1", "$x = 1")]

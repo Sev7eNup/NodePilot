@@ -28,6 +28,7 @@
     "regenerate": "Neu generieren",
     "tokenUsed": "Tokens: {{tokens}} · {{ms}} ms",
     "errorPrefix": "KI-Fehler: {{message}}",
+    "originalRestored": "Das ursprüngliche Skript wurde wiederhergestellt.",
     "disabled": "KI-Features sind deaktiviert. Aktiviere sie via <code>Llm:Enabled=true</code> in der Backend-Config.",
     "warningPrefix": "Hinweis:",
     "reviewWarning": "KI-Output bitte vor dem Speichern lesen. Schadhafte Anweisungen können in Upstream-Daten eingeschleust sein."
