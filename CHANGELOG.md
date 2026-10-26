@@ -72,6 +72,9 @@ Planned version: **1.5.3**.
   a cut-off script that can be saved and run (#610).
 - A SCIM update that only adds permissions or renames a user no longer cancels the user's running
   executions. Deactivation, deprovisioning, a lower role or a removed group membership still do (#607).
+- Output parameters above the persisted size limit are stored as valid JSON. Oversized values are cut
+  with a visible marker and small ones stay intact; before, the whole set became unreadable after a
+  reload and was missing from historical step-test context (#573).
 
 ### Security
 
