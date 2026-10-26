@@ -98,9 +98,7 @@ NodePilot is agentless workflow orchestration for Windows, built in the browser 
 - **Live UI**: step status and output appear in real time while a workflow runs.
 - **Agentless remote execution**: WinRM and PowerShell, nothing is installed on target machines.
 - **Alerting**: notification rules for run events and system conditions, delivered by email or signed webhook.
-- **AI-assisted authoring**: scripts and workflows are generated from natural language, also with local models.
-- **AI chat**: a read-only assistant that answers from documentation, operational data and, if enabled, the database.
-- **AI agent activities**: bounded agent/team workflow steps with evidence, reviews and a reserved final report on investigation model-budget exhaustion. Packaged CMD/Bash reads use checked commands. [Agent guide](docs/ai-agents.md).
+- **AI features** (opt-in): scripts and workflows generated from natural language, also with local models; a read-only chat that answers from the documentation, operational data and, if enabled, the database; and bounded agent/team workflow steps with evidence and reviews. [Agent guide](docs/ai-agents.md).
 - **CLI (`np`)**: every operation from the command line, for scripts and pipelines.
 - **MCP server for AI agents**: `nodepilot-mcp` lets Claude Code and other MCP clients drive NodePilot — 116 tools over 12 groups, destructive operations gated.
 - **Observability**: OpenTelemetry, Prometheus and a Grafana stack with 10 dashboards.
