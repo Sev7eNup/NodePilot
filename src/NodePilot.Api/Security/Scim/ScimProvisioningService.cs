@@ -292,6 +292,7 @@ public sealed partial class ScimProvisioningService(
         db.DirectoryMemberships.RemoveRange(
             await db.DirectoryMemberships.Where(x => x.UserId == id).ToListAsync(ct));
         await RevokeSessionsAsync([id], now, ct);
+        await CancelExecutionsAsync([id], now, ct);
         await db.SaveChangesAsync(ct);
         if (userStateCache is not null)
             UserSessionInvalidation.InvalidateUserStateCache(userStateCache, id);
@@ -550,6 +551,7 @@ public sealed partial class ScimProvisioningService(
             return "The last active administrator cannot be deactivated.";
 
         var changed = user.Username != username || user.IsActive != active;
+        var deactivated = user.IsActive && !active;
         user.Username = username;
         // SCIM may deactivate immediately, but cannot silently override a local suspension.
         // Explicit administrator reactivation is required before a later active=true applies.
@@ -563,7 +565,9 @@ public sealed partial class ScimProvisioningService(
         if (changed)
         {
             user.SecurityStamp++;
-            await RevokeSessionsAsync([user.Id], DateTime.UtcNow, ct);
+            var now = DateTime.UtcNow;
+            await RevokeSessionsAsync([user.Id], now, ct);
+            if (deactivated) await CancelExecutionsAsync([user.Id], now, ct);
         }
         await db.SaveChangesAsync(ct);
         if (userStateCache is not null)
@@ -653,6 +657,7 @@ public sealed partial class ScimProvisioningService(
             .ToDictionaryAsync(x => x.Key, x => x.Select(m => m.GroupKey).ToHashSet(), ct);
         var postRoles = new Dictionary<Guid, UserRole>();
         var changedUsers = new List<Guid>();
+        var reducedUsers = new List<Guid>();
         var accessGroupChanged = oidcOptions.Value.AllowedGroupIds
             .Any(group => string.Equals(group, changedGroup, StringComparison.Ordinal));
         var roleGroupChanged = oidcOptions.Value.GlobalRoleMappings
@@ -674,12 +679,17 @@ public sealed partial class ScimProvisioningService(
             if (newMemberIds.Contains(user.Id)) groups.Add(changedGroup);
             var role = OidcIdentityMapper.ResolveRole(groups, oidcOptions.Value.GlobalRoleMappings);
             postRoles[user.Id] = role;
+            var isMember = newMemberIds.Contains(user.Id);
             if (user.Role != role
                 || authorizationGroupChanged
-                   && hadMembership != newMemberIds.Contains(user.Id)
+                   && hadMembership != isMember
                 || folderGroupChanged
-                   && previousMemberIds.Contains(user.Id) != newMemberIds.Contains(user.Id))
+                   && previousMemberIds.Contains(user.Id) != isMember)
+            {
                 changedUsers.Add(user.Id);
+                if (role < user.Role || (hadMembership || previousMemberIds.Contains(user.Id)) && !isMember)
+                    reducedUsers.Add(user.Id);
+            }
         }
 
         var currentAdminCount = await db.Users.CountAsync(x => x.IsActive && x.Role == UserRole.Admin, ct);
@@ -704,6 +714,7 @@ public sealed partial class ScimProvisioningService(
             }
         }
         await RevokeSessionsAsync(changedUsers, now, ct);
+        await CancelExecutionsAsync(reducedUsers, now, ct);
         return null;
     }
 
@@ -713,7 +724,12 @@ public sealed partial class ScimProvisioningService(
             .Where(x => userIds.Contains(x.UserId) && x.RevokedAt == null)
             .ToListAsync(ct);
         foreach (var session in sessions) session.RevokedAt = now;
+    }
 
+    // Running work stops only when the principal is offboarded or loses permissions; a new
+    // grant or a rename leaves it alone.
+    private async Task CancelExecutionsAsync(IReadOnlyCollection<Guid> userIds, DateTime now, CancellationToken ct)
+    {
         var executionIds = await ExternalExecutionCancellation.CancelAsync(
             db,
             userIds,

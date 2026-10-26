@@ -70,6 +70,8 @@ Planned version: **1.5.3**.
 - AI script generation that stops at the model's output limit ends with an error instead of a
   successful result. The script editor restores the original script and says so, rather than leaving
   a cut-off script that can be saved and run (#610).
+- A SCIM update that only adds permissions or renames a user no longer cancels the user's running
+  executions. Deactivation, deprovisioning, a lower role or a removed group membership still do (#607).
 
 ### Security
 
