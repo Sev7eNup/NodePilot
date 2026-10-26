@@ -1,14 +1,68 @@
-# KI in NodePilot: vom ersten Skript bis zur Fehleranalyse
+# AI Workflow Automation für Windows: vom Prompt zum geprüften PowerShell-Ablauf
 
-> Erstelle ein PowerShell-Skript, das die Dienste Spooler, wuauserv und WinRM abfragt. Gib Name und Status als Tabelle aus. Das Skript soll keine Dienste starten oder beenden. Fehlt ein Dienst, soll die Ausgabe darauf hinweisen.
+AI Workflow Automation verbindet Modellunterstützung mit einem ausführbaren Ablauf. Für Windows-Administration kann das heißen: Eine KI entwirft ein PowerShell-Skript, ein Mensch prüft Ziel und Befehle, und ein Workflow führt den freigegebenen Auftrag aus. Ob der Auftrag funktioniert hat, muss sich anschließend an beobachtbaren Ergebnissen zeigen.
 
-Diese Aufgabe lässt sich direkt im Script-Editor von NodePilot formulieren. Ein vorhandenes Skript und die verfügbaren Workflow-Variablen liefern dabei den Kontext. Voraussetzung ist eine konfigurierte Verbindung zum Modell, deren Einstellungen am Ende des Artikels beschrieben sind.
+Unser Beispiel ist eine lesende Dienstabfrage. Ein angehaltener Dienst ist dabei zunächst ein Zustand, kein bewiesener Defekt. Eine fehlgeschlagene Abfrage muss dagegen sichtbar bleiben. Daraus ergibt sich der Prompt:
+
+> Erstelle ein PowerShell-Skript für Windows PowerShell 5.1, das Spooler, wuauserv und WinRM abfragt. Gib pro Dienst Name, Zustand und Abfragefehler als JSON aus, zusammen mit Rechnername, UTC-Zeit und PowerShell-Version. Starte oder beende keine Dienste. Prüfe alle drei Namen, auch wenn einer fehlschlägt. Gib den Bericht vor einem abschließenden terminierenden Fehler aus, wenn mindestens eine Abfrage fehlgeschlagen ist. Ein gestoppter, erfolgreich abgefragter Dienst ist für diesen Inventarauftrag kein Fehler.
+
+Diese Aufgabe lässt sich direkt im Script-Editor von NodePilot formulieren. Ein vorhandenes Skript wird nur mit der ausdrücklichen Freigabe für diesen Aufruf mitgesendet; verfügbare Workflow-Variablen liefern ihr Schema, nicht ihre Werte. Voraussetzung ist eine konfigurierte Verbindung zum Modell, deren Einstellungen am Ende des Artikels beschrieben sind.
 
 Der Assistent im Designer erhält dagegen den geöffneten Workflow als Kontext und kann die verfügbare Ausführungshistorie für die Analyse heranziehen. Der globale Chat greift auf freigegebene Wissensquellen und Betriebsdaten zurück. Die Integration erspart damit das Zusammenstellen jener Informationen, die für einen getrennten Chat erst kopiert oder beschrieben werden müssten.
 
 Für die Dienstprüfung wird in einer `runScript`-Activity der Script-Editor geöffnet und maximiert. Über das Symbol der KI-Funktion lässt sich die oben gezeigte Anweisung eingeben.
 
 Der erzeugte Vorschlag lässt sich am Cursor einfügen oder als Ersatz für das bisherige Skript übernehmen. Damit ändert sich zunächst nur der Editorinhalt. Bevor ein Testlauf folgt, sind insbesondere die Zielmaschine und die verwendeten Befehle zu prüfen.
+
+## Den Vorschlag an einem überprüfbaren Ergebnis messen
+
+Die folgende Fassung ist ein redaktionell ausgearbeitetes Referenzskript. Sie wurde lokal unter Windows PowerShell 5.1 geprüft; sie ist keine behauptete wortgleiche Antwort eines bestimmten Modells. Ein generierter Vorschlag darf anders aussehen, muss aber dieselben Anforderungen erfüllen.
+
+```powershell
+$serviceNames = @('Spooler', 'wuauserv', 'WinRM')
+$checks = @(foreach ($name in $serviceNames) {
+    try {
+        $service = Get-Service -Name $name -ErrorAction Stop
+        [pscustomobject]@{
+            Name = $name
+            State = [string]$service.Status
+            QuerySucceeded = $true
+            Error = $null
+        }
+    }
+    catch {
+        [pscustomobject]@{
+            Name = $name
+            State = 'Unknown'
+            QuerySucceeded = $false
+            Error = $_.Exception.Message
+        }
+    }
+})
+$serviceReport = [pscustomobject]@{
+    Computer = $env:COMPUTERNAME
+    ObservedAtUtc = [DateTime]::UtcNow.ToString('o')
+    PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+    QuerySucceeded = @($checks | Where-Object { -not $_.QuerySucceeded }).Count -eq 0
+    Services = $checks
+}
+$serviceReport | ConvertTo-Json -Depth 4
+if (-not $serviceReport.QuerySucceeded) {
+    throw 'One or more service queries failed; inspect the report.'
+}
+```
+
+Der Bericht enthält für jeden angefragten Namen einen Eintrag. `QuerySucceeded` beschreibt den Erfolg der Abfrage, nicht die Gesundheit der Anwendung. Wenn ein Dienst fehlt oder nicht gelesen werden kann, bleibt sein Zustand `Unknown`; die Fehlermeldung liefert den Ansatz für die Untersuchung. Anschließend signalisiert `throw`, dass der Inventarauftrag unvollständig ist. Die [Erklärung zu PowerShell try/catch](https://www.nodepilot.run/blog/powershell-try-catch/) vertieft dieses Fehlerverhalten.
+
+Vor dem Übernehmen prüfen: enthält das Skript ausschließlich die angeforderte Abfrage, stimmen die Namen, werden Fehler weitergemeldet und bleibt die Ausgabe maschinenlesbar? Ein `Format-Table` mitten in einer Datenpipeline wäre beispielsweise eine andere Ausgabeform als das verlangte JSON.
+
+| Gegenprobe | Erwarteter Nachweis |
+| --- | --- |
+| Einen auf dem Testhost vorhandenen Dienst abfragen | Rechner, Zeit und ein mit einer unabhängigen Get-Service-Abfrage übereinstimmender Zustand |
+| Einen eindeutig nicht vorhandenen Namen ergänzen | Der vorhandene Dienst bleibt im Bericht; der zusätzliche Eintrag hat Unknown und QuerySucceeded false; das Skript wirft anschließend einen Fehler |
+| Ein vorhandener Dienst ist bereits gestoppt | Sein Zustand lautet Stopped; eine erfolgreiche Abfrage bleibt erfolgreich. Für den Test keinen Dienst stoppen. |
+
+Die ersten beiden Fälle wurden lokal ausgeführt. Der dritte beschreibt die Auswertungsregel; es wurde kein Dienst für den Artikel angehalten. Im eigenen Workflow dieselben Gegenproben unter der tatsächlichen Identität wiederholen. Aus der lokalen Skriptprüfung folgt noch kein erfolgreicher Remote-Lauf oder Test einer Modellverbindung.
 
 ![Workflow-Designer mit ausgewählter PowerShell-Activity zur Abfrage von Diensten](images/designer-dark.png)
 
@@ -20,7 +74,7 @@ Bei solchen Anpassungen entfällt vor allem das wiederholte Übertragen zwischen
 
 Über „KI generieren“ in der Workflow-Übersicht öffnet sich der Dialog für einen neuen Entwurf. Je deutlicher die Beschreibung den Auslöser und das erwartete Ergebnis benennt, desto genauer ist die Aufgabe eingegrenzt. Für die Dienstprüfung könnte sie folgendermaßen lauten:
 
-> Erstelle einen manuell gestarteten Workflow, der auf einer noch auszuwählenden Windows-Maschine die Dienste Spooler, wuauserv und WinRM prüft. Protokolliere den Zustand jedes Dienstes. Gib abschließend einen Bericht zurück, der fehlende oder angehaltene Dienste benennt. Nimm keine Änderungen an den Diensten vor.
+> Erstelle einen manuell gestarteten Workflow mit einer PowerShell-Dienstabfrage auf einer noch auszuwählenden Windows-Maschine. Verwende den oben beschriebenen JSON-Bericht. Erfolgreich gelesene, angehaltene Dienste sind Inventarbefunde. Fehlgeschlagene Abfragen müssen den Prüfschritt fehlschlagen lassen. Nimm keine Änderungen an Diensten vor und füge keine automatische Reparatur hinzu.
 
 Vor dem Anlegen zeigt NodePilot eine Vorschau, die neben der erzeugten Definition auch die Anzahl der Nodes und Verbindungen enthält. Erst nach Bestätigung entsteht der Workflow. Anschließend müssen die Zielmaschine und Zugangsdaten ausgewählt sowie die Verbindungen geprüft werden, da die Beschreibung diese Angaben noch nicht abschließend festlegt. Wie der Entwurf im Einzelnen aufgebaut ist, hängt vom verwendeten Modell ab.
 
@@ -93,4 +147,4 @@ Vorausgesetzt wird ein unterstützter, OpenAI-kompatibler Endpunkt, dessen Errei
 
 Mit der Wahl des Endpunkts ist zugleich festgelegt, wohin die Modellanfragen gehen. Wird ein externer Anbieter verwendet, verlassen der Prompt und der mitgesendete Kontext die eigene Installation. NodePilot redigiert zwar erkannte Secrets vor der Übermittlung, fachliche Inhalte aus einem Fehlerprotokoll können jedoch weiterhin zur Anfrage gehören.
 
-Die [Dokumentation zu den KI-Funktionen](https://nodepilot.run/docs/#/de/ai-features) beschreibt die Einrichtung und Wissensquellen. Die Felder und Ausgaben von `llmQuery`, `aiAgent` und `aiAgentTeam` stehen in der [Activity-Referenz](https://nodepilot.run/docs/#/de/activities-reference).
+Die [Dokumentation zu den KI-Funktionen](https://www.nodepilot.run/docs/de/ai-features/) beschreibt die Einrichtung und Wissensquellen. Die Felder und Ausgaben von `llmQuery`, `aiAgent` und `aiAgentTeam` stehen in der [Activity-Referenz](https://www.nodepilot.run/docs/de/activities-reference/). Ein lokal betriebenes Modell benötigt ebenfalls Ressourcen; externe Anbieter können Nutzungskosten berechnen. KI-Unterstützung ist keine Voraussetzung für die normale [PowerShell-Automatisierung](https://www.nodepilot.run/powershell-automation/).

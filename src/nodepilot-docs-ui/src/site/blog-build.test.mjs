@@ -28,7 +28,7 @@ describe('article publication and preview boundary', () => {
       it('emits complete articles and respects publication state', () => {
         const sitemap = readFileSync(join(root, 'sitemap.xml'), 'utf8')
         const index = parseHTML(readFileSync(join(root, 'blog/index.html'), 'utf8')).document
-        expect(index.querySelectorAll('.blog-index-row').length).toBe(preview ? 17 : 8)
+        expect(index.querySelectorAll('.blog-index-row').length).toBe(preview ? 21 : 8)
         expect(index.querySelectorAll('.blog-index-row[data-category="hintergrund"]').length).toBe(preview ? 3 : 1)
         for (const article of articles) {
           expect(allPages.some(page => page.path === article.docs), article.docs).toBe(true)
@@ -44,6 +44,15 @@ describe('article publication and preview boundary', () => {
             const body = doc.querySelector('#article-body')
             expect(body.textContent.length, route).toBeGreaterThan(800)
             expect(body.querySelector('h1')).toBeNull()
+            for (const link of body.querySelectorAll('a[href]')) {
+              const url = new URL(link.getAttribute('href'), 'https://www.nodepilot.run')
+              if (!['nodepilot.run', 'www.nodepilot.run'].includes(url.hostname)) continue
+              const match = url.pathname.match(/^\/(?:en\/)?blog\/([^/]+)\/?$/)
+              if (!match) continue
+              const target = articles.find(candidate => candidate.slug === match[1])
+              expect(target, `${route} links to ${url.pathname}`).toBeDefined()
+              if (!preview) expect(target.status, `${route} links to a draft`).toBe('published')
+            }
             expect(body.querySelector('link[rel="preload"]'), 'Markdown source image paths must not leak into preload hints').toBeNull()
             expect(doc.querySelector('#article-title').textContent).toBe(article.text[lang].title)
             const graph = JSON.parse(doc.querySelector('[data-site-schema]').textContent)['@graph']

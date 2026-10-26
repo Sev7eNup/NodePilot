@@ -227,6 +227,8 @@
       "en": "How do I verify gMSA service accounts and their actual permissions?"
     },
     "related": [
+      "gmsa-scheduled-task",
+      "gmsa-troubleshooting",
       "winrm",
       "winrm-https"
     ],
@@ -270,8 +272,10 @@
       "en": "What should I test when switching between PowerShell 5.1 and 7?"
     },
     "related": [
+      "gmsa-scheduled-task",
       "first-workflow",
-      "verify-results"
+      "verify-results",
+      "powershell-execution-policy"
     ],
     "publishedAt": "2026-10-25",
     "modifiedAt": "2026-10-25",
@@ -481,33 +485,34 @@
     "docs": "ai-features",
     "audience": "Windows-/PowerShell-Admins",
     "question": {
-      "de": "Wie hilft KI beim Entwerfen und Prüfen von Skripten und Workflows?",
-      "en": "How can AI help create and review scripts and workflows?"
+      "de": "Wie wird aus einem KI-Prompt ein überprüfbarer PowerShell-Workflow?",
+      "en": "How do you turn an AI prompt into a verifiable PowerShell workflow?"
     },
     "related": [
       "first-workflow",
-      "failure-analysis"
+      "failure-analysis",
+      "powershell-try-catch"
     ],
     "publishedAt": null,
     "modifiedAt": null,
     "text": {
       "de": {
-        "title": "KI in NodePilot: vom ersten Skript bis zur Fehleranalyse",
-        "seoTitle": "KI für PowerShell-Skripte und Workflow-Fehleranalyse",
-        "summary": "Wie KI in NodePilot PowerShell-Skripte schreibt, Workflows erklärt und Fehler analysiert: mit lokalem oder eigenem Modell und freigegebenen Datenquellen.",
-        "lead": "Wie hilft KI beim Entwerfen und Prüfen von Skripten und Workflows?",
+      "title": "AI Workflow Automation für Windows: vom Prompt zum geprüften PowerShell-Ablauf",
+      "seoTitle": "AI Workflow Automation für Windows mit PowerShell",
+      "summary": "AI Workflow Automation für Windows: einen PowerShell-Dienstcheck entwerfen, den Code prüfen und Erfolg sowie Fehler mit einem JSON-Bericht nachvollziehen.",
+      "lead": "Wie wird aus einem KI-Prompt ein überprüfbarer PowerShell-Workflow?",
         "category": "PRAXIS",
-        "indexTitle": "KI in NodePilot: vom ersten Skript bis zur Fehleranalyse",
-        "teaser": "Wie hilft KI beim Entwerfen und Prüfen von Skripten und Workflows?"
+      "indexTitle": "AI Workflow Automation: vom Prompt zum geprüften Ablauf",
+      "teaser": "Ein Dienstcheck mit überprüfbarer Ausgabe und bewusstem Fehlerfall."
       },
       "en": {
-        "title": "AI in NodePilot: from the first script to failure analysis",
-        "seoTitle": "AI for PowerShell scripts and workflow failure analysis",
-        "summary": "How AI in NodePilot writes PowerShell scripts, explains workflows and analyzes failures, using a local or your own model and data sources you approve.",
-        "lead": "How can AI help create and review scripts and workflows?",
+      "title": "AI workflow automation for Windows: from a prompt to verified PowerShell",
+      "seoTitle": "AI workflow automation for Windows with PowerShell",
+      "summary": "AI workflow automation for Windows: generate a PowerShell service check, review its code and verify success and failure through a structured JSON report.",
+      "lead": "How do you turn an AI prompt into a verifiable PowerShell workflow?",
         "category": "PRACTICE",
-        "indexTitle": "AI in NodePilot: from the first script to failure analysis",
-        "teaser": "How can AI help create and review scripts and workflows?"
+      "indexTitle": "AI workflow automation: from a prompt to a verified task",
+      "teaser": "A service check with observable output and a deliberate failure case."
       }
     },
     "docsTitle": {
@@ -728,6 +733,184 @@
     "docsTitle": {
       "de": "Designer – Überblick",
       "en": "Designer overview"
+    }
+  },
+  {
+    "slug": "gmsa-scheduled-task",
+    "status": "draft",
+    "next": false,
+    "source": "gmsa-scheduled-task",
+    "solution": "powershell-automation",
+    "docs": "configuration/remote-execution",
+    "audience": "Windows-/PowerShell-Admins",
+    "question": {
+      "de": "Wie führe ich eine geplante PowerShell-Aufgabe mit gMSA aus und prüfe ihren Zugriff?",
+      "en": "How do I run a scheduled PowerShell task with a gMSA and verify its access?"
+    },
+    "related": [
+      "gmsa-service-accounts",
+      "gmsa-troubleshooting",
+      "powershell-51-and-7",
+      "powershell-try-catch",
+      "powershell-execution-policy"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Ein PowerShell-Skript als geplante Aufgabe mit gMSA ausführen",
+        "seoTitle": "gMSA: PowerShell als geplante Aufgabe ausführen",
+        "summary": "Eine PowerShell-Aufgabe mit gMSA einrichten: Anmeldetyp, Rechte und Skriptpfad festlegen, SMB-Zugriff prüfen und Fehler mit Exit-Code protokollieren.",
+        "lead": "Wie läuft ein PowerShell-Auftrag ohne hinterlegtes Kennwort und mit nachgewiesenem Zielzugriff?",
+        "category": "PRAXIS",
+        "indexTitle": "PowerShell als geplante Aufgabe mit gMSA",
+        "teaser": "Konto, Rechte und Ergebnis einer unbeaufsichtigten Aufgabe prüfen."
+      },
+      "en": {
+        "title": "Run a PowerShell scheduled task with a gMSA",
+        "seoTitle": "gMSA scheduled task: run and verify PowerShell jobs",
+        "summary": "Configure a PowerShell scheduled task with a gMSA: set logon type and permissions, verify SMB access, and record errors with an explicit exit code.",
+        "lead": "How can a PowerShell job run without an entered password and prove its destination access?",
+        "category": "PRACTICE",
+        "indexTitle": "Run a PowerShell scheduled task with a gMSA",
+        "teaser": "Verify the account, permissions and result of an unattended task."
+      }
+    },
+    "docsTitle": {
+      "de": "Remote-Ausführung",
+      "en": "Remote execution"
+    }
+  },
+  {
+    "slug": "gmsa-troubleshooting",
+    "status": "draft",
+    "next": false,
+    "source": "gmsa-troubleshooting",
+    "solution": "self-hosted-automation",
+    "docs": "configuration/remote-execution",
+    "audience": "Windows-Administratoren und Betreiber",
+    "question": {
+      "de": "Was prüfe ich, wenn Test-ADServiceAccount False liefert?",
+      "en": "What should I check when Test-ADServiceAccount returns False?"
+    },
+    "related": [
+      "gmsa-service-accounts",
+      "gmsa-scheduled-task",
+      "winrm"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Test-ADServiceAccount liefert False: das gMSA auf dem Host prüfen",
+        "seoTitle": "Test-ADServiceAccount False: gMSA-Fehler eingrenzen",
+        "summary": "Test-ADServiceAccount liefert False? Hostberechtigung, KDS und Installation systematisch prüfen und Kontofehler von fehlenden Ressourcenrechten trennen.",
+        "lead": "Welche Prüfung grenzt den Fehler ein, bevor Konto oder Berechtigungen verändert werden?",
+        "category": "PRAXIS",
+        "indexTitle": "Test-ADServiceAccount liefert False: gMSA prüfen",
+        "teaser": "Vom fehlschlagenden Kontotest zum nachgewiesenen Zugriff."
+      },
+      "en": {
+        "title": "Test-ADServiceAccount returns False: diagnose the gMSA on its host",
+        "seoTitle": "Test-ADServiceAccount False: troubleshoot your gMSA",
+        "summary": "Test-ADServiceAccount returns False? Check host authorization, KDS and installation, then distinguish account readiness from task and file access failures.",
+        "lead": "Which check isolates the failure before changing the account or its permissions?",
+        "category": "PRACTICE",
+        "indexTitle": "Test-ADServiceAccount returns False: diagnose your gMSA",
+        "teaser": "Separate account readiness, task startup and destination permissions."
+      }
+    },
+    "docsTitle": {
+      "de": "Remote-Ausführung",
+      "en": "Remote execution"
+    }
+  },
+  {
+    "slug": "powershell-try-catch",
+    "status": "draft",
+    "next": false,
+    "source": "powershell-try-catch",
+    "solution": "powershell-automation",
+    "docs": "activities-reference",
+    "audience": "Windows-/PowerShell-Admins",
+    "question": {
+      "de": "Warum läuft ein PowerShell-Skript trotz Fehlermeldung weiter?",
+      "en": "Why does a PowerShell script continue after an error?"
+    },
+    "related": [
+      "gmsa-scheduled-task",
+      "powershell-execution-policy",
+      "ai-workflows"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "PowerShell try/catch: Fehler erkennen und Aufträge zuverlässig abbrechen",
+        "seoTitle": "PowerShell try/catch: Fehler sicher abfangen",
+        "summary": "PowerShell try/catch mit ErrorAction Stop, finally und Exitcodes: Fehler reproduzieren und geplante Skripte mit überprüften Beispielen zuverlässig abbrechen.",
+        "lead": "Warum läuft ein PowerShell-Skript trotz Fehlermeldung weiter?",
+        "category": "PRAXIS",
+        "indexTitle": "PowerShell try/catch: Fehler zuverlässig behandeln",
+        "teaser": "Warum läuft ein PowerShell-Skript trotz Fehlermeldung weiter?"
+      },
+      "en": {
+        "title": "PowerShell try/catch: detect errors and fail unattended jobs reliably",
+        "seoTitle": "PowerShell try/catch: handle errors in unattended jobs",
+        "summary": "Use PowerShell try/catch, ErrorAction Stop and exit codes to detect failures in unattended scripts, with tested success and failure examples.",
+        "lead": "Why does a PowerShell script continue after an error?",
+        "category": "PRACTICE",
+        "indexTitle": "PowerShell try/catch for unattended jobs",
+        "teaser": "Why does a PowerShell script continue after an error?"
+      }
+    },
+    "docsTitle": {
+      "de": "Activity-Referenz",
+      "en": "Activity reference"
+    }
+  },
+  {
+    "slug": "powershell-execution-policy",
+    "status": "draft",
+    "next": false,
+    "source": "powershell-execution-policy",
+    "solution": "powershell-automation",
+    "docs": "activities-reference",
+    "audience": "Windows-/PowerShell-Admins",
+    "question": {
+      "de": "Welche Execution Policy blockiert mein PowerShell-Skript?",
+      "en": "Which execution policy is blocking my PowerShell script?"
+    },
+    "related": [
+      "powershell-try-catch",
+      "gmsa-scheduled-task",
+      "powershell-51-and-7"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "PowerShell Execution Policy: warum ein Skript nicht startet",
+        "seoTitle": "PowerShell Execution Policy prüfen und Fehler beheben",
+        "summary": "PowerShell Execution Policy prüfen: Gültigkeitsbereiche, Gruppenrichtlinien und Downloadmarkierung unterscheiden und blockierte Skripte gezielt untersuchen.",
+        "lead": "Welche Execution Policy blockiert mein PowerShell-Skript?",
+        "category": "PRAXIS",
+        "indexTitle": "PowerShell Execution Policy: blockierte Skripte prüfen",
+        "teaser": "Welche Execution Policy blockiert mein PowerShell-Skript?"
+      },
+      "en": {
+        "title": "PowerShell execution policy: diagnose a script that will not start",
+        "seoTitle": "PowerShell execution policy: diagnose blocked scripts",
+        "summary": "Check PowerShell execution policy, scope precedence, Group Policy and downloaded files to diagnose why a script will not start under its actual account.",
+        "lead": "Which execution policy is blocking my PowerShell script?",
+        "category": "PRACTICE",
+        "indexTitle": "PowerShell execution policy: diagnose blocked scripts",
+        "teaser": "Which execution policy is blocking my PowerShell script?"
+      }
+    },
+    "docsTitle": {
+      "de": "Activity-Referenz",
+      "en": "Activity reference"
     }
   }
 ]
