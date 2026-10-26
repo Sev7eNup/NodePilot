@@ -82,6 +82,9 @@ Planned version: **1.5.3**.
   real run (#605).
 - `np maintenance create|update --days` rejects an unknown day name before anything is sent. It used
   to drop the token silently, which left that day outside a blackout window (#623).
+- The audit log's time filters and export use the instant you picked. The page sent the local time
+  without an offset and the server read it as UTC, so the window was shifted by the time-zone offset
+  (#599).
 
 ### Security
 

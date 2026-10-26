@@ -132,6 +132,33 @@ describe('AuditLogPage', () => {
     await waitFor(() => expect(lastUrl).toContain('action=LOGIN_SUCCESS'));
   });
 
+  it('timeFilters_areSentAsUtcInstants_toListAndExport', async () => {
+    let lastUrl = '';
+    server.use(
+      http.get(`${BASE}/api/audit`, ({ request }) => {
+        lastUrl = request.url;
+        return HttpResponse.json(page([]));
+      })
+    );
+    const { container } = renderPage();
+
+    await waitFor(() => expect(container.querySelectorAll('input[type="datetime-local"]')).toHaveLength(2));
+    const [sinceInput, untilInput] = container.querySelectorAll('input[type="datetime-local"]');
+    fireEvent.change(sinceInput, { target: { value: '2026-10-22T14:00' } });
+    fireEvent.change(untilInput, { target: { value: '2026-10-22T14:30' } });
+
+    // The picker shows browser-local wall time; the API compares UTC instants.
+    const expectedSince = new Date('2026-10-22T14:00').toISOString();
+    const expectedUntil = new Date('2026-10-22T14:30').toISOString();
+    await waitFor(() => expect(new URL(lastUrl).searchParams.get('since')).toBe(expectedSince));
+    expect(new URL(lastUrl).searchParams.get('until')).toBe(expectedUntil);
+    expect(expectedSince.endsWith('Z')).toBe(true);
+
+    const csv = container.querySelector<HTMLAnchorElement>('a[href*="/api/audit/export"][href*="format=csv"]');
+    expect(csv).not.toBeNull();
+    expect(new URL(csv!.href, BASE).searchParams.get('since')).toBe(expectedSince);
+  });
+
   it('expandingEntry_showsPrettyJsonDetails', async () => {
     server.use(http.get(`${BASE}/api/audit`, () => HttpResponse.json(page(ENTRIES))));
     renderPage();
