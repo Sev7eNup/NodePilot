@@ -82,8 +82,9 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
   `authToken`/`bearer`/`connectionString` → `***`). Bei `publish`/`update`/`apply_workflow_patch`
   werden echte Secrets per Node-ID aus der gespeicherten Version wiederhergestellt — das `***` des
   Agenten überschreibt nie einen echten Wert. Ein `***` auf einer neuen Node- oder Edge-ID hat kein
-  Original, deshalb wird der Aufruf abgelehnt und nichts gespeichert. Credentials/Globals geben
-  Secrets nie aus.
+  Original, deshalb wird der Aufruf abgelehnt und nichts gespeichert. Dasselbe gilt für eine
+  Änderung an einem Bedingungs- oder Case-Array, das ein `***` enthält; diese Änderung erfolgt im
+  Designer. Credentials/Globals geben Secrets nie aus.
 - **Annotations:** Read-Tools `readOnly`, gated Tools `destructive`, enable/disable/lock
   `idempotent`. `execute_workflow` ist **nicht idempotent**: ein erneuter Aufruf startet
   eine weitere Ausführung. Einen unklar beantworteten Start zuerst über die Ausführungen prüfen.
