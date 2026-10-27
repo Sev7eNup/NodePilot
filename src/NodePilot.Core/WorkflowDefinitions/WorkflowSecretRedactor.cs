@@ -25,7 +25,7 @@ namespace NodePilot.Core.WorkflowDefinitions;
 /// </summary>
 public static class WorkflowSecretRedactor
 {
-    private const string Mask = "***";
+    private const string Mask = WorkflowSecretMask.Value;
 
     private static readonly IReadOnlySet<string> OpaqueDefinitionKeys =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)

@@ -106,7 +106,9 @@ before retrying a start whose response was lost.
   — the agent's `***` never overwrites them, and a
   secret the agent invents on a new node is rejected (masked + noted). A `***` with no stored
   value behind it (for example a condition literal copied onto a new edge id) rejects the whole
-  operation, because it would otherwise be saved as the literal `***`.
+  operation, because it would otherwise be saved as the literal `***`. So does any change to a
+  condition or case array that contains a mask: items have no stable id to restore against, so
+  such edits are made in the designer.
 - Credentials carry no password field; secret global values arrive masked. Create/update accept
   secrets write-only.
 
