@@ -2,6 +2,7 @@ import { Close } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
 import { VariableInsertField } from './shared';
 import type { UpstreamVariable } from '../../../lib/upstreamVariables';
+import { useKeyValueRows } from '../../../hooks/useKeyValueRows';
 
 interface ParameterTableProps {
   /** Label for the section header, for example "Parameters". */
@@ -32,24 +33,7 @@ export function ParameterTable({
   upstreamVars = [],
 }: Readonly<ParameterTableProps>) {
   const { t } = useTranslation('properties');
-  const entries = Object.entries(parameters);
-
-  const addRow = () => onChange({ ...parameters, '': '' });
-
-  const updateRow = (oldKey: string, newKey: string, value: string) => {
-    const next: Record<string, string> = {};
-    for (const [k, v] of entries) {
-      if (k === oldKey) next[newKey] = value;
-      else next[k] = v;
-    }
-    onChange(next);
-  };
-
-  const removeRow = (k: string) => {
-    const next: Record<string, string> = {};
-    for (const [key, val] of entries) if (key !== k) next[key] = val;
-    onChange(next);
-  };
+  const { rows, add, rename, setValue, remove } = useKeyValueRows(parameters, onChange);
 
   return (
     <div>
@@ -59,35 +43,37 @@ export function ParameterTable({
         </label>
         <button
           type="button"
-          onClick={addRow}
+          onClick={add}
           className="text-xs text-primary hover:underline font-medium"
         >
           {addLabel}
         </button>
       </div>
-      {entries.length === 0 && (
+      {rows.length === 0 && (
         <p className="text-[11px] text-on-surface-variant italic">{emptyMessage}</p>
       )}
-      {entries.map(([k, v], idx) => (
-        <div key={idx} className="flex items-center gap-1.5 mb-1.5">
+      {rows.map((row) => (
+        <div key={row.id} className="flex items-center gap-1.5 mb-1.5">
           <input
             type="text"
-            value={k}
-            onChange={(e) => updateRow(k, e.target.value, v)}
+            value={row.key}
+            onChange={(e) => rename(row.id, e.target.value)}
             placeholder={t('parameterTable.keyPlaceholder')}
-            className="input-field !py-1 flex-[0_0_40%] text-sm font-mono"
+            aria-invalid={row.duplicate || undefined}
+            title={row.duplicate ? t('parameterTable.duplicateName') : undefined}
+            className={`input-field !py-1 flex-[0_0_40%] text-sm font-mono${row.duplicate ? ' !border-error' : ''}`}
           />
           <VariableInsertField
             label=""
-            value={v}
-            onChange={(nv: string) => updateRow(k, k, nv)}
+            value={row.value}
+            onChange={(nv: string) => setValue(row.id, nv)}
             upstreamVars={upstreamVars}
             placeholder={t('parameterTable.valuePlaceholder')}
             compact
           />
           <button
             type="button"
-            onClick={() => removeRow(k)}
+            onClick={() => remove(row.id)}
             className="text-error hover:text-error-high text-sm px-1"
             title={t('parameterTable.remove')}
           >
