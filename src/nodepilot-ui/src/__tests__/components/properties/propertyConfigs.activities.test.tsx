@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -184,6 +185,28 @@ describe('ReturnDataConfig', () => {
     wrap(<ReturnDataConfig config={{ data: { foo: 'a', bar: 'b' } }} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.getByDisplayValue('foo')).toBeInTheDocument();
     expect(screen.getByDisplayValue('bar')).toBeInTheDocument();
+  });
+
+  it('typingNameThatPassesThroughExistingName_keepsExistingField', () => {
+    const onUpdate = vi.fn();
+    function Controlled() {
+      const [config, setConfig] = useState<Record<string, unknown>>({ data: { id: '42' } });
+      return (
+        <ReturnDataConfig
+          config={config}
+          onUpdate={(patch) => { onUpdate(patch); setConfig((c) => ({ ...c, ...patch })); }}
+          upstreamVars={[]}
+        />
+      );
+    }
+    wrap(<Controlled />);
+
+    fireEvent.click(screen.getByRole('button', { name: /\+ Field/i }));
+    const second = () => screen.getAllByPlaceholderText('key')[1];
+    fireEvent.change(second(), { target: { value: 'id' } });
+    fireEvent.change(second(), { target: { value: 'id2' } });
+
+    expect(onUpdate).toHaveBeenLastCalledWith({ data: { id: '42', id2: '' } });
   });
 });
 

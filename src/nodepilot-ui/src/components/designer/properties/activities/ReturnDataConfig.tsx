@@ -1,27 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { Close } from '@carbon/icons-react';
 import { VariableInsertField, type ConfigProps } from '../shared';
+import { useKeyValueRows } from '../../../../hooks/useKeyValueRows';
 
 export function ReturnDataConfig({ config, onUpdate, upstreamVars = [] }: Readonly<ConfigProps>) {
   const { t } = useTranslation('properties');
   const data = (config.data as Record<string, string>) || {};
-  const entries = Object.entries(data);
-
-  const setData = (next: Record<string, string>) => onUpdate({ data: next });
-  const addKey = () => setData({ ...data, '': '' });
-  const updateKey = (oldKey: string, newKey: string, value: string) => {
-    const next: Record<string, string> = {};
-    for (const [k, v] of entries) {
-      if (k === oldKey) next[newKey] = value;
-      else next[k] = v;
-    }
-    setData(next);
-  };
-  const removeKey = (k: string) => {
-    const next: Record<string, string> = {};
-    for (const [key, val] of entries) if (key !== k) next[key] = val;
-    setData(next);
-  };
+  const { rows, add, rename, setValue, remove } = useKeyValueRows(data, (next) => onUpdate({ data: next }));
 
   return (
     <div>
@@ -31,30 +16,32 @@ export function ReturnDataConfig({ config, onUpdate, upstreamVars = [] }: Readon
           </label>
           <button
             type="button"
-            onClick={addKey}
+            onClick={add}
             className="text-xs text-primary hover:underline font-medium"
           >
             {t('returnData.addField')}
           </button>
         </div>
-        {entries.length === 0 && (
+        {rows.length === 0 && (
           <p className="text-[11px] text-on-surface-variant italic">
             {t('returnData.noReturnFields')}
           </p>
         )}
-        {entries.map(([k, v], idx) => (
-          <div key={idx} className="mb-2">
+        {rows.map((row) => (
+          <div key={row.id} className="mb-2">
             <div className="flex items-center gap-1.5 mb-1">
               <input
                 type="text"
-                value={k}
-                onChange={(e) => updateKey(k, e.target.value, v)}
+                value={row.key}
+                onChange={(e) => rename(row.id, e.target.value)}
                 placeholder={t('parameterTable.keyPlaceholder')}
-                className="input-field !py-1 flex-[0_0_40%] text-sm font-mono"
+                aria-invalid={row.duplicate || undefined}
+                title={row.duplicate ? t('parameterTable.duplicateName') : undefined}
+                className={`input-field !py-1 flex-[0_0_40%] text-sm font-mono${row.duplicate ? ' !border-error' : ''}`}
               />
               <button
                 type="button"
-                onClick={() => removeKey(k)}
+                onClick={() => remove(row.id)}
                 className="text-error hover:text-error-high text-sm px-1"
                 title={t('parameterTable.remove')}
               >
@@ -63,8 +50,8 @@ export function ReturnDataConfig({ config, onUpdate, upstreamVars = [] }: Readon
             </div>
             <VariableInsertField
               label=""
-              value={v}
-              onChange={(nv) => updateKey(k, k, nv)}
+              value={row.value}
+              onChange={(nv) => setValue(row.id, nv)}
               upstreamVars={upstreamVars}
               placeholder={t('parameterTable.valuePlaceholderUpstream')}
             />
