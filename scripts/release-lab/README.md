@@ -44,7 +44,8 @@ cases**, with IDs such as `U1-from-1.4.5`. All other scenarios run once (30 serv
 | P1 | gMSA | SQL Server | fresh install | machine policy `AllSigned`, then every local PowerShell path runs |
 
 **Pass** for an install or update: setup exit 0, `/healthz/ready` 200, the bootstrap admin signs in,
-a workflow (manual trigger + log step) runs to *Succeeded*, and the service log has **no error
+a workflow (manual trigger + log step) runs to *Succeeded*, `GET /api/admin/settings/status` answers
+200 with `canRestartService: true`, and the service log has **no error
 entry** (CMTrace `type="3"`) for two minutes after the setup finished. On an update the count starts
 at the new service's `NodePilot.Api started` line; what the previous release logged before is
 reported as `errorsBeforeNewStart`.
