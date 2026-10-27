@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Management.Automation.Runspaces;
+using System.Net;
+using System.Net.Sockets;
 using System.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -59,8 +61,7 @@ public class WinRmSessionFactory : IRemoteSessionFactory
         var connectStopwatch = System.Diagnostics.Stopwatch.StartNew();
         var authTag = new KeyValuePair<string, object?>("auth", authLabel);
 
-        var scheme = machine.UseSsl ? "https" : "http";
-        var uri = new Uri($"{scheme}://{machine.Hostname}:{machine.WinRmPort}/wsman");
+        var uri = BuildWsManUri(machine);
         const string shellUri = "http://schemas.microsoft.com/powershell/Microsoft.PowerShell";
 
         WSManConnectionInfo connInfo;
@@ -190,6 +191,21 @@ public class WinRmSessionFactory : IRemoteSessionFactory
         RemoteMetrics.SessionsActive.Add(1);
 
         return new WinRmSession(runspace, machine.Hostname, _maxCapturedOutputChars);
+    }
+
+    /// <summary>
+    /// The WS-Management endpoint of <paramref name="machine"/>. An IPv6 literal needs brackets in
+    /// a URI; machine validation accepts it with or without them.
+    /// </summary>
+    internal static Uri BuildWsManUri(ManagedMachine machine)
+    {
+        var host = machine.Hostname.Trim();
+        if (!host.StartsWith('[')
+            && IPAddress.TryParse(host, out var address)
+            && address.AddressFamily == AddressFamily.InterNetworkV6)
+            host = $"[{host}]";
+        var scheme = machine.UseSsl ? "https" : "http";
+        return new Uri($"{scheme}://{host}:{machine.WinRmPort}/wsman");
     }
 
     /// <summary>
