@@ -301,8 +301,7 @@ public class ExecutionHub : Hub
     private static void DecrementGroupSubscriber(string groupName)
     {
         _groupSubscriberCounts.AddOrUpdate(groupName, 0, (_, count) => count <= 1 ? 0 : count - 1);
-        if (_groupSubscriberCounts.TryGetValue(groupName, out var remaining) && remaining <= 0)
-            _groupSubscriberCounts.TryRemove(groupName, out _);
+        _groupSubscriberCounts.TryRemove(new KeyValuePair<string, int>(groupName, 0));
     }
 
     private static bool TryRegisterGroup(string connectionId, string groupName)
