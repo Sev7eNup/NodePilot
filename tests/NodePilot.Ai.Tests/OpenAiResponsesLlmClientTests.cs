@@ -464,6 +464,25 @@ public sealed class OpenAiResponsesLlmClientTests : IDisposable
 
     // ---- Streaming (SSE) ------------------------------------------------------------
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("data: [DONE]\n\n")]
+    public async Task StreamAsync_PartialDeltaThenEof_ThrowsWithoutDone(string suffix)
+    {
+        RespondSse(Sse(TextStream) + suffix);
+        var events = new List<LlmStreamEvent>();
+
+        var ex = await Assert.ThrowsAsync<LlmException>(async () =>
+        {
+            await foreach (var e in BuildClient().StreamAsync(Prompt(), CancellationToken.None))
+                events.Add(e);
+        });
+
+        ex.Kind.Should().Be(LlmErrorKind.MalformedResponse);
+        events.Should().ContainSingle(e => e.ContentDelta == "Hello");
+        events.Should().NotContain(e => e.Done);
+    }
+
     private static string Sse(params string[] events) =>
         string.Concat(events.Select(e => $"data: {e}\n\n"));
 
@@ -506,7 +525,7 @@ public sealed class OpenAiResponsesLlmClientTests : IDisposable
     [Fact]
     public async Task StreamAsync_SendsStreamTrueAndNeverStreamOptions()
     {
-        RespondSse(Sse(TextStream));
+        RespondSse(Sse(TextStream, """{"type":"response.completed","response":{"status":"completed"}}"""));
 
         await Collect(BuildClient(), Prompt());
 

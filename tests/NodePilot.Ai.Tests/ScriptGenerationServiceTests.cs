@@ -1,6 +1,7 @@
 using NodePilot.TestCommons;
 using System.Text;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace NodePilot.Ai.Tests;
@@ -132,6 +133,42 @@ public class ScriptGenerationServiceTests
             await foreach (var _ in svc.StreamAsync(NewRequest(), CancellationToken.None)) { }
         });
         ex.Kind.Should().Be(LlmErrorKind.Unreachable);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StreamAsync_TruncatedProviderStream_DoesNotComplete(bool responses)
+    {
+        var endpoint = responses ? "https://llm.example.test/v1/responses" : "https://llm.example.test/v1";
+        var data = responses
+            ? "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Write-Output partial\"}\n\n"
+            : "data: {\"choices\":[{\"delta\":{\"content\":\"Write-Output partial\"}}]}\n\n";
+        using var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent(data),
+        });
+        var http = new StubHttpClientFactory(handler);
+        var config = new LlmClientConfig(LlmEndpointGuard.ResolveEndpoint(endpoint), null, "test-model", 100, null, 30);
+        ILlmClient client = responses
+            ? new OpenAiResponsesLlmClient(http, config, NullLogger<OpenAiResponsesLlmClient>.Instance)
+            : new OpenAiCompatibleLlmClient(http, config, NullLogger<OpenAiCompatibleLlmClient>.Instance);
+        var service = new ScriptGenerationService(new ClientFactory(client), new PromptCatalog());
+        var events = new List<ScriptStreamEvent>();
+
+        var ex = await Assert.ThrowsAsync<LlmException>(async () =>
+        {
+            await foreach (var e in service.StreamAsync(NewRequest(), CancellationToken.None)) events.Add(e);
+        });
+
+        ex.Kind.Should().Be(LlmErrorKind.MalformedResponse);
+        events.Should().NotContain(e => e is ScriptStreamEvent.DoneEvent);
+    }
+
+    private sealed class ClientFactory(ILlmClient client) : ILlmClientFactory
+    {
+        public ILlmClient Create(LlmConnection? overrides = null) => client;
+        public ILlmClient Create(LlmProfileOptions profile, LlmConnection? overrides = null) => client;
     }
 
     [Fact]
