@@ -366,6 +366,39 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
 
     // ---- Streaming (SSE) ------------------------------------------------------------
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StreamAsync_PartialDeltaThenEof_ThrowsWithoutDone(bool includeDelta)
+    {
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithHeader("Content-Type", "text/event-stream")
+                .WithBody(includeDelta ? "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n" : ""));
+        var events = new List<LlmStreamEvent>();
+
+        var ex = await Assert.ThrowsAsync<LlmException>(async () =>
+        {
+            await foreach (var e in BuildClient().StreamAsync(new LlmRequest("sys", "user"), CancellationToken.None))
+                events.Add(e);
+        });
+
+        ex.Kind.Should().Be(LlmErrorKind.MalformedResponse);
+        if (includeDelta) events.Should().ContainSingle(e => e.ContentDelta == "partial");
+        else events.Should().BeEmpty();
+        events.Should().NotContain(e => e.Done);
+    }
+
+    [Fact]
+    public async Task StreamAsync_ErrorEvent_ThrowsUpstreamError()
+    {
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithHeader("Content-Type", "text/event-stream")
+                .WithBody("data: {\"error\":{\"message\":\"model unavailable\"}}\n\ndata: [DONE]\n\n"));
+
+        var ex = await Assert.ThrowsAsync<LlmException>(() => Collect(BuildClient(), new LlmRequest("sys", "user")));
+        ex.Kind.Should().Be(LlmErrorKind.UpstreamError);
+    }
+
     private const string SseBody =
         "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}],\"model\":\"test-model\"}\n\n" +
         "data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}],\"model\":\"test-model\"}\n\n" +

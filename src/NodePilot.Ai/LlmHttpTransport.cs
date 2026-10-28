@@ -219,8 +219,8 @@ internal sealed class LlmHttpTransport
 
     /// <summary>
     /// Yields the payload of every <c>data:</c> line of an SSE response, skipping blank lines and
-    /// stopping at the <c>[DONE]</c> sentinel (Chat Completions sends it; the Responses API simply
-    /// ends the stream). The byte cap sits below the line reader, so a single oversized line
+    /// including the <c>[DONE]</c> sentinel. Each dialect validates its own terminal event.
+    /// The byte cap sits below the line reader, so a single oversized line
     /// trips it while it is being read rather than after it has been buffered.
     /// </summary>
     public async IAsyncEnumerable<string> ReadSseDataAsync(
@@ -254,9 +254,8 @@ internal sealed class LlmHttpTransport
             if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
             var data = line[5..].Trim();
             if (data.Length == 0) continue;
-            if (data == "[DONE]") break;
-
             yield return data;
+            if (data == "[DONE]") break;
         }
     }
 
