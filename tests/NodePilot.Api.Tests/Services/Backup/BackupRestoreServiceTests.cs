@@ -184,6 +184,36 @@ public sealed class BackupRestoreServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Restore_SameNamedMachinesAndCredentials_PreservesDistinctIdentities()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        for (var index = 1; index <= 2; index++)
+        {
+            var credential = new Credential
+            {
+                Id = Guid.NewGuid(), Name = "shared", Username = $"user-{index}", EncryptedPassword = _atRest.Protect($"password-{index}"),
+            };
+            src.AddRange(credential, new ManagedMachine
+            {
+                Id = Guid.NewGuid(), Name = "shared", Hostname = $"host-{index}", DefaultCredentialId = credential.Id,
+            });
+        }
+        await src.SaveChangesAsync(ct);
+        var backup = await ExportAsync(src, [BackupSections.Machines, BackupSections.Credentials]);
+        using var dst = TestDbFactory.Create();
+
+        await Restore(dst).RestoreAsync(backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), RestoreActor, ct);
+
+        var machines = await dst.ManagedMachines.AsNoTracking().OrderBy(machine => machine.Hostname).ToListAsync(ct);
+        machines.Should().HaveCount(2);
+        var credentials = await dst.Credentials.AsNoTracking().ToDictionaryAsync(credential => credential.Id, ct);
+        credentials.Should().HaveCount(2);
+        for (var index = 0; index < machines.Count; index++)
+            credentials[machines[index].DefaultCredentialId!.Value].Username.Should().Be($"user-{index + 1}");
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
