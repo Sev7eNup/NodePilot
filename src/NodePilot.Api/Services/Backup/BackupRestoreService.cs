@@ -784,7 +784,7 @@ public sealed class BackupRestoreService(
             var id = preserveSourceIds && !existingIds.Contains(item.SourceId) ? item.SourceId : Guid.NewGuid();
             var entity = item.Create(id, name);
             add(entity);
-            byName[name] = entity; existingIds.Add(id);
+            existingIds.Add(id);
             if (idMap is not null) idMap[item.SourceId] = id;
         }
         await db.SaveChangesAsync(ct);
