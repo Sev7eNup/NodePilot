@@ -566,9 +566,9 @@ public abstract record ChatStreamEvent
     /// <paramref name="CompletionTokens"/> by this, not by <paramref name="DurationMs"/>, for a
     /// throughput that matches what the LLM server reports.
     /// </param>
-    /// <param name="HistoryContextKey">Workflow assistant only: the key the client sends back so
+    /// <param name="HistoryContextKey">The key the client sends back so
     /// the next turn's history is accepted (see <c>WorkflowAssistantService.HistoryContextKey</c>).</param>
-    /// <param name="HistoryDropped">Workflow assistant only: the request's history was left out
+    /// <param name="HistoryDropped">The request's history was left out
     /// because it came from another profile or sharing setting.</param>
     /// <param name="ScriptsShared">Workflow assistant only: scripts, SQL and arguments were sent
     /// in clear.</param>

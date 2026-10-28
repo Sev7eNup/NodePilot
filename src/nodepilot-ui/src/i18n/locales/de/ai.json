@@ -129,6 +129,7 @@
     "scopeSelectionHint": "Frage auf die ausgewählten Nodes beziehen"
   },
   "knowledge": {
+    "historyDropped": "Der bisherige Verlauf wurde nicht mitgesendet, weil er dem aktuellen KI-Profil nicht zugeordnet werden konnte.",
     "title": "KI-Chat",
     "subtitle": "NodePilot fragen — Doku, Workflows, Betrieb, Quellcode",
     "inputPlaceholder": "Frag etwas zu NodePilot, deinen Workflows oder dem Quellcode…",
