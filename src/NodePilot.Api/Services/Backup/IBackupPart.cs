@@ -9,6 +9,8 @@ namespace NodePilot.Api.Services.Backup;
 /// </summary>
 public static class BackupSections
 {
+    public const int MaximumArchiveBytes = 64 * 1024 * 1024;
+    public const int MaximumUploadBytes = MaximumArchiveBytes + 1024 * 1024;
     public const string Folders = "folders";
     public const string Users = "users";
     public const string Credentials = "credentials";

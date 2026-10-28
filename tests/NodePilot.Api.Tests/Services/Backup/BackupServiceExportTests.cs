@@ -55,6 +55,21 @@ public sealed class BackupServiceExportTests : IDisposable
         _service = new BackupService(parts, _db);
     }
 
+    [Fact]
+    public async Task Export_EncryptedEnvelopeExceedsRestoreLimit_FailsBeforeReturningFile()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _db.GlobalVariables.Add(new GlobalVariable
+        {
+            Id = Guid.NewGuid(), Name = "LARGE_CONFIGURATION", Value = new string('x', 50 * 1024 * 1024),
+        });
+        await _db.SaveChangesAsync(ct);
+
+        var export = () => _service.ExportAsync([BackupSections.GlobalVariables], Passphrase, "admin", ct);
+
+        (await export.Should().ThrowAsync<BackupExportException>()).Which.Message.Should().Contain("64 MiB restore limit");
+    }
+
     private static byte[] DeterministicKey()
     {
         var k = new byte[32];
