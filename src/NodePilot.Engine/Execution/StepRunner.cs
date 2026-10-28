@@ -183,10 +183,15 @@ internal sealed class StepRunner
         // availability gate, before the Running row exists, and outside the try below. A failure
         // there escaped StepRunner entirely and failed the whole run WITHOUT ever writing a step
         // row - the exact inversion the barrier exists to prevent, one line too early. The Running
-        // row does not need it (it persists the resolved target STRING), so moving it costs
-        // nothing.
+        // row first stores the target string and gets the machine ID once it resolves.
         var resolvedMachine = await MachineResolver.ResolveAsync(stepDb, resolvedTargetMachine, _logger, ct);
         var targetMachineId = resolvedMachine?.Id != Guid.Empty ? resolvedMachine?.Id : null;
+        if (targetMachineId is { } registeredMachineId)
+        {
+            stepExecution.TargetMachine = registeredMachineId.ToString();
+            await PersistStepStateDurablyAsync(
+                stepDb, stepExecution, "step.running", durabilityCancellation);
+        }
         stepActivity?.SetTag(
             TelemetryConstants.Attributes.StepHasCredential,
             credentialId.HasValue || resolvedMachine?.DefaultCredentialId is not null);
