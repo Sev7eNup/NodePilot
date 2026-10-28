@@ -129,6 +129,7 @@
     "scopeSelectionHint": "Scope the question to the selected nodes"
   },
   "knowledge": {
+    "historyDropped": "Earlier conversation was not sent because it could not be matched to the current AI profile.",
     "title": "AI Chat",
     "subtitle": "Ask NodePilot — docs, workflows, operations, source code",
     "inputPlaceholder": "Ask about NodePilot, your workflows, or the source code…",

@@ -31,6 +31,37 @@ beforeEach(() => {
 afterEach(() => session.getState().reset());
 
 describe('global chat request ownership', () => {
+  it('keeps only history after a recipient reset and sends its context key', async () => {
+    useAiChatStore.getState().updateMessages(scope, thread, () => [
+      { role: 'user', content: 'old secret' },
+      { role: 'assistant', content: 'old answer', meta: { model: 'old', durationMs: 1, historyContextKey: 'old-key' } },
+      { role: 'user', content: 'new question' },
+      { role: 'assistant', content: 'new answer', meta: { model: 'new', durationMs: 1, historyContextKey: 'new-key', historyDropped: true } },
+    ]);
+    const pending = session.getState().send(scope, thread, 'next');
+    expect(vi.mocked(askStream).mock.calls[0][0]).toMatchObject({
+      historyContextKey: 'new-key',
+      history: [{ role: 'user', content: 'new question' }, { role: 'assistant', content: 'new answer' }],
+    });
+    resolve();
+    await pending;
+  });
+
+  it('does not resend an unfinished turn under an earlier context', async () => {
+    useAiChatStore.getState().updateMessages(scope, thread, () => [
+      { role: 'user', content: 'safe question' },
+      { role: 'assistant', content: 'safe answer', meta: { model: 'a', durationMs: 1, historyContextKey: 'key-a' } },
+      { role: 'user', content: 'unfinished question' },
+      { role: 'assistant', content: 'partial answer' },
+    ]);
+    const pending = session.getState().send(scope, thread, 'next');
+    expect(vi.mocked(askStream).mock.calls[0][0]).toMatchObject({
+      historyContextKey: 'key-a',
+      history: [{ role: 'user', content: 'safe question' }, { role: 'assistant', content: 'safe answer' }],
+    });
+    resolve();
+    await pending;
+  });
   it('keeps streaming while minimized and marks the completed reply unread', async () => {
     session.getState().setWidgetOpen(true);
     const pending = session.getState().send(scope, thread, 'Explain triggers');
