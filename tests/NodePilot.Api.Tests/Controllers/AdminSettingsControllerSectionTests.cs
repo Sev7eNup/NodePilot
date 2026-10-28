@@ -166,6 +166,23 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     }
 
     [Fact]
+    public async Task PutSection_StrictWildcardHosts_IsRejectedWithoutChangingSettings()
+    {
+        var (controller, writer, _, _) = NewController();
+        var etag = writer.ComputeSectionEtag("Security");
+        controller.Request.Headers.IfMatch = etag;
+
+        var result = await controller.PutSection("Security", JsonSerializer.SerializeToElement(new SecuritySettingsDto
+        {
+            StrictAllowedHosts = true, AllowedHosts = "*",
+        }), TestContext.Current.CancellationToken);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        writer.ComputeSectionEtag("Security").Should().Be(etag);
+        File.Exists(writer.OverridesPath).Should().BeFalse();
+    }
+
+    [Fact]
     public void GetSnapshot_ReturnsAllSchemaSections()
     {
         var (controller, _, _, _) = NewController();
