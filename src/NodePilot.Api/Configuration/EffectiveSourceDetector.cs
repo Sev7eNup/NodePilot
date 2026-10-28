@@ -99,8 +99,9 @@ public static class EffectiveSourceDetector
         => provider.TryGet(key, out _)
            || provider.GetChildKeys([], key).Any();
 
-    private static string Classify(IConfigurationProvider provider)
+    internal static string Classify(IConfigurationProvider provider)
     {
+        if (provider is SettingsConfigurationSnapshot.SnapshotProvider snapshot) return snapshot.Source;
         if (provider is EncryptingJsonConfigurationProvider) return SourceRuntime;
 
         if (provider is JsonConfigurationProvider json)

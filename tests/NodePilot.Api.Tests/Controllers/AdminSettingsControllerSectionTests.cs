@@ -69,27 +69,17 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var windows = initialWindows ?? new WindowsAuthOptions();
         var telemetry = initialTelemetry ?? new NodePilotTelemetryOptions();
 
-        var configValues = new Dictionary<string, string?>
-            {
-                ["Smtp:Host"]     = initial.Host,
-                ["Smtp:Port"]     = initial.Port.ToString(),
-                ["Smtp:From"]     = initial.From,
-                ["Smtp:Username"] = initial.Username,
-                ["Smtp:Password"] = initial.Password,
-                ["Llm:Enabled"]         = llm.Enabled.ToString(),
-                ["Llm:ActiveProfileId"] = llm.ActiveProfileId,
-                ["Retention:Executions:MaxAgeDays"] = ret.Executions.MaxAgeDays.ToString(),
-                ["Retention:AuditLog:MaxAgeDays"]   = ret.AuditLog.MaxAgeDays.ToString(),
-            };
-        // Profiles are operator-defined keys, so they can't be listed literally like the rest.
-        foreach (var (id, p) in llm.Profiles)
+        var initialConfiguration = new
         {
-            configValues[$"Llm:Profiles:{id}:Name"] = p.Name;
-            configValues[$"Llm:Profiles:{id}:BaseUrl"] = p.BaseUrl;
-            configValues[$"Llm:Profiles:{id}:ApiKey"] = p.ApiKey;
-            configValues[$"Llm:Profiles:{id}:Model"] = p.Model;
-        }
-        var configBuilder = new ConfigurationBuilder().AddInMemoryCollection(configValues);
+            Smtp = initial,
+            Llm = llm,
+            Retention = ret,
+            Authentication = new { Ldap = ldap, Windows = windows },
+            OpenTelemetry = telemetry,
+        };
+        var configJson = JsonSerializer.SerializeToUtf8Bytes(initialConfiguration,
+            new JsonSerializerOptions { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } });
+        var configBuilder = new ConfigurationBuilder().AddJsonStream(new MemoryStream(configJson));
         configure?.Invoke(configBuilder);
         var cfg = configBuilder.Build();
         var audit = new CapturingAuditWriter();
@@ -122,6 +112,58 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             RedactHostnames = true,
             Otlp = new OtlpSettingsDto { Headers = headers },
         });
+
+    [Fact]
+    public async Task GetSection_RuntimeReloadPending_PayloadAndEtagDescribeSameSnapshot()
+    {
+        var path = Path.Combine(_tempDir, "appsettings.runtime.json");
+        File.WriteAllText(path, "{\"Stats\":{\"WindowDays\":7,\"RefreshIntervalMinutes\":5}}");
+        var (controller, writer, _, config) = NewController(configure: builder => builder.Add(
+            new EncryptingJsonConfigurationSource(path, new PassthroughProtector(), true, false)));
+        writer.ReplaceAll(JsonNode.Parse("{\"Stats\":{\"WindowDays\":90,\"RefreshIntervalMinutes\":5}}")!.AsObject());
+        config["Stats:WindowDays"].Should().Be("7", "the provider has not reloaded");
+
+        var result = (OkObjectResult)controller.GetSection("Stats");
+        var response = (SettingsSectionResponse<object>)result.Value!;
+        var payload = (StatsSettingsDto)response.Payload;
+        payload.WindowDays.Should().Be(90);
+        response.Etag.Should().Be(writer.ComputeSectionEtag("Stats"));
+        payload.RefreshIntervalMinutes = 6;
+        controller.Request.Headers.IfMatch = response.Etag;
+
+        (await controller.PutSection("Stats", JsonSerializer.SerializeToElement(payload), TestContext.Current.CancellationToken))
+            .Should().BeOfType<OkObjectResult>();
+        writer.ReadSection("Stats")!["WindowDays"]!.GetValue<int>().Should().Be(90);
+    }
+
+    [Fact]
+    public async Task PutSection_MaskedInheritedLdapPassword_UsesEffectiveProviderChain()
+    {
+        var (controller, writer, _, _) = NewController(configure: builder => builder.AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["Authentication:Ldap:Enabled"] = "true",
+                ["Authentication:Ldap:Endpoints:0"] = "dc.example.test:636",
+                ["Authentication:Ldap:Server"] = "dc.example.test",
+                ["Authentication:Ldap:Port"] = "636",
+                ["Authentication:Ldap:UseSsl"] = "true",
+                ["Authentication:Ldap:BaseDn"] = "DC=example,DC=test",
+                ["Authentication:Ldap:UpnSuffix"] = "example.test",
+                ["Authentication:Ldap:ServiceBindDn"] = "CN=service,DC=example,DC=test",
+                ["Authentication:Ldap:ServicePassword"] = "inherited-only-secret",
+                ["Authentication:Ldap:AllowedGroupSids:0"] = "S-1-5-21-1-2-3-4567",
+            }));
+        var response = (SettingsSectionResponse<object>)((OkObjectResult)controller.GetSection("Authentication")).Value!;
+        var payload = (AuthenticationSettingsDto)response.Payload;
+        payload.Ldap.ServicePassword.Should().Be(SettingsSchema.MaskedSecretDisplay);
+        controller.Request.Headers.IfMatch = response.Etag;
+
+        var result = await controller.PutSection("Authentication", JsonSerializer.SerializeToElement(payload), TestContext.Current.CancellationToken);
+
+        result.Should().BeOfType<OkObjectResult>();
+        File.ReadAllText(writer.OverridesPath).Should().NotContain("inherited-only-secret");
+        writer.ReadSection("Authentication")!["Ldap"]!["ServicePassword"].Should().BeNull();
+    }
 
     [Fact]
     public void GetSnapshot_ReturnsAllSchemaSections()
