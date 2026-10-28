@@ -242,7 +242,7 @@ public sealed class RuntimeOverridesWriter
     // The settings screen groups host filtering with Security, but ASP.NET consumes the
     // root AllowedHosts key. ETag, audit and responses must see the same logical section
     // that the atomic write updates, including changes made directly to that root key.
-    private static JsonObject? ProjectSection(JsonObject root, string sectionPath)
+    internal static JsonObject? ProjectSection(JsonObject root, string sectionPath)
     {
         var section = NavigateSection(root, sectionPath) as JsonObject;
         if (!sectionPath.Equals("Security", StringComparison.OrdinalIgnoreCase)) return section;
@@ -358,7 +358,7 @@ public sealed class RuntimeOverridesWriter
         }
     }
 
-    private static void ApplySectionInternal(JsonObject root, string sectionPath, JsonObject newSection)
+    internal static void ApplySectionInternal(JsonObject root, string sectionPath, JsonObject newSection)
     {
         if (sectionPath.Equals("Security", StringComparison.OrdinalIgnoreCase))
         {
