@@ -188,18 +188,16 @@ public static class WorkflowAnalyzer
 
                     if (authoredByNode.TryGetValue(ancestorId, out var authored))
                     {
-                        foreach (var name in authored)
+                        foreach (var name in authored.Where(candidates.Contains))
                         {
-                            if (!candidates.Contains(name)) continue;
                             AddPublisher(name, ancestorId);
                             authoredNames.Add(name);
                         }
                     }
 
                     if (typeDerivedByNode.TryGetValue(ancestorId, out var derived))
-                        foreach (var name in derived)
-                            if (candidates.Contains(name))
-                                AddPublisher(name, ancestorId);
+                        foreach (var name in derived.Where(candidates.Contains))
+                            AddPublisher(name, ancestorId);
                 }
             }
 
