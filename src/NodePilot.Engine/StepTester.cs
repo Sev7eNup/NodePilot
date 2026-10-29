@@ -161,13 +161,19 @@ public class StepTester : IStepTester
                 UseSsl = false,
             };
 
-        Guid? credentialId = Guid.TryParse(node.Data.CredentialRaw, out var credId) ? credId : null;
-
         var globalVars = await _globals.GetAllResolvedAsync(ct);
 
         // Convert flat mock dict to ActivityResult dict for JSON config resolution
         var fakeResults = BuildFakeResults(mockVariables ?? []);
         var manualInputs = ExtractManualInputs(mockVariables ?? []);
+        Guid? credentialId;
+        try
+        {
+            var resolvedCredential = VariableResolver.ResolveStringValue(node.Data.CredentialRaw,
+                fakeResults, definition.OutputVariableToStepId, globalVars, manualInputs);
+            credentialId = VariableResolver.ParseExplicitCredentialId(node.Data.CredentialRaw, resolvedCredential);
+        }
+        catch (InvalidOperationException ex) { return Fail(ex.Message, sw); }
 
         // Build variables through the production resolver so step tests share alias, success,
         // and sensitive-name behavior. Reapply mock-only keys so explicit overrides still win.
