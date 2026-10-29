@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Moq;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
@@ -14,6 +15,33 @@ namespace NodePilot.Engine.Tests.Execution;
 [Collection("SerialEngineTests")]
 public sealed class StepDispatchContractTests
 {
+    [Fact]
+    public async Task RetryException_IsRedactedWithoutAttachingRawExceptionToLog()
+    {
+        const string secret = "syntheticRetrySecret";
+        var executor = Executor("log");
+        executor.SetupSequence(e => e.ExecuteAsync(It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("password=" + secret))
+            .ReturnsAsync(new ActivityResult { Success = true, Output = "ok" });
+        var registry = new ActivityRegistry([Executor("manualTrigger").Object, executor.Object]);
+        var (db, services, connection) = TestDbContext.CreateWithScopedServices(registry);
+        await using var dbLifetime = db;
+        await using var servicesLifetime = services;
+        await using var connectionLifetime = connection;
+        var workflow = Workflow(null, null);
+        workflow.DefinitionJson = workflow.DefinitionJson.Replace("\"config\":{}",
+            "\"config\":{\"retry\":{\"maxAttempts\":2,\"initialDelayMs\":0}}");
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var logger = new Mock<ILogger<WorkflowEngine>>();
+        var engine = new WorkflowEngine(db, logger.Object, services, Mock.Of<IExecutionNotifier>());
+        (await engine.ExecuteAsync(workflow, "manual", CancellationToken.None)).Status.Should().Be(ExecutionStatus.Succeeded);
+        var retryLog = logger.Invocations.Single(i => i.Method.Name == "Log"
+            && i.Arguments[2].ToString()!.Contains("retrying"));
+        retryLog.Arguments[2].ToString().Should().NotContain(secret).And.Contain("***");
+        retryLog.Arguments[3].Should().BeNull();
+    }
+
     [Theory]
     [InlineData("name")]
     [InlineData("hostname")]
