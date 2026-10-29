@@ -13,6 +13,26 @@ namespace NodePilot.Engine.Tests.Execution;
 public class StepTesterTargetTests
 {
     [Theory]
+    [InlineData("not-a-guid")]
+    [InlineData("00000000-0000-0000-0000-000000000000")]
+    public async Task PersistedDynamicCredential_RejectsInvalidResolutionBeforeDispatch(string value)
+    {
+        using var db = TestDbFactory.Create();
+        var workflow = CreateWorkflow(null, null);
+        workflow.DefinitionJson = workflow.DefinitionJson.Replace("\"credentialId\":null", "\"credentialId\":\"{{manual.credential}}\"");
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var executor = new CapturingRunScriptExecutor();
+        using var services = new ServiceCollection().BuildServiceProvider();
+        var tester = new StepTester(db, new ActivityRegistry([executor]), new StubGlobalVariableStore(), services, new OutputRedactor());
+        var result = await tester.TestStepAsync(workflow.Id, "script", StepTestAuthorizationSnapshot.Capture(workflow),
+            new Dictionary<string, string> { ["manual.credential"] = value }, null, CancellationToken.None);
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("explicit credential");
+        executor.Context.Should().BeNull();
+    }
+
+    [Theory]
     [InlineData("[]", "requires an activityType")]
     [InlineData("{}", "requires an activityType")]
     [InlineData("{\"activityType\":\"\",\"config\":{}}", "requires an activityType")]

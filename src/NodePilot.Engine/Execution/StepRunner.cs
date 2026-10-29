@@ -198,6 +198,8 @@ internal sealed class StepRunner
 
         try
         {
+            credentialId = VariableResolver.ParseExplicitCredentialId(node.Data.CredentialRaw, resolvedCredential);
+
             var executor = stepRegistry.GetExecutor(node.Type ?? "unknown", stepScope.ServiceProvider);
             var variables = VariableResolver.BuildStepVariables(inputParameters, globalVariables, previousResults, outputNameByStepId);
 

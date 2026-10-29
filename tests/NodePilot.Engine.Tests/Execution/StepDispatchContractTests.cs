@@ -43,6 +43,30 @@ public sealed class StepDispatchContractTests
     }
 
     [Theory]
+    [InlineData("not-a-guid")]
+    [InlineData("00000000-0000-0000-0000-000000000000")]
+    [InlineData("")]
+    public async Task ExplicitCredential_ResolvingToInvalidValue_DoesNotDispatch(string credential)
+    {
+        var executor = Executor("log");
+        var registry = new ActivityRegistry([Executor("manualTrigger").Object, executor.Object]);
+        var (db, services, connection) = TestDbContext.CreateWithScopedServices(registry);
+        await using var dbLifetime = db;
+        await using var servicesLifetime = services;
+        await using var connectionLifetime = connection;
+        var workflow = Workflow("{{manual.credential}}", null);
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var engine = new WorkflowEngine(db, NullLogger<WorkflowEngine>.Instance, services, Mock.Of<IExecutionNotifier>());
+        var result = await engine.ExecuteAsync(workflow, "manual", CancellationToken.None,
+            new Dictionary<string, string> { ["credential"] = credential });
+        result.Status.Should().Be(ExecutionStatus.Failed);
+        executor.Verify(e => e.ExecuteAsync(It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        (await db.StepExecutions.AsNoTracking().SingleAsync(s => s.StepId == "work")).Status.Should().Be(ExecutionStatus.Failed);
+    }
+
+    [Theory]
     [InlineData("name")]
     [InlineData("hostname")]
     [InlineData("id")]
