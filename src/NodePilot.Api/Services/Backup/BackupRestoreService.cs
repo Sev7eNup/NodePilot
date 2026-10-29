@@ -888,7 +888,7 @@ public sealed class BackupRestoreService(
                     existing.Value = storedValue; existing.FolderId = folderId; existing.UpdatedAt = DateTime.UtcNow;
                     overwritten++; continue;
                 }
-                name = UniqueName(name, takenNames); renamed++;
+                name = UniqueGlobalName(name, takenNames); renamed++;
             }
             else created++;
 
@@ -1642,5 +1642,15 @@ public sealed class BackupRestoreService(
             if (!taken.Contains(candidate)) return candidate;
         }
         return $"{desired} (Restored {Guid.NewGuid():N})";
+    }
+
+    private static string UniqueGlobalName(string desired, HashSet<string> taken)
+    {
+        for (var index = 2; ; index++)
+        {
+            var suffix = $"_Restored_{index}";
+            var candidate = desired[..Math.Min(desired.Length, 100 - suffix.Length)] + suffix;
+            if (!taken.Contains(candidate)) return candidate;
+        }
     }
 }

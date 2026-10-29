@@ -214,6 +214,32 @@ public sealed class BackupRestoreServiceTests : IDisposable
             credentials[machines[index].DefaultCredentialId!.Value].Username.Should().Be($"user-{index + 1}");
     }
 
+    [Fact]
+    public async Task Restore_RenameGlobal_ProducesIdentifierAcceptedByOrdinaryUpdate()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        var name = new string('A', 100);
+        src.GlobalVariables.Add(new GlobalVariable { Id = Guid.NewGuid(), Name = name, Value = "restored" });
+        await src.SaveChangesAsync(ct);
+        var backup = await ExportAsync(src, [BackupSections.GlobalVariables]);
+        using var dst = TestDbFactory.Create();
+        dst.GlobalVariables.Add(new GlobalVariable { Id = Guid.NewGuid(), Name = name, Value = "original" });
+        await dst.SaveChangesAsync(ct);
+
+        await Restore(dst).RestoreAsync(backup, Passphrase, Policy(BackupSections.GlobalVariables, RestoreConflictPolicy.Rename), RestoreActor, ct);
+
+        var restored = await dst.GlobalVariables.SingleAsync(variable => variable.Value == "restored", ct);
+        restored.Name.Length.Should().BeLessThanOrEqualTo(100);
+        var controller = new NodePilot.Api.Controllers.GlobalVariablesController(new GlobalVariableStore(dst, _atRest),
+            new GlobalVariableFolderStore(dst), NoopAuditWriter.Instance)
+        {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext() },
+        };
+        (await controller.Update(restored.Id, new NodePilot.Api.Dtos.UpdateGlobalVariableRequest(restored.Name, null, false, null, null), ct))
+            .Should().BeOfType<Microsoft.AspNetCore.Mvc.NoContentResult>();
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
