@@ -16,86 +16,76 @@ Planned version: **1.5.3**.
 
 ### Added
 
-- **Dependencies page.** A new Monitoring entry shows which saved workflows, machines, credentials,
-  global variables and custom activities depend on each other, with the exact step as evidence and a
-  deep link into the designer. The object list shows usage and problem counts, filters by objects
-  with problems or without detected use, and sorts by usage; the map shows both directions and
-  expands further levels on demand. Available as `GET /api/dependencies/...`, as
-  `np dependencies list|show|evidence` and as the MCP tools `list_dependency_objects`,
-  `get_dependencies` and `get_dependency_evidence`. The browser demo derives the same reports.
+- **Dependencies page** under Monitoring. It shows which workflows, machines, credentials, global
+  variables and custom activities use each other, down to the step. Also available through the API,
+  `np dependencies` and the MCP server.
 
 ### Changed
 
-- **Saves from a stale draft are rejected.** `PUT /api/workflows/{id}` and `publish` now require
-  `expectedVersion`, the workflow version the draft is based on. A mismatch returns
-  `409 workflow_version_conflict` before anything is written, so a second tab can no longer overwrite
-  a save it never saw. The designer keeps the draft, shows a message and stops autosave until the
-  workflow is reloaded. The CLI and the MCP server send the version they read; own scripts against
-  the API must send it too (#609).
-- Credentials moved out of the settings into their own menu entry under Infrastructure, visible to
-  Admin and Operator, with a badge for expired and expiring accounts. The badge rounds days the same
-  way as the credential-expiry alert, and the alert's link now opens the page.
-- Captured script output is capped at 16,777,216 characters per execution across all streams
-  (`Engine:MaxCapturedOutputChars`, restart required). The limit applies to process, runspace and
-  WinRM execution alike; a step that exceeds it fails with an output-limit error instead of growing
-  the server's memory without bound (#572).
-- A delayed shutdown or restart in `powerManagement` is rejected unless "Force close applications"
-  is on. Windows forces applications closed for any delay, so the previous setting silently lost
-  unsaved work on the target. To wait without forcing, put a Delay step before it (#613).
-- Release acceptance tests direct upgrades from each of the last five published stable versions to
-  the candidate: 20 server and five desktop upgrade cases, none of them skippable.
-- The repository documentation (contributor guides, `docs/`, READMEs) is now in English. The German
-  pages of the documentation website stay German.
-- The website's article on PowerShell 5.1 and 7 was rewritten around checking the runtime, testing
-  an inventory script in both versions and choosing the remote endpoint.
+- **Saving an outdated draft is rejected**, for example from a second browser tab, instead of
+  overwriting newer changes. Your own scripts that call `PUT /api/workflows/{id}` or `publish` must
+  now send `expectedVersion` (#609).
+- Credentials have their own menu entry under Infrastructure, with a badge for expiring accounts.
+- Script output is limited to 16 million characters per execution (`Engine:MaxCapturedOutputChars`).
+  A step that exceeds it fails (#572).
+- A delayed shutdown or restart requires "Force close applications", because Windows closes
+  applications anyway. To wait without forcing, put a Delay step in front (#613).
 
 ### Fixed
 
-- Ending an edit or restoring a version replaces the local draft. The discarded draft used to stay on
-  the canvas, and autosave wrote it back a few seconds later, also over a just-restored version (#596).
-- Find and replace changes only the selected config field. Replacing one match used to rewrite every
-  string in that node's config that contained the search text (#597).
-- Values the AI chat and the MCP server only see masked (`***`) are no longer saved as literal `***`
-  when they are copied onto a new node or edge. The chat flags each such value in the review, and the
-  MCP patcher rejects the change (#582).
-- System backups are exported from one consistent database snapshot. A configuration change during
-  the export could produce a backup that reported success but could not be restored (#608).
-- Saving settings checks the complete runtime configuration with the production loader before
-  replacing the file, and matches existing keys case-insensitively like .NET does. A manually written
-  section with different casing could otherwise leave a file that failed to load on the next reload or
-  restart (#611).
-- Registry activity paths such as `HKEY_LOCAL_MACHINE\…` are rewritten to the `Registry::` provider
-  path. They were passed on unchanged and resolved as a file system path, so reads looked in the wrong
-  place and `createKey`/`deleteKey` could create or remove directories (#614).
-- AI script generation that stops at the model's output limit ends with an error instead of a
-  successful result. The script editor restores the original script and says so, rather than leaving
-  a cut-off script that can be saved and run (#610).
-- A SCIM update that only adds permissions or renames a user no longer cancels the user's running
-  executions. Deactivation, deprovisioning, a lower role or a removed group membership still do (#607).
-- Output parameters above the persisted size limit are stored as valid JSON. Oversized values are cut
-  with a visible marker and small ones stay intact; before, the whole set became unreadable after a
-  reload and was missing from historical step-test context (#573).
-- Find and replace changes every match. The list still shows the first 50 and now says how many more
-  there are; Replace All used to stop after those 50 (#598).
-- Step tests pass mocked `manual.*` values to the step as trigger input and honour a mocked
-  `.success` of `false`. Both used to be dropped, so a test could resolve different values than a
-  real run (#605).
-- `np maintenance create|update --days` rejects an unknown day name before anything is sent. It used
-  to drop the token silently, which left that day outside a blackout window (#623).
-- The audit log's time filters and export use the instant you picked. The page sent the local time
-  without an offset and the server read it as UTC, so the window was shifted by the time-zone offset
-  (#599).
-- Publish and enable reject a `waitNofM` junction whose `requiredCount` exceeds its enabled inputs
-  (`400 invalid_junction_required_count`). Such a junction was skipped with everything after it on
-  every run, without a failed step. Saving a draft stays permissive (#586).
-- A file watcher with `changed` or `any` starts a workflow once per write. Events inside the debounce
-  window did not reach the snapshot, so the next reconcile pass delivered the same write again (#583).
+- **Designer**
+  - Ending an edit or restoring a version no longer brings the discarded draft back (#596).
+  - Find and replace changes only the selected field, and Replace All changes every match, not just
+    the first 50 (#597, #598).
+  - Typing a new parameter name no longer overwrites an existing parameter (#600).
+  - Narrowing the browser window no longer discards unsaved changes (#604).
+  - Publishing rejects a "wait for N of M" junction that can never be satisfied (#586).
+- **Running workflows**
+  - Registry activities with paths such as `HKEY_LOCAL_MACHINE\…` work on the registry instead of
+    the file system (#614).
+  - Machines with an IPv6 address connect over WinRM (#615).
+  - A file watcher starts its workflow only once per change (#583).
+  - Very large output parameters no longer make a step's outputs unreadable (#573).
+  - Steps on a machine addressed by name count in that machine's statistics (#664).
+  - The live view of a run keeps updating when another viewer leaves at the same moment (#666).
+  - In the debugger, the run's timeout stays paused until every paused branch has resumed (#676).
+  - Step tests use mocked trigger inputs and failed predecessors like a real run (#605).
+- **Backup and restore**
+  - Backups stay consistent when the configuration changes during the export (#608).
+  - Exports larger than the 64 MiB restore limit fail right away instead of at restore (#665).
+  - Restore keeps machines and credentials with the same name apart (#660), gives renamed global
+    variables a usable name (#667), saves overwritten custom activities as a new version (#668) and
+    no longer undoes settings saved while a failed restore ran (#669).
+- **Settings**
+  - Saving settings no longer produces a file that fails at the next start (#611, #663), reverts a
+    change made in the meantime or rejects an inherited LDAP password (#661, #662).
+  - The settings status and the service restart work when the service runs under a gMSA (#580).
+- **AI and MCP**
+  - AI generation reports an error when the answer was cut off, instead of returning it as complete
+    (#610, #684, thanks to mikemikimike).
+  - The AI chat and the MCP server no longer write masked values (`***`) or half-applied conditions
+    into workflows (#582, #581).
+  - Workflow analysis stays fast on very large workflows and says when it had to stop early (#673).
+- **Other**
+  - Custom activities reject reserved PowerShell names such as `Host` or `PID` as parameters (#672).
+  - A SCIM update that only adds permissions no longer cancels the user's running executions (#607).
+  - Changes to notification rules are no longer lost after a brief database error (#670).
+  - The audit log's time filter no longer shifts by the time-zone offset (#599).
+  - One-time maintenance windows that end before they start are always rejected (#659).
+  - `np maintenance --days` rejects unknown day names (#623).
 
 ### Security
 
-- Read-only SQL (the admin SQL console and the database source of the AI knowledge assistant) rejects
-  PostgreSQL escape strings (`E'…'`), which could hide protected columns from the sensitive-column
-  check. Both paths remain global-Admin only (#612).
+- Logging out ends the session reliably, even during a token refresh (#658).
+- A step whose credential does not resolve fails instead of running under the default or service
+  account (#677).
+- The global AI chat sends earlier messages only to the AI provider and model they were written for
+  (#674, thanks to mikemikimike).
+- Error messages from the AI provider and from retried steps no longer reach the log with secrets in
+  them (#675).
+- Refused LDAP, Windows and directory logins count as failures in the audit log and SIEM forwarding
+  (#671).
+- Read-only SQL queries reject PostgreSQL escape strings that could hide protected columns (#612).
 
 ## [1.5.2] - 2026-10-24
 
