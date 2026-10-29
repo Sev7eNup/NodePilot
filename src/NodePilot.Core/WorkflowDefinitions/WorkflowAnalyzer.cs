@@ -21,6 +21,9 @@ public static class WorkflowAnalyzer
     public sealed record AnalysisResult(
         bool Ok, int NodeCount, int EdgeCount, IReadOnlyList<string> Roots, IReadOnlyList<Finding> Findings);
 
+    /// <summary>Shared budget of ancestor visits for the duplicate published-name check.</summary>
+    public const int MaxPublishedParamAncestorVisits = 2_000_000;
+
     public static AnalysisResult Analyze(JsonElement definition)
     {
         // A broken structure (duplicate ids, dangling edge endpoints) makes every graph finding
@@ -108,6 +111,10 @@ public static class WorkflowAnalyzer
     /// value itself. Two registryOperation reads both publishing <c>value</c> take that name from
     /// their <c>operation</c> and cannot be renamed, so flagging them is noise — but a script
     /// assigning <c>$value</c> next to one of them is a real clash with a real fix.</para>
+    ///
+    /// <para>Every consumer walks all of its ancestors, which grows quadratically on long chains.
+    /// The walks share a budget of <see cref="MaxPublishedParamAncestorVisits"/>; past it the
+    /// check stops and reports <c>analysis-budget-exceeded</c>.</para>
     /// </summary>
     private static void AddDuplicatePublishedParamFindings(
         WorkflowDefinitionDocument doc, List<Finding> findings)
@@ -121,6 +128,27 @@ public static class WorkflowAnalyzer
             authoredByNode[node.Id] = WorkflowDataBusAnalyzer.AuthoredParameters(node);
             typeDerivedByNode[node.Id] = WorkflowDataBusAnalyzer.TypeDerivedParameters(node);
         }
+
+        // Only a name with two publishers, at least one of them authored, can clash. Most
+        // workflows have none, and then no ancestor walk is needed.
+        var publisherCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var authoredAnywhere = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (nodeId, authored) in authoredByNode)
+        {
+            authoredAnywhere.UnionWith(authored);
+            foreach (var name in authored.Concat(typeDerivedByNode[nodeId]).Distinct(StringComparer.OrdinalIgnoreCase))
+                publisherCounts[name] = publisherCounts.GetValueOrDefault(name) + 1;
+        }
+        var candidates = publisherCounts
+            .Where(entry => entry.Value >= 2 && authoredAnywhere.Contains(entry.Key))
+            .Select(entry => entry.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (candidates.Count == 0) return;
+
+        var predecessors = doc.ActiveEdges
+            .GroupBy(edge => edge.Target, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Select(edge => edge.Source).ToList(), StringComparer.Ordinal);
+        var visits = 0;
 
         // name -> the publisher sets already reported, so one clash is not repeated for every
         // consumer downstream of it.
@@ -140,20 +168,39 @@ public static class WorkflowAnalyzer
                 set.Add(nodeId);
             }
 
-            foreach (var ancestorId in doc.FindAncestorNodeIds(consumer.Id))
+            var seen = new HashSet<string>(StringComparer.Ordinal) { consumer.Id };
+            var queue = new Queue<string>();
+            queue.Enqueue(consumer.Id);
+            while (queue.TryDequeue(out var current))
             {
-                if (authoredByNode.TryGetValue(ancestorId, out var authored))
+                if (!predecessors.TryGetValue(current, out var sources)) continue;
+                foreach (var ancestorId in sources)
                 {
-                    foreach (var name in authored)
+                    if (!seen.Add(ancestorId)) continue;
+                    if (++visits > MaxPublishedParamAncestorVisits)
                     {
-                        AddPublisher(name, ancestorId);
-                        authoredNames.Add(name);
+                        findings.Add(new Finding("warning", "analysis-budget-exceeded", null,
+                            $"The duplicate published-name check stopped after {MaxPublishedParamAncestorVisits} ancestor visits " +
+                            $"({doc.Nodes.Count} nodes), so later clashes are not reported. Split the workflow into sub-workflows to analyze it completely."));
+                        return;
                     }
-                }
+                    queue.Enqueue(ancestorId);
 
-                if (typeDerivedByNode.TryGetValue(ancestorId, out var derived))
-                    foreach (var name in derived)
-                        AddPublisher(name, ancestorId);
+                    if (authoredByNode.TryGetValue(ancestorId, out var authored))
+                    {
+                        foreach (var name in authored)
+                        {
+                            if (!candidates.Contains(name)) continue;
+                            AddPublisher(name, ancestorId);
+                            authoredNames.Add(name);
+                        }
+                    }
+
+                    if (typeDerivedByNode.TryGetValue(ancestorId, out var derived))
+                        foreach (var name in derived)
+                            if (candidates.Contains(name))
+                                AddPublisher(name, ancestorId);
+                }
             }
 
             foreach (var (name, publishers) in publishersByName)
