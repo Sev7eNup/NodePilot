@@ -291,7 +291,8 @@ public sealed class BackupRestoreService(
                 await db.SaveChangesAsync(ct);
                 if (restoredSettings is not null)
                 {
-                    overrides.ReplaceAll(restoredSettings);
+                    if (!overrides.TryReplaceAll(RuntimeOverridesWriter.ComputeEtag(originalSettings), restoredSettings))
+                        throw new BackupRestoreException("Runtime settings changed during restore. Refresh the preview and retry.");
                     settingsApplied = true;
                 }
                 commitAttempted = true;
@@ -333,7 +334,13 @@ public sealed class BackupRestoreService(
                 {
                     if (settingsApplied && originalSettings is not null)
                     {
-                        try { overrides.ReplaceAll(originalSettings); }
+                        try
+                        {
+                            if (!overrides.TryReplaceAll(RuntimeOverridesWriter.ComputeEtag(restoredSettings), originalSettings))
+                                throw new BackupRestoreException(
+                                    "Restore failed after a concurrent settings update. The newer settings were preserved; review them before retrying.");
+                        }
+                        catch (BackupRestoreException) { throw; }
                         catch (Exception compensationError)
                         {
                             logger.LogCritical(

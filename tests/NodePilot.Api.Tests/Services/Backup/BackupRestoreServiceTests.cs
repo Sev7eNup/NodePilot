@@ -240,6 +240,41 @@ public sealed class BackupRestoreServiceTests : IDisposable
             .Should().BeOfType<Microsoft.AspNetCore.Mvc.NoContentResult>();
     }
 
+    [Fact]
+    public async Task Restore_ConcurrentSettingsSaveBeforeFailedCommit_PreservesNewerSave()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        var sourceSettings = new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance);
+        sourceSettings.ReplaceAll(JsonNode.Parse("{\"Stats\":{\"WindowDays\":30}}")!.AsObject());
+        var backup = (await new BackupService([new SettingsBackupPart(sourceSettings, _atRest)], src)
+            .ExportAsync([BackupSections.Settings], Passphrase, "admin", ct)).Content;
+        using var dst = TestDbFactory.Create();
+        var targetSettings = new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance);
+        targetSettings.ReplaceAll(JsonNode.Parse("{\"Stats\":{\"WindowDays\":7}}")!.AsObject());
+        using var restoring = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(dst.Database.GetDbConnection()).AddInterceptors(new SaveSettingsThenFailCommit(targetSettings)).Options);
+        var restore = new BackupRestoreService(restoring, _atRest, targetSettings,
+            NullLogger<BackupRestoreService>.Instance, VersionProtector());
+
+        var action = () => restore.RestoreAsync(backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), RestoreActor, ct);
+
+        (await action.Should().ThrowAsync<BackupRestoreException>()).Which.Message.Should().Contain("newer settings were preserved");
+        targetSettings.ReadSection("Stats")!["WindowDays"]!.GetValue<int>().Should().Be(90);
+        (await dst.AuditLog.AnyAsync(entry => entry.Action == NodePilot.Core.Audit.AuditActions.BackupRestoreDbCommitted, ct)).Should().BeFalse();
+    }
+
+    private sealed class SaveSettingsThenFailCommit(RuntimeOverridesWriter writer) : DbTransactionInterceptor
+    {
+        public override ValueTask<InterceptionResult> TransactionCommittingAsync(DbTransaction transaction,
+            TransactionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default)
+        {
+            writer.TryUpdateSectionAtomic("Stats", writer.ComputeSectionEtag("Stats"),
+                new JsonObject { ["WindowDays"] = 90 }, null, "concurrent-admin", DateTimeOffset.UtcNow).Success.Should().BeTrue();
+            return ValueTask.FromException<InterceptionResult>(new IOException("Commit rejected after concurrent settings save."));
+        }
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]

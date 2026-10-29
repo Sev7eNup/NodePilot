@@ -227,6 +227,21 @@ public sealed class RuntimeOverridesWriter
         }
     }
 
+    /// <summary>Replaces the document only while it still matches the caller's snapshot.</summary>
+    public bool TryReplaceAll(string expectedEtag, JsonObject replacement)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        using var mutex = AcquireMutex();
+        try
+        {
+            if (!string.Equals(ComputeEtag(ReadOrEmpty()), expectedEtag, StringComparison.Ordinal)) return false;
+            EnsureDirectoryExists();
+            WriteAtomic(replacement.DeepClone().AsObject());
+            return true;
+        }
+        finally { mutex.ReleaseMutex(); }
+    }
+
     /// <summary>
     /// Compute the ETag for a given top-level section (or the empty-object ETag if the
     /// section is missing). Stable across key reordering — keys are canonicalized
