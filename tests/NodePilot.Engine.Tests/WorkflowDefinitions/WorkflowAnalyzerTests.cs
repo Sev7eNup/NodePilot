@@ -13,6 +13,24 @@ namespace NodePilot.Engine.Tests.WorkflowDefinitions;
 /// </summary>
 public class WorkflowAnalyzerTests
 {
+    [Fact]
+    public void LongLinearGraph_IsAnalyzedWithoutRecursiveTraversal()
+    {
+        const int count = 1500;
+        var json = JsonSerializer.Serialize(new
+        {
+            nodes = Enumerable.Range(0, count).Select(i => new
+            {
+                id = "n" + i, type = "activity",
+                data = new { activityType = i == 0 ? "manualTrigger" : "log", config = new { } }
+            }),
+            edges = Enumerable.Range(1, count - 1).Select(i => new { id = "e" + i, source = "n" + (i - 1), target = "n" + i })
+        });
+        var result = Analyze(json);
+        result.NodeCount.Should().Be(count);
+        result.Findings.Should().NotContain(f => f.Code == "cycle");
+    }
+
     private static WorkflowAnalyzer.AnalysisResult Analyze(string json)
     {
         using var doc = JsonDocument.Parse(json);

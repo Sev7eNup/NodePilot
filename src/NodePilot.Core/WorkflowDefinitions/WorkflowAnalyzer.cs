@@ -336,35 +336,35 @@ public static class WorkflowAnalyzer
         foreach (var start in adjacency.Keys)
         {
             if (state.GetValueOrDefault(start) != 0) continue;
-            var cycle = Dfs(start, adjacency, state, stack);
-            if (cycle is not null) return cycle;
-        }
-        return null;
-    }
-
-    private static List<string>? Dfs(string node, IReadOnlyDictionary<string, List<string>> adjacency, Dictionary<string, int> state, List<string> stack)
-    {
-        state[node] = 1;
-        stack.Add(node);
-        if (adjacency.TryGetValue(node, out var next))
-        {
-            foreach (var n in next)
+            var pending = new Stack<(string Node, int NextChild)>();
+            state[start] = 1;
+            stack.Add(start);
+            pending.Push((start, 0));
+            while (pending.TryPop(out var frame))
             {
-                var s = state.GetValueOrDefault(n);
-                if (s == 1)
+                if (!adjacency.TryGetValue(frame.Node, out var next) || frame.NextChild >= next.Count)
                 {
-                    var idx = stack.IndexOf(n);
-                    return stack.GetRange(idx, stack.Count - idx);
+                    stack.RemoveAt(stack.Count - 1);
+                    state[frame.Node] = 2;
+                    continue;
                 }
-                if (s == 0)
+
+                pending.Push((frame.Node, frame.NextChild + 1));
+                var child = next[frame.NextChild];
+                var childState = state.GetValueOrDefault(child);
+                if (childState == 1)
                 {
-                    var cycle = Dfs(n, adjacency, state, stack);
-                    if (cycle is not null) return cycle;
+                    var index = stack.IndexOf(child);
+                    return stack.GetRange(index, stack.Count - index);
+                }
+                if (childState == 0)
+                {
+                    state[child] = 1;
+                    stack.Add(child);
+                    pending.Push((child, 0));
                 }
             }
         }
-        stack.RemoveAt(stack.Count - 1);
-        state[node] = 2;
         return null;
     }
 
