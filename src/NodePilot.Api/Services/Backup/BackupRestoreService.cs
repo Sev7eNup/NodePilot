@@ -917,8 +917,9 @@ public sealed class BackupRestoreService(
             {
                 if (policy == RestoreConflictPolicy.Overwrite)
                 {
+                    new CustomActivityDefinitionStore(db).StageRevision(
+                        existing, s.RestoredByUserId?.ToString(), "Restored from configuration backup");
                     ApplyCustomActivityFields(existing, item, s.Protector);
-                    existing.UpdatedAt = DateTime.UtcNow;
                     s.CustomActivityMap[sourceId] = existing.Id;
                     overwritten++; continue;
                 }
@@ -940,6 +941,7 @@ public sealed class BackupRestoreService(
                 CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
             };
             ApplyCustomActivityFields(def, item, s.Protector);
+            def.Version = item["version"]?.GetValue<int>() ?? 1;
             db.CustomActivityDefinitions.Add(def);
             s.CustomActivities[key] = def; s.ExistingCustomActivityIds.Add(id); s.CustomActivityMap[sourceId] = id;
         }
@@ -971,7 +973,6 @@ public sealed class BackupRestoreService(
                 item["inputParametersJson"], protector, "custom activity inputParametersJson");
         def.OutputParametersJson = item["outputParametersJson"]?.GetValue<string>() ?? "[]";
         def.IsEnabled = item["isEnabled"]?.GetValue<bool>() ?? false;
-        def.Version = item["version"]?.GetValue<int>() ?? 1;
     }
 
     /// <summary>
