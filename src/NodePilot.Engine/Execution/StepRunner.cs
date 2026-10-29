@@ -625,9 +625,10 @@ internal sealed class StepRunner
                                        && ex is not NonRetryableRemoteException
                                        && attempt < retryPolicy.MaxAttempts)
             {
-                _logger.LogWarning(ex,
-                    "Step {StepId} ({ActivityType}) attempt {Attempt}/{Max} threw; retrying.",
-                    node.Id, node.Type, attempt, retryPolicy.MaxAttempts);
+                _logger.LogWarning(
+                    "Step {StepId} ({ActivityType}) attempt {Attempt}/{Max} threw; retrying. {Error}",
+                    node.Id, node.Type, attempt, retryPolicy.MaxAttempts,
+                    _redactor.Redact(ExceptionDetail.Describe(ex)));
                 result = new ActivityResult { Success = false, ErrorOutput = ex.Message };
                 continue;
             }
