@@ -63,8 +63,7 @@ internal sealed class DebugCoordinator
         // Suspend the timeout — the execution clock should not keep running while
         // paused. It gets re-armed with the remaining budget after the await below.
         var pauseStart = DateTime.UtcNow;
-        if (debug.OriginalTimeoutSeconds is > 0)
-            executionCts.CancelAfter(Timeout.InfiniteTimeSpan);
+        debug.BeginPause(executionCts);
 
         // Max-pause guard: a hard upper limit against zombie executions in case the
         // user closes the browser tab without clicking Resume. Linked to the execution's
@@ -102,20 +101,11 @@ internal sealed class DebugCoordinator
             try { await resumeTask; }
             catch (OperationCanceledException) { }
             var pausedDuration = DateTime.UtcNow - pauseStart;
-            debug.TotalPausedDuration += pausedDuration;
             EngineMetrics.DebugSessionsActive.Add(-1);
             EngineMetrics.DebugPauseDuration.Record(pausedDuration.TotalMilliseconds,
                 new KeyValuePair<string, object?>("outcome", outcome));
 
-            if (debug.OriginalTimeoutSeconds is int origTimeout && origTimeout > 0)
-            {
-                var elapsed = DateTime.UtcNow - execution.StartedAt;
-                var remaining = TimeSpan.FromSeconds(origTimeout) - elapsed + debug.TotalPausedDuration;
-                if (remaining <= TimeSpan.Zero)
-                    await executionCts.CancelAsync();
-                else
-                    executionCts.CancelAfter(remaining);
-            }
+            debug.EndPause(execution.StartedAt, executionCts);
         }
         EngineMetrics.DebugResumeCommands.Add(1,
             new KeyValuePair<string, object?>("mode", resume.Command.ToString()));
