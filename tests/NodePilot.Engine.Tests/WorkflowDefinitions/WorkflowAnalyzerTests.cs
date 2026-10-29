@@ -31,6 +31,52 @@ public class WorkflowAnalyzerTests
         result.Findings.Should().NotContain(f => f.Code == "cycle");
     }
 
+    [Fact]
+    public void LongChainWithDuplicateName_StopsAtTheBudgetAndSaysSo()
+    {
+        // A chain of n nodes needs n(n-1)/2 ancestor visits, just above the budget here.
+        const int count = 2100;
+        ((long)count * (count - 1) / 2).Should().BeGreaterThan(WorkflowAnalyzer.MaxPublishedParamAncestorVisits);
+        var json = JsonSerializer.Serialize(new
+        {
+            nodes = Enumerable.Range(0, count).Select(i => Node("n" + i, i)),
+            edges = Enumerable.Range(1, count - 1).Select(i => new { id = "e" + i, source = "n" + (i - 1), target = "n" + i })
+        });
+
+        var result = Analyze(json);
+
+        result.Findings.Should().ContainSingle(f => f.Code == "dup-published-param");
+        result.Findings.Should().ContainSingle(f => f.Code == "analysis-budget-exceeded")
+            .Which.Severity.Should().Be("warning");
+    }
+
+    [Fact]
+    public void BroadGraphWithDuplicateName_IsAnalyzedCompletely()
+    {
+        const int leaves = 20_000;
+        var json = JsonSerializer.Serialize(new
+        {
+            nodes = new[] { Node("n0", 0), Node("n1", 1), Node("n2", 2) }
+                .Concat(Enumerable.Range(0, leaves).Select(i => Node("leaf" + i, 3))),
+            edges = new[] { new { id = "e1", source = "n0", target = "n1" }, new { id = "e2", source = "n1", target = "n2" } }
+                .Concat(Enumerable.Range(0, leaves).Select(i => new { id = "l" + i, source = "n2", target = "leaf" + i }))
+        });
+
+        var result = Analyze(json);
+
+        result.NodeCount.Should().Be(leaves + 3);
+        result.Findings.Should().ContainSingle(f => f.Code == "dup-published-param");
+        result.Findings.Should().NotContain(f => f.Code == "analysis-budget-exceeded");
+    }
+
+    // n0 is the trigger, n1 and n2 both publish $x, every later node only logs.
+    private static object Node(string id, int position) => position switch
+    {
+        0 => new { id, type = "activity", data = new { activityType = "manualTrigger", config = new { } } },
+        1 or 2 => new { id, type = "activity", data = new { activityType = "runScript", config = new { script = $"$x = {position}" } } },
+        _ => new { id, type = "activity", data = new { activityType = "log", config = new { } } },
+    };
+
     private static WorkflowAnalyzer.AnalysisResult Analyze(string json)
     {
         using var doc = JsonDocument.Parse(json);
