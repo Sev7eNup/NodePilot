@@ -14,6 +14,32 @@ exhaustive.
 
 Planned version: **1.5.4**.
 
+### Changed
+
+- **`np workflow publish` requires `--expected-version`**, and the MCP tools `publish_workflow` and
+  `update_workflow_definition` require `expectedVersion`. A version that is out of date is rejected
+  with `409 workflow_version_conflict` instead of overwriting newer changes. Scripts and agent
+  prompts must pass it (#708).
+- **Sign in once more per profile with `np auth login` after the update.** Every profile now has its
+  own session file, so profiles such as `prod.a` and `prod_a` no longer share one login (#620).
+
+### Fixed
+
+- **CLI and MCP**
+  - `np exec --watch` shows the final state even when the live connection drops the last event
+    (#725).
+  - The MCP server rejects broken nodes and edges before it merges a workflow change (#726).
+  - All MCP requests, including dependency queries, wait until the server connection is ready
+    (#727).
+
+### Security
+
+- The CLI and the MCP server no longer follow redirects with the login token, so the token is never
+  sent to another host (#711).
+- Logging out with the CLI also ends the MCP server's session right away (#712).
+- MCP alerting output shows webhook targets only as scheme, host and port, because the rest of the
+  URL can contain tokens (#730).
+
 ## [1.5.3] - 2026-10-30
 
 ### Added
