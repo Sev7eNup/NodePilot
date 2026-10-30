@@ -559,8 +559,49 @@ public class CommandIntegrationTests
         h.Server.Given(Request.Create().WithPath($"/api/workflows/{id}/publish").UsingPost())
             .RespondWith(Response.Create().WithStatusCode(200).WithBody(Single(id, "Build")));
 
-        var result = h.Run("workflow", "publish", id.ToString(), "--file", defPath);
+        var result = h.Run("workflow", "publish", id.ToString(), "--file", defPath, "--expected-version", "1");
         result.ExitCode.Should().Be(ExitCodes.Success);
+    }
+
+    [Fact]
+    public void WorkflowPublish_StaleExpectedVersion_SendsCallerVersionAndReturnsConflict()
+    {
+        using var h = new CommandTestHarness();
+        var id = Guid.NewGuid();
+        var defPath = Path.Combine(h.ConfigDir, "wf.json");
+        File.WriteAllText(defPath, "{\"nodes\":[],\"edges\":[]}");
+
+        // The server is at version 5 after a concurrent edit; the file was based on version 3.
+        h.Server.Given(Request.Create().WithPath($"/api/workflows/{id}").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody(Single(id, "Build").Replace("\"version\": 1", "\"version\": 5")));
+        h.Server.Given(Request.Create().WithPath($"/api/workflows/{id}/publish").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(409)
+                .WithHeader("Content-Type", "application/problem+json")
+                .WithBody("""{"status":409,"code":"workflow_version_conflict","title":"Workflow version conflict"}"""));
+
+        var result = h.Run("workflow", "publish", id.ToString(), "--file", defPath, "--expected-version", "3");
+
+        result.ExitCode.Should().Be(ExitCodes.Error);
+        var body = h.Server.LogEntries.Single(e => e.RequestMessage!.Path.EndsWith("/publish")).RequestMessage!.Body ?? "";
+        body.Should().Contain("\"expectedVersion\":3");
+        body.Should().NotContain("\"expectedVersion\":5");
+    }
+
+    [Fact]
+    public void WorkflowPublish_WithoutExpectedVersion_ReturnsErrorWithoutPublishing()
+    {
+        using var h = new CommandTestHarness();
+        var id = Guid.NewGuid();
+        var defPath = Path.Combine(h.ConfigDir, "wf.json");
+        File.WriteAllText(defPath, "{\"nodes\":[],\"edges\":[]}");
+        h.Server.Given(Request.Create().WithPath($"/api/workflows/{id}").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody(Single(id, "Build")));
+
+        var result = h.Run("workflow", "publish", id.ToString(), "--file", defPath);
+
+        result.ExitCode.Should().Be(ExitCodes.Error);
+        result.AnyOutput.Should().Contain("--expected-version");
+        h.Server.LogEntries.Should().NotContain(e => e.RequestMessage!.Path.EndsWith("/publish"));
     }
 
     [Fact]
@@ -586,7 +627,7 @@ public class CommandIntegrationTests
         h.Server.Given(Request.Create().WithPath($"/api/workflows/{id}").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBody(Single(id, "Build")));
 
-        var result = h.Run("workflow", "publish", id.ToString(), "--file", defPath);
+        var result = h.Run("workflow", "publish", id.ToString(), "--file", defPath, "--expected-version", "1");
         result.ExitCode.Should().Be(ExitCodes.Error);
     }
 

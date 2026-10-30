@@ -62,24 +62,26 @@ public sealed class WorkflowEditTools
     }
 
     [McpServerTool(Name = "publish_workflow")]
-    [Description("Publish a workflow definition: atomically save + enable + release the lock. Requires you hold the lock. The definition is validated and secrets are restored from the current version (the agent never sees/sets real secret values). name/description default to the current values if omitted.")]
+    [Description("Publish a workflow definition: atomically save + enable + release the lock. Requires you hold the lock. The definition is validated and secrets are restored from the current version (the agent never sees/sets real secret values). expectedVersion is the version get_workflow_definition returned for the definition you edited; if the workflow changed since, the call fails with a version conflict and nothing is saved. name/description default to the current values if omitted.")]
     public async Task<object> PublishWorkflow(
         [Description("The workflow GUID or exact name.")] string idOrName,
         [Description("The full workflow definition: { nodes: [...], edges: [...] }.")] JsonElement definition,
+        [Description("The version your definition is based on (from get_workflow_definition).")] int expectedVersion,
         [Description("Optional new name (defaults to current).")] string? name = null,
         [Description("Optional new description (defaults to current).")] string? description = null,
         CancellationToken cancellationToken = default)
-        => await SaveFullAsync(idOrName, definition, name, description, publish: true, cancellationToken);
+        => await SaveFullAsync(idOrName, definition, expectedVersion, name, description, publish: true, cancellationToken);
 
     [McpServerTool(Name = "update_workflow_definition")]
-    [Description("Save a workflow definition as a draft (PUT) WITHOUT enabling/unlocking — requires you hold the lock. Validates + protects secrets like publish. Use publish_workflow when you are ready to go live.")]
+    [Description("Save a workflow definition as a draft (PUT) WITHOUT enabling/unlocking — requires you hold the lock. Validates + protects secrets like publish, and like publish fails with a version conflict when expectedVersion is stale. Use publish_workflow when you are ready to go live.")]
     public async Task<object> UpdateWorkflowDefinition(
         [Description("The workflow GUID or exact name.")] string idOrName,
         [Description("The full workflow definition: { nodes: [...], edges: [...] }.")] JsonElement definition,
+        [Description("The version your definition is based on (from get_workflow_definition).")] int expectedVersion,
         [Description("Optional new name (defaults to current).")] string? name = null,
         [Description("Optional new description (defaults to current).")] string? description = null,
         CancellationToken cancellationToken = default)
-        => await SaveFullAsync(idOrName, definition, name, description, publish: false, cancellationToken);
+        => await SaveFullAsync(idOrName, definition, expectedVersion, name, description, publish: false, cancellationToken);
 
     // ---- Granular batch patch -----------------------------------------------
 
@@ -130,7 +132,8 @@ public sealed class WorkflowEditTools
         if (!validation.IsValid)
             throw new McpException($"Patch result is structurally invalid (not saved): {validation.Error}");
 
-        return await PersistAsync(wf, mergedElement.GetRawText(), wf.Name, wf.Description, publish, notes, cancellationToken);
+        // The patch was merged onto the definition fetched above, so that fetch's version is the base.
+        return await PersistAsync(wf, wf.Version, mergedElement.GetRawText(), wf.Name, wf.Description, publish, notes, cancellationToken);
     }
 
     // ---- Create / manage ----------------------------------------------------
@@ -292,7 +295,7 @@ public sealed class WorkflowEditTools
     // ---- Internals ----------------------------------------------------------
 
     private async Task<object> SaveFullAsync(
-        string idOrName, JsonElement definition, string? name, string? description, bool publish, CancellationToken ct)
+        string idOrName, JsonElement definition, int expectedVersion, string? name, string? description, bool publish, CancellationToken ct)
     {
         RequireFullDefinition(definition);
         var wf = await ResolveAsync(idOrName, ct);
@@ -305,7 +308,8 @@ public sealed class WorkflowEditTools
         if (!validation.IsValid)
             throw new McpException($"Definition is structurally invalid (not saved): {validation.Error}");
 
-        return await PersistAsync(wf, mergedElement.GetRawText(), name ?? wf.Name, description ?? wf.Description, publish, merged.Notes, ct);
+        // Send the caller's base version: the server rejects it when the workflow changed since.
+        return await PersistAsync(wf, expectedVersion, mergedElement.GetRawText(), name ?? wf.Name, description ?? wf.Description, publish, merged.Notes, ct);
     }
 
     private (JsonElement Merged, IReadOnlyList<string> Notes, WorkflowDefinitionValidationResult Validation) ApplyPatch(
@@ -326,15 +330,15 @@ public sealed class WorkflowEditTools
     }
 
     private async Task<object> PersistAsync(
-        WorkflowResponse wf, string definitionJson, string name, string? description,
+        WorkflowResponse wf, int expectedVersion, string definitionJson, string name, string? description,
         bool publish, IReadOnlyList<string> notes, CancellationToken ct)
     {
         if (publish)
         {
-            var r = await ApiErrorMapper.Guard(() => _api.PublishWorkflowAsync(wf.Id, new PublishWorkflowRequest(name, description, definitionJson, wf.Version), ct));
+            var r = await ApiErrorMapper.Guard(() => _api.PublishWorkflowAsync(wf.Id, new PublishWorkflowRequest(name, description, definitionJson, expectedVersion), ct));
             return new { published = true, workflowId = r.Id, version = r.Version, enabled = r.IsEnabled, notes };
         }
-        await ApiErrorMapper.Guard(() => _api.UpdateWorkflowAsync(wf.Id, new UpdateWorkflowRequest(name, description, definitionJson, wf.Version), ct));
+        await ApiErrorMapper.Guard(() => _api.UpdateWorkflowAsync(wf.Id, new UpdateWorkflowRequest(name, description, definitionJson, expectedVersion), ct));
         return new { saved = true, mode = "draft", workflowId = wf.Id, notes };
     }
 

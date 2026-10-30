@@ -12,6 +12,27 @@ namespace NodePilot.Cli.Tests.Tls;
 public sealed class TlsPinningHandshakeTests
 {
     [Fact]
+    public async Task HttpClient_Redirect_DoesNotForwardAuthenticationHeaders()
+    {
+        using var origin = WireMock.Server.WireMockServer.Start();
+        using var destination = WireMock.Server.WireMockServer.Start();
+        origin.Given(WireMock.RequestBuilders.Request.Create().WithPath("/redirect").UsingGet())
+            .RespondWith(WireMock.ResponseBuilders.Response.Create().WithStatusCode(302)
+                .WithHeader("Location", destination.Url + "/collect"));
+        using var http = new HttpClient(PinnedCertificateHandlerFactory.Create(
+            ClientTlsOptions.None, new HttpClientHandler { AllowAutoRedirect = true }));
+        using var request = new HttpRequestMessage(HttpMethod.Get, origin.Url + "/redirect");
+        request.Headers.Add("Authorization", "Bearer synthetic-bearer");
+        request.Headers.Add("X-Api-Key", "synthetic-api-key");
+        request.Headers.Add("X-Setup-Token", "synthetic-setup-token");
+
+        using var response = await http.SendAsync(request, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.Found);
+        destination.LogEntries.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task HttpClient_SelfSignedListenerWithMatchingPin_CompletesRequest()
     {
         var certificate = TestCertificates.CreateSelfSigned("localhost", "localhost");
