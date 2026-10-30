@@ -68,6 +68,13 @@ InstanceKey)`). Because the source cursor is shared across a source's policies, 
 gate on a **per-policy activation watermark** so a policy activated later never back-alerts the history a
 sibling policy already advanced the shared cursor past.
 
+The custom terminal-execution collector uses `WorkflowExecution.TerminalNotificationCollected`
+instead of a completion-time cursor. It saves that flag with pending delivery attempts, including
+executions that match no enabled rule. On first initialization it marks only currently visible
+terminal history collected. A later commit remains eligible even when its `CompletedAt` is older
+than rows collected earlier. `NotificationDispatcherState.InitializedAt` records this bootstrap;
+system-source and per-policy activation semantics remain separate.
+
 **Automatic state reset.** Disabling a policy, or changing its source, source parameters, filter, scope,
 or duration, drops its transient policy state (config and routes survive). First activation never
 back-alerts: event sources start from the activation instant; metric sources start their sustain window

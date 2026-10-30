@@ -2028,7 +2028,7 @@
                       },
                       {
                           "name":  "[Dauertest 1m] 07 - Backup Window",
-                          "description":  "Dauertest 07: Backup-Fenster mit benutzerdefiniertem Token, JSON-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — scheduledTask, Test — powerManagement, Test — decision. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
+                          "description":  "Dauertest 07: Backup-Fenster mit benutzerdefiniertem Token, JSON-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — scheduledTask, Muster Test: Child, Test — decision. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
                                              "nodes":  [
@@ -2131,7 +2131,7 @@
                                                                             "activityType":  "log",
                                                                             "config":  {
                                                                                            "level":  "info",
-                                                                                           "message":  "[Dauertest 7] query={{query.param.count}} dispatched=3 targets=Test — scheduledTask | Test — powerManagement | Test — decision"
+                                                                                           "message":  "[Dauertest 7] query={{query.param.count}} dispatched=3 targets=Test — scheduledTask | Muster Test: Child | Test — decision"
                                                                                        }
                                                                         }
                                                            },
@@ -2151,7 +2151,7 @@
                                                                                                         "queryMatches":  "{{query.param.count}}",
                                                                                                         "dispatchedJobs":  "3",
                                                                                                         "minimumDurationSeconds":  "20",
-                                                                                                        "targets":  "Test — scheduledTask | Test — powerManagement | Test — decision"
+                                                                                                        "targets":  "Test — scheduledTask | Muster Test: Child | Test — decision"
                                                                                                     }
                                                                                        }
                                                                         }
@@ -2184,11 +2184,11 @@
                                                                                 "y":  640
                                                                             },
                                                                "data":  {
-                                                                            "label":  "startWorkflow: Test — powerManagement",
+                                                                            "label":  "startWorkflow: Muster Test: Child",
                                                                             "activityType":  "startWorkflow",
                                                                             "outputVariable":  "existingCall2",
                                                                             "config":  {
-                                                                                           "workflowNameOrId":  "Test — powerManagement",
+                                                                                           "workflowNameOrId":  "Muster Test: Child",
                                                                                            "waitForCompletion":  false,
                                                                                            "parameters":  {
 

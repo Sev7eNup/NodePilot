@@ -63,7 +63,11 @@ public class ExecutionDebugControllerTests
         var engine = new Mock<IWorkflowEngine>();
         engine.Setup(e => e.Resume(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DebugResumeCommand>(),
             It.IsAny<IReadOnlyDictionary<string, string>?>())).Returns(true);
-        engine.Setup(e => e.GetPausedSteps(It.IsAny<Guid>())).Returns(new[] { "step-1", "step-2" });
+        engine.Setup(e => e.GetPausedSnapshots(It.IsAny<Guid>())).Returns(
+        [
+            new DebugPausedStepSnapshot("step-1", "First", DateTime.UtcNow, "breakpoint", new Dictionary<string, string> { ["manual.flag"] = "false" }),
+            new DebugPausedStepSnapshot("step-2", null, DateTime.UtcNow, "stepOver", new Dictionary<string, string>()),
+        ]);
 
         var audit = new CapturingAuditWriter();
         var ctrl = new ExecutionDebugController(db, engine.Object, audit, authz ?? new AlwaysAllowAuthorizationService());
@@ -124,6 +128,21 @@ public class ExecutionDebugControllerTests
         var h = await BuildAsync(db);
         (await h.Ctrl.Resume(h.ExecutionId, new ResumeDebugRequest("s", "teleport", null), CancellationToken.None))
             .Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Theory]
+    [InlineData("globals.Secret")]
+    [InlineData("__internal")]
+    public async Task Resume_ReadOnlyOverride_Returns400WithoutSignalling(string key)
+    {
+        await using var db = TestDbFactory.Create();
+        var h = await BuildAsync(db);
+        var request = new ResumeDebugRequest("step", "continue", new Dictionary<string, string> { [key] = "replacement" });
+
+        (await h.Ctrl.Resume(h.ExecutionId, request, TestContext.Current.CancellationToken))
+            .Should().BeOfType<BadRequestObjectResult>();
+        h.Engine.Verify(engine => engine.Resume(It.IsAny<Guid>(), It.IsAny<string>(),
+            It.IsAny<DebugResumeCommand>(), It.IsAny<IReadOnlyDictionary<string, string>?>()), Times.Never);
     }
 
     [Fact]
@@ -197,7 +216,9 @@ public class ExecutionDebugControllerTests
 
         var result = await h.Ctrl.GetPausedSteps(h.ExecutionId, CancellationToken.None);
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        ((IEnumerable<string>)ok.Value!).Should().BeEquivalentTo(["step-1", "step-2"]);
+        var snapshots = ((IReadOnlyCollection<DebugPausedStepSnapshot>)ok.Value!).ToArray();
+        snapshots.Select(snapshot => snapshot.StepId).Should().BeEquivalentTo(["step-1", "step-2"]);
+        snapshots.Single(snapshot => snapshot.StepId == "step-1").Variables["manual.flag"].Should().Be("false");
     }
 
     [Fact]

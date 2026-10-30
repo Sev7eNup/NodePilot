@@ -1,6 +1,7 @@
 import type { Edge, Node } from '@xyflow/react';
 import { randomUuid } from './uuid';
-import { renameVariableInNodeData } from './editorGraphHelpers';
+import { rewriteNodeReferences, rewriteEdgeReferences } from './workflowReferences';
+export { remapConditionStep } from './workflowReferences';
 import { stripRuntimeDefinition } from './workflowDefinitionSanitizer';
 
 /**
@@ -59,7 +60,7 @@ export function serializeFragment(fragment: WorkflowFragment): string {
   const clean = stripRuntimeDefinition(fragment);
   return JSON.stringify({
     nodes: clean.nodes.map(withoutViewProps).map((n) => ({ ...n, data: maskSecrets(n.data) as Node['data'] })),
-    edges: clean.edges.map(withoutViewProps),
+    edges: clean.edges.map(withoutViewProps).map((e) => ({ ...e, ...(e.data ? { data: maskSecrets(e.data) } : {}) })),
   }, null, 2);
 }
 
@@ -125,10 +126,24 @@ export function parseFragment(text: string): FragmentParseResult {
  */
 export function remapFragment(
   fragment: WorkflowFragment,
-  { existingGroupIds, dx, dy }: { existingGroupIds: ReadonlySet<string>; dx: number; dy: number },
+  { existingGroupIds, existingAliases = new Set<string>(), dx, dy }: {
+    existingGroupIds: ReadonlySet<string>; existingAliases?: ReadonlySet<string>; dx: number; dy: number;
+  },
 ): WorkflowFragment {
   const idMap = new Map<string, string>();
   for (const n of fragment.nodes) idMap.set(n.id, `${idPrefix(n.type)}-${randomUuid().slice(0, 8)}`);
+  const references = new Map(idMap);
+  const aliases = new Set(existingAliases);
+  for (const n of fragment.nodes) if (typeof n.data.outputVariable === 'string') aliases.add(n.data.outputVariable);
+  for (const n of fragment.nodes) {
+    const alias = n.data.outputVariable;
+    if (typeof alias !== 'string' || !alias || references.has(alias)) continue;
+    let suffix = 2;
+    while (aliases.has(`${alias}_${suffix}`)) suffix++;
+    const fresh = `${alias}_${suffix}`;
+    aliases.add(fresh);
+    references.set(alias, fresh);
+  }
   const pastedGroupIds = new Set(fragment.nodes.filter((n) => n.type === 'group').map((n) => n.id));
 
   // React Flow needs a group before its children.
@@ -141,8 +156,10 @@ export function remapFragment(
     const parentRef = n.type === 'group' ? undefined : oldParentId;
     const pastedParent = parentRef && pastedGroupIds.has(parentRef) ? idMap.get(parentRef) : undefined;
     const parentId = pastedParent ?? (parentRef && existingGroupIds.has(parentRef) ? parentRef : undefined);
-    let data: Record<string, unknown> = { ...(n.data as Record<string, unknown>), __liveStatus: undefined };
-    for (const [oldId, newId] of idMap) data = renameVariableInNodeData(data, oldId, newId);
+    const data = rewriteNodeReferences({ ...n.data, __liveStatus: undefined }, references);
+    if (typeof data.outputVariable === 'string' && data.outputVariable) {
+      data.outputVariable = references.get(data.outputVariable) ?? data.outputVariable;
+    }
     return {
       ...rest,
       ...(parentId ? { parentId, ...(extent ? { extent } : {}) } : {}),
@@ -163,41 +180,11 @@ export function remapFragment(
       source,
       target,
       selected: true,
-      data: e.data ? remapEdgeData(e.data as Record<string, unknown>, idMap) : e.data,
+      data: e.data ? rewriteEdgeReferences(e.data, references) : e.data,
     }];
   });
 
   return { nodes, edges };
-}
-
-/**
- * Rewrites the step ID in a shortcut condition such as `step-1.success`. A condition naming a
- * step outside `idMap` stays as it is.
- */
-export function remapConditionStep(condition: string | undefined, idMap: ReadonlyMap<string, string>): string {
-  if (!condition) return '';
-  const dot = condition.lastIndexOf('.');
-  if (dot <= 0) return condition;
-  const mapped = idMap.get(condition.slice(0, dot));
-  return mapped ? `${mapped}${condition.slice(dot)}` : condition;
-}
-
-function remapEdgeData(data: Record<string, unknown>, idMap: ReadonlyMap<string, string>): Record<string, unknown> {
-  const next: Record<string, unknown> = { ...data };
-  if (typeof data.condition === 'string') next.condition = remapConditionStep(data.condition, idMap);
-  if (data.conditionExpression) next.conditionExpression = remapStepIds(data.conditionExpression, idMap);
-  return next;
-}
-
-/** Rewrites `stepId` in every variable operand of a condition expression. */
-function remapStepIds(value: unknown, idMap: ReadonlyMap<string, string>): unknown {
-  if (Array.isArray(value)) return value.map((v) => remapStepIds(v, idMap));
-  if (!isRecord(value)) return value;
-  const out: Record<string, unknown> = {};
-  for (const [key, v] of Object.entries(value)) {
-    out[key] = key === 'stepId' && typeof v === 'string' ? (idMap.get(v) ?? v) : remapStepIds(v, idMap);
-  }
-  return out;
 }
 
 function idPrefix(type: string | undefined): string {
@@ -251,6 +238,7 @@ function looksSecret(value: string): boolean {
 
 /** Copy with export-style secret detection; header objects preserve template references. */
 function maskSecrets(value: unknown, isHeaderObject = false): unknown {
+  if (typeof value === 'string') return looksSecret(value) ? REDACTED : value;
   if (Array.isArray(value)) return value.map((item) => maskSecrets(item));
   if (!isRecord(value)) return value;
   const out: Record<string, unknown> = {};

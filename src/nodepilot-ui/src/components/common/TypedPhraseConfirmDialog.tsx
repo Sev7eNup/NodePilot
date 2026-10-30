@@ -1,5 +1,6 @@
 import { Close, SecurityServices } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
+import { useRef } from 'react';
 
 /**
  * Type-the-phrase confirmation dialog for the two actions that grant write access to
@@ -24,6 +25,7 @@ export function TypedPhraseConfirmDialog({
 }>) {
   const { t } = useTranslation(['common']);
   const ok = input === phrase;
+  const panel = useRef<HTMLDivElement>(null);
 
   return (
     <div
@@ -34,10 +36,24 @@ export function TypedPhraseConfirmDialog({
       tabIndex={-1}
     >
       <div
+        ref={panel}
         className="bg-surface-lowest rounded-lg shadow-xl p-6 w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && !e.defaultPrevented) onCancel(); }}
-        role="presentation"
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Escape' && !e.defaultPrevented) onCancel();
+          if (e.key === 'Tab') {
+            const controls = panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)');
+            if (!controls?.length) return;
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+          }
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
       >
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold text-on-surface flex items-center gap-2">
@@ -69,7 +85,7 @@ export function TypedPhraseConfirmDialog({
             {t('common:cancel')}
           </button>
           <button
-            onClick={onConfirm}
+            onClick={() => { if (ok) onConfirm(); }}
             disabled={!ok}
             className="px-4 py-2 bg-amber-600 text-white text-sm rounded-md hover:bg-amber-700 disabled:opacity-50"
           >

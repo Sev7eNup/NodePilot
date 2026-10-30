@@ -10,6 +10,24 @@ namespace NodePilot.Api.Tests.Configuration.Validators;
 public sealed class DatabaseTlsBootValidatorTests
 {
     [Fact]
+    public void HighAvailabilityGuide_CompleteConfiguration_PassesProductionTlsValidation()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "NodePilot.slnx"))) root = root.Parent;
+        Assert.NotNull(root);
+        var text = File.ReadAllText(Path.Combine(root.FullName, "docs", "ha-active-passive.md"));
+        var example = System.Text.RegularExpressions.Regex.Match(text, "```jsonc\\r?\\n([\\s\\S]*?)\\r?\\n```");
+        example.Success.Should().BeTrue("the guide must include its complete configuration example");
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(example.Groups[1].Value));
+        var configuration = new ConfigurationBuilder().AddJsonStream(stream).Build();
+        var issues = new List<BootValidationIssue>();
+
+        new DatabaseTlsBootValidator().Validate(configuration, issues);
+
+        issues.Should().BeEmpty();
+    }
+
+    [Fact]
     public void SqlServer_StrictCertificateValidation_Passes()
         => Validate(new()
         {

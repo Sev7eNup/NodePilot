@@ -220,6 +220,36 @@ public class AiKnowledgeControllerTests
     }
 
     [Fact]
+    public async Task Ask_HistoryRecipientBinding_RoundTripsThroughTheDoneEvent()
+    {
+        var (controller, _, llm, body) = Build();
+        llm.EnqueueStream("fresh answer");
+        var history = new[] { new AiChatTurnDto("user", "previous question") };
+
+        await controller.Ask(new KnowledgeAskRequest("question", history, HistoryContextKey: "old-recipient"),
+            TestContext.Current.CancellationToken);
+
+        using var first = System.Text.Json.JsonDocument.Parse(ParseSse(body).Single(e => e.ev == "done").data);
+        first.RootElement.GetProperty("historyDropped").GetBoolean().Should().BeTrue();
+        var key = first.RootElement.GetProperty("historyContextKey").GetString();
+        key.Should().NotBeNullOrWhiteSpace();
+        var secondBody = new MemoryStream();
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = controller.User },
+        };
+        controller.Response.Body = secondBody;
+        llm.EnqueueStream("follow-up answer");
+
+        await controller.Ask(new KnowledgeAskRequest("follow-up", history, HistoryContextKey: key),
+            TestContext.Current.CancellationToken);
+
+        using var second = System.Text.Json.JsonDocument.Parse(ParseSse(secondBody).Single(e => e.ev == "done").data);
+        second.RootElement.GetProperty("historyDropped").GetBoolean().Should().BeFalse();
+        second.RootElement.GetProperty("historyContextKey").GetString().Should().Be(key);
+    }
+
+    [Fact]
     public async Task Ask_ToolCall_WithNonCanonicalFinishReason_StillExecutes()
     {
         var (controller, _, llm, body) = Build(enableToolCalling: true);
@@ -386,6 +416,7 @@ public class AiKnowledgeControllerTests
         caps.SourceCode.Should().BeTrue();
         caps.Db.Should().BeTrue();
         caps.ScriptContextTargetHost.Should().Be("localhost");
+        caps.ScriptContextRecipientKey.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -431,6 +462,7 @@ public class AiKnowledgeControllerTests
         caps.SourceCode.Should().BeFalse(); // source-code is Admin/Operator only
         caps.Db.Should().BeFalse();        // DB (raw SQL) is global-Admin only
         caps.ScriptContextTargetHost.Should().BeNull(); // script generation is Admin/Operator only
+        caps.ScriptContextRecipientKey.Should().BeNull();
     }
 
     [Fact]

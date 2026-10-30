@@ -192,8 +192,12 @@ public sealed record WorkflowDefinitionDocument(
         var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var node in allNodes)
         {
-            if (node.Data.OutputVariable is { Length: > 0 } variable && variable != node.Id)
-                dict[variable] = node.Id;
+            if (node.Data.Disabled) continue;
+            if (node.Data.OutputVariable is { Length: > 0 } variable)
+            {
+                if (!dict.TryAdd(variable, node.Id))
+                    throw new InvalidOperationException($"Duplicate active output variable '{variable}'.");
+            }
         }
 
         return dict;

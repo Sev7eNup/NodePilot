@@ -106,15 +106,13 @@ public class SystemAlertSourceState
 }
 
 /// <summary>
-/// Single-row watermark for the dispatcher's inclusive execution scan cursor. Persisted so the
-/// dispatcher resumes after a restart without re-alerting everything. Scans
-/// <c>(CompletedAt &gt; LastCompletedAtSeen) OR (== AND Id &gt; LastIdSeen)</c>.
+/// Records the first initialization of terminal notification collection. Existing visible history
+/// is marked collected once; later completions are tracked individually on their execution rows.
 /// </summary>
 public class NotificationDispatcherState
 {
     public Guid Id { get; set; }
-    public DateTime? LastCompletedAtSeen { get; set; }
-    public Guid? LastIdSeen { get; set; }
+    public DateTime InitializedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>Stable id for the singleton row.</summary>

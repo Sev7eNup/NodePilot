@@ -251,7 +251,7 @@ More in [grafana/README.md](grafana/README.md) and in the installation guide on 
 
 ### Example workflow
 
-`scripts/readme-showcase-workflow.json` is a nightly health check that runs three probes in parallel, gathers them at a junction and then either sends an alert or logs that all is well. It is imported on the **Workflows** page via *Import* or through `POST /api/workflows/import`.
+`scripts/readme-showcase-workflow.json` is a nightly health check of the NodePilot host that runs three probes in parallel, gathers them at a junction and then either sends an alert or logs that all is well. A fault or a probe without evidence always takes the alert path; to check another host, give the probes a `targetMachineId`. It is imported on the **Workflows** page via *Import* or through `POST /api/workflows/import`.
 
 ---
 

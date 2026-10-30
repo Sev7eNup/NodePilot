@@ -126,9 +126,8 @@ export function useCanvasConnect({
       position: { x: insertAt.x - 100, y: insertAt.y - 40 },
       data: { label, activityType: type, targetMachineId: null, credentialId: null, config: newActivityConfig(type) },
     };
-    // The first half is unconditional, because the original condition belongs to what
-    // runs after the new node. The second half inherits label and condition, so a path such as
-    // "On Success" keeps its meaning.
+    // The branch guard must be evaluated before the inserted activity can run.
+    // The continuation is unconditional once that original guard has admitted the branch.
     const firstHalf: Edge = {
       id: `edge-${edgePairId}-a`,
       source: target.source,
@@ -137,7 +136,7 @@ export function useCanvasConnect({
       targetHandle: oppositePort(edgeSourcePort(target)),
       type: 'labeled',
       // Splitting a disabled branch must not activate the newly inserted activity.
-      data: { label: '', condition: '', disabled: target.data?.disabled === true },
+      data: target.data ? { ...target.data } : undefined,
     };
     const secondHalf: Edge = {
       ...target,
@@ -146,6 +145,7 @@ export function useCanvasConnect({
       sourceHandle: oppositePort(edgeTargetPort(target)),
       target: target.target,
       targetHandle: edgeTargetPort(target),
+      data: { label: '', condition: '', disabled: target.data?.disabled === true },
     };
     setNodes((nds: Node[]) => [...nds, newNode]);
     setEdges((eds: Edge[]) => eds.filter((e) => e.id !== target.id).concat([firstHalf, secondHalf]));

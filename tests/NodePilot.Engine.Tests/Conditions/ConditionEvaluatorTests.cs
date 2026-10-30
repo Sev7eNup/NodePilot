@@ -8,6 +8,24 @@ namespace NodePilot.Engine.Tests.Conditions;
 
 public class ConditionEvaluatorTests
 {
+    [Fact]
+    public void InvalidRegexUnderNot_ThrowsInsteadOfAuthorizingBranch()
+    {
+        var expr = Expr("""{"type":"not","child":{"type":"comparison","left":{"kind":"literal","value":"abc"},"op":"matches","right":{"kind":"literal","value":"["}}}""");
+        var evaluate = () => ConditionEvaluator.Evaluate(expr, MakeResults());
+        evaluate.Should().Throw<ConditionEvaluationException>();
+    }
+
+    [Fact]
+    public void OversizedRegexInput_RejectsInsteadOfMatchingTruncatedPrefix()
+    {
+        var expr = Expr("""{"type":"comparison","left":{"kind":"variable","stepId":"stepA","field":"output"},"op":"matches","right":{"kind":"literal","value":"^a+$"}}""");
+        var results = MakeResults();
+        results["stepA"] = new() { Success = true, Output = new string('a', 1024 * 1024) + "!" };
+        var evaluate = () => ConditionEvaluator.Evaluate(expr, results);
+        evaluate.Should().Throw<ConditionEvaluationException>();
+    }
+
     private static JsonElement Expr(string json) => JsonDocument.Parse(json).RootElement;
 
     private static Dictionary<string, ActivityResult> MakeResults()

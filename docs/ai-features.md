@@ -79,8 +79,8 @@ themselves require a service restart. A proxy does not replace a missing network
 The workflow assistant masks named secrets before the model call. With
 `ShareScriptsWithAssistant` enabled, however, the provider receives scripts, SQL, and arguments
 to the extent that secret detection does not mask them. This detection is heuristic.
-Changing the profile, endpoint, or sharing switch excludes the previous
-chat history from the next call.
+Changing the profile, its endpoint or model, or the sharing switch excludes the previous
+chat history from the next call. The global AI chat binds its history the same way.
 
 Script generation sends the current script only with the separate approval
 `IncludeCurrentScript=true`. It receives upstream variables as a schema without their values.

@@ -257,24 +257,19 @@ The shipped default profile leaves all external providers disabled and sets loca
 `BreakGlassOnly`. SCIM tokens are rotated without interruption by keeping the old value briefly under
 `Authentication:Scim:PreviousBearerToken` and deleting it after the IdP switch.
 
-### 5. Kerberos constrained delegation (for WinRM targets)
+### 5. Authorize the WinRM execution identity
 
-> This section concerns the **integrated (credential-less) WinRM path only**. If NodePilot uses credentials stored per machine, no delegation is needed — the service's identity is then irrelevant. Under **LocalSystem** the identity to delegate is the **computer account** of the NodePilot server (`Get-ADComputer <NodePilot-Host>`) instead of the gMSA — otherwise the procedure is identical.
+The integrated (credential-less) WinRM path authenticates directly as the NodePilot
+process identity: the gMSA, or the host computer account when running as LocalSystem.
+Grant that identity permission to the target's WinRM endpoint and the resources used
+by the workflow. For LocalSystem HA installations, authorize each NodePilot host.
+This first hop needs no resource-based constrained delegation and does not impersonate
+the browser user. Stored per-machine credentials use their own account permissions.
 
-For the gMSA to reach target machines via implicit Kerberos, **resource-based constrained delegation**
-has to be configured on every target server:
-
-```powershell
-# On a DC:
-$gmsa = Get-ADServiceAccount -Identity svc-nodepilot
-foreach ($target in $targetHosts) {
-    $computer = Get-ADComputer -Identity $target
-    Set-ADComputer -Identity $target `
-        -PrincipalsAllowedToDelegateToAccount (
-            (Get-ADComputer $target).PrincipalsAllowedToDelegateToAccount + $gmsa
-        )
-}
-```
+Delegated-user or second-hop access is a separate topology requiring an explicit design;
+do not enable delegation on every target as part of this setup. Existing AD retrieval
+or delegation grants must be preserved when an administrator changes them. The setup's
+gMSA repair snippet reads existing password-retrieval principals before adding this host.
 
 WinRM endpoint on the targets (if not already active):
 
@@ -561,8 +556,14 @@ in the lab: 31 seconds). If the service is deleted in that window, the process i
 longer reachable through the SCM — and the subsequent deletion pulls the DLLs out from under a running
 application. The script therefore waits up to `-ProcessExitTimeoutSeconds` (default 90) for processes
 from `InstallPath` and otherwise aborts **with the service still registered**, so that a supported way
-to stop it remains. If files are left behind afterwards (virus scanner, search indexer), the script
-still runs to completion, names the leftovers together with the holding process, and exits with code 1.
+to stop it remains. A failed `sc.exe delete` stops it the same way, before any file is removed. If files
+are left behind afterwards (virus scanner, search indexer), the script still runs to completion, names
+the leftovers together with the holding process, and exits with code 1.
+
+**A failed uninstall can be repeated.** The installation marker and `<InstallPath>\deploy\` (which holds
+this script) are removed only after everything else is gone. Any non-zero exit makes the GUI and
+`/SILENT` uninstaller abort before Inno removes a file or the "Apps & features" entry, and the
+uninstaller itself exits non-zero; fix the reported cause and uninstall again.
 
 Two things are **deliberately** left in place, because both can be shared with something else on the
 host and blindly revoking them would break exactly that: the gMSA's "Log on as a service" right and the
@@ -572,9 +573,11 @@ uninstall whether it is still there.
 
 **`-PurgeData` takes ownership first.** The installer writes `jwt-secret.key` and `admin-setup.token`
 owner-only to the *service account*; otherwise not even an administrator can delete them and the run
-aborts halfway. The script therefore calls `takeown` and `icacls` with the well-known SID
-`S-1-5-32-544` — **without** `(OI)(CI)`: those are container inheritance flags that are silently
-discarded on a leaf file while `icacls` still reports success.
+aborts halfway. The script therefore takes ownership item by item with `takeown /A` (the Administrators
+group, without the localized confirmation answer `takeown /R /D` expects) and grants the well-known SID
+`S-1-5-32-544` with `icacls` — **without** `(OI)(CI)`: those are container inheritance flags that are
+silently discarded on a leaf file while `icacls` still reports success. If either tool fails for any
+item, nothing under the data directory is deleted and the run exits with code 1.
 
 ## Backup & disaster recovery
 

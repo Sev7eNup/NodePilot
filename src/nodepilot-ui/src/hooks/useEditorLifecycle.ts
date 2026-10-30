@@ -7,6 +7,7 @@ import { confirmDialog } from '../stores/confirmStore';
 import { toast } from '../stores/toastStore';
 import type { useWorkflowLock } from './useWorkflowLock';
 import type { useWorkflowPersistence } from './useWorkflowPersistence';
+import { useAsyncIdentity } from './useAsyncIdentity';
 
 /**
  * Edit-lock, save and publish state of the open workflow with its actions, computed once per
@@ -74,9 +75,12 @@ export function useEditorLifecycle({
     isLocking, isUnlocking, isForceUnlocking, isDisabling, isEnabling,
   } = lockState;
   const { isDirty, isSaving, isPublishing, save, publish, replaceDraft } = persistence;
+  const captureOwner = useAsyncIdentity(workflow?.id);
 
   const endEditing = async () => {
+    const current = captureOwner();
     if (isDirty && !(await confirmDialog(t('editor:endEditingDirtyConfirm')))) return;
+    if (!current()) return;
     try {
       await replaceDraft(unlockAsync);
     } catch (err) {
@@ -87,9 +91,10 @@ export function useEditorLifecycle({
   // On a productive workflow the toggle is a kill switch and stays direct: stopping production
   // is not an "is everything ready" question.
   const requestPublish = async () => {
+    const current = captureOwner();
     if (!roleCanWrite || isLockedByOther || isTidying) return;
     if (workflow?.isEnabled) {
-      if (await confirmDialog(t('editor:stopWorkflowConfirm'))) disable();
+      if (await confirmDialog(t('editor:stopWorkflowConfirm')) && current()) disable();
       return;
     }
     if (isPublishing || isEnabling) return;

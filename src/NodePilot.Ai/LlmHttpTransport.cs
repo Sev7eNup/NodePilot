@@ -167,8 +167,8 @@ internal sealed class LlmHttpTransport
             HttpStatusCode.TooManyRequests => LlmErrorKind.RateLimited,
             _ => LlmErrorKind.UpstreamError,
         };
-        _logger.LogWarning("LLM upstream returned {Status} for model {Model}: {BodyExcerpt}",
-            status, _config.Model, bodyText);
+        _logger.LogWarning("LLM upstream returned {Status} for model {Model}",
+            status, _config.Model);
         resp.Dispose();
         throw new LlmException(kind, $"LLM-Endpoint antwortete mit HTTP {status}.",
             httpStatus: status, bodyExcerpt: bodyText);

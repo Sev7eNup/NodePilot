@@ -3,6 +3,7 @@ import { askStream, type AiChatTurn } from '../api/ai';
 import {
   addToolCallToLast, appendToLastAssistant, finalizeStreaming, isAbort,
   markToolDoneOnLast, patchLastAssistant, trimHistory,
+  lastHistoryContextKey, contextBoundHistory,
 } from '../lib/chatMessages';
 import {
   captureAuthBoundaryGeneration, isAuthBoundaryGenerationCurrent,
@@ -39,7 +40,7 @@ type Request = { controller: AbortController; finish: () => void };
 let activeRequest: Request | null = null;
 
 // Request ownership lives outside the view so minimizing and route changes keep the stream alive.
-async function stream(scope: string, threadId: string, question: string, messages: ChatMessage[]) {
+async function stream(scope: string, threadId: string, question: string, history: ChatMessage[]) {
   const key = aiChatFullKey(scope, threadId);
   const generation = captureAuthBoundaryGeneration();
   const controller = new AbortController();
@@ -53,13 +54,12 @@ async function stream(scope: string, threadId: string, question: string, message
   update((messages) => [...messages, { role: 'assistant', content: '', streaming: true }]);
   let completed = false;
   try {
-    const lastCompleted = messages.findLastIndex((message) => message.role === 'assistant' && message.meta?.historyContextKey);
-    const contextKey = lastCompleted >= 0 ? messages[lastCompleted].meta?.historyContextKey : null;
-    const reset = messages.slice(0, lastCompleted + 1).findLastIndex((message) => message.meta?.historyDropped);
-    const historyMessages = lastCompleted < 0 ? messages : messages.slice(Math.max(0, reset - 1), lastCompleted + 1);
-    const history: AiChatTurn[] = historyMessages.map(({ role, content }) => ({ role, content }));
+    // Turns after the last completed answer have no recipient context yet and are not replayed.
+    const lastCompleted = history.findLastIndex((message) => message.role === 'assistant' && message.meta?.historyContextKey);
+    const replayable = lastCompleted < 0 ? history : history.slice(0, lastCompleted + 1);
     await askStream({
-      question, history: trimHistory(history), historyContextKey: contextKey,
+      question, history: trimHistory(contextBoundHistory(replayable).map(({ role, content }): AiChatTurn => ({ role, content }))),
+      historyContextKey: lastHistoryContextKey(replayable),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       utcOffsetMinutes: -new Date().getTimezoneOffset(),
     }, {

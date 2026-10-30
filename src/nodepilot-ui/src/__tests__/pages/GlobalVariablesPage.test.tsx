@@ -344,3 +344,32 @@ describe('GlobalVariablesPage', () => {
     });
   });
 });
+
+describe('GlobalVariablesPage editing sessions', () => {
+  it('locks the draft while saving and keeps a variable opened later when the old save completes', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let listCalls = 0;
+    server.use(
+      http.get(`${BASE}/api/global-variables`, () => { listCalls++; return HttpResponse.json(VARS); }),
+      http.put(`${BASE}/api/global-variables/v1`, async () => { await gate; return new HttpResponse(null, { status: 204 }); }),
+    );
+    renderPage('Admin');
+
+    const editButton = async (name: string) =>
+      (await screen.findByText(name)).closest('tr')!.querySelector<HTMLButtonElement>('button[title="Edit"]')!;
+    fireEvent.click(await editButton('API_URL'));
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    await waitFor(() => expect(screen.getByDisplayValue('API_URL')).toBeDisabled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(await editButton('API_KEY'));
+    expect(screen.getByDisplayValue('API_KEY')).toBeInTheDocument();
+    const callsBeforeRelease = listCalls;
+    release();
+
+    await waitFor(() => expect(listCalls).toBeGreaterThan(callsBeforeRelease));
+    expect(screen.getByRole('heading', { name: /Edit Variable/i })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('API_KEY')).toBeEnabled();
+  });
+});

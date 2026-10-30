@@ -257,7 +257,7 @@
       "force": "Force (überschreibt Task mit gleichem Namen)",
       "forceOn": "Bestehender Task wird ersetzt.",
       "forceOff": "Schlägt fehl wenn Task existiert.",
-      "runAsHint": "Hinweis: Domain-User funktionieren nur ohne Passwort wenn Resource-Based-Constrained-Delegation eingerichtet ist. Built-ins (<0>SYSTEM</0>, <1>NETWORK SERVICE</1>, <2>LOCAL SERVICE</2>) brauchen kein Passwort.",
+      "runAsHint": "Die Registrierung verwendet den Anmeldetyp ServiceAccount. Nutze <0>SYSTEM</0>, <1>NETWORK SERVICE</1>, <2>LOCAL SERVICE</2> oder ein auf dem Ziel eingerichtetes verwaltetes Dienstkonto. Normale Domänenbenutzer werden nicht unterstützt; Delegation ändert diese Einschränkung nicht.",
       "getOutputHint": "Output: <0 />, <1 /> (0 = Erfolg), <2 />.",
       "weekdayShort": [
         "Mo",

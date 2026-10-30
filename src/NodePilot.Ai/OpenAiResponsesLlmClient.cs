@@ -56,8 +56,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         {
             LlmTemperatureQuirk.Remember(CompatibilityKey);
             _logger.LogWarning(
-                "LLM upstream rejected temperature with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
-                ex.BodyExcerpt);
+                "LLM upstream rejected temperature with HTTP 400 — retrying without it.");
             return await CompleteOnceAsync(request, dropTemperature: true, ct);
         }
     }
@@ -214,8 +213,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         {
             LlmTemperatureQuirk.Remember(CompatibilityKey);
             _logger.LogWarning(
-                "LLM upstream rejected temperature with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
-                ex.BodyExcerpt);
+                "LLM upstream rejected temperature with HTTP 400 — retrying without it.");
             return await _transport.SendAsync(
                 BuildBody(request, stream: true, dropTemperature: true),
                 token, ct);

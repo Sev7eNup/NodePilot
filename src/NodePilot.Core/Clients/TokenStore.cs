@@ -10,7 +10,7 @@ namespace NodePilot.Core.Clients;
 /// the operator authenticates once with <c>np auth login</c> and both clients read the same file.
 /// One file per profile so multiple connections can be authenticated in parallel
 /// (<c>np --profile prod auth login</c> next to <c>--profile dev</c>).
-/// File path: <c>%APPDATA%\NodePilot\session-&lt;profile&gt;.dat</c>.
+/// File path: <c>%APPDATA%\NodePilot\session-&lt;profile-hash&gt;.dat</c>.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class TokenStore
@@ -27,7 +27,12 @@ public sealed class TokenStore
         Directory.CreateDirectory(_baseDir);
     }
 
-    public string PathFor(string profile) => Path.Combine(_baseDir, $"session-{Sanitize(profile)}.dat");
+    public string PathFor(string profile)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profile);
+        var identity = SHA256.HashData(Encoding.UTF8.GetBytes(profile.ToUpperInvariant()));
+        return Path.Combine(_baseDir, $"session-{Convert.ToHexString(identity)}.dat");
+    }
 
     public StoredSession? Load(string profile)
     {
@@ -113,13 +118,6 @@ public sealed class TokenStore
     // same machine.
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes(ClientSessionSecurity.DpapiSessionEntropy);
 
-    private static string Sanitize(string profile)
-    {
-        var sanitized = new StringBuilder(profile.Length);
-        foreach (var c in profile)
-            sanitized.Append(char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_');
-        return sanitized.Length == 0 ? "default" : sanitized.ToString();
-    }
 }
 
 public sealed class StoredSession

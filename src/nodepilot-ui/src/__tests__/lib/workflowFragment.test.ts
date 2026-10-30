@@ -294,6 +294,30 @@ describe('parseFragment', () => {
 });
 
 describe('remapFragment', () => {
+  it('allocates independent aliases and rewrites internal bindings and decision guards in one pass', () => {
+    const fragment = { nodes: [
+      node('a', { data: { outputVariable: 'result' } }),
+      node('b', { data: { targetMachineId: '{{result.output}}', credentialId: '{{a.param.credential}}', config: {
+        cases: [{ name: 'ok', condition: { type: 'comparison', op: '==', left: { kind: 'variable', stepId: 'result', field: 'output' }, right: { kind: 'literal', value: '{{result.output}}' } } }],
+      } } }),
+    ], edges: [edge('ab', 'a', 'b', { condition: 'result.success' })] };
+    const pasted = remapFragment(fragment, { existingGroupIds: NO_GROUPS, existingAliases: new Set(['result_2']), dx: 0, dy: 0 });
+    expect(pasted.nodes[0].data.outputVariable).toBe('result_3');
+    expect(pasted.nodes[1].data.targetMachineId).toBe('{{result_3.output}}');
+    expect(pasted.nodes[1].data.credentialId).toBe(`{{${pasted.nodes[0].id}.param.credential}}`);
+    expect(pasted.nodes[1].data.config).toMatchObject({ cases: [{ condition: {
+      left: { stepId: 'result_3' }, right: { value: '{{result.output}}' },
+    } }] });
+    expect(pasted.edges[0].data?.condition).toBe('result_3.success');
+    expect(fragment.nodes[0].data.outputVariable).toBe('result');
+  });
+
+  it('masks recognized secrets in scalar arrays at the clipboard boundary', () => {
+    const token = `ghp_${'A'.repeat(30)}`;
+    const serialized = serializeFragment({ nodes: [node('a', { data: { config: { args: [token, ['{{globals.TOKEN}}', token]] } } })], edges: [] });
+    expect(serialized).not.toContain(token);
+    expect(JSON.parse(serialized).nodes[0].data.config.args).toEqual(['***', ['{{globals.TOKEN}}', '***']]);
+  });
   it('givesEveryNodeAndEdgeAFreshId_andRewiresEdges', () => {
     const fragment = selectFragment([node('a'), node('b')], [edge('ab', 'a', 'b')], ['a', 'b']);
 

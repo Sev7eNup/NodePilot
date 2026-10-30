@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
@@ -186,5 +186,35 @@ describe('UsersPage', () => {
 
     await waitFor(() => expect(putBody).not.toBeNull());
     expect(putBody).toMatchObject({ isBreakGlass: true });
+  });
+});
+
+describe('UsersPage editing sessions', () => {
+  it('locks the draft while saving and keeps a user opened later when the old save completes', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let listCalls = 0;
+    server.use(
+      http.get(`${BASE}/api/users`, () => { listCalls++; return HttpResponse.json(MOCK_USERS); }),
+      http.put(`${BASE}/api/users/u3`, async () => { await gate; return new HttpResponse(null, { status: 204 }); }),
+    );
+    renderPage();
+
+    const editButton = async (username: string) =>
+      within((await screen.findByText(username)).closest('tr')!).getByRole('button', { name: /edit role/i });
+    const dialogFor = (username: string) =>
+      screen.getByRole('heading', { name: `Edit user: ${username}` }).parentElement!;
+    fireEvent.click(await editButton('viewer1'));
+    fireEvent.change(within(dialogFor('viewer1')).getByRole('combobox'), { target: { value: 'Operator' } });
+    fireEvent.click(within(dialogFor('viewer1')).getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(within(dialogFor('viewer1')).getByRole('combobox')).toBeDisabled());
+
+    fireEvent.click(within(dialogFor('viewer1')).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(await editButton('operator1'));
+    const callsBeforeRelease = listCalls;
+    release();
+
+    await waitFor(() => expect(listCalls).toBeGreaterThan(callsBeforeRelease));
+    expect(within(dialogFor('operator1')).getByRole('combobox')).toBeEnabled();
   });
 });

@@ -231,6 +231,7 @@ describe('ScriptEditorDialog', () => {
         onClose={() => {}}
         onAiGenerate={onAiGenerate}
         aiTargetHost="llm.example.test"
+        aiRecipientKey="recipient-v1"
       />,
     );
 
@@ -251,6 +252,7 @@ describe('ScriptEditorDialog', () => {
         onChange={() => {}}
         onClose={() => {}}
         onAiGenerate={async () => {}}
+        aiRecipientKey="recipient-without-display-host"
       />,
     );
 

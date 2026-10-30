@@ -170,6 +170,52 @@ public sealed class SystemAlertingToolsTests
     }
 
     [Fact]
+    public async Task SystemAlertTools_RedactCredentialBearingWebhookTargets()
+    {
+        const string secretHook = "https://hooks.example.test/services/PATH_SENTINEL?sig=QUERY_SENTINEL";
+        var id = Guid.NewGuid();
+        var policy = new
+        {
+            id, name = "Secret-Hook", description = (string?)null, isEnabled = true, sourceId = "backlog",
+            presetId = (string?)null, sourceParameters = (object?)null, conditionJson = (string?)null,
+            sustainForSeconds = 0, severityOverride = (string?)null, scopeKind = "Global",
+            targets = Array.Empty<object>(),
+            routes = new object[] { new { id = Guid.NewGuid(), channel = "GenericWebhook", target = secretHook, secret = "__unchanged__", order = 0, conditionExpressionJson = (string?)null } },
+            cooldownMinutes = 0, minOccurrences = 1, occurrenceWindowMinutes = 0,
+            createdAt = DateTime.UtcNow, updatedAt = DateTime.UtcNow, updatedBy = "admin", activatedAt = (DateTime?)null,
+        };
+        using var api = new TestApi();
+        api.Server.Given(Request.Create().WithPath("/api/alerting/system/policies").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[] { policy }));
+        api.Server.Given(Request.Create().WithPath($"/api/alerting/system/policies/{id}").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(policy));
+        api.Server.Given(Request.Create().WithPath($"/api/alerting/system/policies/{id}").UsingPut())
+            .RespondWith(Response.Create().WithStatusCode(204));
+        api.Server.Given(Request.Create().WithPath($"/api/alerting/system/policies/{id}/test-fire").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                allSucceeded = true,
+                results = new[] { new { channel = "GenericWebhook", target = secretHook, success = true, error = (string?)null } },
+            }));
+
+        var tools = new SystemAlertingTools(api.Client());
+        var ct = TestContext.Current.CancellationToken;
+        foreach (var json in new[]
+        {
+            JsonSerializer.Serialize(await tools.ListSystemAlertPolicies(ct)),
+            JsonSerializer.Serialize(await tools.GetSystemAlertPolicy(id.ToString(), ct)),
+            JsonSerializer.Serialize(await tools.TestFireSystemAlertPolicy(id.ToString(), ct)),
+            JsonSerializer.Serialize(await tools.UpdateSystemAlertPolicy(id.ToString(), name: "Renamed", cancellationToken: ct)),
+        })
+        {
+            json.Should().NotContain("PATH_SENTINEL").And.NotContain("QUERY_SENTINEL");
+        }
+
+        var put = api.Server.LogEntries.Single(e => e.RequestMessage!.Method == "PUT").RequestMessage!.Body ?? "";
+        put.Should().Contain("PATH_SENTINEL", "a partial update keeps the server-side target");
+    }
+
+    [Fact]
     public async Task DeleteSystemAlertPolicy_IsDestructive_AndCallsDelete()
     {
         var id = Guid.NewGuid();

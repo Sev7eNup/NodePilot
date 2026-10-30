@@ -90,14 +90,11 @@ jobs:
           echo "Changed files:"
           printf '%s\n' "$changed" | sed 's/^/  /'
 
-          # Anything that is not a markdown file or a documentation image counts as code.
-          if printf '%s\n' "$changed" | grep -qvE '(\.md$|^docs/images/)'; then
-            decide true "non-documentation changes present — running every job"
+          if ! classification="$(printf '%s\n' "$changed" | bash scripts/classify-changes.sh)"; then
+            decide true "classification failed — running every job"
           fi
-
-          echo "code=false" >> "$GITHUB_OUTPUT"
-          echo "=> documentation only — skipping frontend, desktop and e2e."
-          echo "   Backend and docs-ui still run: markdown is an input to both."
+          printf '%s\n' "$classification" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$classification"
 
   backend:
     name: Backend build + tests
@@ -175,6 +172,8 @@ jobs:
           .\deploy\Test-DeploymentTemplates.ps1
           .\deploy\Test-ArtifactSecurity.ps1
           .\deploy\Test-SetupAdapter.ps1
+          .\deploy\Test-LocalServerHttp.ps1
+          .\deploy\Test-FailoverRecovery.ps1
           .\deploy\Test-MachinePath.ps1
           .\deploy\Test-SwitcherConfig.ps1
           .\deploy\Test-DesktopUpdate.ps1
@@ -188,13 +187,20 @@ jobs:
           .\scripts\release-lab\Test-UpgradeMatrix.ps1
           .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
           .\scripts\test-suite\Test-WorkflowCatalogue.ps1
+          .\scripts\test-suite\Test-TestSuiteVerification.ps1
+          .\scripts\test-suite\Test-TestSuiteSafety.ps1
+          .\scripts\ad-sso-labtest\Test-LabContracts.ps1
           .\scripts\Test-DevReset.ps1
+          .\scripts\Test-NightlyRetention.ps1
+          .\scripts\Test-ExampleWorkflowScripts.ps1
 
       - name: Deployment security contracts (PowerShell 7)
         shell: pwsh
         run: |
           .\deploy\Test-ArtifactSecurity.ps1
           .\deploy\Test-SetupAdapter.ps1
+          .\deploy\Test-LocalServerHttp.ps1
+          .\deploy\Test-FailoverRecovery.ps1
           .\deploy\Test-MachinePath.ps1
           .\deploy\Test-SwitcherConfig.ps1
           .\deploy\Test-DesktopUpdate.ps1
@@ -208,7 +214,12 @@ jobs:
           .\scripts\release-lab\Test-UpgradeMatrix.ps1
           .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
           .\scripts\test-suite\Test-WorkflowCatalogue.ps1
+          .\scripts\test-suite\Test-TestSuiteVerification.ps1
+          .\scripts\test-suite\Test-TestSuiteSafety.ps1
+          .\scripts\ad-sso-labtest\Test-LabContracts.ps1
           .\scripts\Test-DevReset.ps1
+          .\scripts\Test-NightlyRetention.ps1
+          .\scripts\Test-ExampleWorkflowScripts.ps1
 
       - name: Build
         run: dotnet build --configuration Release --no-restore
@@ -216,6 +227,9 @@ jobs:
       - name: Administration script HTTP contracts
         shell: pwsh
         run: python -m unittest discover -s scripts -p test_nodepilot_admin_scripts.py -v
+
+      - name: Test CI change classification
+        run: python -m unittest discover -s scripts -p test_ci_classification.py -v
 
       - name: Restore local tools (reportgenerator)
         run: dotnet tool restore

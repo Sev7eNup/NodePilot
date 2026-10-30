@@ -12,6 +12,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
+import { useAsyncIdentity } from '../hooks/useAsyncIdentity';
 import { ModalShell } from '../components/common/ModalShell';
 import { MobileCardList } from '../components/common/MobileCardList';
 import { sharedFoldersApi } from '../api/sharedFolders';
@@ -118,6 +119,7 @@ export function MaintenanceWindowsPage() {
   const isMobile = useIsMobile();
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showDialog, setShowDialog] = useState(false);
+  const captureSession = useAsyncIdentity(showDialog ? form.id ?? '' : null);
   const [search, setSearch] = useState('');
 
   const { data: windows, isLoading } = useQuery({
@@ -152,13 +154,15 @@ export function MaintenanceWindowsPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (f: FormState) => {
+    mutationFn: async ({ form: f }: { form: FormState; current: () => boolean }) => {
       const body = buildBody(f);
       if (f.id) await api.put(`/maintenance-windows/${f.id}`, body);
       else await api.post('/maintenance-windows', body);
     },
-    onSuccess: () => {
+    onSuccess: (_result, request) => {
       queryClient.invalidateQueries({ queryKey: ['maintenance-windows'] });
+      // A closed dialog must not close or reset the one opened after it.
+      if (!request.current()) return;
       setShowDialog(false);
       setForm(emptyForm());
     },
@@ -486,7 +490,8 @@ export function MaintenanceWindowsPage() {
               {form.id ? t('maintenance:editTitle') : t('maintenance:createTitle')}
             </h3>
 
-            <div className="space-y-3">
+            {/* Locked while saving, so the response never discards edits made after the submit. */}
+            <fieldset disabled={saveMutation.isPending} className="space-y-3 min-w-0 border-0 p-0">
               <div>
                 <label className="block text-xs font-medium text-on-surface-variant mb-1">{t('maintenance:fields.name')}</label>
                 <input
@@ -649,14 +654,14 @@ export function MaintenanceWindowsPage() {
                   </div>
                 </div>
               )}
-            </div>
+            </fieldset>
 
             <div className="flex justify-end gap-2 mt-5">
               <button onClick={() => { setShowDialog(false); setForm(emptyForm()); }}
                 className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container rounded-md">
                 {t('common:cancel')}
               </button>
-              <button onClick={() => saveMutation.mutate(form)} disabled={!formValid || saveMutation.isPending}
+              <button onClick={() => saveMutation.mutate({ form, current: captureSession() })} disabled={!formValid || saveMutation.isPending}
                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50">
                 {saveMutation.isPending ? t('common:saving') : (form.id ? t('common:update') : t('common:create'))}
               </button>

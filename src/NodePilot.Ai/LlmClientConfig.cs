@@ -4,7 +4,7 @@ namespace NodePilot.Ai;
 /// Per-call connection overrides for a single LLM request (the <c>llmQuery</c> activity's
 /// per-node config). Every field is optional; a null field falls back to the global
 /// <see cref="LlmOptions"/> default. Resolved into an effective <see cref="LlmClientConfig"/>
-/// by <see cref="ILlmClientFactory.Create"/>.
+/// by <see cref="ILlmClientFactory.Create(LlmConnection)"/>.
 /// </summary>
 public sealed record LlmConnection(
     string? BaseUrl = null,

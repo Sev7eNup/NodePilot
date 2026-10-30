@@ -203,6 +203,39 @@ begin
       'The full log is at:' + #13#10 + GetEnv('TEMP') + '\nodepilot-setup-prepare.log';
 end;
 
+// SID of the account that started setup before elevation - the account the shell is launched as
+// (runasoriginaluser). Empty when it cannot be determined. A check runs as that account and
+// reports the position of its own SID in the machine's profile list as its exit code; no file
+// another user could write is involved. The offset keeps PowerShell's own error codes out of range.
+function OriginalUserSid(): String;
+var
+  Sids: TArrayOfString;
+  List: String;
+  I, ResultCode: Integer;
+begin
+  Result := '';
+  if not RegGetSubkeyNames(HKLM64, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList', Sids) then
+    Exit;
+  List := '';
+  for I := 0 to GetArrayLength(Sids) - 1 do
+  begin
+    if I > 0 then
+      List := List + ',';
+    List := List + '''' + Sids[I] + '''';
+  end;
+  try
+    if not ExecAsOriginalUser('powershell.exe',
+         '-NoProfile -NonInteractive -Command "exit ([array]::IndexOf([string[]]@(' + List +
+         '), [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) + 1000)"',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      Exit;
+  except
+    Exit;
+  end;
+  if (ResultCode >= 1000) and (ResultCode < 1000 + GetArrayLength(Sids)) then
+    Result := Sids[ResultCode - 1000];
+end;
+
 // Runs elevated provisioning and reports its exit code. Failure does not roll back files or a
 // database that the user may still need; the installer reports the log instead.
 procedure ProvisionRuntime();
@@ -210,6 +243,8 @@ var
   ResultCode: Integer;
   ProvisionScript: String;
   LogPath: String;
+  Params: String;
+  SetupUserSid: String;
 begin
   ProvisionScript := ExpandConstant('{app}\deploy\Provision-LocalDb.ps1');
   LogPath := GetEnv('TEMP') + '\nodepilot-provision.log';
@@ -217,9 +252,14 @@ begin
   WizardForm.StatusLabel.Caption := 'Provisioning local database and services (this can take a minute)...';
   WizardForm.Refresh();
 
-  if not Exec('powershell.exe',
-       '-NoProfile -ExecutionPolicy Bypass -File "' + ProvisionScript + '" -InstallPath "' + ExpandConstant('{app}') + '"',
-       '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  Params := '-NoProfile -ExecutionPolicy Bypass -File "' + ProvisionScript + '" -InstallPath "' +
+    ExpandConstant('{app}') + '"';
+  // Without it the provisioner refuses to hand the first-run token to anyone.
+  SetupUserSid := OriginalUserSid();
+  if SetupUserSid <> '' then
+    Params := Params + ' -HandoffUserSid "' + SetupUserSid + '"';
+
+  if not Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     ProvisionOk := False;
     SuppressibleMsgBox('NodePilot could not start Windows PowerShell to set up its database and services.'#13#10#13#10
@@ -300,10 +340,16 @@ begin
   ScriptPath := ExpandConstant('{app}\deploy\Uninstall-Desktop.ps1');
   if not FileExists(ScriptPath) then
   begin
+    // Without the script the services can only be gone already; otherwise keep everything.
+    if not RegKeyExists(HKLM64, 'SYSTEM\CurrentControlSet\Services\NodePilot') and
+       not RegKeyExists(HKLM64, 'SYSTEM\CurrentControlSet\Services\NodePilotDb') then Exit;
     SuppressibleMsgBox('The NodePilot uninstall script is missing:' + #13#10 + ScriptPath + #13#10#13#10 +
-      'The NodePilot services, the certificate and the data have NOT been removed.',
+      'The NodePilot services, the certificate and the data have NOT been removed, and this ' +
+      'uninstall was stopped. Install NodePilot again, then uninstall it.',
       mbCriticalError, MB_OK, IDOK);
-    Exit;
+    // Abort in usUninstall ends the uninstaller with a non-zero exit code before Inno removes
+    // any file or registry entry, so the installation stays retryable.
+    Abort;
   end;
 
   Params := '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptPath + '" -InstallPath "' +
@@ -312,10 +358,20 @@ begin
     Params := Params + ' -PurgeData';
 
   if not Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    SuppressibleMsgBox('Could not start Windows PowerShell to remove the NodePilot services.',
-      mbCriticalError, MB_OK, IDOK)
+  begin
+    SuppressibleMsgBox('Could not start Windows PowerShell to remove the NodePilot services. ' +
+      'Nothing was removed; run the uninstall again.',
+      mbCriticalError, MB_OK, IDOK);
+    Abort;
+  end
   else if ResultCode <> 0 then
+  begin
+    // Uninstall-Desktop.ps1 is safe to repeat, and the abort keeps the program files, the
+    // scripts and the Apps & Features entry it needs for that.
     SuppressibleMsgBox('NodePilot could not be removed completely (exit code ' + IntToStr(ResultCode) + ').' + #13#10#13#10 +
+      'The uninstall was stopped and NodePilot stays installed. Fix the problem, then uninstall again. ' +
       'The full log is at:' + #13#10 + GetEnv('TEMP') + '\nodepilot-uninstall.log',
       mbError, MB_OK, IDOK);
+    Abort;
+  end;
 end;

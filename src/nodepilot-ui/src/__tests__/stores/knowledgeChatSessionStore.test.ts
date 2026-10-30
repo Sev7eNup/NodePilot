@@ -62,6 +62,51 @@ describe('global chat request ownership', () => {
     resolve();
     await pending;
   });
+
+  it('does not replay old-provider history on the second turn after a recipient change', async () => {
+    useAiChatStore.getState().updateMessages(scope, thread, () => [
+      { role: 'user', content: 'Old private context' },
+      { role: 'assistant', content: 'Old reply', meta: { model: 'old', durationMs: 1, historyContextKey: 'old-key' } },
+    ]);
+    const first = session.getState().send(scope, thread, 'New recipient question');
+    handlers.onDelta('New answer');
+    handlers.onDone?.({ model: 'new', durationMs: 1, historyContextKey: 'new-key', historyDropped: true });
+    resolve(); await first;
+    const next = session.getState().send(scope, thread, 'Follow-up');
+    expect(askStream).toHaveBeenLastCalledWith(expect.objectContaining({ historyContextKey: 'new-key', history: [
+      { role: 'user', content: 'New recipient question' }, { role: 'assistant', content: 'New answer' },
+    ] }), expect.anything());
+    resolve(); await next;
+    expect(useAiChatStore.getState().messagesByThread[key][0].content).toBe('Old private context');
+  });
+  it('sends and retains messages when sessionStorage is full', async () => {
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Full', 'QuotaExceededError'); });
+    try {
+      session.getState().setDraft(key, 'Question');
+      const pending = session.getState().send(scope, thread, 'Question');
+      expect(askStream).toHaveBeenCalledOnce();
+      handlers.onDelta('Answer');
+      resolve();
+      await pending;
+      expect(useAiChatStore.getState().messagesByThread[key].map((message) => message.content)).toEqual(['Question', 'Answer']);
+      expect(session.getState().sendingKey).toBeNull();
+    } finally { write.mockRestore(); }
+  });
+
+  it('binds follow-up and retry history to the previous answer recipient context', async () => {
+    useAiChatStore.getState().updateMessages(scope, thread, () => [
+      { role: 'user', content: 'Earlier' },
+      { role: 'assistant', content: 'Reply', meta: { model: 'test', durationMs: 1, historyContextKey: 'recipient-revision' } },
+    ]);
+    const pending = session.getState().send(scope, thread, 'Next');
+    expect(askStream).toHaveBeenLastCalledWith(expect.objectContaining({ historyContextKey: 'recipient-revision' }), expect.anything());
+    reject(new Error('Retryable'));
+    await pending;
+    const retry = session.getState().regenerate(scope, thread);
+    expect(askStream).toHaveBeenLastCalledWith(expect.objectContaining({ historyContextKey: 'recipient-revision' }), expect.anything());
+    resolve();
+    await retry;
+  });
   it('keeps streaming while minimized and marks the completed reply unread', async () => {
     session.getState().setWidgetOpen(true);
     const pending = session.getState().send(scope, thread, 'Explain triggers');

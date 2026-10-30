@@ -148,7 +148,7 @@ Further fields and outputs are in the [`llmQuery` reference](activities-referenc
 - Source-code knowledge in the global chat is limited to Admin and Operator; database knowledge with raw SQL is available to global admins only. Folder permissions do not elevate an operator into that capability. Workflow definitions and static workflow analyses remain reserved for Admin and Operator with folder RBAC; a viewer receives only the scheduled execution times from the operational source.
 - Folder RBAC limits access to workflow data.
 - Secrets are redacted before model requests. Literal values in decision cases and condition groups are redacted too, so the assistant cannot change a case list or condition group that contains one: the proposal keeps the original and a note names the node or edge to adjust by hand.
-- The workflow assistant reads scripts, SQL queries and program arguments in clear, so the configured AI provider sees them. A value with a recognised secret pattern (for example `PASSWORD = '…'` or `ConvertTo-SecureString '…'`) is sent fully masked. Recognition is a heuristic and does not catch every embedded password. An administrator can switch this off per LLM profile under Settings → Integrations → LLM ("Share scripts, SQL and arguments with the AI chat"). If the profile, its endpoint or this setting changes, the chat no longer sends the earlier conversation.
+- The workflow assistant reads scripts, SQL queries and program arguments in clear, so the configured AI provider sees them. A value with a recognised secret pattern (for example `PASSWORD = '…'` or `ConvertTo-SecureString '…'`) is sent fully masked. Recognition is a heuristic and does not catch every embedded password. An administrator can switch this off per LLM profile under Settings → Integrations → LLM ("Share scripts, SQL and arguments with the AI chat"). If the profile, its endpoint, its model or this setting changes, the chat no longer sends the earlier conversation. The global AI chat behaves the same way.
 - Generated scripts and workflow changes always require a domain review.
 - AI actions and applied proposals are recorded in the audit log.
 
@@ -263,9 +263,12 @@ unnecessary:
 
 The detection ignores case and trailing slashes. Local runtimes such as Ollama, LM Studio, vLLM, LocalAI or llama.cpp understand chat completions only.
 
-With the Responses API, NodePilot always sends the instruction **not** to store the request at the
-provider. Without that instruction OpenAI would retain every request there for 30 days by default,
-whereas chat completions stores nothing.
+With the Responses API, NodePilot sends `store: false` to disable the corresponding application-state
+persistence. This does **not** guarantee zero retention at the provider. OpenAI's abuse-monitoring
+logs are separate and can contain prompts and responses for both Responses and Chat Completions.
+Review the provider's [data controls](https://developers.openai.com/api/docs/guides/your-data),
+including your organization's approved retention settings and feature exceptions, before sending
+scripts or operational data. NodePilot cannot grant provider-side Zero Data Retention through this flag.
 
 Reasoning models accept no sampling parameters and reject a request that carries `temperature`.
 Since that value is optional, NodePilot drops it in such a case and repeats the request

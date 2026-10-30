@@ -402,6 +402,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
     private const string SseBody =
         "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}],\"model\":\"test-model\"}\n\n" +
         "data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}],\"model\":\"test-model\"}\n\n" +
+        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
         "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2}}\n\n" +
         "data: [DONE]\n\n";
 
@@ -466,6 +467,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
         // empty string as output would start the clock while the model is still prefilling.
         var sse = Sse(
             """{"choices":[{"delta":{"role":"assistant","content":""}}],"model":"test-model"}""",
+            """{"choices":[{"delta":{},"finish_reason":"stop"}]}""",
             """{"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":0}}""",
             "[DONE]");
         _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())

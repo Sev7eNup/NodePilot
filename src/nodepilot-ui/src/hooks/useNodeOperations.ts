@@ -4,6 +4,7 @@ import { getWorkflowSnippets, insertSnippet } from '../lib/workflowSnippets';
 import { getSmartDefaults } from '../lib/lastSimilarNode';
 import { newActivityConfig } from '../lib/customActivities';
 import { randomUuid } from '../lib/uuid';
+import { remapFragment } from '../lib/workflowFragment';
 
 type SelectedItem = { type: 'node' | 'edge'; id: string } | null;
 
@@ -118,18 +119,15 @@ export function useNodeOperations({
   const duplicateNode = useCallback((nodeId: string) => {
     const source = nodes.find((n) => n.id === nodeId);
     if (!source) return;
-    const newId = `step-${randomUuid()}`;
-    const newNode: Node = {
-      ...source,
-      id: newId,
-      position: { x: source.position.x + 40, y: source.position.y + 40 },
-      selected: false,
-      data: { ...source.data as Record<string, unknown> },
-    };
+    const { nodes: [newNode] } = remapFragment({ nodes: [source], edges: [] }, {
+      existingGroupIds: new Set(nodes.filter((n) => n.type === 'group').map((n) => n.id)),
+      existingAliases: new Set(nodes.flatMap((n) => typeof n.data.outputVariable === 'string' ? [n.data.outputVariable] : [])),
+      dx: 40, dy: 40,
+    });
     commitHistory('Duplicate node');
     markDirty();
     setNodes((nds: Node[]) => [...nds, newNode]);
-    setSelected({ type: 'node', id: newId });
+    setSelected({ type: 'node', id: newNode.id });
   }, [nodes, commitHistory, markDirty, setNodes, setSelected]);
 
   const deleteNodeById = useCallback((nodeId: string) => {

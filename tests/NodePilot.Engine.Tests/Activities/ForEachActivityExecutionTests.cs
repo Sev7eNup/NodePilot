@@ -474,6 +474,6 @@ public sealed class ForEachActivityExecutionTests : IDisposable
         public bool Resume(Guid executionId, string stepId, DebugResumeCommand command,
             IReadOnlyDictionary<string, string>? overrides) => false;
 
-        public IReadOnlyCollection<string> GetPausedSteps(Guid executionId) => [];
+        public IReadOnlyCollection<DebugPausedStepSnapshot> GetPausedSnapshots(Guid executionId) => [];
     }
 }

@@ -19,28 +19,10 @@ import type {
 } from './signalrTypes';
 import { parseOutputParametersJson } from '../lib/outputParameters';
 
-export function mergeHydrated(hydrated: LiveExecutionsById, prev: LiveExecutionsById): LiveExecutionsById {
-  // The REST snapshot is the baseline; for the same stepId, SignalR events already applied to
-  // `prev` win because they carry the more recent status change.
-  const result: LiveExecutionsById = { ...hydrated };
-  for (const [execId, exec] of Object.entries(prev)) {
-    if (!result[execId]) {
-      result[execId] = exec;
-    } else {
-      const stepMap = new Map(result[execId].steps.map((s) => [s.stepId, s]));
-      for (const step of exec.steps) stepMap.set(step.stepId, step);
-      const isTerminal = (s: string) => s === 'Succeeded' || s === 'Failed' || s === 'Cancelled';
-      result[execId] = {
-        ...result[execId],
-        steps: Array.from(stepMap.values()),
-        databus: { ...result[execId].databus, ...exec.databus },
-        status: isTerminal(exec.status) ? exec.status : result[execId].status,
-        completedAt: exec.completedAt ?? result[execId].completedAt,
-        errorMessage: exec.errorMessage ?? result[execId].errorMessage,
-      };
-    }
-  }
-  return trimLiveExecutions(result);
+export function mergeHydrated(hydrated: LiveExecutionsById, prev: LiveExecutionsById, subsequentEvents: LiveEvent[] = []): LiveExecutionsById {
+  // REST replaces the old snapshot. Only events observed after that request began may
+  // override it; keeping all old in-memory steps would preserve disconnect gaps forever.
+  return trimLiveExecutions(applyLiveEvents({ ...prev, ...hydrated }, subsequentEvents));
 }
 
 export function isActiveExecution(execution: LiveExecution): boolean {

@@ -33,4 +33,5 @@ public sealed record KnowledgeCapabilitiesDto(
     bool Operational,
     bool SourceCode,
     bool Db,
-    string? ScriptContextTargetHost);
+    string? ScriptContextTargetHost,
+    string? ScriptContextRecipientKey);

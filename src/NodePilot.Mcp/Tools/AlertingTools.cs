@@ -8,7 +8,8 @@ namespace NodePilot.Mcp.Tools;
 
 /// <summary>
 /// Alerting rule management (read + create/update + test-fire). Delete lives in the gated
-/// <see cref="DestructiveTools"/>. Read paths never surface route secrets — the API redacts them.
+/// <see cref="DestructiveTools"/>. Read paths never surface route secrets — the API redacts them —
+/// and every route target passes through <see cref="AlertRouteTargetRedactor"/>.
 /// </summary>
 [McpServerToolType]
 public sealed class AlertingTools
@@ -132,7 +133,7 @@ public sealed class AlertingTools
     {
         Guid? rid = string.IsNullOrWhiteSpace(ruleId) ? null : ExecutionTools.ParseGuid(ruleId, "rule id");
         var rows = await ApiErrorMapper.Guard(() => _api.ListAlertingDeliveriesAsync(rid, status, limit, cancellationToken));
-        return new { count = rows.Count, deliveries = rows };
+        return new { count = rows.Count, deliveries = rows.Select(d => d with { Target = AlertRouteTargetRedactor.Redact(d.Channel, d.Target) }) };
     }
 
     [McpServerTool(Name = "test_fire_alerting_rule")]
@@ -142,7 +143,7 @@ public sealed class AlertingTools
         CancellationToken cancellationToken = default)
     {
         var result = await ApiErrorMapper.Guard(() => _api.TestFireAlertingRuleAsync(ExecutionTools.ParseGuid(id, "rule id"), cancellationToken));
-        return new { allSucceeded = result.AllSucceeded, results = result.Results };
+        return new { allSucceeded = result.AllSucceeded, results = result.Results.Select(r => r with { Target = AlertRouteTargetRedactor.Redact(r.Channel, r.Target) }) };
     }
 
     private static object Summarize(NotificationRuleResponse r) => new
@@ -158,8 +159,8 @@ public sealed class AlertingTools
         minOccurrences = r.MinOccurrences,
         occurrenceWindowMinutes = r.OccurrenceWindowMinutes,
         dedupKeyTemplate = r.DedupKeyTemplate,
-        // Route secrets are never surfaced — only channel/target/order.
-        routes = r.Routes.Select(x => new { x.Channel, x.Target, x.Order, x.ConditionExpressionJson }),
+        // Route secrets are never surfaced; webhook targets are reduced to their origin.
+        routes = r.Routes.Select(x => new { x.Channel, Target = AlertRouteTargetRedactor.Redact(x.Channel, x.Target), x.Order, x.ConditionExpressionJson }),
         targets = r.Targets,
         updatedAt = r.UpdatedAt,
         updatedBy = r.UpdatedBy,
@@ -173,7 +174,11 @@ public sealed class AlertingTools
         var list = new List<NotificationRouteDto>();
         var order = 0;
         foreach (var e in Split(emails)) list.Add(new NotificationRouteDto(null, "Email", e, null, order++));
-        foreach (var w in Split(webhooks)) list.Add(new NotificationRouteDto(null, "GenericWebhook", w, null, order++));
+        foreach (var w in Split(webhooks))
+        {
+            AlertRouteTargetRedactor.RequireUnmasked(w);
+            list.Add(new NotificationRouteDto(null, "GenericWebhook", w, null, order++));
+        }
         return list;
     }
 

@@ -46,13 +46,12 @@ public sealed class TokenRefreshHandler : DelegatingHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        // The refresh endpoint itself returning 401 must not loop.
-        if (request.RequestUri?.AbsolutePath?.EndsWith("/api/auth/refresh", StringComparison.OrdinalIgnoreCase) == true)
-            return await base.SendAsync(request, cancellationToken);
-
         var existing = LoadForRequest(request);
         if (existing is null)
-            return await base.SendAsync(request, cancellationToken);
+        {
+            request.Headers.Authorization = null;
+            return ReauthenticationRequired(request);
+        }
 
         if (IsExpired(existing))
         {
@@ -60,6 +59,13 @@ public sealed class TokenRefreshHandler : DelegatingHandler
                 existing.Token, request.RequestUri!, cancellationToken);
             if (existing is null)
                 return ReauthenticationRequired(request);
+        }
+
+        // A direct refresh still requires the current store identity, but must not refresh itself.
+        if (request.RequestUri?.AbsolutePath.EndsWith("/api/auth/refresh", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", existing.Token);
+            return await base.SendAsync(request, cancellationToken);
         }
 
         if (NeedsProactiveRefresh(existing))

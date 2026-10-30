@@ -20,13 +20,17 @@ param(
     [string]$Base = 'https://npapi01.np.lab',
     [string]$NtlmAliasFqdn = 'npapi01-ntlm.np.lab',
     [string]$NetbiosDomain = 'NPLAB',
-    [string]$SamAccountName = 'np.alice',
+    [string]$SamAccountName,
+    [string]$UserPrefix,
     [string]$Password = 'Lab#20260802!Kq7z',
     [ValidateSet('CredentialCache', 'Alias')]
     [string]$Mode = 'CredentialCache',
     [switch]$PassThruResult
 )
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/LabIdentity.ps1"
+$identity = Resolve-NodePilotLabIdentity -UserPrefix $UserPrefix
+if (-not $SamAccountName) { $SamAccountName = $identity.Alice }
 
 # In alias mode the name points at the same IP but carries no HTTP/ SPN. The KDC answers
 # KDC_ERR_S_PRINCIPAL_UNKNOWN and SPNEGO falls back to NTLM. The second SAN in the Kestrel

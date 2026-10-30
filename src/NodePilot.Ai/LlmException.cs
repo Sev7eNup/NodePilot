@@ -14,6 +14,7 @@ public enum LlmErrorKind
     RateLimited,
     UpstreamError,
     MalformedResponse,
+    RecipientChanged,
 }
 
 /// <summary>

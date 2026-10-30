@@ -108,7 +108,7 @@ every orphan has been cleaned up within that period.
   },
   "Database": { "Provider": "sqlserver" },
   "ConnectionStrings": {
-    "DefaultConnection": "Server=sql-cluster.example.com;Database=NodePilot;Trusted_Connection=True;Encrypt=True"
+    "DefaultConnection": "Server=sql-cluster.example.com;Database=NodePilot;Trusted_Connection=True;Encrypt=Strict;TrustServerCertificate=False"
   },
   "Secrets": {
     "Provider": "AesGcm",                 // MANDATORY in a cluster — DPAPI is rejected at boot
@@ -165,6 +165,10 @@ Identical to single node, except:
 5. Configure the load balancer (HAProxy example below).
 6. Smoke test: `curl http://nodepilot-a/healthz/leader` → 200, `curl http://nodepilot-b/healthz/leader` → 503 (or the other way round — whichever starts first becomes the leader).
 7. Run `deploy/Test-Failover.ps1`.
+
+The failover drill restores the original leader service in `finally`, including takeover
+timeouts and probe failures. A failed restart is an error requiring manual recovery.
+`-SkipServiceStop` leaves both stopping and restarting to the operator.
 
 ## HAProxy example
 

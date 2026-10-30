@@ -287,7 +287,14 @@ function ToolEditor({ tools, update }: { tools: AgentToolSelection[]; update: (t
 }
 
 function Lines({ label, value, onChange }: { label: string; value: string[]; onChange: (values: string[]) => void }) {
-  const [draft, setDraft] = useState(value.join('\n'));
-  return <Field label={label}><textarea className="input-field font-mono" rows={2} value={draft}
-    onChange={e => { setDraft(e.target.value); onChange(e.target.value.split(/\r?\n/).map(v => v.trim()).filter(Boolean)); }} /></Field>;
+  const source = value.join('\n');
+  const [draft, setDraft] = useState({ source, text: source });
+  // Keep unfinished whitespace while typing, but adopt a restored/undone model immediately.
+  if (draft.source !== source) setDraft({ source, text: source });
+  return <Field label={label}><textarea className="input-field font-mono" rows={2} value={draft.source === source ? draft.text : source}
+    onChange={e => {
+      const values = e.target.value.split(/\r?\n/).map(v => v.trim()).filter(Boolean);
+      setDraft({ source: values.join('\n'), text: e.target.value });
+      onChange(values);
+    }} /></Field>;
 }

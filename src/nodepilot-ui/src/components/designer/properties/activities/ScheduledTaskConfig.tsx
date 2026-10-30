@@ -194,7 +194,7 @@ export function ScheduledTaskConfig({ config, onUpdate, upstreamVars = [] }: Rea
             value={(config.runAsUser as string) || 'SYSTEM'}
             onChange={(v) => onUpdate({ runAsUser: v })}
             upstreamVars={upstreamVars}
-            placeholder="SYSTEM / NETWORK SERVICE / DOMAIN\\User"
+            placeholder="SYSTEM / NETWORK SERVICE / DOMAIN\\gMSA$"
           />
           <Field label={t('config.scheduledTask.runLevel')}>
             <select

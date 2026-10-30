@@ -60,6 +60,7 @@ export interface EditorActions {
   groupSelection: () => void;
   selected: { type: 'node' | 'edge'; id: string } | null;
   deleteNodeById: (id: string) => void;
+  deleteEdgeById: (id: string) => void;
   selectAll: () => void;
   navigateNode: (dir: 'next' | 'prev') => void;
   handleQuickEditSave: (nodeId: string, configPatch: Record<string, unknown>) => void;
@@ -122,7 +123,7 @@ export function EditorOverlays({
   const { showRunDialog, confirmRunWithParams, closeRunDialog, lastExecutionList } = execution;
   const {
     undo, redo, copySelection, pasteBuffer, duplicateSelection, groupSelection, selected,
-    deleteNodeById, selectAll, navigateNode, handleQuickEditSave, jumpToNode, jumpToEdge,
+    deleteNodeById, deleteEdgeById, selectAll, navigateNode, handleQuickEditSave, jumpToNode, jumpToEdge,
     toggleFullscreen, zoomToSelection, fitViewAll, exportPng, exportJson,
   } = actions;
   const { simulation, runSimulation, clearSimulation } = sim;
@@ -235,7 +236,7 @@ export function EditorOverlays({
             deleteSelected: () => {
               if (!selected) return;
               if (selected.type === 'node') deleteNodeById(selected.id);
-              else setEdges((eds) => eds.filter((e) => e.id !== selected.id));
+              else deleteEdgeById(selected.id);
             },
             selectAll, navigateNode,
             // Overlays / panels
@@ -433,6 +434,7 @@ function ScriptDoubleClickEditor({
         onRun={workflowId ? runStepTest : undefined}
         onAiGenerate={aiScript?.generate}
         aiTargetHost={aiScript?.targetHost}
+        aiRecipientKey={aiScript?.recipientKey}
       />
     </Suspense>
   );

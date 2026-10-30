@@ -7,6 +7,7 @@ using NodePilot.Core.Audit;
 using NodePilot.Api.Security;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
+using NodePilot.Engine.Debug;
 
 namespace NodePilot.Api.Controllers;
 
@@ -75,19 +76,8 @@ public class ExecutionDebugController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.StepId))
             return BadRequest("stepId required");
 
-        // Bound the overrides dict: without a cap, a caller could send a dictionary large
-        // enough to exhaust memory during variable resolution, or bloat the audit log
-        // entry below, which serializes the count and keys.
-        if (req.Overrides is { Count: > 256 })
-            return BadRequest(new { error = "Too many overrides (max 256)" });
-        if (req.Overrides is { Count: > 0 })
-        {
-            foreach (var kv in req.Overrides)
-            {
-                if (kv.Value?.Length > 65536)
-                    return BadRequest(new { error = $"Override value for '{kv.Key}' exceeds 64 KiB" });
-            }
-        }
+        if (DebugOverrides.Validate(req.Overrides) is { } overrideError)
+            return BadRequest(new { error = overrideError });
 
         var cmd = req.Mode?.ToLowerInvariant() switch
         {
@@ -124,7 +114,7 @@ public class ExecutionDebugController : ControllerBase
     /// if the user missed the SignalR events because of a browser refresh, the frontend
     /// polls this endpoint to rebuild the debug UI's state.</summary>
     [HttpGet("/api/executions/{id:guid}/paused-steps")]
-    public async Task<ActionResult<IEnumerable<string>>> GetPausedSteps(Guid id, CancellationToken ct)
+    public async Task<ActionResult<IReadOnlyCollection<DebugPausedStepSnapshot>>> GetPausedSteps(Guid id, CancellationToken ct)
     {
         // RBAC: paused-step ids are read-only metadata but they're tied to the workflow
         // — gate by Read on the folder. Returns 404 to mask existence for non-readers.
@@ -134,7 +124,7 @@ public class ExecutionDebugController : ControllerBase
         if (execution is null) return NotFound();
         if (await this.RequireWorkflowAccessAsync(_authz, execution.Workflow,
                 NodePilot.Core.Interfaces.ResourceOp.Read, ct) is { } readDenied) return readDenied;
-        return Ok(_engine.GetPausedSteps(id));
+        return Ok(_engine.GetPausedSnapshots(id));
     }
 
 }

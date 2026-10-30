@@ -7,47 +7,41 @@ using NodePilot.Engine.Notifications;
 namespace NodePilot.Scheduler.Notifications;
 
 /// <summary>
-/// Terminal-execution collector: scans completed executions since the persisted watermark
-/// (keyset cursor on (CompletedAt, Id) with a commit-visibility safety lag), builds one
+/// Terminal-execution collector: scans individually uncollected completed executions, builds one
 /// context per row — plus a synthetic <see cref="NotificationEventType.CredentialFailure"/>
 /// context when a failure smells credential-shaped and any rule wants that event — and
-/// stages the watermark advance on the tracked state row so the pipeline's SaveChanges
-/// persists it together with the Pending attempts (crash-safe replay).
+/// stages their collection flags so the pipeline's SaveChanges persists them together with the
+/// Pending attempts. Completion timestamps do not determine whether a late commit is eligible.
 /// EventKey shape: <c>exec:{guidN}:{EventTypeName}</c>.
 /// </summary>
 internal sealed class ExecutionEventCollector : INotificationCollector
 {
-    // Don't scan executions whose CompletedAt is newer than (now - this). Closes the keyset-cursor
-    // race: an execution can be assigned a CompletedAt in-memory and commit a moment later, so a
-    // row
-    // could otherwise become visible with a timestamp at/below an already-advanced watermark
-    // boundary
-    // and be skipped forever. The lag keeps the boundary safely behind commit visibility. Settable
-    // in tests.
-    internal TimeSpan ScanSafetyLag { get; set; } = TimeSpan.FromSeconds(5);
-
     public async Task<NotificationCollection?> CollectAsync(
         NodePilotDbContext db, IReadOnlyList<NotificationRule> enabledRules, DateTime now, CancellationToken ct)
     {
         var state = await db.NotificationDispatcherStates.FirstOrDefaultAsync(s => s.Id == NotificationDispatcherState.SingletonId, ct);
         if (state is null)
         {
-            // First run ever: seed the watermark to "now" so we never back-alert on history.
-            state = new NotificationDispatcherState { Id = NotificationDispatcherState.SingletonId, LastCompletedAtSeen = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+            // Suppress only history visible during initialization. A completion that commits
+            // afterward stays uncollected, even if its timestamp predates initialization.
+            state = new NotificationDispatcherState { Id = NotificationDispatcherState.SingletonId, InitializedAt = now, UpdatedAt = now };
             db.NotificationDispatcherStates.Add(state);
-            await db.SaveChangesAsync(ct);
+            await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(ct);
+                await db.WorkflowExecutions.Where(e => e.CompletedAt != null
+                    && (e.Status == ExecutionStatus.Succeeded || e.Status == ExecutionStatus.Failed || e.Status == ExecutionStatus.Cancelled))
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(e => e.TerminalNotificationCollected, true), ct);
+                await db.SaveChangesAsync(acceptAllChangesOnSuccess: false, ct);
+                await transaction.CommitAsync(ct);
+                db.ChangeTracker.AcceptAllChanges();
+            });
             return null;
         }
 
-        var lastTs = state.LastCompletedAtSeen ?? DateTime.MinValue;
-        var lastId = state.LastIdSeen ?? Guid.Empty;
-        var safeCutoff = DateTime.UtcNow - ScanSafetyLag;
-
         var batch = await db.WorkflowExecutions.AsNoTracking()
-            .Where(e => e.CompletedAt != null
-                && e.CompletedAt <= safeCutoff
-                && (e.Status == ExecutionStatus.Succeeded || e.Status == ExecutionStatus.Failed || e.Status == ExecutionStatus.Cancelled)
-                && (e.CompletedAt > lastTs || (e.CompletedAt == lastTs && e.Id.CompareTo(lastId) > 0)))
+            .Where(e => !e.TerminalNotificationCollected && e.CompletedAt != null
+                && (e.Status == ExecutionStatus.Succeeded || e.Status == ExecutionStatus.Failed || e.Status == ExecutionStatus.Cancelled))
             .OrderBy(e => e.CompletedAt).ThenBy(e => e.Id)
             .Take(ExecutionEventSupport.ScanBatchSize)
             .Select(ExecutionEventSupport.ProjectionWithFailedStepMachine)
@@ -61,12 +55,14 @@ internal sealed class ExecutionEventCollector : INotificationCollector
             contexts.AddRange(batch.Where(ExecutionEventSupport.LooksLikeCredentialFailure)
                 .Select(ExecutionEventSupport.BuildCredentialFailureContext));
 
-        // Stage the watermark advance to the last scanned execution. It is persisted together with
-        // the
-        // Pending attempts inside the pipeline's save, so a crash now leaves replayable rows.
-        var lastRow = batch[^1];
-        state.LastCompletedAtSeen = lastRow.CompletedAt;
-        state.LastIdSeen = lastRow.Id;
+        // Track only the collection property; no execution payload needs loading. The pipeline
+        // saves it with Pending attempts even when all rules filter or suppress the event.
+        foreach (var row in batch)
+        {
+            var execution = db.WorkflowExecutions.Local.FirstOrDefault(e => e.Id == row.Id)
+                ?? db.WorkflowExecutions.Attach(new WorkflowExecution { Id = row.Id }).Entity;
+            execution.TerminalNotificationCollected = true;
+        }
         state.UpdatedAt = now;
 
         // Execution rules aren't pre-filterable by a single event type (a batch spans

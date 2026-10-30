@@ -608,9 +608,10 @@
       "type": "activity",
       "position": { "x": 7700, "y": 480 },
       "data": {
-        "label": "powerManagement: abort (safe no-op)",
+        "label": "powerManagement: abort (node DISABLED: cancels any pending shutdown)",
         "activityType": "powerManagement",
         "targetMachineId": "localhost",
+        "disabled": true,
         "config": { "action": "abort" }
       }
     },

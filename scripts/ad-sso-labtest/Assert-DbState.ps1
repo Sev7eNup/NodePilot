@@ -15,12 +15,16 @@ param(
     [string]$DbHost = '127.0.0.1',
     [string]$DbUser = 'nodepilot',
     [string]$DbName = 'nodepilot_adssotest',
+    [string]$UserPrefix,
     [Parameter(Mandatory = $true)]
     [string]$DbPassword,
     [ValidateSet('All', 'Identity', 'Gate', 'Race', 'Revocation', 'Ntlm', 'Audit')]
     [string]$Scenario = 'All'
 )
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/LabIdentity.ps1"
+$identity = Resolve-NodePilotLabIdentity -UserPrefix $UserPrefix
+$UserPrefix = $identity.UserPrefix
 if (-not (Test-Path $PsqlPath)) { throw "psql nicht gefunden: $PsqlPath" }
 
 $AdAuthority = 'urn:nodepilot:identity:active-directory'
@@ -35,7 +39,8 @@ function Invoke-Psql([string]$sql, [switch]$Table) {
         # arguments to a native exe, so Postgres folds the unquoted identifier to lowercase
         # and reports that the relation does not exist. EF's PascalCase table names need the
         # quotes, and stdin bypasses argument quoting entirely.
-        $sql | & $PsqlPath @psqlArgs -f -
+        $sql | & $PsqlPath @psqlArgs -v ON_ERROR_STOP=1 -f -
+        if ($LASTEXITCODE -ne 0) { throw "psql failed with exit code $LASTEXITCODE" }
     } finally { $env:PGPASSWORD = $null }
 }
 function Get-Scalar([string]$sql) { ((Invoke-Psql $sql) -join '').Trim() }
@@ -55,7 +60,7 @@ if (& $run 'Identity') {
     Invoke-Psql @"
 SELECT u."Username", u."Role", u."IsActive", u."DirectorySyncStatus", e."Subject"
 FROM "Users" u LEFT JOIN "ExternalIdentities" e ON e."UserId" = u."Id"
-WHERE u."Username" ILIKE 'np.%' ORDER BY u."Username";
+WHERE u."Username" ILIKE '$UserPrefix.%' ORDER BY u."Username";
 "@ -Table
 
     $dupes = Get-Scalar @"
@@ -66,14 +71,14 @@ SELECT COUNT(*) FROM (
 "@
     Add-Check 'W9. Kein User mit mehreren AD-Identitaeten' ($dupes -eq '0') "User mit >1 AD-Identity: $dupes"
 
-    $alice = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""Username"" ILIKE 'np.alice%';"
+    $alice = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""Username"" ILIKE '$UserPrefix.alice%';"
     Add-Check 'W9. Genau ein alice-User (LDAP + SSO)' ($alice -eq '1') "COUNT=$alice"
 
     # Groups live server-side, not in the token. alice inherits admission transitively.
     "--- DirectoryMemberships alice ---"
     Invoke-Psql @"
 SELECT m."Authority", m."GroupKey" FROM "DirectoryMemberships" m
-JOIN "Users" u ON u."Id" = m."UserId" WHERE u."Username" ILIKE 'np.alice%';
+JOIN "Users" u ON u."Id" = m."UserId" WHERE u."Username" ILIKE '$UserPrefix.alice%';
 "@ -Table
 }
 
@@ -81,34 +86,35 @@ JOIN "Users" u ON u."Id" = m."UserId" WHERE u."Username" ILIKE 'np.alice%';
 # Admission is fail-closed: without a match in AllowedGroupSids no account is created.
 # A created but role-less user would be a silent regression.
 if (& $run 'Gate') {
-    $bobUsers = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""Username"" ILIKE 'np.bob%';"
+    $bobUsers = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""Username"" ILIKE '$UserPrefix.bob%';"
     Add-Check 'W12. Kein User-Row fuer bob' ($bobUsers -eq '0') "COUNT=$bobUsers"
     $bobIds = Get-Scalar @"
 SELECT COUNT(*) FROM "ExternalIdentities" e
-JOIN "Users" u ON u."Id" = e."UserId" WHERE u."Username" ILIKE 'np.bob%';
+JOIN "Users" u ON u."Id" = e."UserId" WHERE u."Username" ILIKE '$UserPrefix.bob%';
 "@
     Add-Check 'W12. Keine ExternalIdentity fuer bob' ($bobIds -eq '0') "COUNT=$bobIds"
     $refused = Get-Scalar @"
 SELECT COUNT(*) FROM "AuditLog"
-WHERE "Action" = 'USER_DIRECTORY_ACCESS_REFUSED' AND "Timestamp" > NOW() - INTERVAL '2 hours';
+WHERE "Action" = 'USER_DIRECTORY_ACCESS_REFUSED' AND "Username" ILIKE '$UserPrefix.bob%'
+  AND "Timestamp" > NOW() - INTERVAL '2 hours';
 "@
     Add-Check 'W12. Audit USER_DIRECTORY_ACCESS_REFUSED vorhanden' ([int]$refused -gt 0) "COUNT=$refused"
 }
 
 # ---------- Race: parallel first logins ----------
 if (& $run 'Race') {
-    $daveUsers = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""Username"" ILIKE 'np.dave%';"
+    $daveUsers = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""Username"" ILIKE '$UserPrefix.dave%';"
     Add-Check 'W18. Genau ein User fuer dave' ($daveUsers -eq '1') "COUNT=$daveUsers"
     $daveIds = Get-Scalar @"
 SELECT COUNT(*) FROM "ExternalIdentities" e
-JOIN "Users" u ON u."Id" = e."UserId" WHERE u."Username" ILIKE 'np.dave%';
+JOIN "Users" u ON u."Id" = e."UserId" WHERE u."Username" ILIKE '$UserPrefix.dave%';
 "@
     Add-Check 'W18. Genau eine Identity fuer dave' ($daveIds -eq '1') "COUNT=$daveIds"
     # Exactly one JIT_CREATED shows the unique-index race resolved correctly: the losing
     # callers take the update path instead of a second insert.
     $created = Get-Scalar @"
 SELECT COUNT(*) FROM "AuditLog"
-WHERE "Action" = 'USER_WINDOWS_JIT_CREATED' AND "Username" ILIKE 'np.dave%';
+WHERE "Action" = 'USER_WINDOWS_JIT_CREATED' AND "Username" ILIKE '$UserPrefix.dave%';
 "@
     Add-Check 'W18. Genau ein USER_WINDOWS_JIT_CREATED fuer dave' ($created -eq '1') "COUNT=$created"
 }
@@ -119,17 +125,20 @@ if (& $run 'Revocation') {
     Invoke-Psql @"
 SELECT u."Username", u."IsActive", u."IsTombstoned", u."DirectorySyncStatus",
        (SELECT COUNT(*) FROM "AuthSessions" s WHERE s."UserId" = u."Id" AND s."RevokedAt" IS NULL) AS "AktiveSessions"
-FROM "Users" u WHERE u."Username" ILIKE 'np.erin%';
+FROM "Users" u WHERE u."Username" ILIKE '$UserPrefix.erin%';
 "@ -Table
 
+    $erinUsers = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""Username"" ILIKE '$UserPrefix.erin%';"
+    Add-Check 'W15. Exactly one provisioned erin user' ($erinUsers -eq '1') "COUNT=$erinUsers"
     $open = Get-Scalar @"
 SELECT COUNT(*) FROM "AuthSessions" s JOIN "Users" u ON u."Id" = s."UserId"
-WHERE u."Username" ILIKE 'np.erin%' AND s."RevokedAt" IS NULL;
+WHERE u."Username" ILIKE '$UserPrefix.erin%' AND s."RevokedAt" IS NULL;
 "@
     Add-Check 'W15. Keine offene Session fuer erin' ($open -eq '0') "offeneSessions=$open"
     $deprov = Get-Scalar @"
 SELECT COUNT(*) FROM "AuditLog"
-WHERE "Action" = 'USER_DIRECTORY_DEPROVISIONED' AND "Timestamp" > NOW() - INTERVAL '2 hours';
+WHERE "Action" = 'USER_DIRECTORY_DEPROVISIONED' AND "Username" ILIKE '$UserPrefix.erin%'
+  AND "Timestamp" > NOW() - INTERVAL '2 hours';
 "@
     Add-Check 'W15. Audit USER_DIRECTORY_DEPROVISIONED vorhanden' ([int]$deprov -gt 0) "COUNT=$deprov"
 

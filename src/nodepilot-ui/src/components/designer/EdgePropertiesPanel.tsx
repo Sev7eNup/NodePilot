@@ -47,6 +47,11 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
   ];
 
   const [mode, setMode] = useState<'simple' | 'expression'>(conditionExpression ? 'expression' : 'simple');
+  const [observedExpression, setObservedExpression] = useState(hasExpression);
+  if (observedExpression !== hasExpression) {
+    setObservedExpression(hasExpression);
+    setMode(hasExpression ? 'expression' : 'simple');
+  }
 
   // Preview of the auto-generated label, mirroring the fallback logic in LabeledEdge.
   // Lets the user see what the label would be if it weren't overridden by a custom
@@ -86,8 +91,8 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
     return '';
   };
   const setCondition = (newCondition: string) => {
-    const patch: Record<string, unknown> = { condition: newCondition };
-    if (CANONICAL_EDGE_LABELS.has(label)) patch.label = deriveLabel(newCondition, hasExpression);
+    const patch: Record<string, unknown> = { condition: newCondition, conditionExpression: undefined };
+    if (CANONICAL_EDGE_LABELS.has(label)) patch.label = deriveLabel(newCondition, false);
     updateEdgeData(patch);
   };
   const setConditionExpression = (next: ExprNode | null) => {

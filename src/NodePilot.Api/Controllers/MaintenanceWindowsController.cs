@@ -191,6 +191,8 @@ public class MaintenanceWindowsController : ControllerBase
 
         if (recurrence == MaintenanceRecurrenceKind.OneTime)
         {
+            oneTimeStart = NormalizeToUtc(oneTimeStart);
+            oneTimeEnd = NormalizeToUtc(oneTimeEnd);
             if (oneTimeStart is null || oneTimeEnd is null)
                 return Fail("OneTime windows require oneTimeStartUtc and oneTimeEndUtc", out error);
             if (oneTimeEnd <= oneTimeStart)
@@ -246,8 +248,8 @@ public class MaintenanceWindowsController : ControllerBase
             Mode = mode,
             ScopeKind = scope,
             Recurrence = recurrence,
-            OneTimeStartUtc = recurrence == MaintenanceRecurrenceKind.OneTime ? NormalizeToUtc(oneTimeStart) : null,
-            OneTimeEndUtc = recurrence == MaintenanceRecurrenceKind.OneTime ? NormalizeToUtc(oneTimeEnd) : null,
+            OneTimeStartUtc = recurrence == MaintenanceRecurrenceKind.OneTime ? oneTimeStart : null,
+            OneTimeEndUtc = recurrence == MaintenanceRecurrenceKind.OneTime ? oneTimeEnd : null,
             WeeklyDaysMask = recurrence == MaintenanceRecurrenceKind.Weekly ? (weeklyDaysMask & 0b111_1111) : 0,
             WeeklyStartMinuteOfDay = recurrence == MaintenanceRecurrenceKind.Weekly ? weeklyStart : null,
             WeeklyEndMinuteOfDay = recurrence == MaintenanceRecurrenceKind.Weekly ? weeklyEnd : null,

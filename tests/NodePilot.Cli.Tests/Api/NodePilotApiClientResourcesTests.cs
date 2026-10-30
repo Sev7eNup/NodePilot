@@ -560,14 +560,20 @@ public sealed class NodePilotApiClientResourcesTests : IDisposable
     }
 
     [Fact]
-    public async Task GetPausedStepsAsync_ReturnsList()
+    public async Task GetPausedStepsAsync_ReturnsSnapshots()
     {
         var id = Guid.NewGuid();
         _server.Given(Request.Create().WithPath($"/api/executions/{id}/paused-steps").UsingGet())
-               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[] { "step-1", "step-2" }));
+               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[] {
+                   new { stepId = "step-1", stepLabel = "First branch", pausedAt = DateTime.UtcNow, reason = "breakpoint", variables = new Dictionary<string, string> { ["value"] = "snapshot" } },
+                   new { stepId = "step-2", stepLabel = "Second branch", pausedAt = DateTime.UtcNow, reason = "stepOver", variables = new Dictionary<string, string>() },
+               }));
         var list = await _client.GetPausedStepsAsync(id, CancellationToken.None);
         list.Should().HaveCount(2);
-        list.Should().Contain("step-1");
+        list[0].StepId.Should().Be("step-1");
+        list[0].StepLabel.Should().Be("First branch");
+        list[0].Reason.Should().Be("breakpoint");
+        list[0].Variables["value"].Should().Be("snapshot");
     }
 
     // ---- Sample bodies ------------------------------------------------------

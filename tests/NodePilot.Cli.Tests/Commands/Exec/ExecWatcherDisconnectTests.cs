@@ -19,8 +19,10 @@ namespace NodePilot.Cli.Tests.Commands.Exec;
 [Collection(CommandTestCollection.Name)]
 public sealed class ExecWatcherDisconnectTests
 {
-    [Fact]
-    public async Task ConnectedWatcher_WhenHubCloses_PollsTheExistingExecutionToCompletion()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ConnectedWatcher_WhenTerminalEventIsMissing_ReconcilesExistingExecution(bool disconnect)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -35,6 +37,7 @@ public sealed class ExecWatcherDisconnectTests
         {
             var read = Interlocked.Increment(ref state.Reads);
             if (read == 1) state.CatchUpRead.TrySetResult();
+            if (read > 1) state.TerminalReadWhileConnected = state.Connection is { ConnectionAborted.IsCancellationRequested: false };
             return Results.Json(new
             {
                 id = executionId,
@@ -67,12 +70,12 @@ public sealed class ExecWatcherDisconnectTests
         try
         {
             await state.CatchUpRead.Task.WaitAsync(TimeSpan.FromSeconds(10), stop.Token);
-            // The connection and group join succeeded. Lose the stream only after the REST
-            // catch-up observed Running, so initial-connect fallback cannot satisfy this test.
-            state.Connection!.Abort();
+            // Keep the hub open in one case: a dropped event must not require a disconnect.
+            if (disconnect) state.Connection!.Abort();
             var result = await watching.WaitAsync(TimeSpan.FromSeconds(5), stop.Token);
             result.Should().Be(ExitCodes.Success);
             state.Reads.Should().BeGreaterThanOrEqualTo(2);
+            if (!disconnect) state.TerminalReadWhileConnected.Should().BeTrue();
         }
         finally
         {
@@ -85,6 +88,7 @@ public sealed class ExecWatcherDisconnectTests
     {
         public HubCallerContext? Connection;
         public int Reads;
+        public bool TerminalReadWhileConnected;
         public TaskCompletionSource CatchUpRead { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 

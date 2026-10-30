@@ -332,11 +332,7 @@ internal static class SwitcherConfigurationValidator
 
     public static void ValidateScorch(ScorchWorkloadConfiguration value)
     {
-        if (!Uri.TryCreate(value.ApiBaseUrl, UriKind.Absolute, out var apiUri)
-            || (apiUri.Scheme != Uri.UriSchemeHttps && apiUri.Scheme != Uri.UriSchemeHttp))
-            throw new InvalidOperationException("SCOrch apiBaseUrl must be an absolute HTTP(S) URL.");
-        if (apiUri.Scheme == Uri.UriSchemeHttp && !apiUri.IsLoopback)
-            throw new InvalidOperationException("SCOrch uses Windows credentials; a remote apiBaseUrl must use HTTPS.");
+        RequireScorchTransport(value.ApiBaseUrl);
         if (!value.StopJobPathTemplate.Contains("{id}", StringComparison.Ordinal))
             throw new InvalidOperationException("SCOrch stopJobPathTemplate must contain {id}.");
         if (!new[] { "PATCH", "POST", "DELETE" }.Contains(
@@ -346,6 +342,16 @@ internal static class SwitcherConfigurationValidator
         if (value.RequestTimeoutSeconds is < 1 or > 600
             || value.ReconciliationTimeoutSeconds is < 1 or > 600)
             throw new InvalidOperationException("SCOrch timeouts must be between 1 and 600 seconds.");
+    }
+
+    /// <summary>SCOrch is called with Windows credentials, so a remote endpoint must use HTTPS.</summary>
+    public static void RequireScorchTransport(string apiBaseUrl)
+    {
+        if (!Uri.TryCreate(apiBaseUrl, UriKind.Absolute, out var apiUri)
+            || (apiUri.Scheme != Uri.UriSchemeHttps && apiUri.Scheme != Uri.UriSchemeHttp))
+            throw new InvalidOperationException("SCOrch apiBaseUrl must be an absolute HTTP(S) URL.");
+        if (apiUri.Scheme == Uri.UriSchemeHttp && !apiUri.IsLoopback)
+            throw new InvalidOperationException("SCOrch uses Windows credentials; a remote apiBaseUrl must use HTTPS.");
     }
 
     internal static void RequireAbsolutePath(string path, string label)

@@ -41,6 +41,8 @@ public sealed class BackupFileReader
     public static BackupFileReader Parse(byte[] content)
     {
         ArgumentNullException.ThrowIfNull(content);
+        if (content.Length > BackupSections.MaximumArchiveBytes)
+            throw new BackupFormatException("Backup files must not exceed 64 MiB.");
         JsonObject outer;
         try
         {

@@ -298,3 +298,31 @@ describe('CredentialsPage', () => {
     });
   });
 });
+
+describe('CredentialsPage editing sessions', () => {
+  it('locks the draft while saving and keeps a credential opened later when the old save completes', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let listCalls = 0;
+    server.use(
+      http.get(`${BASE}/api/credentials`, () => { listCalls++; return HttpResponse.json(CREDS); }),
+      http.put(`${BASE}/api/credentials/c1`, async () => { await gate; return new HttpResponse(null, { status: 204 }); }),
+    );
+    renderPage();
+
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit credential' });
+    fireEvent.click(editButtons[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByDisplayValue('svc-windows')).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+    fireEvent.click(editButtons[1]);
+    expect(screen.getByDisplayValue('local-admin')).toBeInTheDocument();
+    const callsBeforeRelease = listCalls;
+    release();
+
+    await waitFor(() => expect(listCalls).toBeGreaterThan(callsBeforeRelease));
+    expect(screen.getByRole('group', { name: 'Edit credential' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('local-admin')).toBeEnabled();
+  });
+});

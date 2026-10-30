@@ -13,7 +13,7 @@ namespace NodePilot.Scheduler.Notifications;
 internal sealed record ExecRow(
     Guid Id, Guid WorkflowId, ExecutionStatus Status, DateTime StartedAt, DateTime? CompletedAt,
     string? TriggeredBy, string? ErrorMessage, Guid? ParentExecutionId, string WorkflowName, Guid FolderId, string FolderPath,
-    string? CancelledBy,
+    string? CancelledBy, int CallDepth,
     // Resolved machine name of the last-failing step (terminal scans only; the
     // long-running/queued collectors pass null — a failed-step join is meaningless there).
     string? TargetMachine);
@@ -33,7 +33,7 @@ internal static class ExecutionEventSupport
     /// </summary>
     public static readonly Expression<Func<WorkflowExecution, ExecRow>> Projection = e => new ExecRow(
         e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.TriggeredBy, e.ErrorMessage,
-        e.ParentExecutionId, e.Workflow.Name, e.Workflow.FolderId, e.Workflow.Folder!.Path, e.CancelledBy,
+        e.ParentExecutionId, e.Workflow.Name, e.Workflow.FolderId, e.Workflow.Folder!.Path, e.CancelledBy, e.CallDepth,
         null);
 
     /// <summary>
@@ -44,7 +44,7 @@ internal static class ExecutionEventSupport
     /// </summary>
     public static readonly Expression<Func<WorkflowExecution, ExecRow>> ProjectionWithFailedStepMachine = e => new ExecRow(
         e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.TriggeredBy, e.ErrorMessage,
-        e.ParentExecutionId, e.Workflow.Name, e.Workflow.FolderId, e.Workflow.Folder!.Path, e.CancelledBy,
+        e.ParentExecutionId, e.Workflow.Name, e.Workflow.FolderId, e.Workflow.Folder!.Path, e.CancelledBy, e.CallDepth,
         e.Status == ExecutionStatus.Failed
             ? e.Steps
                 .Where(s => s.Status == ExecutionStatus.Failed && s.TargetMachine != null)
@@ -95,7 +95,7 @@ internal static class ExecutionEventSupport
             DurationMs: duration,
             OccurredAt: row.CompletedAt ?? row.StartedAt,
             TriggeredBy: row.TriggeredBy,
-            CallDepth: row.ParentExecutionId.HasValue ? 1 : 0,
+            CallDepth: row.CallDepth,
             IsSubWorkflow: row.ParentExecutionId.HasValue,
             // Last-failing step's resolved machine name; null for Succeeded/Cancelled and
             // for failures without a remote target (engine-local steps).
@@ -126,7 +126,7 @@ internal static class ExecutionEventSupport
             DurationMs: duration,
             OccurredAt: row.CompletedAt ?? row.StartedAt,
             TriggeredBy: row.TriggeredBy,
-            CallDepth: row.ParentExecutionId.HasValue ? 1 : 0,
+            CallDepth: row.CallDepth,
             IsSubWorkflow: row.ParentExecutionId.HasValue,
             TargetMachine: row.TargetMachine,
             SourceKey: null,

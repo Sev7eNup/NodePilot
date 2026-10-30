@@ -68,9 +68,8 @@ export function formatMs(ms: number): string {
 /* ---- Shared components ---- */
 
 /**
- * Static input block: reads the workflow definition, finds the node by stepId, and
- * renders its config, target machine, credential override and output variable. Reads
- * from the definition rather than the execution row so the execution record stays lean.
+ * Current-configuration reference: reads the workflow definition and finds the node by stepId.
+ * This is deliberately labelled separately from recorded execution values.
  * Templates like `{{step.param.x}}` are shown as-is; during a debug run the
  * PausedVariablesInspector shows the resolved values.
  */
@@ -128,9 +127,10 @@ export function StepInputBlock({ workflowId, stepId }: Readonly<{ workflowId: st
       <div className="flex items-center gap-1.5 mb-1">
         <SettingsAdjust size={11} className="text-indigo-600" />
         <span className="font-label text-[10px] font-semibold text-on-surface-variant uppercase tracking-wide">
-          {t('execution.inspector.input')}
+          {t('execution.inspector.currentConfiguration')}
         </span>
       </div>
+      <p className="text-[11px] text-on-surface-variant mb-2">{t('execution.inspector.currentConfigurationHint')}</p>
       <div className="rounded-md border border-outline-variant/10 bg-surface-high/60 divide-y divide-outline-variant/10">
         {(machineName || credentialName || data.outputVariable) && (
           <div className="px-3 py-2 grid grid-cols-[110px_1fr] gap-x-3 gap-y-1 text-[11px]">

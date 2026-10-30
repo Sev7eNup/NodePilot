@@ -37,6 +37,7 @@ class ScriptContracts(unittest.TestCase):
         self.disable_failure = None
         self.next_execution = 0
         self.alert_failure = False
+        self.redirect_target = None
         fixture = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -56,6 +57,12 @@ class ScriptContracts(unittest.TestCase):
                 size = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(size)) if size else None
                 fixture.calls.append((self.command, self.path, body))
+                if self.path == "/redirect":
+                    self.send_response(302)
+                    self.send_header("Location", fixture.redirect_target)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 code, response = 200, {}
                 if self.path == "/api/auth/login":
                     response = {"userId": "caller", "username": "admin", "role": "Admin"}
@@ -120,6 +127,14 @@ class ScriptContracts(unittest.TestCase):
         self.names = [{"id": str(i), "name": f"Workflow {i}"} for i in range(501)]
         self.assertEqual(0, self.run_python("disable-all-workflows.py"))
         self.assertEqual(501, sum(path.endswith("/disable") for _, path, _ in self.calls))
+
+    def test_authenticated_requests_do_not_follow_redirects(self):
+        module = load_script("nodepilot_http.py")
+        self.redirect_target = self.url.replace("127.0.0.1", "localhost") + "/collect"
+        status, _ = module.request(self.url, "GET", "/redirect", token="synthetic-bearer",
+                                  extra_headers={"X-Api-Key": "synthetic-key", "X-Setup-Token": "synthetic-setup"})
+        self.assertEqual(302, status)
+        self.assertEqual(["/redirect"], [path for _, path, _ in self.calls])
 
     def test_disable_failure_returns_nonzero(self):
         self.disable_failure = "/api/workflows/wf/disable"
@@ -235,6 +250,16 @@ class ScriptContracts(unittest.TestCase):
         creates = [body for method, path, body in self.calls if method == "POST" and path == "/api/workflows"]
         publishes = [body for _, path, body in self.calls if path.endswith("/publish")]
         self.assertEqual(4, len(creates))
+        seeded_names = {body["name"] for body in creates}
+        references = set()
+        for filename in ("main.json", "planar.json", "xl.json"):
+            definition = json.loads((ROOT / "tech-demo" / filename).read_text(encoding="utf-8-sig"))
+            for node in definition["nodes"]:
+                data = node.get("data", {})
+                if data.get("activityType") == "startWorkflow":
+                    references.add(data["config"]["workflowNameOrId"])
+        self.assertTrue(references)
+        self.assertTrue(references <= seeded_names, references - seeded_names)
         self.assertTrue(all(body.pop("expectedVersion") == 1 for body in publishes))
         self.assertEqual(creates, publishes)
         self.assertTrue(all(isinstance(body["definitionJson"], str) for body in creates))

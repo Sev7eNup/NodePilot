@@ -1,4 +1,4 @@
-# WinRM verstehen: Was eine erfolgreiche Verbindung tatsächlich belegt
+# WinRM-Verbindung testen: was Test-WSMan wirklich prüft
 
 `Test-WSMan` liefert eine Antwort. Damit ist zunächst nur festgestellt, dass der angesprochene WinRM-Dienst auf eine Identifikationsanfrage reagiert hat. Für die Diagnose kommt es darauf an, welche weiteren Voraussetzungen der konkrete Aufruf überhaupt überprüft.
 
@@ -7,6 +7,19 @@ Ohne ausdrücklich angegebenen Authentifizierungsparameter sendet `Test-WSMan` s
 Zwischen dem erreichbaren Dienst und einer zulässigen Aktion liegen getrennte Prüfungen. Aus dieser Trennung ergibt sich ein Weg durch die Konfiguration, bei dem Zugriffsrechte erst dort untersucht werden, wo sie tatsächlich eine Rolle spielen.
 
 Die Beispiele beziehen sich auf Windows mit Active Directory und PowerShell Remoting über WS-Management. Rechnernamen und Pfade sind Platzhalter. Befehle zur Diagnose sind von Änderungen an der Konfiguration ausdrücklich getrennt.
+
+## WinRM-Verbindung Schritt für Schritt testen
+
+Die folgenden Prüfungen gehören auf den Verwaltungsrechner, von dem später auch die Automatisierung startet. Jeder Schritt prüft eine weitere Voraussetzung, sodass der erste fehlschlagende Schritt zeigt, wo die Suche weitergeht. `$target` steht für den vollständigen Namen des Zielrechners, etwa `srv-app01.contoso.com`.
+
+| Schritt | Befehl | Ein Erfolg belegt | Noch nicht belegt |
+|---|---|---|---|
+| 1 | `Test-NetConnection -ComputerName $target -Port 5985` | Der TCP-Port ist erreichbar, für HTTPS 5986 | Dass WinRM auf diesem Port antwortet |
+| 2 | `Test-WSMan -ComputerName $target` | Der WinRM-Dienst beantwortet eine anonyme Anfrage | Dass sich der Benutzer anmelden kann |
+| 3 | `Test-WSMan -ComputerName $target -Authentication Kerberos` | WinRM akzeptiert den aktuellen Benutzer per Kerberos | Dass der PowerShell-Endpunkt zugänglich ist |
+| 4 | `Invoke-Command -ComputerName $target -Authentication Kerberos -ScriptBlock { $env:COMPUTERNAME }` | Eine PowerShell-Sitzung öffnet sich und führt einen Befehl aus | Dass das Konto die eigentliche Aufgabe ausführen darf |
+
+Den WinRM-Status auf dem Zielrechner selbst zeigen `Get-Service -Name WinRM` für den Dienst und `winrm enumerate winrm/config/listener` für die eingerichteten Listener samt Adressen. Die folgenden Abschnitte erläutern, was zu jeder Ebene gehört und wohin ein fehlgeschlagener Schritt führt.
 
 ## Vom Client zur Identität der Gegenstelle
 

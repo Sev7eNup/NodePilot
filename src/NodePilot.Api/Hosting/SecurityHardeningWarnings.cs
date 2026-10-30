@@ -46,9 +46,7 @@ public static class SecurityHardeningWarnings
         var isUnsubstitutedPlaceholder = !string.IsNullOrEmpty(allowedHosts)
             && allowedHosts.StartsWith("{{", StringComparison.Ordinal)
             && allowedHosts.EndsWith("}}", StringComparison.Ordinal);
-        var allowedHostsUnsafe = string.IsNullOrWhiteSpace(allowedHosts)
-            || allowedHosts == "*"
-            || isUnsubstitutedPlaceholder;
+        var allowedHostsUnsafe = Configuration.Validators.AllowedHostsBootValidator.IsUnsafe(allowedHosts);
         if (allowedHostsUnsafe)
         {
             var detail = isUnsubstitutedPlaceholder
@@ -157,12 +155,8 @@ public static class SecurityHardeningWarnings
         // aborts startup instead of just being logged. Defaults to false (for in-place
         // upgrades); the Production template sets it to true. An operator can flip it back via
         // a settings override if they deliberately want to stay lenient.
-        if (configuration.GetValue<bool>("Security:StrictAllowedHosts") && allowedHostsUnsafe)
-        {
-            throw new InvalidOperationException(
-                "SECURITY: Security:StrictAllowedHosts=true and AllowedHosts is unsafe " +
-                $"('{allowedHosts}'). Set AllowedHosts to a concrete FQDN (semicolon-separated for multiple).");
-        }
+        if (Configuration.Validators.AllowedHostsBootValidator.GetError(configuration) is { } error)
+            throw new InvalidOperationException("SECURITY: " + error);
     }
 
     private static bool DefaultTrueUnlessExplicitFalse(IConfiguration configuration, string key)

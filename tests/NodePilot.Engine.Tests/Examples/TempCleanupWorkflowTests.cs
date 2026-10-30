@@ -15,7 +15,10 @@ namespace NodePilot.Engine.Tests.Examples;
 [Collection("SerialEngineTests")]
 public class TempCleanupWorkflowTests
 {
+    private const string RunArchive = "C:\\unused-archive\\run-archive.zip";
+
     [Theory]
+    [InlineData("archivePath")]
     [InlineData("archive")]
     [InlineData("checksum")]
     [InlineData("inventory")]
@@ -29,12 +32,13 @@ public class TempCleanupWorkflowTests
         var validation = WorkflowDefinitionStructuralValidator.Validate(definition);
         validation.IsValid.Should().BeTrue("the shipped example must be accepted when imported: {0}", validation);
         var calls = new ConcurrentQueue<string>();
+        var configs = new ConcurrentDictionary<string, JsonElement>();
         var executors = definition.GetProperty("nodes").EnumerateArray()
             .Where(n => n.GetProperty("type").GetString() == "activity")
             .Select(n => n.GetProperty("data").GetProperty("activityType").GetString()
                 ?? throw new InvalidOperationException("An activity needs a type"))
             .Distinct()
-            .Select(type => new RecordingActivity(type, calls, failedStep));
+            .Select(type => new RecordingActivity(type, calls, configs, failedStep));
         var registry = new ActivityRegistry(executors);
         var (db, services, connection) = TestDbContext.CreateWithScopedServices(registry);
         await using (db)
@@ -63,11 +67,18 @@ public class TempCleanupWorkflowTests
             {
                 execution.Status.Should().Be(ExecutionStatus.Succeeded);
                 var order = calls.ToList();
-                order.Should().Contain(["archive", "checksum", "inventory", "purge", "mail"]);
+                order.Should().Contain(["archivePath", "archive", "checksum", "inventory", "purge", "mail"]);
+                order.IndexOf("archivePath").Should().BeLessThan(order.IndexOf("archive"));
                 order.IndexOf("archive").Should().BeLessThan(order.IndexOf("checksum"));
                 order.IndexOf("checksum").Should().BeLessThan(order.IndexOf("purge"));
                 order.IndexOf("inventory").Should().BeLessThan(order.IndexOf("purge"));
                 order.IndexOf("purge").Should().BeLessThan(order.IndexOf("mail"));
+
+                // The per-run path reaches the zip unchanged, the zip never replaces an existing
+                // archive, and the checksum verifies the file the zip wrote.
+                configs["archive"].GetProperty("destination").GetString().Should().Be(RunArchive);
+                configs["archive"].GetProperty("force").GetBoolean().Should().BeFalse();
+                configs["checksum"].GetProperty("path").GetString().Should().Be(RunArchive);
             }
         }
     }
@@ -80,7 +91,11 @@ public class TempCleanupWorkflowTests
         throw new DirectoryNotFoundException("NodePilot repository root was not found");
     }
 
-    private sealed class RecordingActivity(string activityType, ConcurrentQueue<string> calls, string? failedStep)
+    private sealed class RecordingActivity(
+        string activityType,
+        ConcurrentQueue<string> calls,
+        ConcurrentDictionary<string, JsonElement> configs,
+        string? failedStep)
         : IActivityExecutor
     {
         public string ActivityType => activityType;
@@ -88,6 +103,7 @@ public class TempCleanupWorkflowTests
         public Task<ActivityResult> ExecuteAsync(StepExecutionContext context, JsonElement config, CancellationToken ct)
         {
             calls.Enqueue(context.StepId);
+            configs[context.StepId] = config.Clone();
             return Task.FromResult(new ActivityResult
             {
                 Success = context.StepId != failedStep,
@@ -96,7 +112,8 @@ public class TempCleanupWorkflowTests
                 OutputParameters = context.StepId switch
                 {
                     "trg" => new() { ["path"] = "C:\\unused-test-path", ["olderThanDays"] = "30" },
-                    "archive" => new() { ["destination"] = "C:\\unused-archive.zip" },
+                    "archivePath" => new() { ["archiveFile"] = RunArchive },
+                    "archive" => new() { ["destination"] = config.GetProperty("destination").GetString() ?? "" },
                     "checksum" => new() { ["hash"] = "test-hash" },
                     _ => new()
                 }

@@ -5,7 +5,7 @@
   "workflows": [
     {
       "name": "Windows Update — Health Check",
-      "description": "Diagnostiziert den Windows-Update-Zustand auf einem Host. Generiert WindowsUpdate.log (via Get-WindowsUpdateLog), liest WU- + CBS-Tails, prüft parallel die WU-Services (wuauserv/BITS/UsoSvc), die Registry-Results-Keys (Install + Auto Update), Win32_QuickFixEngineering + Win32_OperatingSystem und das Pending-Reboot-Marker (WinSxS\\pending.xml). Decision klassifiziert nach pending / degraded / healthy / stale. PowerShell nur 2x verwendet, beide Skripte ≤8 Zeilen.",
+      "description": "Diagnostiziert den Windows-Update-Zustand auf einem Host. Generiert WindowsUpdate.log (via Get-WindowsUpdateLog), liest WU- + CBS-Tails, prüft parallel die WU-Services (wuauserv/BITS/UsoSvc), die Registry-Results-Keys (Install + Auto Update), Win32_QuickFixEngineering + Win32_OperatingSystem und das Pending-Reboot-Marker (WinSxS\\pending.xml). Decision klassifiziert nach pending / degraded / healthy / stale; healthy verlangt eine Hotfix-Installation innerhalb von freshnessDays. PowerShell nur 2x verwendet.",
       "definition": {
         "nodes": [
           { "id": "note_diag", "type": "stickyNote", "position": { "x": 960, "y": 40 },
@@ -14,7 +14,7 @@
               "fontSize": 13, "disabled": true } },
           { "id": "note_classify", "type": "stickyNote", "position": { "x": 2540, "y": 40 },
             "data": { "label": "Note", "activityType": "note",
-              "text": "Phase C — State Classification\nDecision schaut auf pending.xml, Service-Status, WU-Errors, Hotfix-Count → pending / degraded / healthy / stale.",
+              "text": "Phase C — State Classification\nDecision schaut auf pending.xml, Service-Status, WU-Errors, Hotfix-Count und das Alter der letzten Installation (freshnessDays) → pending / degraded / healthy / stale. Fehlt ein Installationsdatum, ist der Host nie healthy.",
               "fontSize": 13, "disabled": true } },
 
           { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 },
@@ -151,14 +151,14 @@
 
           { "id": "read_tails", "type": "activity", "position": { "x": 2060, "y": 600 },
             "data": {
-              "label": "runScript: Tail WU + CBS log",
+              "label": "runScript: Tail logs + install freshness",
               "activityType": "runScript",
               "targetMachineId": "localhost",
               "outputVariable": "read_tails",
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 30,
-                "script": "$wu = {{gen_log.param.wuLogPath}}\n$cbs = {{gen_log.param.cbsLogPath}}\n$tail = [int]{{trig.param.tailLines}}\n$wuErr = \"$((Select-String -Path $wu -Pattern 'FATAL|error 0x' -EA SilentlyContinue).Count)\"\n$cbsErr = \"$((Select-String -Path $cbs -Pattern '(?i)\\bfail\\b|, error\\b' -EA SilentlyContinue).Count)\"\n$wuLast = ((Get-Content $wu -Tail 1 -EA SilentlyContinue) -join '').Trim()\n$cbsLast = ((Get-Content $cbs -Tail 1 -EA SilentlyContinue) -join '').Trim()"
+                "script": "$wu = {{gen_log.param.wuLogPath}}\n$cbs = {{gen_log.param.cbsLogPath}}\n$tail = [int]{{trig.param.tailLines}}\n$wuErr = \"$((Select-String -Path $wu -Pattern 'FATAL|error 0x' -EA SilentlyContinue).Count)\"\n$cbsErr = \"$((Select-String -Path $cbs -Pattern '(?i)\\bfail\\b|, error\\b' -EA SilentlyContinue).Count)\"\n$wuLast = ((Get-Content $wu -Tail 1 -EA SilentlyContinue) -join '').Trim()\n$cbsLast = ((Get-Content $cbs -Tail 1 -EA SilentlyContinue) -join '').Trim()\n# Freshness: newest hotfix install date against freshnessDays. Missing or unreadable dates stay 'unknown', never fresh.\n$maxAgeDays = [int]{{trig.param.freshnessDays}}\n$updateFresh = 'unknown'\n$installAgeDays = ''\n$hotfixError = ''\n$latestInstall = $null\ntry {\n  foreach ($hotfix in @(Get-HotFix -ErrorAction Stop)) {\n    if ($hotfix.InstalledOn -is [datetime] -and ($null -eq $latestInstall -or $hotfix.InstalledOn -gt $latestInstall)) { $latestInstall = $hotfix.InstalledOn }\n  }\n} catch { $hotfixError = $_.Exception.Message }\nif ($null -ne $latestInstall) {\n  $installAgeDays = [string][int][math]::Floor(((Get-Date) - $latestInstall).TotalDays)\n  $updateFresh = if ([int]$installAgeDays -le $maxAgeDays) { 'true' } else { 'false' }\n}"
               }
             } },
 
@@ -225,6 +225,12 @@
                           "left":  { "kind": "variable", "stepId": "svc_bits", "field": "param", "paramName": "status" },
                           "op": "==",
                           "right": { "kind": "literal", "value": "Running" }
+                        },
+                        {
+                          "type": "comparison",
+                          "left":  { "kind": "variable", "stepId": "read_tails", "field": "param", "paramName": "updateFresh" },
+                          "op": "==",
+                          "right": { "kind": "literal", "value": "true" }
                         }
                       ]
                     }
@@ -240,7 +246,7 @@
               "activityType": "log",
               "config": {
                 "level": "info",
-                "message": "[WU Health] healthy — wuauserv={{svc_wu.param.status}}, BITS={{svc_bits.param.status}}, UsoSvc={{svc_uso.param.status}}, hotfixes={{wmi_qfe.param.count}}, lastHotfix={{wmi_qfe.param.HotFixID}}"
+                "message": "[WU Health] healthy — wuauserv={{svc_wu.param.status}}, BITS={{svc_bits.param.status}}, UsoSvc={{svc_uso.param.status}}, hotfixes={{wmi_qfe.param.count}}, letzte Installation vor {{read_tails.param.installAgeDays}} Tagen"
               }
             } },
           { "id": "case_pending", "type": "activity", "position": { "x": 2700, "y": 460 },
@@ -258,7 +264,7 @@
               "activityType": "log",
               "config": {
                 "level": "warning",
-                "message": "[WU Health] stale — services OK aber keine kürzliche Install-Aktivität (Install-Results-Key exists={{reg_install.param.exists}}, hotfixes={{wmi_qfe.param.count}}). Letztes Tail-Line WU: {{read_tails.param.wuLast}}"
+                "message": "[WU Health] stale — keine Installation innerhalb von {{trig.param.freshnessDays}} Tagen nachweisbar (letzte vor {{read_tails.param.installAgeDays}} Tagen, freshness={{read_tails.param.updateFresh}}, Install-Results-Key exists={{reg_install.param.exists}}, hotfixes={{wmi_qfe.param.count}}). Letztes Tail-Line WU: {{read_tails.param.wuLast}}"
               }
             } },
           { "id": "case_degraded", "type": "activity", "position": { "x": 2700, "y": 960 },
@@ -287,7 +293,7 @@
                 "to": "ops@example.com",
                 "subject": "[WU Health] {{wmi_os.param.Caption}} — state={{state.param.case}}",
                 "isHtml": false,
-                "body": "Windows Update Health Report\n=============================\nState: {{state.param.case}}\nOS: {{wmi_os.param.Caption}} ({{wmi_os.param.Version}})\nLastBoot: {{wmi_os.param.LastBootUpTime}}\n\nServices:\n  wuauserv = {{svc_wu.param.status}}\n  BITS     = {{svc_bits.param.status}}\n  UsoSvc   = {{svc_uso.param.status}}\n\nUpdate State:\n  Hotfixes installed:    {{wmi_qfe.param.count}}\n  Latest HotFixID:       {{wmi_qfe.param.HotFixID}} ({{wmi_qfe.param.InstalledOn}})\n  Install-Results key:   {{reg_install.param.exists}}\n  AU policy values:      {{reg_au.param.count}}\n  pending.xml exists:    {{fs_pending.param.exists}}\n\nLogs:\n  WindowsUpdate.log:     {{gen_log.param.wuLogPath}}\n  CBS.log:               {{gen_log.param.cbsLogPath}}\n  WU FATAL/0x matches:   {{read_tails.param.wuErr}}\n  CBS fail/, error:      {{read_tails.param.cbsErr}}\n  WU last line:          {{read_tails.param.wuLast}}\n  CBS last line:         {{read_tails.param.cbsLast}}\n"
+                "body": "Windows Update Health Report\n=============================\nState: {{state.param.case}}\nOS: {{wmi_os.param.Caption}} ({{wmi_os.param.Version}})\nLastBoot: {{wmi_os.param.LastBootUpTime}}\n\nServices:\n  wuauserv = {{svc_wu.param.status}}\n  BITS     = {{svc_bits.param.status}}\n  UsoSvc   = {{svc_uso.param.status}}\n\nUpdate State:\n  Hotfixes installed:    {{wmi_qfe.param.count}}\n  Latest HotFixID:       {{wmi_qfe.param.HotFixID}} ({{wmi_qfe.param.InstalledOn}})\n  Newest install age:    {{read_tails.param.installAgeDays}} days (fresh={{read_tails.param.updateFresh}}, limit {{trig.param.freshnessDays}})\n  Install-Results key:   {{reg_install.param.exists}}\n  AU policy values:      {{reg_au.param.count}}\n  pending.xml exists:    {{fs_pending.param.exists}}\n\nLogs:\n  WindowsUpdate.log:     {{gen_log.param.wuLogPath}}\n  CBS.log:               {{gen_log.param.cbsLogPath}}\n  WU FATAL/0x matches:   {{read_tails.param.wuErr}}\n  CBS fail/, error:      {{read_tails.param.cbsErr}}\n  WU last line:          {{read_tails.param.wuLast}}\n  CBS last line:         {{read_tails.param.cbsLast}}\n"
               }
             } },
 
@@ -316,7 +322,9 @@
                   "wuErrorMatches":   "{{read_tails.param.wuErr}}",
                   "cbsErrorMatches":  "{{read_tails.param.cbsErr}}",
                   "wuLastLine":       "{{read_tails.param.wuLast}}",
-                  "cbsLastLine":      "{{read_tails.param.cbsLast}}"
+                  "cbsLastLine":      "{{read_tails.param.cbsLast}}",
+                  "updateFresh":      "{{read_tails.param.updateFresh}}",
+                  "installAgeDays":   "{{read_tails.param.installAgeDays}}"
                 }
               }
             } }

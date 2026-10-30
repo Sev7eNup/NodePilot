@@ -588,24 +588,27 @@ $assertOk = 'waitForCondition'
 
 
 def power_management_workflow():
+    """abort cancels any pending shutdown or restart on the host, including one a
+    maintenance window scheduled, so it only runs on a host its owner declares disposable."""
     steps = [
-        Step("v0", "power: abort (no-op)", "powerManagement", {"action": "abort"},
+        Step("v0", "power: abort", "powerManagement", {"action": "abort"},
              target_machine=LOCAL,
              cases=[{"id": "powerManagement.action.abort",
                      "dimension": "powerManagement.action", "value": "abort"}]),
         assert_step("""
 $out = {{v0.output}}
-# `shutdown /a` exits 1116 when there is nothing to abort; the activity treats that as
-# success on purpose, which is exactly the path a scheduled no-op takes.
+# `shutdown /a` exits 1116 when there is nothing to abort; the activity treats that as success.
 if ([string]::IsNullOrWhiteSpace($out)) { throw "powerManagement abort produced no output" }
 $assertOk = 'powerManagement'
 """),
         ok_return("powerManagement"),
     ]
     return Workflow(
-        33, "powerManagement", "[TestSuite] powerManagement",
-        "The only power action that can run on a cadence without taking the host down.",
-        "positive", "continuous", "B", steps, max_runtime=45,
+        93, "powerManagement", "[TestSuite-Inv] powerManagement",
+        "Cancels any pending shutdown or restart on the host. Runs only where the host "
+        "owner has opted into the invasive profile and declared the host disposable.",
+        "invasive", "invasive", "C", steps, max_runtime=45,
+        requires=["globals:NP_TESTSUITE_INVASIVE", "globals:NP_TESTSUITE_DISPOSABLE_HOST"],
         excluded=[
             {"id": "powerManagement.action.shutdown",
              "dimension": "powerManagement.action", "value": "shutdown",

@@ -183,6 +183,7 @@ public sealed class OidcIdentityMapper(
                 Subject = subject,
                 CreatedAt = now,
                 LastSeenAt = now,
+                GroupsObservedAt = initialAuthorizationObservedAt,
             });
             db.Users.Add(user);
             await DirectoryMembershipReconciler.ApplyAsync(
@@ -305,6 +306,14 @@ public sealed class OidcIdentityMapper(
                 DateTime? authorizationObservedAt;
                 if (groupsFromToken)
                 {
+                    if (identity.GroupsObservedAt is { } latestObservation
+                        && presentedObservedAt < latestObservation)
+                    {
+                        await transaction.RollbackAsync(ct);
+                        db.ChangeTracker.Clear();
+                        return OidcMapResult.Denied(
+                            OidcMapFailure.InvalidIdentity, "oidc_group_snapshot_superseded");
+                    }
                     groups = presentedGroups.ToHashSet(StringComparer.Ordinal);
                     authorizationObservedAt = presentedObservedAt;
                 }
@@ -341,6 +350,16 @@ public sealed class OidcIdentityMapper(
                                               StringComparison.Ordinal))
                     .Select(membership => membership.GroupKey)
                     .ToHashSet(StringComparer.Ordinal);
+                // JWT iat has second precision; conflicting snapshots in the same second
+                // cannot be ordered. Only an identical replay may reuse that observation.
+                if (groupsFromToken && identity.GroupsObservedAt == presentedObservedAt
+                    && !groups.SetEquals(oldGroups))
+                {
+                    await transaction.RollbackAsync(ct);
+                    db.ChangeTracker.Clear();
+                    return OidcMapResult.Denied(
+                        OidcMapFailure.InvalidIdentity, "oidc_group_snapshot_ambiguous");
+                }
                 var accessAssigned = groups.Overlaps(allowedGroups);
                 var desiredRole = ResolveRole(groups, roleMappings);
                 var oldRole = existing.Role;
@@ -372,6 +391,7 @@ public sealed class OidcIdentityMapper(
                 existing.ExternalId = subject;
                 if (groupsFromToken)
                 {
+                    identity.GroupsObservedAt = authorizationObservedAt;
                     existing.LastDirectorySyncAt = authorizationObservedAt;
                     existing.DirectorySyncStatus = targetAuthorizationStatus;
                     DirectoryMembershipReconciler.Apply(

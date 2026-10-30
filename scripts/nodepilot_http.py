@@ -6,6 +6,11 @@ import urllib.error
 import urllib.request
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def credentials():
     user = os.environ.get("NODEPILOT_USER", "admin")
     password = os.environ.get("NODEPILOT_PASSWORD") or getpass.getpass("NodePilot password: ")
@@ -21,7 +26,7 @@ def request(base_url, method, path, token=None, body=None, timeout=30, extra_hea
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(f"{base_url.rstrip('/')}{path}", data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
+        with urllib.request.build_opener(_NoRedirect).open(req, timeout=timeout) as response:
             raw = response.read()
             return response.status, json.loads(raw) if raw else None
     except urllib.error.HTTPError as error:

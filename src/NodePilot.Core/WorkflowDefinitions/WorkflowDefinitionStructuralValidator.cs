@@ -18,7 +18,7 @@ public static class WorkflowDefinitionStructuralValidator
             return WorkflowDefinitionValidationResult.Invalid("root must be a JSON object");
 
         var nodeIds = new HashSet<string>(StringComparer.Ordinal);
-        var outputVariables = new HashSet<string>(StringComparer.Ordinal);
+        var outputVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var activityTypeByNodeId = new Dictionary<string, string?>(StringComparer.Ordinal);
         if (definition.TryGetProperty("nodes", out var nodes))
         {
@@ -162,8 +162,11 @@ public static class WorkflowDefinitionStructuralValidator
             return WorkflowDefinitionValidationResult.Invalid(error!);
         }
 
-        if (data.TryGetProperty("outputVariable", out var outputVariable) && IsNonEmptyString(outputVariable))
-            outputVariables.Add(outputVariable.GetString()!);
+        var disabled = data.TryGetProperty("disabled", out var disabledValue) && disabledValue.ValueKind == JsonValueKind.True;
+        if (!disabled && data.TryGetProperty("outputVariable", out var outputVariable) && IsNonEmptyString(outputVariable)
+            && !outputVariables.Add(outputVariable.GetString()!))
+            return WorkflowDefinitionValidationResult.Invalid(
+                $"duplicate active output variable '{outputVariable.GetString()}'", "dup-output-variable", id);
 
         return WorkflowDefinitionValidationResult.Valid;
     }

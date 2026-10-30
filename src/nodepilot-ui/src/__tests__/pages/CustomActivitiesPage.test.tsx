@@ -1,6 +1,6 @@
 import { MemoryRouter } from 'react-router';
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -95,6 +95,29 @@ function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
 }
 
 describe('CustomActivitiesPage', () => {
+  it('does not bind a newly opened form to a previous save with warnings', async () => {
+    const definition = { ...entry(), scriptTemplate: 'Write-Output 1', engine: 'auto', isolated: false, concurrencyToken: 'revision-1' };
+    let finish!: (response: Response) => void;
+    const response = new Promise<Response>((resolve) => { finish = resolve; });
+    const saved = vi.fn();
+    seed();
+    server.use(
+      http.get(`${BASE}/api/custom-activities/ca-1`, () => HttpResponse.json(definition)),
+      http.put(`${BASE}/api/custom-activities/ca-1`, () => { saved(); return response; }),
+    );
+    const { queryClient } = renderPage();
+    fireEvent.click(await screen.findByTitle('Edit'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Update' }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: /^New/ }));
+    fireEvent.change(screen.getByPlaceholderText('disk-check'), { target: { value: 'activity-b' } });
+    await act(async () => finish(HttpResponse.json({ definition: { ...definition, concurrencyToken: 'revision-2' }, warnings: [{ rule: 'lint', message: 'Warning for A' }] })));
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    expect(screen.getByDisplayValue('activity-b')).toBeEnabled();
+    expect(screen.queryByText('Warning for A')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
+  });
   it('uses the saved revision when correcting lint warnings', async () => {
     const definition = { ...entry(), scriptTemplate: 'Write-Output 1', engine: 'auto', isolated: false,
       concurrencyToken: 'revision-1' };

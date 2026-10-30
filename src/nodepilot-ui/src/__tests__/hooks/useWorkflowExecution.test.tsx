@@ -8,6 +8,25 @@ import { useWorkflowExecution } from '../../hooks/useWorkflowExecution';
 
 afterEach(() => vi.restoreAllMocks());
 
+it('does not execute another workflow when navigation wins a pending save', async () => {
+  let finish!: () => void;
+  const save = new Promise<void>((resolve) => { finish = resolve; });
+  const post = vi.spyOn(api, 'post').mockResolvedValue({ id: 'execution-a' });
+  const pin = vi.fn();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { result, rerender } = renderHook(({ id }) => useWorkflowExecution({
+    workflowId: id, workflow: { id, isEnabled: true, definitionJson: '{"nodes":[],"edges":[]}' } as Workflow,
+    canWrite: true, isDirty: true, nodes: [], edges: [], saveAsync: () => save,
+    pinCanvasExecution: pin, clearReplay: vi.fn(),
+  }), { initialProps: { id: 'a' }, wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+  let pending!: Promise<void>;
+  act(() => { pending = result.current.run(); });
+  rerender({ id: 'b' });
+  await act(async () => { finish(); await pending; });
+  expect(post).not.toHaveBeenCalled();
+  expect(pin).not.toHaveBeenCalled();
+});
+
 it('opens saved manual parameters before the published canvas has hydrated', async () => {
   const post = vi.spyOn(api, 'post');
   vi.spyOn(api, 'get').mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 1 });

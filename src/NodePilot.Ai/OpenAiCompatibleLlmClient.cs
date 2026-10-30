@@ -52,23 +52,20 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                 RememberMaxCompletionTokens();
                 useMaxCompletionTokens = true;
                 _logger.LogWarning(
-                    "LLM upstream rejected max_tokens with HTTP 400 — retrying with max_completion_tokens. Body: {BodyExcerpt}",
-                    ex.BodyExcerpt);
+                    "LLM upstream rejected max_tokens with HTTP 400 — retrying with max_completion_tokens.");
             }
             catch (LlmException ex) when (HasStrictTools(effectiveRequest) && IsStrictToolsUnsupported(ex))
             {
                 effectiveRequest = WithoutStrictTools(effectiveRequest);
                 _logger.LogWarning(
-                    "LLM upstream rejected strict function schemas — retrying with best-effort tool calling. Body: {BodyExcerpt}",
-                    ex.BodyExcerpt);
+                    "LLM upstream rejected strict function schemas — retrying with best-effort tool calling.");
             }
             catch (LlmException ex) when (!dropTemperature && LlmTemperatureQuirk.IsUnsupported(ex))
             {
                 LlmTemperatureQuirk.Remember(CompatibilityKey);
                 dropTemperature = true;
                 _logger.LogWarning(
-                    "LLM upstream rejected temperature with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
-                    ex.BodyExcerpt);
+                    "LLM upstream rejected temperature with HTTP 400 — retrying without it.");
             }
 
             // One attempt per fallback, plus the original try.
@@ -96,8 +93,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             && !LlmTemperatureQuirk.IsUnsupported(ex))
         {
             _logger.LogWarning(
-                "LLM upstream rejected response_format=json_object with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
-                ex.BodyExcerpt);
+                "LLM upstream rejected response_format=json_object with HTTP 400 — retrying without it.");
             return await SendOnceAsync(
                 request, includeJsonResponseFormat: false, useMaxCompletionTokens, dropTemperature, ct);
         }
@@ -227,23 +223,20 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                 RememberMaxCompletionTokens();
                 useMaxCompletionTokens = true;
                 _logger.LogWarning(
-                    "LLM upstream rejected max_tokens with HTTP 400 — retrying with max_completion_tokens. Body: {BodyExcerpt}",
-                    ex.BodyExcerpt);
+                    "LLM upstream rejected max_tokens with HTTP 400 — retrying with max_completion_tokens.");
             }
             catch (LlmException ex) when (HasStrictTools(effectiveRequest) && IsStrictToolsUnsupported(ex))
             {
                 effectiveRequest = WithoutStrictTools(effectiveRequest);
                 _logger.LogWarning(
-                    "LLM upstream rejected strict function schemas — retrying with best-effort tool calling. Body: {BodyExcerpt}",
-                    ex.BodyExcerpt);
+                    "LLM upstream rejected strict function schemas — retrying with best-effort tool calling.");
             }
             catch (LlmException ex) when (!dropTemperature && LlmTemperatureQuirk.IsUnsupported(ex))
             {
                 LlmTemperatureQuirk.Remember(CompatibilityKey);
                 dropTemperature = true;
                 _logger.LogWarning(
-                    "LLM upstream rejected temperature with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
-                    ex.BodyExcerpt);
+                    "LLM upstream rejected temperature with HTTP 400 — retrying without it.");
             }
 
             // One attempt per fallback, plus the original try.

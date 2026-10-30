@@ -291,7 +291,8 @@ public sealed class BackupRestoreService(
                 await db.SaveChangesAsync(ct);
                 if (restoredSettings is not null)
                 {
-                    overrides.ReplaceAll(restoredSettings);
+                    if (!overrides.TryReplaceAll(RuntimeOverridesWriter.ComputeEtag(originalSettings), restoredSettings))
+                        throw new BackupRestoreException("Runtime settings changed during restore. Refresh the preview and retry.");
                     settingsApplied = true;
                 }
                 commitAttempted = true;
@@ -333,7 +334,13 @@ public sealed class BackupRestoreService(
                 {
                     if (settingsApplied && originalSettings is not null)
                     {
-                        try { overrides.ReplaceAll(originalSettings); }
+                        try
+                        {
+                            if (!overrides.TryReplaceAll(RuntimeOverridesWriter.ComputeEtag(restoredSettings), originalSettings))
+                                throw new BackupRestoreException(
+                                    "Restore failed after a concurrent settings update. The newer settings were preserved; review them before retrying.");
+                        }
+                        catch (BackupRestoreException) { throw; }
                         catch (Exception compensationError)
                         {
                             logger.LogCritical(
@@ -536,6 +543,7 @@ public sealed class BackupRestoreService(
                 UserId = targetUserId,
                 Authority = authority,
                 Subject = subject,
+                GroupsObservedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.TryParse(
                     node?["createdAt"]?.GetValue<string>(),
                     System.Globalization.CultureInfo.InvariantCulture,
@@ -784,7 +792,7 @@ public sealed class BackupRestoreService(
             var id = preserveSourceIds && !existingIds.Contains(item.SourceId) ? item.SourceId : Guid.NewGuid();
             var entity = item.Create(id, name);
             add(entity);
-            byName[name] = entity; existingIds.Add(id);
+            existingIds.Add(id);
             if (idMap is not null) idMap[item.SourceId] = id;
         }
         await db.SaveChangesAsync(ct);
@@ -888,7 +896,7 @@ public sealed class BackupRestoreService(
                     existing.Value = storedValue; existing.FolderId = folderId; existing.UpdatedAt = DateTime.UtcNow;
                     overwritten++; continue;
                 }
-                name = UniqueName(name, takenNames); renamed++;
+                name = UniqueGlobalName(name, takenNames); renamed++;
             }
             else created++;
 
@@ -917,8 +925,9 @@ public sealed class BackupRestoreService(
             {
                 if (policy == RestoreConflictPolicy.Overwrite)
                 {
+                    new CustomActivityDefinitionStore(db).StageRevision(
+                        existing, s.RestoredByUserId?.ToString(), "Restored from configuration backup");
                     ApplyCustomActivityFields(existing, item, s.Protector);
-                    existing.UpdatedAt = DateTime.UtcNow;
                     s.CustomActivityMap[sourceId] = existing.Id;
                     overwritten++; continue;
                 }
@@ -940,6 +949,7 @@ public sealed class BackupRestoreService(
                 CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
             };
             ApplyCustomActivityFields(def, item, s.Protector);
+            def.Version = item["version"]?.GetValue<int>() ?? 1;
             db.CustomActivityDefinitions.Add(def);
             s.CustomActivities[key] = def; s.ExistingCustomActivityIds.Add(id); s.CustomActivityMap[sourceId] = id;
         }
@@ -971,7 +981,6 @@ public sealed class BackupRestoreService(
                 item["inputParametersJson"], protector, "custom activity inputParametersJson");
         def.OutputParametersJson = item["outputParametersJson"]?.GetValue<string>() ?? "[]";
         def.IsEnabled = item["isEnabled"]?.GetValue<bool>() ?? false;
-        def.Version = item["version"]?.GetValue<int>() ?? 1;
     }
 
     /// <summary>
@@ -1642,5 +1651,15 @@ public sealed class BackupRestoreService(
             if (!taken.Contains(candidate)) return candidate;
         }
         return $"{desired} (Restored {Guid.NewGuid():N})";
+    }
+
+    private static string UniqueGlobalName(string desired, HashSet<string> taken)
+    {
+        for (var index = 2; ; index++)
+        {
+            var suffix = $"_Restored_{index}";
+            var candidate = desired[..Math.Min(desired.Length, 100 - suffix.Length)] + suffix;
+            if (!taken.Contains(candidate)) return candidate;
+        }
     }
 }

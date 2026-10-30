@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
+using NodePilot.Core.Interfaces;
 
 namespace NodePilot.Engine.Debug;
 
@@ -31,7 +33,12 @@ public sealed record ResumeRequest(
 /// </summary>
 public sealed class DebugHandle
 {
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<ResumeRequest>> _pending = new();
+    private sealed record PendingPause(TaskCompletionSource<ResumeRequest> Completion,
+        DebugPausedStepSnapshot? Snapshot);
+    private readonly ConcurrentDictionary<string, PendingPause> _pending = new();
+    private readonly object _pauseClockLock = new();
+    private int _activePauses;
+    private long _pauseStarted;
 
     /// <summary>Maximum minutes a step is allowed to wait at a breakpoint before it is
     /// automatically cancelled. Guards against zombie executions when the user closes
@@ -53,19 +60,49 @@ public sealed class DebugHandle
     /// trade-off, since step-over is inherently ambiguous across parallel branches.</summary>
     public bool StepOverArmed { get; set; }
 
-    /// <summary>Sum of all pause durations for this execution. Excludes debugger wait time
+    /// <summary>Time during which at least one step was paused. Excludes debugger wait time
     /// from the workflow timeout budget.</summary>
-    public TimeSpan TotalPausedDuration { get; set; }
+    public TimeSpan TotalPausedDuration { get; private set; }
+
+    internal void BeginPause(CancellationTokenSource executionCts)
+    {
+        lock (_pauseClockLock)
+        {
+            if (_activePauses++ != 0) return;
+            _pauseStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (OriginalTimeoutSeconds is > 0)
+                executionCts.CancelAfter(Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    internal void EndPause(DateTime executionStartedAt, CancellationTokenSource executionCts)
+    {
+        lock (_pauseClockLock)
+        {
+            if (--_activePauses != 0) return;
+            TotalPausedDuration += System.Diagnostics.Stopwatch.GetElapsedTime(_pauseStarted);
+            if (OriginalTimeoutSeconds is not > 0) return;
+            var remaining = TimeSpan.FromSeconds(OriginalTimeoutSeconds.Value)
+                - (DateTime.UtcNow - executionStartedAt) + TotalPausedDuration;
+            executionCts.CancelAfter(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
+        }
+    }
 
     /// <summary>Waits for a resume command to arrive for the given step. The engine
     /// thread blocks here until either <see cref="Resume"/> is called or
     /// <paramref name="ct"/> is cancelled. The TaskCompletionSource is only registered
     /// inside this call, so a resume that arrives too early can't set a signal that
     /// nothing is listening for.</summary>
-    public Task<ResumeRequest> AwaitResumeAsync(string stepId, CancellationToken ct)
+    public Task<ResumeRequest> AwaitResumeAsync(string stepId, CancellationToken ct,
+        DebugPausedStepSnapshot? snapshot = null)
     {
         var tcs = new TaskCompletionSource<ResumeRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pending[stepId] = tcs;
+        var pending = new PendingPause(tcs, snapshot is null ? null : snapshot with
+        {
+            Variables = new ReadOnlyDictionary<string, string>(
+                new Dictionary<string, string>(snapshot.Variables, StringComparer.OrdinalIgnoreCase))
+        });
+        _pending[stepId] = pending;
         return WaitAsync();
 
         async Task<ResumeRequest> WaitAsync()
@@ -75,8 +112,8 @@ public sealed class DebugHandle
             finally
             {
                 // Remove only this pause, even if a later pause reused the same step id.
-                ((ICollection<KeyValuePair<string, TaskCompletionSource<ResumeRequest>>>)_pending)
-                    .Remove(new(stepId, tcs));
+                ((ICollection<KeyValuePair<string, PendingPause>>)_pending)
+                    .Remove(new(stepId, pending));
             }
         }
     }
@@ -86,12 +123,17 @@ public sealed class DebugHandle
     /// paused — the API responds 409).</summary>
     public bool Resume(string stepId, ResumeRequest request)
     {
-        if (!_pending.TryRemove(stepId, out var tcs)) return false;
-        return tcs.TrySetResult(request);
+        if (DebugOverrides.Validate(request.Overrides) is { } error)
+            throw new ArgumentException(error, nameof(request));
+        if (!_pending.TryRemove(stepId, out var pending)) return false;
+        return pending.Completion.TrySetResult(request);
     }
 
     /// <summary>IDs of steps currently paused and waiting. For debugging / tests.</summary>
     public IEnumerable<string> PendingSteps => _pending.Keys;
+
+    public IReadOnlyCollection<DebugPausedStepSnapshot> PausedSnapshots => _pending.Values
+        .Select(p => p.Snapshot).OfType<DebugPausedStepSnapshot>().ToArray();
 
     /// <summary>Signals "Stop" to every currently paused step, used by the cancel
     /// endpoint so the engine thread exits its pause cleanly and the execution
@@ -101,8 +143,8 @@ public sealed class DebugHandle
     {
         foreach (var key in _pending.Keys.ToList())
         {
-            if (_pending.TryRemove(key, out var tcs))
-                tcs.TrySetResult(new ResumeRequest(ResumeCommand.Stop, null));
+            if (_pending.TryRemove(key, out var pending))
+                pending.Completion.TrySetResult(new ResumeRequest(ResumeCommand.Stop, null));
         }
     }
 }

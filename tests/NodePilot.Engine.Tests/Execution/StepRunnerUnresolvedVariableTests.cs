@@ -13,6 +13,29 @@ namespace NodePilot.Engine.Tests.Execution;
 /// </summary>
 public class StepRunnerUnresolvedVariableTests
 {
+    [Theory]
+    [InlineData("{{customer.output}}")]
+    [InlineData("{{manual.text}}")]
+    public void ResolveConfig_InsertedTemplateShapedData_IsNotAnUnresolvedReference(string value)
+    {
+        var unresolved = new List<string>();
+        var result = StepRunner.ResolveConfigForExecution("log", Parse("""{"message":"{{manual.text}}"}"""),
+            new Dictionary<string, ActivityResult>(), new Dictionary<string, string>(),
+            new Dictionary<string, string>(), new Dictionary<string, string> { ["text"] = value }, unresolved);
+        result.GetProperty("message").GetString().Should().Be(value);
+        unresolved.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ResolveConfig_OriginalMissingReference_IsStillReported()
+    {
+        var unresolved = new List<string>();
+        StepRunner.ResolveConfigForExecution("log", Parse("""{"message":"{{missing.output}}"}"""),
+            new Dictionary<string, ActivityResult>(), new Dictionary<string, string>(),
+            new Dictionary<string, string>(), unresolved: unresolved);
+        unresolved.Should().Equal("{{missing.output}}");
+    }
+
     private static JsonElement Parse(string json) =>
         JsonDocument.Parse(json).RootElement.Clone();
 

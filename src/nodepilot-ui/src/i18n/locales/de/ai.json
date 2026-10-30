@@ -103,6 +103,8 @@
     "emptyQuestion": "Bitte eine Frage eingeben.",
     "regenerate": "Antwort neu generieren",
     "historyDropped": "Der bisherige Verlauf wurde nicht mitgesendet, weil sich das KI-Profil oder die Freigabe für Skripte geändert hat.",
+    "persistenceUnavailable": "Der Browserspeicher ist nicht verfügbar oder voll. Der Chat funktioniert in diesem Tab weiter, neue Nachrichten können beim Neuladen verloren gehen. Kopiere Inhalte, die du behalten möchtest.",
+    "persistenceTrimmed": "Wegen des Speicherlimits bleibt nach dem Neuladen nur der neuere Chatverlauf erhalten. Ältere Nachrichten sind in diesem Tab weiterhin verfügbar.",
     "retry": "Erneut versuchen",
     "scrollToBottom": "Nach unten scrollen",
     "suggestion1": "Erkläre diesen Workflow",
@@ -129,7 +131,6 @@
     "scopeSelectionHint": "Frage auf die ausgewählten Nodes beziehen"
   },
   "knowledge": {
-    "historyDropped": "Der bisherige Verlauf wurde nicht mitgesendet, weil er dem aktuellen KI-Profil nicht zugeordnet werden konnte.",
     "title": "KI-Chat",
     "subtitle": "NodePilot fragen — Doku, Workflows, Betrieb, Quellcode",
     "inputPlaceholder": "Frag etwas zu NodePilot, deinen Workflows oder dem Quellcode…",

@@ -80,6 +80,26 @@ public class JunctionActivityTests
 
 public sealed class ReturnDataActivityTests : IDisposable
 {
+    [Fact]
+    public async Task LongPrivateKey_IsRedactedBeforePersistedValueCap()
+    {
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Return redaction", DefinitionJson = "{}" };
+        var execution = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id };
+        _db.AddRange(workflow, execution);
+        await _db.SaveChangesAsync();
+        var redactor = new NodePilot.Engine.Security.OutputRedactor();
+        var key = "-----BEGIN PRIVATE KEY-----\n" + new string('A', 9000) + "\n-----END PRIVATE KEY-----";
+        var result = await new ReturnDataActivity(_db, redactor).ExecuteAsync(
+            new StepExecutionContext { WorkflowExecutionId = execution.Id, StepId = "return" },
+            JsonSerializer.SerializeToElement(new { data = new { value = key } }), CancellationToken.None);
+        result.Success.Should().BeTrue();
+        var persisted = (await _db.WorkflowExecutions.AsNoTracking().SingleAsync()).ReturnData;
+        persisted.Should().NotContain(new string('A', 20));
+        using var payload = JsonDocument.Parse(persisted!);
+        payload.RootElement.GetProperty("value").GetString().Should().Contain("***");
+        redactor.Redact(result.Output).Should().NotContain(new string('A', 20));
+    }
+
     private readonly Data.NodePilotDbContext _db = TestDbContext.Create();
 
     public void Dispose() => _db.Dispose();

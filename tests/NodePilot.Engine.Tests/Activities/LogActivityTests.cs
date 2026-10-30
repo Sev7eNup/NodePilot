@@ -11,6 +11,17 @@ namespace NodePilot.Engine.Tests.Activities;
 
 public class LogActivityTests
 {
+    [Fact]
+    public async Task LongPrivateKey_IsRedactedBeforeOutputLimitAndLogSanitization()
+    {
+        var message = "-----BEGIN PRIVATE KEY-----\n" + new string('A', 9000) + "\n-----END PRIVATE KEY-----";
+        var result = await Create().ExecuteAsync(Ctx(), Cfg(new { message }), CancellationToken.None);
+        result.Output.Should().Be("-----BEGIN PRIVATE KEY-----***-----END PRIVATE KEY-----");
+        VerifyLoggedAt(LogLevel.Information, "***");
+        _logger.Invocations.Where(i => i.Method.Name == "Log")
+            .Should().OnlyContain(i => !i.Arguments[2].ToString()!.Contains(new string('A', 20)));
+    }
+
     private readonly Mock<ILogger<LogActivity>> _logger = new();
 
     // LogActivity takes an OutputRedactor that scrubs secrets like `message:
