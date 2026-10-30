@@ -30,6 +30,9 @@ reported success.
 - At run time the evaluator throws `ConditionEvaluationException` for such a condition. The
   scheduler fails the run and names the edge (`Edge 'e1' (a -> b) has an invalid condition: …`).
   The edge is neither opened nor silently skipped.
+  Regex compilation errors, timeouts, overlong patterns, and inputs beyond the 1,048,576-character regex
+  evaluation limit follow this failure path too. The evaluator never matches a truncated prefix
+  or turns an invalid regex into `false` that a surrounding `not` could invert.
 - Evaluation is three-valued. A variable operand without a value in this run — a step without a
   result, a missing output parameter, a global or trigger input that does not exist — makes its
   comparison undecidable. Undecidable never satisfies a condition, `not` keeps it undecidable, and

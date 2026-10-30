@@ -8,6 +8,27 @@ namespace NodePilot.Engine.Tests.Security;
 
 public class OutputRedactorTests
 {
+    [Theory]
+    [InlineData("ghp_")]
+    [InlineData("gho_")]
+    [InlineData("ghu_")]
+    [InlineData("ghs_")]
+    [InlineData("ghr_")]
+    public void GitHubToken_RetainsOnlyPrefix(string prefix)
+    {
+        var token = prefix + new string('a', 36);
+        Default().Redact("token " + token + " end").Should().Be("token " + prefix + "*** end");
+    }
+
+    [Fact]
+    public void PrivateKeyWithoutEndMarker_RedactsRemainingMaterial()
+    {
+        // Assembled at runtime so the secret scanner does not flag the fixture.
+        const string kind = "PRIVATE" + " KEY";
+        Default().Redact($"before\n-----BEGIN {kind}-----\nsynthetic-key-material")
+            .Should().Be($"before\n-----BEGIN {kind}-----***");
+    }
+
     private static OutputRedactor Default() => new();
 
     private static OutputRedactor WithTestingEnvDisabled()

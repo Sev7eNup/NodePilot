@@ -22,9 +22,16 @@ Planned version: **1.5.4**.
   prompts must pass it (#708).
 - **Sign in once more per profile with `np auth login` after the update.** Every profile now has its
   own session file, so profiles such as `prod.a` and `prod_a` no longer share one login (#620).
+- A `matches` condition with an invalid pattern, a regex timeout or an input longer than 1,048,576
+  characters fails the run and names the edge, instead of counting as "no match" (#680).
 
 ### Fixed
 
+- **Running workflows**
+  - A breakpoint condition can use the run's inputs (`{{manual.*}}`) (#685).
+  - Input values that look like `{{…}}` stay plain text and no longer fail the step as unresolved
+    references (#686).
+  - Editing a text file keeps its permissions (#683).
 - **CLI and MCP**
   - `np exec --watch` shows the final state even when the live connection drops the last event
     (#725).
@@ -39,6 +46,10 @@ Planned version: **1.5.4**.
 - Logging out with the CLI also ends the MCP server's session right away (#712).
 - MCP alerting output shows webhook targets only as scheme, host and port, because the rest of the
   URL can contain tokens (#730).
+- GitHub tokens in step output are masked except for their prefix such as `ghp_`; before, the whole
+  token stayed visible (#681).
+- Log steps and returned data mask private keys before long values are shortened, also when the end
+  marker is missing (#682).
 
 ## [1.5.3] - 2026-10-30
 

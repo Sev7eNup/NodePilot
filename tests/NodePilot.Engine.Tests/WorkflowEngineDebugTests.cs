@@ -130,6 +130,22 @@ public class WorkflowEngineDebugTests
     }
 
     [Fact]
+    public async Task ManualFalseBreakpointCondition_DoesNotPause()
+    {
+        var definition = BuildBreakpointWorkflow().Replace("\"breakpoint\":true",
+            "\"breakpoint\":true,\"breakpointCondition\":\"{{manual.flag}}\"");
+        var workflow = CreateWorkflow(definition);
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var result = await _engine.ExecuteAsync(workflow, "debug", timeout.Token,
+            new Dictionary<string, string> { ["flag"] = "false" }, debugEnabled: true);
+        result.Status.Should().Be(ExecutionStatus.Succeeded);
+        _notifier.Verify(n => n.StepPausedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<DateTime>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
     public async Task BreakpointSnapshot_RedactsSensitiveVariableNamesInStorageAndLiveEvent()
     {
         var wf = CreateWorkflow(BuildBreakpointWorkflow(breakpointOnFirstStep: false, breakpointOnSecondStep: true));

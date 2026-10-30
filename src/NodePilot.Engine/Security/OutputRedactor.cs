@@ -60,13 +60,13 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
 
     // "(BEGIN)[\s\S]{MinBody,MaxBody}?(END)" without the regex: retried from every BEGIN marker,
     // the lazy body is quadratic under backtracking. Same matches, linear time.
-    private sealed record PemBlocks(Regex Begin, Regex End, int MinBody, int MaxBody);
+    private sealed record PemBlocks(Regex Begin, Regex End, int MinBody, int MaxBody, bool RedactUnterminated = false);
 
     // PEM-formatted private keys — blank the body between markers.
     private static readonly PemBlocks PrivateKeyPem = new(
         new(@"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |)PRIVATE KEY-----", RxOpts, NoTimeout),
         new(@"-----END (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |)PRIVATE KEY-----", RxOpts, NoTimeout),
-        MinBody: 0, MaxBody: int.MaxValue);
+        MinBody: 0, MaxBody: int.MaxValue, RedactUnterminated: true);
 
     // Any PEM block (certificate, public key, ...) — not just private key.
     private static readonly PemBlocks AnyPem = new(
@@ -97,7 +97,7 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
         PrivateKeyPem,
         // AWS access key IDs and GitHub tokens (shape-based — catches accidental Write-Host)
         new Regex(@"\b(AKIA|ASIA)[A-Z0-9]{16}\b", RegexOptions.Compiled, NoTimeout),
-        new Regex(@"\b(gh[pousr]_[A-Za-z0-9]{20,})\b", RegexOptions.Compiled, NoTimeout),
+        new Regex(@"\b(gh[pousr]_)[A-Za-z0-9]{20,}\b", RegexOptions.Compiled, NoTimeout),
         // M-5 widen the catch-all set:
         // JWT shape: 3 dot-separated base64url segments (at least 10 chars each).
         new Regex(@"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}", RegexOptions.Compiled, NoTimeout),
@@ -233,6 +233,13 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
                 sb.Append(s, copied, begin.Index - copied).Append(begin.Value).Append(Placeholder).Append(end.Value);
                 copied = end.Index + end.Length;
                 begin = pem.Begin.Match(s, copied);
+            }
+            else if (!end.Success && pem.RedactUnterminated)
+            {
+                sb ??= new StringBuilder(s.Length);
+                sb.Append(s, copied, begin.Index - copied).Append(begin.Value).Append(Placeholder);
+                copied = s.Length;
+                break;
             }
             else
             {
