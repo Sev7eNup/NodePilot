@@ -44,7 +44,10 @@ public sealed class PowerShellOutputCapture : IDisposable
         {
             var baseObj = ps.BaseObject;
             if (baseObj is string s) return s;
-            try { return baseObj?.ToString() ?? string.Empty; } catch { }
+            // A property bag (a custom object, or any object deserialized from a target) has an
+            // empty ToString of its own; the PSObject renders its properties or its remote text.
+            if (baseObj is not PSCustomObject)
+                try { return baseObj?.ToString() ?? string.Empty; } catch { }
             try { return ps.ToString() ?? string.Empty; } catch { }
             return $"<{baseObj?.GetType().Name ?? "PSObject"}: ToString failed>";
         }
