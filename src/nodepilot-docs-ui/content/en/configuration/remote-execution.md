@@ -38,7 +38,9 @@ winrm quickconfig -transport:https   # only for machines using HTTPS
 
 By default only local administrators and members of `Remote Management Users` may use that endpoint. Without one of those memberships the step fails at the endpoint even though the sign-in itself succeeds.
 
-The credential-less path additionally requires **resource-based constrained delegation** on every target machine so that the service identity is passed on over Kerberos — recipe under [Production deployment](../deployment/production). With stored credentials no delegation is needed; the service identity is then irrelevant for access.
+For a target without stored credentials, NodePilot connects directly as the service process identity: the gMSA, or the host computer account under LocalSystem. Grant that account the required endpoint and resource permissions. With LocalSystem in an active/passive installation, authorize each node's computer account.
+
+This direct first hop does not require resource-based constrained delegation. NodePilot does not impersonate the browser user for it. Configure delegation only for a separately justified delegated-user or second-hop topology. With stored credentials, authorize the selected account instead.
 
 A machine's connection test (`POST /api/machines/{id}/test`) requires a credential and otherwise answers `400 MACHINE_CREDENTIAL_REQUIRED`. It therefore cannot exercise the credential-less path — workflow steps still run in that situation.
 
