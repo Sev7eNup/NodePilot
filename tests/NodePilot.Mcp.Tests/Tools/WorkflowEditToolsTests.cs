@@ -56,7 +56,7 @@ public sealed class WorkflowEditToolsTests
         var proposed = """{"nodes":[{"id":"n1","type":"activity","data":{"activityType":"webhookTrigger","config":{"secret":"***"}}}],"edges":[]}""";
 
         var tools = new WorkflowEditTools(api.Client());
-        await tools.PublishWorkflow(id.ToString(), Json(proposed));
+        await tools.PublishWorkflow(id.ToString(), Json(proposed), expectedVersion: 1);
 
         var body = api.Server.LogEntries.Last(e => e.RequestMessage!.Path.EndsWith("/publish")).RequestMessage!.Body ?? "";
         body.Should().Contain("real-secret-value");   // restored from the current version
@@ -124,10 +124,54 @@ public sealed class WorkflowEditToolsTests
 
         var tools = new WorkflowEditTools(api.Client());
         // A malformed call: missing nodes/edges arrays. Must be refused, not persisted as empty.
-        var act = async () => await tools.PublishWorkflow(id.ToString(), Json("{}"));
+        var act = async () => await tools.PublishWorkflow(id.ToString(), Json("{}"), expectedVersion: 1);
         (await act.Should().ThrowAsync<Exception>()).Which.Message.Should().Contain("nodes");
 
         api.Server.LogEntries.Any(e => e.RequestMessage!.Path.EndsWith("/publish")).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SaveFullDefinition_StaleExpectedVersion_SendsCallerVersionAndSurfacesConflict(bool publish)
+    {
+        var id = Guid.NewGuid();
+        var current = """{"nodes":[{"id":"n1","type":"activity","data":{"activityType":"runScript"}}],"edges":[]}""";
+        using var api = new TestApi();
+        // The server is already at version 1 (Wf); the agent edited a definition it read at version 0.
+        StubGet(api, id, current);
+        var conflict = Response.Create().WithStatusCode(409)
+            .WithHeader("Content-Type", "application/problem+json")
+            .WithBody("""{"status":409,"code":"workflow_version_conflict","title":"Workflow version conflict"}""");
+        api.Server.Given(Request.Create().WithPath($"/api/workflows/{id}/publish").UsingPost()).RespondWith(conflict);
+        api.Server.Given(Request.Create().WithPath($"/api/workflows/{id}").UsingPut()).RespondWith(conflict);
+
+        var tools = new WorkflowEditTools(api.Client());
+        var proposed = Json("""{"nodes":[{"id":"n1","type":"activity","data":{"activityType":"runScript"}}],"edges":[]}""");
+        var ct = TestContext.Current.CancellationToken;
+        Func<Task> act = publish
+            ? () => tools.PublishWorkflow(id.ToString(), proposed, expectedVersion: 0, cancellationToken: ct)
+            : () => tools.UpdateWorkflowDefinition(id.ToString(), proposed, expectedVersion: 0, cancellationToken: ct);
+
+        await act.Should().ThrowAsync<Exception>().WithMessage("*409*");
+        var write =api.Server.LogEntries.Single(e => e.RequestMessage!.Method != "GET").RequestMessage!;
+        write.Body.Should().Contain("\"expectedVersion\":0");
+        write.Body.Should().NotContain("\"expectedVersion\":1");
+    }
+
+    [Theory]
+    [InlineData("{\"nodes\":[null],\"edges\":[]}")]
+    [InlineData("{\"nodes\":[42],\"edges\":[]}")]
+    [InlineData("{\"nodes\":[],\"edges\":[\"invalid\"]}")]
+    public async Task PublishWorkflow_RejectsMalformedMembers_WithoutSaving(string proposed)
+    {
+        using var api = new TestApi();
+        var id = Guid.NewGuid();
+        StubGet(api, id, """{"nodes":[{"id":"existing"}],"edges":[]}""");
+        var tools = new WorkflowEditTools(api.Client());
+        var act = () => tools.PublishWorkflow(id.ToString(), Json(proposed), expectedVersion: 1, cancellationToken: TestContext.Current.CancellationToken);
+        await act.Should().ThrowAsync<Exception>().WithMessage("*must be an object*");
+        api.Server.LogEntries.Should().OnlyContain(entry => entry.RequestMessage != null && entry.RequestMessage.Method == "GET");
     }
 
     [Fact]

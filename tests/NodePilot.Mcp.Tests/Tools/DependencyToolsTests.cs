@@ -9,6 +9,30 @@ namespace NodePilot.Mcp.Tests.Tools;
 
 public class DependencyToolsTests
 {
+    [Theory]
+    [InlineData("list")]
+    [InlineData("report")]
+    [InlineData("evidence")]
+    public async Task DependencyRequest_InvalidTlsConfiguration_SendsNothing(string operation)
+    {
+        using var api = new TestApi();
+        using var http = new HttpClient { BaseAddress = new Uri(api.Url) };
+        var client = new NodePilot.Mcp.Api.NodePilotApiClient(http)
+        {
+            Session = new NodePilot.Mcp.Config.SessionContext(api.Url, "default", "synthetic", false,
+                SkipTlsVerification: true, TlsConfigurationError: "Invalid certificate pin"),
+        };
+        Func<Task> action = operation switch
+        {
+            "list" => () => client.ListDependencyObjectsAsync(null, null, null, null, null, 10, TestContext.Current.CancellationToken),
+            "report" => () => client.GetDependenciesAsync("workflow", Guid.NewGuid(), "uses", null, 10, TestContext.Current.CancellationToken),
+            _ => () => client.GetDependencyEvidenceAsync("workflow", Guid.NewGuid(), "machine", Guid.NewGuid(), "uses", null, 10, TestContext.Current.CancellationToken),
+        };
+
+        await action.Should().ThrowAsync<NodePilot.Mcp.Api.NotConfiguredException>().WithMessage("*Invalid certificate pin*");
+        api.Server.LogEntries.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task ListObjects_PreservesSearchAndPagination()
     {

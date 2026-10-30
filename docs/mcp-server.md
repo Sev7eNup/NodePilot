@@ -72,6 +72,10 @@ The server starts even when unconfigured/unauthenticated; tools then return an a
 (`run np auth login`, or set `NODEPILOT_MCP_SERVER`). Without `NODEPILOT_MCP_TOKEN` the DPAPI
 session is read on every request, so a later `np auth login` (including its server, if none was
 configured at startup) takes effect on the next tool call without restarting the server.
+Removing the local session also takes effect immediately, including after an offline CLI logout.
+Session filenames use a hash of the case-insensitive profile identity. After upgrading from the
+older sanitized filenames, run `np auth login` once for each profile; old files are not reused.
+Authenticated HTTP requests do not follow redirects. Configure the final HTTPS server URL directly.
 
 > **Windows-only.** Like the rest of NodePilot, the MCP server is `net10.0-windows` and uses DPAPI
 > for the session store. `NODEPILOT_MCP_TOKEN` exists for Windows CI/headless runs without a DPAPI
@@ -111,6 +115,9 @@ before retrying a start whose response was lost.
   such edits are made in the designer.
 - Credentials carry no password field; secret global values arrive masked. Create/update accept
   secrets write-only.
+- `publish_workflow`/`update_workflow_definition` require `expectedVersion`, the version
+  `get_workflow_definition` returned for the edited definition. If someone saved in between, the
+  server answers `409 workflow_version_conflict` and the newer workflow stays untouched.
 
 ## Token budget
 
@@ -211,6 +218,11 @@ replacement for database permissions against every provider extension.
 ### Alerting (notification rules; route secrets never surfaced)
 `get_alerting_catalog` · `list_alerting_rules` · `get_alerting_rule` · `create_alerting_rule` ·
 `update_alerting_rule` · `test_fire_alerting_rule` · `list_alerting_deliveries`
+
+Webhook route targets in rule, policy, delivery and test-fire output are reduced to scheme, host
+and port (`https://hooks.example.com/***`), because user info, path and query can carry tokens.
+Updates without `emails`/`webhooks` keep the stored routes; a redacted URL passed back as a
+webhook is rejected.
 
 ### System alerts (ADR 0008; catalog-driven policies)
 `get_system_alert_catalog` · `list_system_alert_policies` · `get_system_alert_policy` ·

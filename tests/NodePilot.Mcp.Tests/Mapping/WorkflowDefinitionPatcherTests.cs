@@ -190,15 +190,13 @@ public sealed class WorkflowDefinitionPatcherTests
     // ---- MergeFull ----------------------------------------------------------
 
     [Fact]
-    public void MergeFull_ProposedMissingArrays_YieldsEmptyArrays()
+    public void MergeFull_ProposedMissingArrays_IsRejected()
     {
         var original = E("""{"nodes":[{"id":"n1"}],"edges":[{"id":"e1"}]}""");
         var proposed = E("""{}""");
 
-        var result = WorkflowDefinitionPatcher.MergeFull(original, proposed);
-
-        ((JsonArray)result.Definition["nodes"]!).Should().BeEmpty();
-        ((JsonArray)result.Definition["edges"]!).Should().BeEmpty();
+        var act = () => WorkflowDefinitionPatcher.MergeFull(original, proposed);
+        act.Should().Throw<ArgumentException>().WithMessage("*nodes*");
     }
 
     [Fact]

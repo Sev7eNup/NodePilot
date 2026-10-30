@@ -164,6 +164,10 @@ public sealed class WorkflowPublishSettings : WorkflowGetSettings
     [CommandOption("--description <DESC>")]
     [Description("Override the workflow description.")]
     public string? Description { get; set; }
+
+    [CommandOption("--expected-version <VERSION>")]
+    [Description("Version the definition file was based on (see 'np workflow get'). A newer server version fails with a conflict instead of being overwritten.")]
+    public int? ExpectedVersion { get; set; }
 }
 
 [SupportedOSPlatform("windows")]
@@ -177,6 +181,12 @@ public sealed class WorkflowPublishCommand : BaseCommand<WorkflowPublishSettings
             writer.Error($"File not found: {settings.File}");
             return ExitCodes.Error;
         }
+        // The caller's base version, not the server's latest, so a concurrent edit returns 409.
+        if (settings.ExpectedVersion is not { } expectedVersion)
+        {
+            writer.Error("--expected-version is required: pass the workflow version the definition file was based on.");
+            return ExitCodes.Error;
+        }
 
         var json = await File.ReadAllTextAsync(settings.File, ct);
         try { using var _doc = JsonDocument.Parse(json); }
@@ -188,7 +198,7 @@ public sealed class WorkflowPublishCommand : BaseCommand<WorkflowPublishSettings
 
         var api = ClientFactory.Create(session);
         var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
-        var req = new PublishWorkflowRequest(settings.Name ?? w.Name, settings.Description ?? w.Description, json, w.Version);
+        var req = new PublishWorkflowRequest(settings.Name ?? w.Name, settings.Description ?? w.Description, json, expectedVersion);
         var published = await api.PublishWorkflowAsync(w.Id, req, ct);
         writer.Success($"Workflow [bold]{Markup.Escape(published.Name)}[/] published (Version {published.Version}, Enabled).");
         return ExitCodes.Success;

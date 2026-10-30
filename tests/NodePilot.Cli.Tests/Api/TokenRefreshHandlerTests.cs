@@ -463,6 +463,22 @@ public sealed class TokenRefreshHandlerTests : IDisposable
         ex.Which.IsUnauthorized.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("api/auth/me")]
+    [InlineData("api/auth/refresh")]
+    public async Task SendAsync_StoreDeletedAfterClientCreation_RejectsCachedBearer(string path)
+    {
+        var handler = new TokenRefreshHandler(_tokens, "default") { InnerHandler = new HttpClientHandler() };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri(_server.Url + "/") };
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "stale-token");
+        _tokens.Delete("default");
+
+        using var response = await http.PostAsync(path, null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        _server.LogEntries.Should().BeEmpty("a removed local session must not reuse the cached default bearer");
+    }
+
     [Fact]
     public async Task StoreChangedAfterClientCreation_ToDifferentOrigin_DoesNotRefreshWithStoredToken()
     {

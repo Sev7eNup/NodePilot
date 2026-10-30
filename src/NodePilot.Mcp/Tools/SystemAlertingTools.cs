@@ -170,7 +170,7 @@ public sealed class SystemAlertingTools
         CancellationToken cancellationToken = default)
     {
         var result = await ApiErrorMapper.Guard(() => _api.TestFireSystemAlertPolicyAsync(ExecutionTools.ParseGuid(id, "policy id"), cancellationToken));
-        return new { allSucceeded = result.AllSucceeded, results = result.Results };
+        return new { allSucceeded = result.AllSucceeded, results = result.Results.Select(r => r with { Target = AlertRouteTargetRedactor.Redact(r.Channel, r.Target) }) };
     }
 
     private static object Summarize(SystemAlertPolicyResponse p) => new
@@ -189,8 +189,8 @@ public sealed class SystemAlertingTools
         cooldownMinutes = p.CooldownMinutes,
         minOccurrences = p.MinOccurrences,
         occurrenceWindowMinutes = p.OccurrenceWindowMinutes,
-        // Route secrets are never surfaced — only channel/target/order.
-        routes = p.Routes.Select(x => new { x.Channel, x.Target, x.Order, x.ConditionExpressionJson }),
+        // Route secrets are never surfaced; webhook targets are reduced to their origin.
+        routes = p.Routes.Select(x => new { x.Channel, Target = AlertRouteTargetRedactor.Redact(x.Channel, x.Target), x.Order, x.ConditionExpressionJson }),
         targets = p.Targets,
         activatedAt = p.ActivatedAt,
         updatedAt = p.UpdatedAt,
@@ -208,7 +208,11 @@ public sealed class SystemAlertingTools
         var list = new List<NotificationRouteDto>();
         var order = 0;
         foreach (var e in Split(emails)) list.Add(new NotificationRouteDto(null, "Email", e, null, order++));
-        foreach (var w in Split(webhooks)) list.Add(new NotificationRouteDto(null, "GenericWebhook", w, null, order++));
+        foreach (var w in Split(webhooks))
+        {
+            AlertRouteTargetRedactor.RequireUnmasked(w);
+            list.Add(new NotificationRouteDto(null, "GenericWebhook", w, null, order++));
+        }
         return list;
     }
 

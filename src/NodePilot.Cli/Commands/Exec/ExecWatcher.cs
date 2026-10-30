@@ -52,9 +52,12 @@ internal static class ExecWatcher
                 opts.HttpMessageHandlerFactory = handler =>
                 {
                     if (handler is HttpClientHandler primary)
+                    {
+                        primary.AllowAutoRedirect = false;
                         primary.ServerCertificateCustomValidationCallback = (request, certificate, chain, errors) =>
                             PinnedCertificateHandlerFactory.Evaluate(session.Tls, hubUrl.IdnHost, hubUrl.Port,
                                 certificate, chain, errors, out _);
+                    }
                     return handler;
                 };
                 opts.WebSocketConfiguration = socket =>
@@ -98,13 +101,27 @@ internal static class ExecWatcher
         var current = await api.GetExecutionAsync(executionId, ct);
         if (Commands.Workflow.WorkflowRunCommand.IsTerminal(current.Status))
         {
-            writer.WriteData(current, (console, v) => Renderers.ExecutionDetail(console, v));
-            return Commands.Workflow.WorkflowRunCommand.ExitCodeFor(current.Status);
+            if (done.TrySetResult(Commands.Workflow.WorkflowRunCommand.ExitCodeFor(current.Status)))
+                writer.WriteData(current, (console, v) => Renderers.ExecutionDetail(console, v));
+            return await done.Task;
         }
 
         using var reg = ct.Register(() => done.TrySetCanceled(ct));
+        using var reconciliation = new PeriodicTimer(TimeSpan.FromSeconds(1));
         try
         {
+            while (!done.Task.IsCompleted)
+            {
+                var tick = reconciliation.WaitForNextTickAsync(ct).AsTask();
+                if (await Task.WhenAny(done.Task, tick) == done.Task) break;
+                if (!await tick) break;
+                current = await api.GetExecutionAsync(executionId, ct);
+                if (Commands.Workflow.WorkflowRunCommand.IsTerminal(current.Status)
+                    && done.TrySetResult(Commands.Workflow.WorkflowRunCommand.ExitCodeFor(current.Status)))
+                {
+                    writer.WriteData(current, (console, value) => Renderers.ExecutionDetail(console, value));
+                }
+            }
             return await done.Task;
         }
         catch (OperationCanceledException)
@@ -176,8 +193,8 @@ internal static class ExecWatcher
         if (!Commands.Workflow.WorkflowRunCommand.IsTerminal(e.Status))
             return;
 
-        writer.Info($"[bold]Execution {e.Status}[/]");
-        done.TrySetResult(Commands.Workflow.WorkflowRunCommand.ExitCodeFor(e.Status));
+        if (done.TrySetResult(Commands.Workflow.WorkflowRunCommand.ExitCodeFor(e.Status)))
+            writer.Info($"[bold]Execution {e.Status}[/]");
     }
 
     // Loose JSON wrappers — we don't import the Hub DTOs to keep the CLI free of API project refs.

@@ -143,11 +143,11 @@ np workflow duplicate deploy-prod
 np workflow force-unlock deploy-prod   # Admin; prompts
 ```
 
-`publish` — atomically save + enable + unlock. Flags: `-f|--file <PATH>` (required, the JSON definition), `--name`, `--description`.
+`publish` — atomically save + enable + unlock. Flags: `-f|--file <PATH>` (required, the JSON definition), `--expected-version <N>` (required, the version the file was based on, see `np workflow get`; a newer server version fails with `409 workflow_version_conflict` instead of being overwritten), `--name`, `--description`.
 
 ```bash
-np workflow publish deploy-prod -f ./deploy-prod.def.json
-np workflow publish deploy-prod -f ./deploy-prod.def.json --description "bump revision" -o json
+np workflow publish deploy-prod -f ./deploy-prod.def.json --expected-version 7
+np workflow publish deploy-prod -f ./deploy-prod.def.json --expected-version 7 --description "bump revision" -o json
 ```
 
 ### versions / rollback
