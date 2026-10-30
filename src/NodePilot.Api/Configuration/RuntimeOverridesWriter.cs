@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Security.AccessControl;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -14,13 +15,12 @@ namespace NodePilot.Api.Configuration;
 ///
 /// <para>Responsibilities:</para>
 /// <list type="bullet">
-///   <item>Atomic writes via <see cref="File.Replace(string, string, string)"/> with a
-///   UNC/non-NTFS fallback to copy+move. Crash between tmp-write and replace leaves the
-///   original file intact.</item>
+///   <item>Atomic writes via <see cref="File.Replace(string, string, string)"/> preserve
+///   the target's access policy. A failed replacement leaves the original intact.</item>
 ///   <item>Backup rotation: every successful write produces a timestamped <c>.bak.*</c>
 ///   file next to the override; the writer keeps the last 10 and deletes older ones.</item>
-///   <item>Process-local serialization via a named <see cref="Mutex"/> so a save can't
-///   race a concurrent restart-marker clear in the same process.</item>
+///   <item>Host-local serialization via a named <see cref="Mutex"/> so saves and
+///   restart-marker updates for the same path cannot race.</item>
 ///   <item>ETag computation per top-level section (SHA256 of canonicalized JSON), so the
 ///   <c>AdminSettingsController</c> can implement optimistic concurrency.</item>
 ///   <item>Restart-marker management: <c>__meta.restartRequiredFor</c> tracks which
@@ -29,8 +29,8 @@ namespace NodePilot.Api.Configuration;
 ///   fires.</item>
 /// </list>
 ///
-/// <para>Cross-host concurrency (HA cluster on a UNC share) is not solved here — that
-/// belongs to the controller's ETag/If-Match check. The mutex is only intra-process.</para>
+/// <para>The mutex does not synchronize different hosts. A shared overrides file must
+/// not be edited concurrently by multiple hosts.</para>
 /// </summary>
 public sealed class RuntimeOverridesWriter
 {
@@ -507,37 +507,33 @@ public sealed class RuntimeOverridesWriter
     private void WriteAtomic(JsonObject root)
     {
         var content = SerializeAndValidate(root);
-        var tmp = _path + ".tmp";
-        File.WriteAllBytes(tmp, content);
-
-        if (!File.Exists(_path))
-        {
-            // First-time write — no Replace, just Move. No backup needed because there
-            // was no prior file to back up.
-            File.Move(tmp, _path);
-            return;
-        }
-
-        var backupName = _path + ".bak." + DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff");
-
+        var tmp = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            // Primary path: NTFS-local atomic File.Replace + same-call backup creation.
-            File.Replace(tmp, _path, backupName);
-        }
-        catch (Exception ex) when (ex is IOException or PlatformNotSupportedException or UnauthorizedAccessException)
-        {
-            // UNC / SMB / non-NTFS fallback: explicit copy-as-backup, then atomic move.
-            // Not as bullet-proof as File.Replace under crash, but acceptable when the
-            // file lives on a shared drive (HA cluster scenario). Cross-host write race
-            // is the controller's ETag/If-Match concern, not ours.
-            _log.LogDebug(ex,
-                "File.Replace failed for {Path}, falling back to copy+move (likely UNC/non-NTFS).", _path);
-            File.Copy(_path, backupName, overwrite: false);
-            File.Move(tmp, _path, overwrite: true);
-        }
+            var exists = File.Exists(_path);
+            using (new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+            if (exists)
+                new FileInfo(tmp).SetAccessControl(new FileInfo(_path).GetAccessControl(AccessControlSections.Access));
+            File.WriteAllBytes(tmp, content);
 
-        RotateBackups();
+            if (!exists)
+            {
+                File.Move(tmp, _path);
+                return;
+            }
+
+            var backupName = _path + ".bak." + DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff");
+            File.Replace(tmp, _path, backupName);
+            RotateBackups();
+        }
+        finally
+        {
+            try { File.Delete(tmp); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.LogWarning(ex, "Could not remove temporary settings file {Path}.", tmp);
+            }
+        }
     }
 
     private static byte[] SerializeAndValidate(JsonObject root)

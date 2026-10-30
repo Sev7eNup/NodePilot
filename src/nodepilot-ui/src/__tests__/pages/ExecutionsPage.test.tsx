@@ -439,7 +439,7 @@ describe('ExecutionsPage', () => {
     expect(screen.queryByRole('button', { name: 'Backup Job' })).toBeNull();
 
     act(() => hubConnection?.handlers.get('LiveEventsBatch')?.({
-      events: [{ type: 'ExecutionStatusChanged', evt: { executionId: 'exec-2', workflowId: 'wf-2', status: 'Failed' } }],
+      events: [{ type: 'ExecutionStatusChanged', event: { executionId: 'exec-2', workflowId: 'wf-2', status: 'Failed' } }],
     }));
 
     await waitFor(() => expect(listCalls).toBe(2), { timeout: 5_000 });

@@ -199,6 +199,7 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
             onRun={canRun ? runStepTest : undefined}
             onAiGenerate={aiScript?.generate}
             aiTargetHost={aiScript?.targetHost}
+            aiRecipientKey={aiScript?.recipientKey}
           />
         </Suspense>
       )}

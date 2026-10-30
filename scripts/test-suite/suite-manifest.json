@@ -303,17 +303,6 @@
       ]
     },
     {
-      "name": "[TestSuite] powerManagement",
-      "file": "positive/33-powerManagement.json",
-      "contract": "positive",
-      "profile": "continuous",
-      "tier": "B",
-      "cron": "0 5/15 * * * ? *",
-      "maxRuntimeSeconds": 45,
-      "judgeBy": "run",
-      "requires": []
-    },
-    {
       "name": "[TestSuite] emailNotification",
       "file": "positive/34-emailNotification.json",
       "contract": "positive",
@@ -508,7 +497,7 @@
       "contract": "negative",
       "profile": "continuous",
       "tier": "B",
-      "cron": "0 10/15 * * * ? *",
+      "cron": "0 5/15 * * * ? *",
       "maxRuntimeSeconds": 90,
       "judgeBy": "run",
       "requires": []
@@ -519,7 +508,7 @@
       "contract": "negative",
       "profile": "continuous",
       "tier": "B",
-      "cron": "0 5/15 * * * ? *",
+      "cron": "0 10/15 * * * ? *",
       "maxRuntimeSeconds": 90,
       "judgeBy": "run",
       "requires": []
@@ -530,7 +519,7 @@
       "contract": "negative",
       "profile": "continuous",
       "tier": "B",
-      "cron": "0 10/15 * * * ? *",
+      "cron": "0 5/15 * * * ? *",
       "maxRuntimeSeconds": 90,
       "judgeBy": "run",
       "requires": [
@@ -543,7 +532,7 @@
       "contract": "negative",
       "profile": "continuous",
       "tier": "B",
-      "cron": "0 5/15 * * * ? *",
+      "cron": "0 10/15 * * * ? *",
       "maxRuntimeSeconds": 120,
       "judgeBy": "run",
       "requires": []
@@ -554,7 +543,7 @@
       "contract": "negative",
       "profile": "continuous",
       "tier": "B",
-      "cron": "0 10/15 * * * ? *",
+      "cron": "0 5/15 * * * ? *",
       "maxRuntimeSeconds": 180,
       "judgeBy": "run",
       "requires": []
@@ -630,12 +619,26 @@
       ]
     },
     {
+      "name": "[TestSuite-Inv] powerManagement",
+      "file": "invasive/93-powerManagement.json",
+      "contract": "invasive",
+      "profile": "invasive",
+      "tier": "C",
+      "cron": "0 7/30 * * * ? *",
+      "maxRuntimeSeconds": 45,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "globals:NP_TESTSUITE_DISPOSABLE_HOST"
+      ]
+    },
+    {
       "name": "[TestSuite] AI agents",
       "file": "positive/99-aiAgents.json",
       "contract": "positive",
       "profile": "integration",
       "tier": "C",
-      "cron": "0 7/30 * * * ? *",
+      "cron": "0 22/30 * * * ? *",
       "maxRuntimeSeconds": 390,
       "judgeBy": "run",
       "requires": [
@@ -3039,87 +3042,6 @@
       "profile": "excluded",
       "expectedOutcome": "excluded",
       "workflow": "[TestSuite] sql (named connection)"
-    },
-    {
-      "id": "powerManagement.action.abort",
-      "dimension": "powerManagement.action",
-      "value": "abort",
-      "profile": "continuous",
-      "expectedOutcome": "success",
-      "workflow": "[TestSuite] powerManagement",
-      "nodeId": "v0",
-      "assertedBy": "assert",
-      "maxRuntimeSeconds": 45
-    },
-    {
-      "id": "powerManagement.action.shutdown",
-      "dimension": "powerManagement.action",
-      "value": "shutdown",
-      "reason": "Would take the host down. Also blocked against localhost unless PowerManagement:AllowLocalSelfShutdown is set; that rejection is in the negative contract.",
-      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
-      "profile": "excluded",
-      "expectedOutcome": "excluded",
-      "workflow": "[TestSuite] powerManagement"
-    },
-    {
-      "id": "powerManagement.action.restart",
-      "dimension": "powerManagement.action",
-      "value": "restart",
-      "reason": "Would take the host down.",
-      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
-      "profile": "excluded",
-      "expectedOutcome": "excluded",
-      "workflow": "[TestSuite] powerManagement"
-    },
-    {
-      "id": "powerManagement.action.hibernate",
-      "dimension": "powerManagement.action",
-      "value": "hibernate",
-      "reason": "Would suspend the host.",
-      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
-      "profile": "excluded",
-      "expectedOutcome": "excluded",
-      "workflow": "[TestSuite] powerManagement"
-    },
-    {
-      "id": "powerManagement.action.logoff",
-      "dimension": "powerManagement.action",
-      "value": "logoff",
-      "reason": "Ends the interactive session the developer is working in; the self-shutdown guard does not cover logoff, so nothing would stop it.",
-      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
-      "profile": "excluded",
-      "expectedOutcome": "excluded",
-      "workflow": "[TestSuite] powerManagement"
-    },
-    {
-      "id": "powerManagement.delaySeconds",
-      "dimension": "powerManagement.delaySeconds",
-      "value": "delay before the action",
-      "reason": "Only meaningful together with shutdown or restart, which are excluded above.",
-      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
-      "profile": "excluded",
-      "expectedOutcome": "excluded",
-      "workflow": "[TestSuite] powerManagement"
-    },
-    {
-      "id": "powerManagement.message",
-      "dimension": "powerManagement.message",
-      "value": "message to logged-on users",
-      "reason": "Only meaningful together with shutdown or restart.",
-      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
-      "profile": "excluded",
-      "expectedOutcome": "excluded",
-      "workflow": "[TestSuite] powerManagement"
-    },
-    {
-      "id": "powerManagement.force",
-      "dimension": "powerManagement.force",
-      "value": "force applications closed",
-      "reason": "Only meaningful together with shutdown or restart.",
-      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
-      "profile": "excluded",
-      "expectedOutcome": "excluded",
-      "workflow": "[TestSuite] powerManagement"
     },
     {
       "id": "emailNotification.isHtml.false",
@@ -5574,6 +5496,91 @@
         "globals:NP_TESTSUITE_SERVICE_TARGET"
       ],
       "maxRuntimeSeconds": 240
+    },
+    {
+      "id": "powerManagement.action.abort",
+      "dimension": "powerManagement.action",
+      "value": "abort",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] powerManagement",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "globals:NP_TESTSUITE_DISPOSABLE_HOST"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "powerManagement.action.shutdown",
+      "dimension": "powerManagement.action",
+      "value": "shutdown",
+      "reason": "Would take the host down. Also blocked against localhost unless PowerManagement:AllowLocalSelfShutdown is set; that rejection is in the negative contract.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] powerManagement"
+    },
+    {
+      "id": "powerManagement.action.restart",
+      "dimension": "powerManagement.action",
+      "value": "restart",
+      "reason": "Would take the host down.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] powerManagement"
+    },
+    {
+      "id": "powerManagement.action.hibernate",
+      "dimension": "powerManagement.action",
+      "value": "hibernate",
+      "reason": "Would suspend the host.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] powerManagement"
+    },
+    {
+      "id": "powerManagement.action.logoff",
+      "dimension": "powerManagement.action",
+      "value": "logoff",
+      "reason": "Ends the interactive session the developer is working in; the self-shutdown guard does not cover logoff, so nothing would stop it.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] powerManagement"
+    },
+    {
+      "id": "powerManagement.delaySeconds",
+      "dimension": "powerManagement.delaySeconds",
+      "value": "delay before the action",
+      "reason": "Only meaningful together with shutdown or restart, which are excluded above.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] powerManagement"
+    },
+    {
+      "id": "powerManagement.message",
+      "dimension": "powerManagement.message",
+      "value": "message to logged-on users",
+      "reason": "Only meaningful together with shutdown or restart.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] powerManagement"
+    },
+    {
+      "id": "powerManagement.force",
+      "dimension": "powerManagement.force",
+      "value": "force applications closed",
+      "reason": "Only meaningful together with shutdown or restart.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] powerManagement"
     },
     {
       "id": "aiAgent.json",

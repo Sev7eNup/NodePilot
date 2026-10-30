@@ -329,15 +329,20 @@ public static class ConditionEvaluator
 
     private static bool TryRegexMatch(string value, string pattern)
     {
-        if (string.IsNullOrEmpty(pattern) || pattern.Length > RegexMaxPatternLength) return false;
+        if (string.IsNullOrEmpty(pattern) || pattern.Length > RegexMaxPatternLength)
+            throw new ConditionEvaluationException("regex pattern is empty or exceeds the length limit");
+        if (value.Length > RegexMaxInputLength)
+            throw new ConditionEvaluationException("regex input exceeds the length limit");
         var rx = GetCachedRegex(pattern);
-        if (rx is null) return false;
+        if (rx is null) throw new ConditionEvaluationException("regex pattern is invalid");
         try
         {
-            var input = value.Length > RegexMaxInputLength ? value[..RegexMaxInputLength] : value;
-            return rx.IsMatch(input);
+            return rx.IsMatch(value);
         }
-        catch (RegexMatchTimeoutException) { return false; }
+        catch (RegexMatchTimeoutException)
+        {
+            throw new ConditionEvaluationException("regex evaluation exceeded its time limit");
+        }
     }
 
     private static string ResolveTemplates(string raw, ConditionContext ctx)

@@ -5,11 +5,11 @@
   "workflows": [
     {
       "name": "[TestSuite] powerManagement - All Actions (DESTRUCTIVE DISABLED)",
-      "description": "Testet powerManagement-Schemas. ACHTUNG: shutdown/restart/logoff/hibernate sind als 'disabled: true' markiert, damit der Test sie nicht wirklich ausfuehrt - die Knoten dienen nur der Schema-/UI-Validierung. Nur 'abort' (cancel pending shutdown) ist scharfgeschaltet, weil es ohne pending shutdown ein No-Op ist.",
+      "description": "Testet powerManagement-Schemas. ACHTUNG: shutdown/restart/logoff/hibernate sind als 'disabled: true' markiert, damit der Test sie nicht wirklich ausfuehrt - die Knoten dienen nur der Schema-/UI-Validierung. Auch 'abort' ist deaktiviert: es bricht jeden ausstehenden Shutdown oder Neustart des Hosts ab, auch einen aus einem Wartungsfenster, und dieser Runbook laeuft alle 5 Minuten.",
       "definition": {
         "nodes": [
           { "id": "trig", "type": "activity", "position": { "x": 0, "y": 500 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
-          { "id": "p_abort", "type": "activity", "position": { "x": 320, "y": 500 }, "data": { "label": "power: abort (safe no-op)", "activityType": "powerManagement", "targetMachineId": "localhost", "outputVariable": "p_abort", "config": { "action": "abort" } } },
+          { "id": "p_abort", "type": "activity", "position": { "x": 320, "y": 500 }, "data": { "label": "power: abort (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "outputVariable": "p_abort", "config": { "action": "abort" } } },
           { "id": "p_shutdown", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "power: shutdown (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "config": { "action": "shutdown", "delaySeconds": 60, "force": false, "message": "Test: NodePilot shutdown" } } },
           { "id": "p_restart", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "power: restart (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "config": { "action": "restart", "delaySeconds": 30, "force": false } } },
           { "id": "p_logoff", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "power: logoff (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "config": { "action": "logoff", "force": true } } },

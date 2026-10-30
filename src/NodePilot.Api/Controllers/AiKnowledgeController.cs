@@ -79,10 +79,13 @@ public sealed class AiKnowledgeController : ControllerBase
         var toolSourcesEnabled = enabled
                                  && llm.TryResolveActiveProfile(out var activeProfile)
                                  && activeProfile.EnableToolCalling;
-        var scriptContextTargetHost = llmUsable && User.IsPrivileged()
-                                      && llm.TryResolveActiveProfile(out var scriptProfile)
-            ? DisplayHost(scriptProfile.BaseUrl)
-            : null;
+        string? scriptContextTargetHost = null;
+        string? scriptContextRecipientKey = null;
+        if (llmUsable && User.IsPrivileged() && llm.TryResolveActiveProfile(out var scriptProfile))
+        {
+            scriptContextTargetHost = DisplayHost(scriptProfile.BaseUrl);
+            scriptContextRecipientKey = LlmHistoryContext.Key(llm.ActiveProfileId, scriptProfile);
+        }
         return Ok(new KnowledgeCapabilitiesDto(
             Enabled: enabled,
             Llm: llmUsable,
@@ -90,7 +93,8 @@ public sealed class AiKnowledgeController : ControllerBase
             Operational: toolSourcesEnabled && k.OperationalEnabled,
             SourceCode: toolSourcesEnabled && k.SourceCodeEnabled && User.IsPrivileged(),
             Db: toolSourcesEnabled && k.DbEnabled && User.IsAdmin(),
-            ScriptContextTargetHost: scriptContextTargetHost));
+            ScriptContextTargetHost: scriptContextTargetHost,
+            ScriptContextRecipientKey: scriptContextRecipientKey));
     }
 
     private static string? DisplayHost(string? baseUrl)

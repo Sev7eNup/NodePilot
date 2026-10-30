@@ -138,6 +138,8 @@ Write-Host "  -> Active leader is $leaderName ($leaderUrl). Will fail it over to
 
 # ----- Step 2: stop the leader -----
 $failoverStart = Get-Date
+$restartRequired = $false
+try {
 if ($SkipServiceStop) {
     Write-Host ""
     Write-Host "  -SkipServiceStop set: stop the '$ServiceName' service on $leaderName ($leaderUrl) NOW." -ForegroundColor Yellow
@@ -149,6 +151,8 @@ if ($SkipServiceStop) {
     $leaderHost = ([Uri]$leaderUrl).Host
     Write-Step "Step 2: stopping service '$ServiceName' on $leaderHost"
     try {
+        # A remoting error may arrive after Stop-Service succeeded.
+        $restartRequired = $true
         Invoke-Command -ComputerName $leaderHost -ArgumentList $ServiceName -ErrorAction Stop -ScriptBlock {
             param($name)
             Stop-Service -Name $name -Force -ErrorAction Stop
@@ -194,20 +198,22 @@ if ($VipUrl) {
     }
 }
 
-# ----- Step 5: restart the original leader and confirm follower role -----
-if (-not $SkipServiceStop) {
-    Write-Step "Step 5: restarting service on the original leader"
-    $leaderHost = ([Uri]$leaderUrl).Host
-    try {
-        Invoke-Command -ComputerName $leaderHost -ArgumentList $ServiceName -ErrorAction Stop -ScriptBlock {
-            param($name)
-            Start-Service -Name $name -ErrorAction Stop
+} finally {
+    if ($restartRequired) {
+        Write-Step 'Restoring the original leader service'
+        try {
+            Invoke-Command -ComputerName $leaderHost -ArgumentList $ServiceName -ErrorAction Stop -ScriptBlock {
+                param($name)
+                Start-Service -Name $name -ErrorAction Stop
+            }
+        } catch {
+            throw "FAIL: could not restore service on $leaderHost. Restart it manually. $($_.Exception.Message)"
         }
-    } catch {
-        Write-Host "WARN: could not start service on $leaderHost. $($_.Exception.Message). Restart manually then re-check /healthz/leader." -ForegroundColor Yellow
-        exit 0
     }
+}
 
+# ----- Step 5: confirm that the restored node rejoins as follower -----
+if (-not $SkipServiceStop) {
     # Wait until the original leader is back as a follower, so its own /healthz/leader gives 503.
     $rejoinDeadline = (Get-Date).AddSeconds(60)
     $rejoined = $false

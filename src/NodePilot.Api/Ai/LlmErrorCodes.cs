@@ -10,6 +10,7 @@ internal static class LlmErrorCodes
 {
     public static string For(LlmException ex) => ex.Kind switch
     {
+        LlmErrorKind.RecipientChanged => "LLM_RECIPIENT_CHANGED",
         LlmErrorKind.Unreachable => "LLM_UNREACHABLE",
         LlmErrorKind.Timeout => "LLM_TIMEOUT",
         LlmErrorKind.Unauthorized => "LLM_UNAUTHORIZED",

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.AccessControl;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -70,6 +71,42 @@ public sealed class TextFileEditActivityTests : IDisposable
         => new() { WorkflowExecutionId = Guid.NewGuid(), StepId = "step-1", TargetMachineId = _machineId, CredentialId = _credentialId };
 
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement;
+
+    [Fact]
+    public async Task EditProtectedFile_PreservesAccessRulesAndRemovesStagingFile()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "np-text-acl-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "protected.txt");
+        try
+        {
+            await File.WriteAllTextAsync(path, "before");
+            var file = new FileInfo(path);
+            var acl = file.GetAccessControl(AccessControlSections.Access);
+            acl.SetAccessRuleProtection(isProtected: true, preserveInheritance: true);
+            file.SetAccessControl(acl);
+            var before = file.GetAccessControl(AccessControlSections.Access)
+                .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+            await CreateActivity().ExecuteAsync(Ctx(), JsonSerializer.SerializeToElement(new
+            { operation = "replace", path, matchPattern = "before", replace = "after" }), CancellationToken.None);
+            using var shell = System.Management.Automation.PowerShell.Create();
+            shell.AddScript(_capturedScript!);
+            var output = string.Join("\n", shell.Invoke().Select(item => item.ToString()));
+            shell.HadErrors.Should().BeFalse();
+            PowerShellOperation.TryParseJsonBlock(output, PowerShellOperation.Markers("TEXTEDIT"),
+                out var document, out var error).Should().BeTrue(error);
+            using (document!) document!.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue(output);
+            (await File.ReadAllTextAsync(path)).Should().Be("after");
+            file.GetAccessControl(AccessControlSections.Access).GetSecurityDescriptorSddlForm(AccessControlSections.Access)
+                .Should().Be(before);
+            Directory.GetFiles(directory).Should().Equal(path);
+        }
+        finally
+        {
+            File.Delete(path);
+            Directory.Delete(directory);
+        }
+    }
 
     [Theory]
     [InlineData("value\n", "missing", "other", "value\n")]

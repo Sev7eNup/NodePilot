@@ -29,6 +29,7 @@ import {
   MAX_AUTO_HYDRATE,
   type ApiExecutionItem,
   type ApiStepItem,
+  type PausedStepSnapshot,
   type ExecutionUpdate,
   type LiveEvent,
   type LiveEventsBatch,
@@ -94,6 +95,9 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
   // intent lets the health recovery transition replay it without user interaction.
   const desiredExecutionGroupsRef = useRef<Set<string>>(new Set());
   const pendingEventsRef = useRef<LiveEvent[]>([]);
+  // Each in-flight snapshot records subsequent events. Replay them over the REST baseline
+  // so reconciliation fixes old state without rolling back newer transport updates.
+  const hydrationEventsRef = useRef(new Map<string, LiveEvent[]>());
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const evictionTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const queryClient = useQueryClient();
@@ -197,16 +201,22 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     if (!mountedRef.current || workflowIdRef.current !== execWorkflowId) return;
     if (hydratedExecsRef.current.has(executionId)) return;
     hydratedExecsRef.current.add(executionId);
+    const laterEvents: LiveEvent[] = [];
+    hydrationEventsRef.current.set(executionId, laterEvents);
     try {
-      const steps = await rateLimitedHydration(
-        () => {
+      const [steps, paused] = await rateLimitedHydration(
+        async () => {
           // The hydration limiter may keep this callback queued across logout/user switch.
           assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
-          return api.get<ApiStepItem[]>(`/executions/${executionId}/steps`);
+          return Promise.all([
+            api.get<ApiStepItem[]>(`/executions/${executionId}/steps`),
+            api.get<PausedStepSnapshot[]>(`/executions/${executionId}/paused-steps`),
+          ]);
         },
       );
       assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
-      if (!mountedRef.current || workflowIdRef.current !== execWorkflowId) return;
+      if (!mountedRef.current || workflowIdRef.current !== execWorkflowId
+        || hydrationEventsRef.current.get(executionId) !== laterEvents) return;
       setLiveExecutionsById((prev) => {
         const exec = prev[executionId];
         const existing = new Map(exec ? exec.steps.map((s) => [s.stepId, s]) : []);
@@ -230,24 +240,13 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
             spanId: ex?.spanId,
           };
         });
-        // Preserve in-memory steps not in the REST response (e.g. Paused steps not yet persisted).
-        for (const [stepId, step] of existing) {
-          if (!merged.some((s) => s.stepId === stepId)) merged.push(step);
-        }
-        // Rebuild databus entries from the REST snapshot to match the engine's variable
-        // shape (`{stepId}.output/.error/.param.*` plus alias-keyed mirrors). Entries
-        // already applied from SignalR win on collision since they may be fresher.
+        // REST is authoritative for the baseline; only events received during this fetch
+        // are replayed afterward. Paused snapshots carry the redacted debugger variables.
         const hydratedDatabus = buildDatabusFromHydratedSteps(steps);
-        if (exec) {
-          return {
-            ...prev,
-            [executionId]: {
-              ...exec,
-              steps: merged,
-              databus: { ...hydratedDatabus, ...exec.databus },
-            },
-          };
-        }
+        const pauseEvents: LiveEvent[] = paused.map((pause) => ({ type: 'StepPaused', evt: {
+          executionId, workflowId: execWorkflowId, stepId: pause.stepId, stepName: pause.stepLabel ?? undefined,
+          pausedAt: pause.pausedAt, reason: pause.reason, variables: pause.variables,
+        } }));
         // Lazy path raced ahead of any SignalR event landing in state — synthesize a
         // minimal entry so REST steps are visible immediately. Subsequent SignalR events
         // will fill in workflowId/status correctly via applyLiveEvent's update path.
@@ -255,23 +254,25 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
           .map((s) => s.startedAt)
           .filter((d): d is string => !!d)
           .sort((a, b) => a.localeCompare(b))[0] ?? new Date().toISOString();
-        return {
-          ...prev,
+        return mergeHydrated({
           [executionId]: {
+            ...exec,
             executionId,
             workflowId: execWorkflowId,
-            status: 'Running',
+            status: exec?.status ?? 'Running',
+            startedAt: exec?.startedAt ?? startedAt,
             steps: merged,
-            startedAt,
             databus: hydratedDatabus,
           },
-        };
+        }, prev, [...pauseEvents, ...laterEvents]);
       });
     } catch (err) {
       if (!(err instanceof AuthBoundaryChangedError)) {
         console.warn(`[useWorkflowSignalR] step hydration for ${executionId} failed`, err);
       }
-      hydratedExecsRef.current.delete(executionId);
+      if (hydrationEventsRef.current.get(executionId) === laterEvents) hydratedExecsRef.current.delete(executionId);
+    } finally {
+      if (hydrationEventsRef.current.get(executionId) === laterEvents) hydrationEventsRef.current.delete(executionId);
     }
   }, []);
 
@@ -402,48 +403,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
 
     if (toAutoHydrate.length === 0) return;
 
-    const result: LiveExecutionsById = {};
-    await Promise.all(toAutoHydrate.map(async (exec) => {
-      try {
-        const steps = await rateLimitedHydration(
-          () => {
-            assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
-            return api.get<ApiStepItem[]>(`/executions/${exec.id}/steps`);
-          },
-        );
-        assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
-        result[exec.id] = {
-          executionId: exec.id,
-          workflowId: exec.workflowId,
-          status: exec.status,
-          startedAt: exec.startedAt,
-          completedAt: exec.completedAt,
-          errorMessage: exec.errorMessage,
-          steps: steps.map((s) => ({
-            executionId: exec.id,
-            workflowId: exec.workflowId,
-            stepId: s.stepId,
-            stepName: s.stepName,
-            stepType: s.stepType ?? 'unknown',
-            status: s.status as StepUpdate['status'],
-            output: s.output,
-            errorOutput: s.errorOutput,
-            traceOutput: s.traceOutput,
-            startedAt: s.startedAt ?? undefined,
-            completedAt: s.completedAt ?? undefined,
-          })),
-          databus: buildDatabusFromHydratedSteps(steps),
-        };
-        hydratedExecsRef.current.add(exec.id);
-      } catch (err) {
-        if (!(err instanceof AuthBoundaryChangedError)) {
-          console.warn(`[useWorkflowSignalR] bulk hydration: steps for ${exec.id} failed`, err);
-        }
-      }
-    }));
-
-    if (!mountedRef.current || workflowIdRef.current !== wfid || Object.keys(result).length === 0) return;
-    setLiveExecutionsById((prev) => mergeHydrated(result, prev));
+    await Promise.all(toAutoHydrate.map((exec) => hydrateStepsForExecution(exec.id, wfid)));
   }, [scheduleEviction, hydrateStepsForExecution, scheduleQueryInvalidate]);
 
   const flushPendingEvents = useCallback(() => {
@@ -475,6 +435,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
       hydrateStepsForExecution(event.evt.executionId, event.evt.workflowId);
     }
 
+    hydrationEventsRef.current.get(event.evt.executionId)?.push(event);
     pendingEventsRef.current.push(event);
     if (event.type === 'ExecutionStatusChanged') {
       const { status, executionId, workflowId: evtWid } = event.evt;
@@ -504,6 +465,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     for (const timer of evictionTimersRef.current.values()) clearTimeout(timer);
     evictionTimersRef.current.clear();
     hydratedExecsRef.current.clear();
+    hydrationEventsRef.current.clear();
     listedExecsRef.current.clear();
     desiredExecutionGroupsRef.current.clear();
     setLiveExecutionsById({});
@@ -546,6 +508,8 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     if (!mountedRef.current
       || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
     const desired = Array.from(desiredExecutionGroupsRef.current);
+    const previouslyHydrated = Array.from(hydratedExecsRef.current);
+    hydratedExecsRef.current.clear();
     await Promise.all(desired.map(async (executionId) => {
       if (await invokeSafely('JoinExecution', executionId)
         && mountedRef.current
@@ -553,6 +517,8 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
         await hydrateStepsForExecution(executionId, wfid);
       }
     }));
+
+    await Promise.all(previouslyHydrated.map((executionId) => hydrateStepsForExecution(executionId, wfid)));
 
     if (!mountedRef.current
       || workflowIdRef.current !== wfid

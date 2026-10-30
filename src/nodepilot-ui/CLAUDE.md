@@ -10,6 +10,11 @@ Applies to `src/nodepilot-ui/`. Project-wide rules are in the root `CLAUDE.md`.
 
 ## Stack Rules
 
+- Workflow reference changes go through `lib/workflowReferences.ts`: templates, dynamic node bindings and actual condition operands share one traversal. Copy/duplicate allocate aliases in `workflowFragment.ts`; they must not retain an existing producer's alias.
+- Graph mutations record history **before** changing source state. `useWorkflowHistory.commitPropertyEdit` coalesces a typing burst while preserving its first snapshot; input surfaces invoke the same commands for dirty tracking and undo.
+- Async completion belongs to its original editing session and revision. Use `useAsyncIdentity` for session ownership; workflow persistence also guards draft revisions. A late response must not close, reset or execute a newly opened record.
+- Realtime hydration replaces the old REST baseline, then replays events received during that request. Paused snapshots include redacted variables; reconnect must reconcile already hydrated runs. Chat history uses `contextBoundHistory` after a recipient change, and browser persistence must not interrupt in-memory sending.
+
 - UI strings via `react-i18next` (namespaces per `src/i18n/locales/{de,en}/`, default DE) — new visible strings in **both** languages.
 - **Colours always via design tokens/CSS variables** — never hardcode Tailwind colour literals (`text-gray-900`, `bg-white` break the dark skins). Native `<select>`: `option:hover` is not stylable in Chromium → use the custom dropdown component.
 - Client state via Zustand stores (`src/stores/`), server state via TanStack React Query (`refetchOnWindowFocus:false`, SignalR invalidates caches).
@@ -84,7 +89,8 @@ server, no DB — state lives per tab and a reload restores the seed.
 - **Check response formats against the real consumer, not against themselves.** The expensive bugs
   were all key differences that a test against the handler's own shape never sees:
   `{folderId}` instead of `{targetFolderId}`, `id` instead of `workflowId`/`executionId`, arrays instead of
-  objects indexed by step ID, `{type,event}` instead of `{type,evt}`. The tests therefore run
+  objects indexed by step ID. The server's JsonHubProtocol emits `{type,event}`; demo batches
+  must match it, and both live consumers decode through `normalizeBatchItem`. The tests run
   through `api/client.ts`, `api/paging.ts`, `api/sharedFolders.ts`, `api/adminSettings.ts` and the
   real `useLiveOpsFeed` hook.
 - **The smoke test was blind in three ways — each blindness let a real crash through:**

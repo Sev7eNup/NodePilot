@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NodePilot.Api.Security;
 using NodePilot.Api.Security.Oidc;
@@ -88,6 +90,70 @@ public sealed class ScimProvisioningServiceTests : IDisposable
         (await _db.DirectoryMemberships.SingleAsync(m => m.UserId == userId)).GroupKey
             .Should().Be("nodepilot-admins");
         (await _db.AuthSessions.SingleAsync(s => s.Id == session.Id)).RevokedAt.Should().NotBeNull();
+    }
+
+    [Theory]
+    [InlineData("nodepilot-admins", false)]
+    [InlineData("nodepilot-admins", true)]
+    [InlineData("nodepilot-users", false)]
+    [InlineData("nodepilot-users", true)]
+    [InlineData("folder-readers", false)]
+    [InlineData("folder-readers", true)]
+    public async Task GroupRemoval_OlderOidcCallback_CannotRestoreMembership(string removedGroup, bool delete)
+    {
+        var oidc = new OidcIdentityMapper(_db, Options.Create(new EnterpriseOidcOptions
+        {
+            Authority = Authority,
+            AllowedGroupIds = ["nodepilot-users"],
+            GlobalRoleMappings = [new OidcRoleMapping { GroupId = "nodepilot-admins", Role = UserRole.Admin }],
+        }), NullLogger<OidcIdentityMapper>.Instance);
+        var issuedAt = DateTimeOffset.UtcNow.AddMinutes(-2);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("iss", Authority), new Claim("sub", "delayed-callback"),
+            new Claim("preferred_username", "delayed@example.test"),
+            new Claim("iat", issuedAt.ToUnixTimeSeconds().ToString()),
+            new Claim("groups", "nodepilot-users"), new Claim("groups", "nodepilot-admins"),
+            new Claim("groups", "folder-readers"),
+        ], "oidc"));
+        var original = await oidc.MapAsync(principal, default);
+        original.Succeeded.Should().BeTrue();
+        var userId = original.User!.Id;
+        var group = await Service().CreateGroupAsync(new ScimGroupWriteRequest
+        {
+            ExternalId = removedGroup, DisplayName = removedGroup,
+            Members = [new ScimMember { Value = userId.ToString() }],
+        }, "https://nodepilot/scim/v2", default);
+        group.Succeeded.Should().BeTrue();
+        var groupId = Guid.Parse(group.Value!.Id);
+        if (delete)
+            (await Service().DeleteGroupAsync(groupId, default)).Succeeded.Should().BeTrue();
+        else
+            (await Service().ReplaceGroupAsync(groupId, new ScimGroupWriteRequest
+            {
+                DisplayName = removedGroup, Members = [],
+            }, "https://nodepilot/scim/v2", default)).Succeeded.Should().BeTrue();
+        _db.ChangeTracker.Clear();
+        var roleAfterRemoval = (await _db.Users.SingleAsync(user => user.Id == userId)).Role;
+        var observation = (await _db.ExternalIdentities.SingleAsync(identity => identity.UserId == userId)).GroupsObservedAt;
+
+        var delayed = await oidc.MapAsync(principal, default);
+
+        delayed.Succeeded.Should().BeFalse();
+        delayed.AuditReason.Should().Be("oidc_group_snapshot_superseded");
+        (await _db.DirectoryMemberships.AnyAsync(membership => membership.UserId == userId
+            && membership.GroupKey == removedGroup)).Should().BeFalse();
+        (await _db.Users.SingleAsync(user => user.Id == userId)).Role.Should().Be(roleAfterRemoval);
+        (await _db.ExternalIdentities.SingleAsync(identity => identity.UserId == userId)).GroupsObservedAt
+            .Should().Be(observation);
+
+        var claims = (ClaimsIdentity)principal.Identity!;
+        claims.RemoveClaim(claims.FindFirst("iat")!);
+        claims.RemoveClaim(claims.FindAll("groups").Single(claim => claim.Value == removedGroup));
+        claims.AddClaim(new Claim("iat", DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeSeconds().ToString()));
+        var fresh = await oidc.MapAsync(principal, default);
+        fresh.AuditReason.Should().NotBe("oidc_group_snapshot_superseded");
+        fresh.Succeeded.Should().Be(removedGroup != "nodepilot-users");
     }
 
     [Fact]

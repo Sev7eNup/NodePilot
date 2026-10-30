@@ -15,7 +15,7 @@ export function missionPlan(workflowId: string, nodes: GraphNode[], edges: Graph
         ? [['trg'], ['probe'], ['dec'], ['log_warning'], ['gather'], ['ret']]
         : [['trg'], ['probe'], ['dec'], ['log_ok'], ['gather'], ['ret']];
   } else if (workflowId === MISSION_WORKFLOW_IDS.parallel) {
-    groups = [['trg'], ['archive'], ['checksum', 'inventory'], ['gather'], ['purge'], ['mail'], ['ret']];
+    groups = [['trg'], ['archivePath'], ['archive'], ['checksum', 'inventory'], ['gather'], ['purge'], ['mail'], ['ret']];
   } else if (workflowId === MISSION_WORKFLOW_IDS.service) {
     groups = (inputs.serviceState ?? 'Stopped').toLowerCase() === 'running'
       ? [['trg'], ['status'], ['dec'], ['log_ok'], ['gather'], ['ret']]
@@ -27,7 +27,7 @@ export function missionPlan(workflowId: string, nodes: GraphNode[], edges: Graph
   const required = workflowId === MISSION_WORKFLOW_IDS.decision
     ? ['trg->probe', 'probe->dec', 'dec->top_dirs', 'top_dirs->mail_critical', 'mail_critical->gather', 'log_warning->gather', 'log_ok->gather', 'gather->ret']
     : workflowId === MISSION_WORKFLOW_IDS.parallel
-      ? ['trg->archive', 'archive->checksum', 'archive->inventory', 'checksum->gather', 'inventory->gather', 'gather->purge', 'purge->mail', 'mail->ret']
+      ? ['trg->archivePath', 'archivePath->archive', 'archive->checksum', 'archive->inventory', 'checksum->gather', 'inventory->gather', 'gather->purge', 'purge->mail', 'mail->ret']
       : ['trg->status', 'status->dec', 'dec->start', 'start->settle', 'settle->verify', 'verify->mail_recovered', 'mail_recovered->gather', 'gather->ret'];
   return groups.every(group => group.every(id => available.has(id))) && required.every(connection => connections.has(connection)) ? groups : null;
 }
@@ -57,6 +57,7 @@ export function missionOutcome(workflowId: string, node: GraphNode, inputs: Reco
     if (id === 'ret') return result(JSON.stringify({ freeSpaceGb: free, severity }), { freeSpaceGb: String(free), severity });
   }
   if (workflowId === MISSION_WORKFLOW_IDS.parallel) {
+    if (id === 'archivePath') return result('Archive path for this run chosen.', { archiveFile: 'C:\\Archive\\C-Windows-Temp-20260918T120000Z.zip' });
     if (id === 'inventory') return result('Folder inventory complete.', { fileCount: '124' }, 3600);
     if (id === 'checksum') return result('Archive checksum verified.', { hash: '9f2c4b1e' }, 3200);
     if (id === 'purge') return result('Archived originals removed.', { removed: '124' }, 3600);

@@ -166,7 +166,8 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
   const runQuery = useCallback(() => {
     const trimmed = sql.trim();
     if (!trimmed) return;
-    if (mode === 'write' && !showWriteDialog) {
+    if (mode === 'write') {
+      if (showWriteDialog) return;
       setShowWriteDialog(true);
       setWriteConfirmInput('');
       return;
@@ -365,6 +366,7 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
           onInput={setWriteConfirmInput}
           onCancel={() => { setShowWriteDialog(false); setWriteConfirmInput(''); }}
           onConfirm={() => {
+            if (writeConfirmInput !== WRITE_CONFIRM_PHRASE) return;
             setShowWriteDialog(false);
             setWriteConfirmInput('');
             queryMutation.mutate({

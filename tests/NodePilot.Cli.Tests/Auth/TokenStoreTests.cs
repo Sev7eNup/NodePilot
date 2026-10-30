@@ -53,6 +53,31 @@ public sealed class TokenStoreTests : IDisposable
         store.Load("missing").Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("prod.eu", "prod_eu")]
+    [InlineData("prod/eu", "prod\\eu")]
+    [InlineData("a:b", "a?b")]
+    public void Save_DistinctProfiles_PreservesBothIdentities(string first, string second)
+    {
+        var store = new TokenStore(_dir);
+        store.Save(first, new StoredSession { Server = "https://np.example", Token = "first-identity" });
+        store.Save(second, new StoredSession { Server = "https://np.example", Token = "second-identity" });
+
+        store.PathFor(first).Should().NotBe(store.PathFor(second));
+        Path.GetDirectoryName(store.PathFor(first)).Should().Be(_dir);
+        store.Load(first)?.Token.Should().Be("first-identity");
+        store.Load(second)?.Token.Should().Be("second-identity");
+        store.Delete(first);
+        store.Load(second)?.Token.Should().Be("second-identity");
+    }
+
+    [Fact]
+    public void PathFor_ProfileCaseVariants_UseTheSameIdentity()
+    {
+        var store = new TokenStore(_dir);
+        store.PathFor("PROD").Should().Be(store.PathFor("prod"));
+    }
+
     [Fact]
     public void Load_CorruptFile_ReturnsNull()
     {

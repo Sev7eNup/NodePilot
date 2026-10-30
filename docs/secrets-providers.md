@@ -129,8 +129,9 @@ with its own runtime settings file. A clean result covers the responding node's 
 ### Step 2 — bulk re-encrypt
 
 ```bash
-curl -X POST -H "Authorization: Bearer <admin-token>" \
-     http://nodepilot-vip/api/secrets/reencrypt
+curl --fail-with-body --proto '=https' -X POST \
+     -H "Authorization: Bearer <admin-token>" \
+     https://nodepilot-vip/api/secrets/reencrypt
 ```
 
 The same sweep is available in the UI — **Admin settings → Security → "Re-encrypt

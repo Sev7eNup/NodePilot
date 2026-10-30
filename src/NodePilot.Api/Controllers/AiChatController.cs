@@ -186,14 +186,6 @@ public sealed class AiChatController : ControllerBase
                     scriptsShared = done.ScriptsShared;
                     historyDropped = done.HistoryDropped;
 
-                    // The workflow chat's done event also carries the history binding.
-                    await sse.WriteAsync("done", new
-                    {
-                        model = done.Model, durationMs = done.DurationMs, generationMs = done.GenerationMs,
-                        promptTokens = done.PromptTokens, completionTokens = done.CompletionTokens,
-                        historyContextKey = done.HistoryContextKey, historyDropped = done.HistoryDropped,
-                    }, ct);
-                    return;
                 }
 
                 if (await AiStreamSupport.TryWriteSharedEventAsync(sse, e, onToolCall: null, ct))

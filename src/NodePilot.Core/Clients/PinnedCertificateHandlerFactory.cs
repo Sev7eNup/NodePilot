@@ -29,6 +29,7 @@ public static class PinnedCertificateHandlerFactory
     {
         var tls = options ?? ClientTlsOptions.None;
         var handler = primary ?? new HttpClientHandler();
+        handler.AllowAutoRedirect = false;
         handler.ServerCertificateCustomValidationCallback = (request, certificate, chain, errors) =>
         {
             var accepted = Evaluate(

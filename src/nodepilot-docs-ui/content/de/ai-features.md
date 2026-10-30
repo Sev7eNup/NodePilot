@@ -148,7 +148,7 @@ Weitere Felder und Ausgaben enthält die [`llmQuery`-Referenz](activities-refere
 - Quellcodewissen im globalen Chat ist auf Admin und Operator beschränkt; Datenbankwissen mit Raw-SQL steht ausschließlich globalen Admins zur Verfügung. Folder-Rechte erhöhen einen Operator nicht in diese Capability. Workflow-Definitionen und statische Workflow-Analysen bleiben Admin und Operator mit Folder-RBAC vorbehalten; ein Viewer erhält aus der Betriebsquelle nur die geplanten Ausführungszeitpunkte.
 - Folder-RBAC begrenzt den Zugriff auf Workflow-Daten.
 - Secrets werden vor Modellanfragen redigiert. Auch Literalwerte in Decision-Cases und Condition-Gruppen werden redigiert, deshalb kann der Assistent eine Case-Liste oder Condition-Gruppe mit einem solchen Wert nicht ändern: der Vorschlag behält das Original, und ein Hinweis nennt den Node oder die Kante zum manuellen Anpassen.
-- Der Workflow-Assistent liest Skripte, SQL-Queries und Programm-Argumente im Klartext, der eingestellte KI-Anbieter sieht sie also. Ein Wert mit erkanntem Secret-Muster (etwa `PASSWORD = '…'` oder `ConvertTo-SecureString '…'`) geht vollständig maskiert raus. Die Erkennung ist eine Heuristik und findet nicht jedes eingebettete Passwort. Ein Administrator kann das pro LLM-Profil unter Einstellungen → Integrationen → LLM abschalten („Skripte, SQL und Argumente an den KI-Chat geben"). Ändert sich das Profil, sein Endpunkt oder diese Einstellung, sendet der Chat den bisherigen Verlauf nicht mehr mit.
+- Der Workflow-Assistent liest Skripte, SQL-Queries und Programm-Argumente im Klartext, der eingestellte KI-Anbieter sieht sie also. Ein Wert mit erkanntem Secret-Muster (etwa `PASSWORD = '…'` oder `ConvertTo-SecureString '…'`) geht vollständig maskiert raus. Die Erkennung ist eine Heuristik und findet nicht jedes eingebettete Passwort. Ein Administrator kann das pro LLM-Profil unter Einstellungen → Integrationen → LLM abschalten („Skripte, SQL und Argumente an den KI-Chat geben"). Ändert sich das Profil, sein Endpunkt, sein Modell oder diese Einstellung, sendet der Chat den bisherigen Verlauf nicht mehr mit. Der globale KI-Chat verhält sich genauso.
 - Generierte Scripts und Workflow-Änderungen erfordern immer eine fachliche Prüfung.
 - AI-Aktionen und übernommene Vorschläge werden im Audit-Log erfasst.
 
@@ -268,9 +268,13 @@ Schalter dafür ist bewusst nicht nötig:
 Die Erkennung ignoriert Groß-/Kleinschreibung und abschließende Schrägstriche. Lokale Runtimes wie
 Ollama, LM Studio, vLLM, LocalAI oder llama.cpp verstehen ausschließlich Chat Completions.
 
-Bei der Responses-API sendet NodePilot immer die Anweisung, die Anfrage **nicht** beim Anbieter zu
-speichern. Ohne diese Anweisung würde OpenAI dort standardmäßig jede Anfrage 30 Tage aufbewahren,
-während Chat Completions nichts speichert.
+Bei der Responses-API sendet NodePilot `store: false`, um die zugehörige Speicherung des
+Anwendungszustands auszuschalten. Das garantiert **keine** vollständige Nichtaufbewahrung beim
+Anbieter. OpenAIs Protokolle zur Missbrauchserkennung sind davon getrennt und können bei Responses
+und Chat Completions Prompts und Antworten enthalten. Prüfe vor der Übertragung von Skripten oder
+Betriebsdaten die [Datenkontrollen des Anbieters](https://developers.openai.com/api/docs/guides/your-data),
+einschließlich der für deine Organisation genehmigten Aufbewahrungsregeln und Funktionsausnahmen.
+NodePilot kann mit diesem Schalter keine anbieterseitige Zero Data Retention gewähren.
 
 Reasoning-Modelle nehmen keine Sampling-Parameter an und weisen eine Anfrage mit `temperature`
 zurück. Da dieser Wert optional ist, lässt NodePilot ihn in einem solchen Fall weg und wiederholt

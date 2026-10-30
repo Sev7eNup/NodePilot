@@ -28,6 +28,7 @@ export interface GenerateScriptRequest {
   currentScript?: string | null;
   /** Explicit, default-false consent. The backend ignores currentScript without it. */
   includeCurrentScript?: boolean;
+  expectedRecipientKey?: string | null;
 }
 
 export interface GenerateWorkflowRequest {
@@ -195,9 +196,9 @@ export interface ChatDoneMeta {
   generationMs?: number | null;
   promptTokens?: number | null;
   completionTokens?: number | null;
-  /** Workflow assistant: send back with the next turn, otherwise the server drops the history. */
+  /** Send back with the next turn, otherwise the server drops the history. */
   historyContextKey?: string | null;
-  /** Workflow assistant: this turn's history was left out (LLM profile or sharing changed). */
+  /** This turn's history was left out because the LLM profile or sharing changed. */
   historyDropped?: boolean;
 }
 
@@ -243,6 +244,7 @@ export async function chatStream(req: WorkflowChatRequest, h: ChatStreamHandlers
 export interface KnowledgeAskRequest {
   question: string;
   history: AiChatTurn[];
+  /** Recipient-bound context from the previous completed answer. */
   historyContextKey?: string | null;
   /** Caller's IANA time zone (e.g. `Europe/Berlin`) so the assistant can anchor "now" and render
    *  times in the user's local zone. */
@@ -265,6 +267,7 @@ export interface KnowledgeCapabilities {
   db: boolean;
   /** Host of the active profile, shown only to Admin/Operator as the script-context target. */
   scriptContextTargetHost?: string | null;
+  scriptContextRecipientKey?: string | null;
 }
 
 /** Read-only knowledge stream handlers without canvas proposal events. */

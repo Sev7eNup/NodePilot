@@ -34,7 +34,7 @@ type DeleteMode = 'line' | 'range' | 'pattern';
  *  panels so the default isn't a dangerous match-pattern delete. */
 function inferDeleteMode(config: Record<string, unknown>): DeleteMode {
   if (Array.isArray(config.lineRange)) return 'range';
-  if (typeof config.matchPattern === 'string' && config.matchPattern.length > 0) return 'pattern';
+  if (typeof config.matchPattern === 'string') return 'pattern';
   return 'line';
 }
 
@@ -66,6 +66,8 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
 
   const setDeleteMode = (mode: DeleteMode) => {
     const patch: Record<string, unknown> = {};
+    if (mode === 'range') patch.lineRange = [1, 1];
+    if (mode === 'pattern') patch.matchPattern = '';
     // Clear the keys that don't belong to the new sub-mode so validation sees exactly one
     // of {lineNumber, lineRange, matchPattern} instead of stale leftovers from a previous mode.
     if (mode !== 'line') patch.lineNumber = undefined;

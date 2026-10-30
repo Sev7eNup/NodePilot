@@ -22,6 +22,18 @@ function persisted(): {
 describe('aiChatStore', () => {
   beforeEach(reset);
 
+  it('bounds the combined persisted history while retaining full in-memory conversations', () => {
+    const scope = aiChatScopeKey('u1', 'global');
+    for (let i = 0; i < 4; i++) {
+      const thread = useAiChatStore.getState().newThread(scope, `Thread ${i}`);
+      useAiChatStore.getState().updateMessages(scope, thread, () => Array.from({ length: 200 }, () => ({ role: 'user', content: 'x'.repeat(7000) })));
+    }
+    expect(Object.values(useAiChatStore.getState().messagesByThread).flat()).toHaveLength(800);
+    expect(sessionStorage.getItem(STORAGE_KEY)!.length).toBeLessThan(1_010_000);
+    const recovery = useAiChatStore.getState().newThread(scope, 'Recovery');
+    expect(recovery).toBeTruthy();
+  });
+
   describe('thread management', () => {
     it('ensureActiveThread creates a default thread when none exists, and is idempotent', () => {
       const scope = aiChatScopeKey('u1', 'wf1');

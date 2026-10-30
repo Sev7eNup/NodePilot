@@ -25,6 +25,7 @@ internal static class LlmErrorResults
         var code = LlmErrorCodes.For(ex);
         return ex.Kind switch
         {
+            LlmErrorKind.RecipientChanged => controller.Conflict(new { code, message = ex.Message }),
             LlmErrorKind.Unreachable => controller.LlmServiceUnavailable(code, ex.Message),
             LlmErrorKind.Timeout => controller.LlmServiceUnavailable(code, ex.Message),
             LlmErrorKind.Unauthorized => controller.LlmServiceUnavailable(code,

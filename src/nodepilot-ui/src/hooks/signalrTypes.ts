@@ -101,6 +101,14 @@ export type ApiStepItem = {
   outputVariable?: string | null;
 };
 
+export interface PausedStepSnapshot {
+  stepId: string;
+  stepLabel: string | null;
+  pausedAt: string;
+  reason: string;
+  variables: Record<string, string>;
+}
+
 export type StepStartedEvent = {
   executionId: string;
   workflowId: string;

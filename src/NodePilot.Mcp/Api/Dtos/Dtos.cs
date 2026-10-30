@@ -114,6 +114,10 @@ public sealed record ExecuteWorkflowRequest(
 
 public sealed record FailedStepRef(string StepId, string? StepName);
 
+public sealed record DebugPausedStepSnapshot(
+    string StepId, string? StepLabel, DateTime PausedAt, string Reason,
+    IReadOnlyDictionary<string, string> Variables);
+
 public sealed record ExecutionResponse(
     Guid Id, Guid WorkflowId, string Status, DateTime StartedAt,
     DateTime? CompletedAt, string? TriggeredBy, string? ErrorMessage,

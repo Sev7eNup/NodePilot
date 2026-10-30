@@ -61,6 +61,19 @@ function editableNode(label: string) {
 }
 
 describe('useWorkflowPersistence — revision-safe requests', () => {
+  it('keeps the new workflow dirty when an old unlock completes after navigation', async () => {
+    const unlock = deferred<void>();
+    const { result, rerender } = renderHook(({ id }) => useWorkflowPersistence({
+      workflowId: id, workflow: undefined, nodes: [], edges: [],
+    }), { initialProps: { id: 'a' }, wrapper: makeWrapper() });
+    act(() => { result.current.syncFromServer('A', 1); result.current.markDirty(); });
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.replaceDraft(() => unlock.promise); });
+    rerender({ id: 'b' });
+    act(() => { result.current.syncFromServer('B', 1); result.current.markDirty(); });
+    await act(async () => { unlock.resolve(); await pending; });
+    expect(result.current.isDirty).toBe(true);
+  });
   beforeEach(() => {
     routerMock.blocker = { state: 'unblocked', proceed: vi.fn(), reset: vi.fn() };
     vi.mocked(api.put).mockReset();

@@ -449,3 +449,34 @@ describe('MaintenanceWindowsPage', () => {
     expect(names()).toEqual(['One Target', 'Two Targets', 'Global Win']);
   });
 });
+
+describe('MaintenanceWindowsPage editing sessions', () => {
+  it('locks the draft while saving and keeps a window opened later when the old save completes', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let listCalls = 0;
+    const windows = [mw({ id: 'w1', name: 'First Window' }), mw({ id: 'w2', name: 'Second Window' })];
+    seed({ windows });
+    server.use(
+      http.get(`${BASE}/api/maintenance-windows`, () => { listCalls++; return HttpResponse.json(windows); }),
+      http.put(`${BASE}/api/maintenance-windows/w1`, async () => { await gate; return new HttpResponse(null, { status: 204 }); }),
+    );
+    renderPage('Admin');
+
+    const editButton = async (name: string) =>
+      (await screen.findByText(name)).closest('tr')!.querySelector<HTMLButtonElement>('button[title="Edit"]')!;
+    fireEvent.click(await editButton('First Window'));
+    fireEvent.click(within(getDialog()).getByRole('button', { name: 'Update' }));
+    await waitFor(() => expect(screen.getByDisplayValue('First Window')).toBeDisabled());
+
+    fireEvent.click(within(getDialog()).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(await editButton('Second Window'));
+    expect(screen.getByDisplayValue('Second Window')).toBeInTheDocument();
+    const callsBeforeRelease = listCalls;
+    release();
+
+    await waitFor(() => expect(listCalls).toBeGreaterThan(callsBeforeRelease));
+    expect(screen.getByRole('heading', { name: /Edit Maintenance Window/i })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Second Window')).toBeEnabled();
+  });
+});

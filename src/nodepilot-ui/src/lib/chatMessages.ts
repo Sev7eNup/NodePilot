@@ -32,6 +32,15 @@ export function lastHistoryContextKey(messages: ChatMessage[]): string | null {
   return null;
 }
 
+/** Keep displayed history, but never replay messages preceding the latest recipient boundary.
+ * The server's new key authorizes only the conversation begun after it dropped older history. */
+export function contextBoundHistory(messages: ChatMessage[]): ChatMessage[] {
+  const boundary = messages.findLastIndex((message) => message.role === 'assistant' && message.meta?.historyDropped);
+  if (boundary < 0) return messages;
+  const question = messages.slice(0, boundary).findLastIndex((message) => message.role === 'user');
+  return messages.slice(question >= 0 ? question : boundary);
+}
+
 /** Appends text to the last assistant message (immutably). */
 export function appendToLastAssistant(prev: ChatMessage[], text: string): ChatMessage[] {
   const next = prev.slice();

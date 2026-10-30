@@ -147,6 +147,60 @@ function Remove-NodePilotBinaryBackups {
     return $failed
 }
 
+function Grant-NodePilotPurgeAccess {
+    <#
+      Takes ownership of $Path and everything below it for Administrators (takeown /A), then grants
+      that group full control, item by item. takeown /R prompts with a localized answer on folders
+      it cannot list, so the recursion happens here: a folder unlocked in one pass exposes its
+      children to the next. A failed takeown skips the grant for that item. Returns the failures.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [scriptblock]$TakeOwnership = {
+            param($ItemPath)
+            & takeown.exe /F $ItemPath /A 2>&1 | Out-Null
+            $LASTEXITCODE
+        },
+        # No (OI)(CI): those are container flags, and on a leaf file icacls drops them and adds no
+        # ACE at all while still reporting success.
+        [scriptblock]$GrantAdministrators = {
+            param($ItemPath)
+            & icacls.exe $ItemPath /grant '*S-1-5-32-544:(F)' /C /Q 2>&1 | Out-Null
+            $LASTEXITCODE
+        },
+        [int]$MaxPasses = 16
+    )
+    # Native tools report on stderr; under 'Stop' Windows PowerShell turns that into an exception.
+    $ErrorActionPreference = 'Continue'
+    $done = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $failures = @{}
+    for ($pass = 1; $pass -le $MaxPasses; $pass++) {
+        $items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue) +
+            @(Get-ChildItem -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue)
+        $pending = @($items | Where-Object { -not $done.Contains($_.FullName) })
+        if ($pending.Count -eq 0) { break }
+        $progress = $false
+        # Parents first, so their children become listable for the next pass.
+        foreach ($item in @($pending | Sort-Object { $_.FullName.Length })) {
+            $ownerExit = & $TakeOwnership $item.FullName
+            if ($ownerExit -ne 0) {
+                $failures[$item.FullName] = "takeown exited with $ownerExit for $($item.FullName)"
+                continue
+            }
+            $grantExit = & $GrantAdministrators $item.FullName
+            if ($grantExit -ne 0) {
+                $failures[$item.FullName] = "icacls exited with $grantExit for $($item.FullName)"
+                continue
+            }
+            $failures.Remove($item.FullName)
+            [void]$done.Add($item.FullName)
+            $progress = $true
+        }
+        if (-not $progress) { break }
+    }
+    return @($failures.Values | Sort-Object)
+}
+
 Write-Step "Stopping and removing service '$ServiceName'"
 $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($svc) {
@@ -188,7 +242,14 @@ if ($svc) {
     }
 
     & sc.exe delete $ServiceName | Out-Null
-    Write-Info "  sc.exe delete returned exit $LASTEXITCODE"
+    $deleteExit = $LASTEXITCODE
+    Write-Info "  sc.exe delete returned exit $deleteExit"
+    # 1072: already marked for deletion. Anything else leaves the service registered, so stop
+    # before removing the files it runs from.
+    if ($deleteExit -ne 0 -and $deleteExit -ne 1072) {
+        throw ("sc.exe delete '$ServiceName' failed with exit $deleteExit. Nothing else was removed; " +
+               'fix the cause and run the uninstall again.')
+    }
 
     # sc.exe delete normally removes the whole service key, including the Environment MULTI_SZ
     # that holds ConnectionStrings__Postgres - the database password. While anything still holds
@@ -202,24 +263,6 @@ if ($svc) {
     }
 } else {
     Write-Info "  Service not present."
-}
-
-Write-Step "Removing the installation marker"
-# Without this, a fresh install after an uninstall is misdetected as an upgrade forever - the
-# setup wizard reads this key to choose between the two.
-$markerPath = 'HKLM:\SOFTWARE\NodePilot\Server'
-if (Test-Path -LiteralPath $markerPath) {
-    Remove-Item -LiteralPath $markerPath -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Info "  Removed: $markerPath"
-} else {
-    Write-Info "  No installation marker present."
-}
-# Drop the parent only when this uninstall emptied it; something else may live under it.
-$markerParent = 'HKLM:\SOFTWARE\NodePilot'
-if ((Test-Path -LiteralPath $markerParent) -and
-    -not (Get-ChildItem -LiteralPath $markerParent -ErrorAction SilentlyContinue) -and
-    -not (Get-Item -LiteralPath $markerParent -ErrorAction SilentlyContinue).GetValueNames()) {
-    Remove-Item -LiteralPath $markerParent -Force -ErrorAction SilentlyContinue
 }
 
 Write-Step "Removing the CLI from the machine PATH"
@@ -260,10 +303,13 @@ if (Test-Path $InstallPath) {
     # arbitrary remainder behind. Skipping Inno's files lets it finish the job itself; run
     # standalone there are no such files and everything goes.
     $uninstallerPattern = 'unins*'
+    # deploy\ holds this script. It goes last, once everything else is gone, so a failed run can
+    # be repeated from the same place.
+    $recoveryHelperName = 'deploy'
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $failed = $false
         foreach ($entry in Get-ChildItem -LiteralPath $InstallPath -Force -ErrorAction SilentlyContinue) {
-            if ($entry.Name -like $uninstallerPattern) { continue }
+            if ($entry.Name -like $uninstallerPattern -or $entry.Name -eq $recoveryHelperName) { continue }
             try { Remove-Item -LiteralPath $entry.FullName -Recurse -Force -ErrorAction Stop }
             catch {
                 $failed = $true
@@ -277,23 +323,17 @@ if (Test-Path $InstallPath) {
         if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
     }
 
-    # Only when nothing is left. Inno removes its own uninstaller and the empty directory after
-    # this script returns.
-    $remaining = @(Get-ChildItem -LiteralPath $InstallPath -Force -ErrorAction SilentlyContinue)
-    if ($remaining.Count -eq 0) {
-        Remove-Item -LiteralPath $InstallPath -Force -ErrorAction SilentlyContinue
-    }
-    elseif (@($remaining | Where-Object { $_.Name -notlike $uninstallerPattern }).Count -eq 0) {
-        Write-Info '  Leaving the setup uninstaller to remove itself and the directory.'
-    }
-
-    # Anything still here that is not the setup's own uninstaller is a genuine leftover.
+    # Anything still here that is not the setup's own uninstaller or deploy\ is a genuine leftover.
+    $recoveryHelperPrefix = (Join-Path $InstallPath $recoveryHelperName).TrimEnd('\') + '\'
     $leftovers = @(Get-ChildItem -LiteralPath $InstallPath -Recurse -Force -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -notlike $uninstallerPattern })
+        Where-Object {
+            $_.Name -notlike $uninstallerPattern -and
+            -not $_.FullName.StartsWith($recoveryHelperPrefix, [StringComparison]::OrdinalIgnoreCase)
+        })
     if ($leftovers.Count -gt 0) {
-        # Do not abort here. The service and the marker are already gone; stopping now would skip
-        # the data notice and the residue report. Report the leftovers, carry on, and exit
-        # non-zero at the end.
+        # Do not abort here. The service is already gone; stopping now would skip the data notice
+        # and the residue report. Report the leftovers, carry on, and exit non-zero at the end,
+        # with the marker and deploy\ kept for the retry.
         $installPathRemaining = $true
         Write-Warn "  $($leftovers.Count) file(s) could not be deleted under $InstallPath."
         $holders = @(Get-ProcessesUnderPath -Path $InstallPath)
@@ -324,32 +364,30 @@ if ($PurgeData) {
         # account, so an administrator can neither read nor delete them and a plain Remove-Item
         # gets partway through the directory and then throws.
         #
-        # Ownership is taken first, using the well-known Administrators SID rather than the group
-        # name: "BUILTIN\Administrators" does not resolve on a non-English Windows, the same
-        # reason the ACL helpers in ArtifactSecurity.ps1 use SIDs.
-        #
-        # The grant carries no inheritance flags. (OI)(CI) are container flags; applied to a leaf
-        # file icacls drops them silently and adds no ACE at all. /T visits every item, so a flat
-        # grant is sufficient for a tree that is about to be deleted anyway.
-        $previousPreference = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        try {
-            & takeown.exe /F $DataPath /R /D Y 2>&1 | Out-Null
-            & icacls.exe $DataPath /grant '*S-1-5-32-544:(F)' /T /C 2>&1 | Out-Null
-        }
-        finally { $ErrorActionPreference = $previousPreference }
-
-        try {
-            Remove-Item -LiteralPath $DataPath -Recurse -Force -ErrorAction Stop
-            Write-Info "  Deleted: $DataPath"
-        }
-        catch {
-            # Report and continue. Aborting here would skip the closing report, and the operator
-            # would be left with a half-purged directory and no idea which parts survived.
+        # Ownership is taken first, for the Administrators group via takeown /A and the
+        # well-known SID: neither the group name nor a takeown answer is the same on every
+        # Windows language.
+        $ownershipFailures = @(Grant-NodePilotPurgeAccess -Path $DataPath)
+        if ($ownershipFailures.Count -gt 0) {
+            # Nothing is deleted from a tree that is only partly accessible, so a retry starts from
+            # the same state.
             $dataPathRemaining = $true
-            Write-Warn "  Could not fully delete $DataPath : $($_.Exception.Message)"
-            $survivors = @(Get-ChildItem -LiteralPath $DataPath -Recurse -Force -File -ErrorAction SilentlyContinue)
-            Write-Warn "  $($survivors.Count) file(s) remain. Delete the folder by hand, or reboot and retry."
+            foreach ($failure in $ownershipFailures) { Write-Warn "  $failure" }
+            Write-Warn "  $DataPath was not deleted. Resolve the failures above and run the uninstall again."
+        }
+        else {
+            try {
+                Remove-Item -LiteralPath $DataPath -Recurse -Force -ErrorAction Stop
+                Write-Info "  Deleted: $DataPath"
+            }
+            catch {
+                # Report and continue. Aborting here would skip the closing report, and the operator
+                # would be left with a half-purged directory and no idea which parts survived.
+                $dataPathRemaining = $true
+                Write-Warn "  Could not fully delete $DataPath : $($_.Exception.Message)"
+                $survivors = @(Get-ChildItem -LiteralPath $DataPath -Recurse -Force -File -ErrorAction SilentlyContinue)
+                Write-Warn "  $($survivors.Count) file(s) remain. Delete the folder by hand, or reboot and retry."
+            }
         }
     } else {
         Write-Info "  Data path not present."
@@ -401,7 +439,48 @@ if ($installedThumbprint -and $isManagedAccount) {
 
 Write-Host ""
 if ($installPathRemaining -or $backupsRemaining -or $dataPathRemaining) {
-    Write-Warn 'Uninstall finished with leftovers (see above).'
+    # The marker and deploy\ stay, so the setup uninstaller and this script can be run again.
+    Write-Warn 'Uninstall finished with leftovers (see above). The installation marker and the deploy scripts were kept; run the uninstall again once the cause is fixed.'
     exit 1
+}
+
+Write-Step "Removing the deploy scripts and the installation marker"
+$recoveryHelperPath = Join-Path $InstallPath 'deploy'
+if (Test-Path -LiteralPath $recoveryHelperPath) {
+    try { Remove-Item -LiteralPath $recoveryHelperPath -Recurse -Force -ErrorAction Stop }
+    catch {
+        Write-Warn "  Could not delete $recoveryHelperPath : $($_.Exception.Message)"
+        Write-Warn 'Uninstall finished with leftovers. The installation marker was kept; run the uninstall again.'
+        exit 1
+    }
+    Write-Info "  Deleted: $recoveryHelperPath"
+}
+# Only when nothing is left. Inno removes its own uninstaller and the empty directory after this
+# script returns.
+if (Test-Path -LiteralPath $InstallPath) {
+    $remaining = @(Get-ChildItem -LiteralPath $InstallPath -Force -ErrorAction SilentlyContinue)
+    if ($remaining.Count -eq 0) {
+        Remove-Item -LiteralPath $InstallPath -Force -ErrorAction SilentlyContinue
+        Write-Info "  Deleted: $InstallPath"
+    }
+    else {
+        Write-Info '  Leaving the setup uninstaller to remove itself and the directory.'
+    }
+}
+# Without this, a fresh install after an uninstall is misdetected as an upgrade forever - the
+# setup wizard reads this key to choose between the two.
+$markerPath = 'HKLM:\SOFTWARE\NodePilot\Server'
+if (Test-Path -LiteralPath $markerPath) {
+    Remove-Item -LiteralPath $markerPath -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Info "  Removed: $markerPath"
+} else {
+    Write-Info "  No installation marker present."
+}
+# Drop the parent only when this uninstall emptied it; something else may live under it.
+$markerParent = 'HKLM:\SOFTWARE\NodePilot'
+if ((Test-Path -LiteralPath $markerParent) -and
+    -not (Get-ChildItem -LiteralPath $markerParent -ErrorAction SilentlyContinue) -and
+    -not (Get-Item -LiteralPath $markerParent -ErrorAction SilentlyContinue).GetValueNames()) {
+    Remove-Item -LiteralPath $markerParent -Force -ErrorAction SilentlyContinue
 }
 Write-Ok "Uninstall complete."

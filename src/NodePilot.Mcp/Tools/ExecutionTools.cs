@@ -144,14 +144,14 @@ public sealed class ExecutionTools
     }
 
     [McpServerTool(Name = "list_paused_steps", ReadOnly = true)]
-    [Description("List the step ids currently paused at a breakpoint for a debug execution. Call this to get the stepId you must pass to resume_execution (parallel branches each have their own paused step).")]
+    [Description("List paused step snapshots, including labels, pause time, reason and variables, for a debug execution. Use stepId to resume one paused parallel branch.")]
     public async Task<object> ListPausedSteps(
         [Description("The execution GUID.")] string id,
         CancellationToken cancellationToken = default)
     {
         var guid = ParseGuid(id, "execution id");
         var steps = await ApiErrorMapper.Guard(() => _api.GetPausedStepsAsync(guid, cancellationToken));
-        return new { executionId = guid, pausedStepIds = steps };
+        return new { executionId = guid, pausedSteps = steps };
     }
 
     [McpServerTool(Name = "resume_execution")]

@@ -115,30 +115,9 @@ If you install with `NodePilot-Server-Setup-<version>.exe`, you can skip the SQL
 
 ### What the service identity means for target machines
 
-The identity is not only a database matter: it also carries the WinRM connection to every target
-machine that has **no** credential stored. For that credential-less path, **resource-based
-constrained delegation** has to be configured on every target machine:
+For a target without stored credentials, NodePilot connects directly as the service process identity: the gMSA, or the host computer account under LocalSystem. Grant that account the required endpoint and resource permissions. With LocalSystem in an active/passive installation, authorize each node's computer account.
 
-```powershell
-# On a domain controller:
-$gmsa = Get-ADServiceAccount -Identity svc-nodepilot
-foreach ($target in $targetHosts) {
-    Set-ADComputer -Identity $target `
-        -PrincipalsAllowedToDelegateToAccount (
-            (Get-ADComputer $target).PrincipalsAllowedToDelegateToAccount + $gmsa
-        )
-}
-```
-
-Under LocalSystem the **computer account** of the NodePilot server takes the place of the gMSA
-(`Get-ADComputer <NodePilot-Host>`); the procedure is otherwise identical. In an active/passive
-installation each LocalSystem node has its own computer account and has to be authorized
-individually — with a gMSA it is one identity for all nodes.
-
-If NodePilot works with credentials stored per machine, no delegation is needed and the service
-identity is irrelevant for access. Both paths require the account in use to be allowed on the target
-machine's WinRM endpoint (local administrator or `Remote Management Users`) — details under
-[Remote execution](../configuration/remote-execution).
+This direct first hop does not require resource-based constrained delegation. NodePilot does not impersonate the browser user for it. Configure delegation only for a separately justified delegated-user or second-hop topology. With stored credentials, authorize the selected account instead.
 
 ## 2. Prepare the database
 
@@ -634,16 +613,30 @@ misses — during installation the installer does it for you. Without it the ser
 after the restart, and the message does not mention the certificate.
 
 ```powershell
-$rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
-$keyFile = Join-Path $env:ProgramData `
-  "Microsoft\Crypto\RSA\MachineKeys\$($rsa.Key.UniqueName)"
-icacls.exe $keyFile /grant '<service account>:(R)'
+$serviceAccount = 'DOMAIN\svc-nodepilot$'
+$key = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
+if (-not $key) {
+    $key = [System.Security.Cryptography.X509Certificates.ECDsaCertificateExtensions]::GetECDsaPrivateKey($cert)
+}
+if (-not $key) { throw 'Certificate has no accessible RSA/ECDSA private key.' }
+try {
+    if ($key -is [System.Security.Cryptography.RSACng] -or $key -is [System.Security.Cryptography.ECDsaCng]) {
+        $keyFile = Join-Path $env:ProgramData "Microsoft\Crypto\Keys\$($key.Key.UniqueName)"
+    } elseif ($key -is [System.Security.Cryptography.RSACryptoServiceProvider]) {
+        $keyFile = Join-Path $env:ProgramData "Microsoft\Crypto\RSA\MachineKeys\$($key.CspKeyContainerInfo.UniqueKeyContainerName)"
+    } else {
+        throw 'Unsupported key provider: use its documented service-access procedure.'
+    }
+    if (-not (Test-Path -LiteralPath $keyFile -PathType Leaf)) { throw "Private key file not found: $keyFile" }
+    icacls.exe $keyFile /grant "$($serviceAccount):(R)"
+    if ($LASTEXITCODE -ne 0) { throw 'Private key ACL update failed. Do not switch certificates.' }
+} finally { $key.Dispose() }
 ```
 
-With `LocalSystem` as the service identity the step is unnecessary — `SYSTEM` already has read
-access to `MachineKeys`. For a gMSA, give `<service account>` as `DOMAIN\gmsa$`. For an ECDSA
-certificate use `GetECDsaPrivateKey` instead of `GetRSAPrivateKey` and look for the file under
-`Microsoft\Crypto\Keys`.
+Set `$serviceAccount` to the installed service identity. The snippet handles software-backed
+CNG RSA/ECDSA and legacy CSP RSA keys and stops if the key file or ACL update fails. For a
+hardware-backed key, follow its provider's service-access procedure before switching certificates.
+LocalSystem normally already has access to machine private keys.
 
 **3. Set the thumbprint in the configuration.** In `C:\Program Files\NodePilot\appsettings.Production.json`:
 
@@ -682,6 +675,10 @@ After an installation through the GUI setup, the same is possible through "Apps 
 ```powershell
 & 'C:\Program Files\NodePilot\unins000.exe' /VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1
 ```
+
+If something cannot be removed, the uninstall stops with a non-zero exit code and keeps the
+installation marker, the deploy scripts and the "Apps & features" entry. Fix the cause it reports
+and run the same uninstall again.
 
 **The database is never removed, and there is no option for it.** NodePilot does not create it — it
 was provisioned separately in chapter 2, often has its own backup and replication regime, and in an

@@ -106,11 +106,15 @@ service-environment value.
    **Which user is "that user" is resolved explicitly, not assumed.** The installer runs elevated
    but launches the shell with `runasoriginaluser`, so the two are different principals whenever a
    standard user elevates with someone *else's* administrator credentials — the normal case on a
-   managed machine. `Get-InteractiveUserProfile` therefore resolves the console user via
-   `Win32_ComputerSystem.UserName` and reads their profile directory out of the `ProfileList`
-   registry, instead of using the elevated process's own `%LOCALAPPDATA%`. Inno's `{localappdata}`
-   would be no better: it expands in the elevated context too. `-HandoffUserProfile` overrides the
-   resolution for the dev loop and for tests. Getting this wrong strands the user on a login form
+   managed machine. The console user is no substitute either: under RDP or a switched user it is a
+   different account. Setup therefore runs a check *as the original user* (`ExecAsOriginalUser`),
+   which reports its own SID's position in the `ProfileList` registry through its exit code, and
+   passes that SID as `-HandoffUserSid`. `Resolve-DesktopHandoffTarget` reads the profile directory
+   for exactly that SID; Inno's `{localappdata}` would be no better, it expands in the elevated
+   context. When the account is unknown or has no profile, provisioning fails explicitly instead of
+   picking another profile. `Update-Desktop.ps1` passes the account running the update unless
+   `-HandoffUserSid` names another; `-HandoffUserProfile` overrides the directory for the dev loop
+   and for tests. Getting this wrong strands the user on a login form
    for an account that does not exist yet, with the only remaining token copy SYSTEM-owned —
    recovery steps are in [`docs/desktop-troubleshooting.md`](../../docs/desktop-troubleshooting.md).
 3. Electron shows a **local** setup page whose only bridge is `completeAdminSetup({username,password})`.
@@ -233,6 +237,11 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
   recreates them, and reuses the cluster (`initdb` is skipped when `pgdata\PG_VERSION` exists), so data
   survives. `Update-Desktop.ps1` also implements a full staged update with binary + config + DB
   rollback for direct/advanced use. Postgres **major** upgrades are out of scope for v1.
+  Before anything changes, the staged update snapshots both service registrations (binary path,
+  account, start type, dependencies, failure actions, environment with the connection string, key
+  ACL); it refuses to start when either service is missing. The rollback registers both again from
+  that snapshot before the database restore, because re-provisioning may have deleted them, and a
+  service that cannot be registered or started fails the rollback explicitly.
   During staged rollback only PostgreSQL starts first; the API stays stopped until the snapshot
   restore succeeds. A failed restore stops recovery with an explicit error and the backup path
   for manual recovery. The offline `deploy/Test-DesktopUpdate.ps1` checks this ordering and the
@@ -243,8 +252,10 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
   clients, deletes both services, removes the certificate **with its private key**, the setup handoffs
   and the rendered configuration; with `-PurgeData` also `ProgramData\NodePilot` (taking ownership of
   what the API and Postgres protected) and the `NodePilot` folders in every profile (`%APPDATA%`: shell
-  session + `np`/`nodepilot-mcp` config, `%LOCALAPPDATA%`: handoff). It exits 1 when anything is left,
-  and the uninstaller reports `%TEMP%\nodepilot-uninstall.log`.
+  session + `np`/`nodepilot-mcp` config, `%LOCALAPPDATA%`: handoff). It exits 1 when anything is left;
+  the uninstaller then reports `%TEMP%\nodepilot-uninstall.log` and aborts before Inno removes the
+  program files or the "Apps & features" entry, with a non-zero exit code, so the uninstall can be
+  run again once the cause is fixed.
 - **Antivirus:** the installer sets no AV exclusions. Electron's Chromium native DLLs, Postgres' WAL
   I/O and the generated `%TEMP%\nodepilot_*.ps1` scripts are the usual false-positive sources — a
   hand-off list with per-entry rationale and residual risk is in [`docs/av-exclusions.md`](../../docs/av-exclusions.md).

@@ -9,14 +9,33 @@ namespace NodePilot.Ai.Tests;
 public class ScriptGenerationServiceTests
 {
     private static ScriptGenerationService NewService(FakeLlmClient client)
-        => new(new FakeLlmClientFactory(client), new PromptCatalog());
+        => new(new FakeLlmClientFactory(client), new PromptCatalog(),
+            new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile()));
 
     private static GenerateScriptRequest NewRequest(
         string prompt = "list all stopped services",
         IReadOnlyList<UpstreamVariableDto>? vars = null,
         string? currentScript = null,
         bool includeCurrentScript = false)
-        => new(prompt, Guid.NewGuid(), "step-x", vars ?? Array.Empty<UpstreamVariableDto>(), currentScript, includeCurrentScript);
+        => new(prompt, Guid.NewGuid(), "step-x", vars ?? Array.Empty<UpstreamVariableDto>(), currentScript,
+            includeCurrentScript, LlmHistoryContext.Key("default", LlmTestOptions.WithProfile().Profiles["default"]));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("previous-provider")]
+    public async Task SharingScript_RequiresCurrentRecipientConsentBeforeClientCreation(string? consentKey)
+    {
+        var fake = new FakeLlmClient().EnqueueStream("answer");
+        var factory = new FakeLlmClientFactory(fake);
+        var service = new ScriptGenerationService(factory, new PromptCatalog(),
+            new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile()));
+        var request = NewRequest(currentScript: "Write-Output 'private code'", includeCurrentScript: true)
+            with { ExpectedRecipientKey = consentKey };
+        var run = () => Collect(service, request);
+        (await run.Should().ThrowAsync<LlmException>()).Which.Kind.Should().Be(LlmErrorKind.RecipientChanged);
+        fake.Calls.Should().BeEmpty();
+        factory.Profiles.Should().BeEmpty();
+    }
 
     /// <summary>Streams and collects the script text with code-fence markers stripped.</summary>
     private static async Task<string> Collect(ScriptGenerationService svc, GenerateScriptRequest req)
@@ -153,7 +172,8 @@ public class ScriptGenerationServiceTests
         ILlmClient client = responses
             ? new OpenAiResponsesLlmClient(http, config, NullLogger<OpenAiResponsesLlmClient>.Instance)
             : new OpenAiCompatibleLlmClient(http, config, NullLogger<OpenAiCompatibleLlmClient>.Instance);
-        var service = new ScriptGenerationService(new ClientFactory(client), new PromptCatalog());
+        var service = new ScriptGenerationService(new ClientFactory(client), new PromptCatalog(),
+            new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile()));
         var events = new List<ScriptStreamEvent>();
 
         var ex = await Assert.ThrowsAsync<LlmException>(async () =>

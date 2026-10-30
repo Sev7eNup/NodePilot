@@ -224,13 +224,13 @@ public class MigrationDriftTests
     }
 
     /// <summary>
-    /// The keyset index for the notification event poller (ExecutionEventCollector) must be
-    /// emitted as a covering <c>(CompletedAt, Id) INCLUDE (Status)</c> index on both providers.
+    /// The terminal notification scan must seek uncollected rows in timestamp order, with Status
+    /// included on both providers.
     /// The migration is generated under whichever provider is active, so the other provider's
     /// Include annotation is added by hand; this test guards it from being dropped.
     /// </summary>
     [Fact]
-    public void CompletedAtKeysetIndex_IsCovering_OnBothProviders()
+    public void UncollectedTerminalIndex_IsCovering_OnBothProviders()
     {
         using var sqlServer = new NodePilotDbContext(
             new DbContextOptionsBuilder<NodePilotDbContext>()
@@ -248,10 +248,8 @@ public class MigrationDriftTests
             fromMigration: Migration.InitialDatabase,
             toMigration: postgres.Database.GetMigrations().Last());
 
-        sqlServerScript.Should().Contain("IX_WorkflowExecutions_CompletedAt_Id")
-            .And.Contain("([CompletedAt], [Id]) INCLUDE ([Status])");
-        postgresScript.Should().Contain("IX_WorkflowExecutions_CompletedAt_Id")
-            .And.Contain("(\"CompletedAt\", \"Id\") INCLUDE (\"Status\")");
+        sqlServerScript.Should().Contain("([TerminalNotificationCollected], [CompletedAt], [Id]) INCLUDE ([Status])");
+        postgresScript.Should().Contain("(\"TerminalNotificationCollected\", \"CompletedAt\", \"Id\") INCLUDE (\"Status\")");
     }
 
     /// <summary>
@@ -354,8 +352,12 @@ public class MigrationDriftTests
         var execution = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id };
         var step = new StepExecution { WorkflowExecutionId = execution.Id, StepId = "read", StepType = "custom:read", Output = "retained" };
         var support = new SupportEvent { EventType = "STEP_COMPLETED", Message = "retained", ActivityType = "custom:read" };
-        db.AddRange(workflow, execution, step, support);
-        await db.SaveChangesAsync(ct);
+        await using (var historical = new BeforeTerminalCollectionContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection).Options))
+        {
+            historical.AddRange(workflow, execution, step, support);
+            await historical.SaveChangesAsync(ct);
+        }
 
         await migrator.MigrateAsync(cancellationToken: ct);
         db.ChangeTracker.Clear();
@@ -363,6 +365,53 @@ public class MigrationDriftTests
         (await db.StepExecutions.SingleAsync(s => s.Id == step.Id, ct)).Output.Should().Be("retained");
         (await db.SupportEvents.SingleAsync(s => s.Id == support.Id, ct)).ActivityType.Should().Be("custom:read");
         (await db.WorkflowExecutions.SingleAsync(e => e.Id == execution.Id, ct)).WorkflowId.Should().Be(workflow.Id);
+    }
+
+    [Fact]
+    public async Task TerminalCollectionUpgrade_PreservesCursorBoundaryWithoutSuppressingUnseenRows()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync(ct);
+        await using var db = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection).ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)).Options);
+        var migrator = db.Database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261028133741_TrackExternalGroupObservations", ct);
+        var threshold = DateTime.UtcNow.AddHours(-1);
+        var boundary = Guid.Parse("00000000-0000-0000-0000-000000000020");
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Collection upgrade", DefinitionJson = "{}" };
+        var old = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = Core.Enums.ExecutionStatus.Failed, CompletedAt = threshold.AddMinutes(-1) };
+        var sameBefore = new WorkflowExecution { Id = Guid.Parse("00000000-0000-0000-0000-000000000010"), WorkflowId = workflow.Id, Status = Core.Enums.ExecutionStatus.Failed, CompletedAt = threshold };
+        var sameAfter = new WorkflowExecution { Id = Guid.Parse("00000000-0000-0000-0000-000000000030"), WorkflowId = workflow.Id, Status = Core.Enums.ExecutionStatus.Failed, CompletedAt = threshold };
+        var recent = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = Core.Enums.ExecutionStatus.Failed, CompletedAt = threshold.AddMinutes(1) };
+        await using (var historical = new BeforeTerminalCollectionContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection).Options))
+        {
+            historical.AddRange(workflow, old, sameBefore, sameAfter, recent);
+            await historical.SaveChangesAsync(ct);
+        }
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "NotificationDispatcherStates" ("Id", "LastCompletedAtSeen", "LastIdSeen", "UpdatedAt")
+            VALUES ({NotificationDispatcherState.SingletonId}, {threshold}, {boundary}, {threshold})
+            """, ct);
+
+        await migrator.MigrateAsync(cancellationToken: ct);
+        var rows = await db.WorkflowExecutions.AsNoTracking().ToDictionaryAsync(e => e.Id, ct);
+        rows[old.Id].TerminalNotificationCollected.Should().BeTrue();
+        rows[sameBefore.Id].TerminalNotificationCollected.Should().BeTrue();
+        rows[sameAfter.Id].TerminalNotificationCollected.Should().BeFalse();
+        rows[recent.Id].TerminalNotificationCollected.Should().BeFalse();
+        (await db.NotificationDispatcherStates.SingleAsync(ct)).InitializedAt.Should().Be(threshold);
+    }
+
+    private sealed class BeforeTerminalCollectionContext(DbContextOptions<NodePilotDbContext> options)
+        : NodePilotDbContext(options)
+    {
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<WorkflowExecution>().Ignore(e => e.TerminalNotificationCollected);
+        }
     }
 
     private static NodePilotDbContext NewSqliteContext(string connStr)

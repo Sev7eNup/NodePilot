@@ -39,6 +39,7 @@ try {
     }
     . ([scriptblock]::Create($componentAssignment.Extent.Text))
     $swappedComponents = New-Object 'System.Collections.Generic.List[string]'
+    $componentAcls = @{}
     . ([scriptblock]::Create(($validation.Extent.Text -join "`n")))
     . ([scriptblock]::Create($swap.Extent.Text))
     foreach ($name in @('app', 'desktop', 'pgsql', 'deploy', 'tools')) {

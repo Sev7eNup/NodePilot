@@ -39,7 +39,7 @@ profile, expected outcome, workflow, node and who checks it.
 |---|---|
 | `continuous` | runs everywhere, no external prerequisite |
 | `integration` | needs a second system (SMTP sink, database, LLM endpoint, proxy) or production hardening; if it is missing, the workflow is **installed but disabled** instead of red |
-| `invasive` | changes the host (create a service, register a task); opt-in via `NP_TESTSUITE_INVASIVE` |
+| `invasive` | changes the host (create a service, register a task, cancel a pending shutdown); opt-in via `NP_TESTSUITE_INVASIVE`. `powerManagement` additionally needs `NP_TESTSUITE_DISPOSABLE_HOST`, because its `abort` also cancels a restart that a maintenance window scheduled |
 | `excluded` | never runs — every entry carries `reason` and, where available, `coveredBy` pointing to the unit test that covers it instead |
 
 Deliberately excluded are, among others: `delay > 86400` (clamps to 24 h and would block a
@@ -97,7 +97,8 @@ Instead: correlation ID plus acknowledgement files:
 
 Each triggered workflow reads its correlation ID from its own trigger parameters and
 writes the acknowledgement. For the `databaseTrigger` the ID **is** the sentinel value — the source
-passes on nothing else.
+passes on nothing else. The ID must parse as a GUID; the acknowledgement file is named after its
+canonical form, so a payload cannot point the write outside `runtime/acks/<type>/`.
 
 **One missed round is tolerated.** `DatabaseTriggerSource` deliberately re-baselines the first
 observation after every start without firing; after an API restart, exactly one
@@ -105,8 +106,9 @@ acknowledgement is therefore missing. Only the second consecutive round makes th
 `runtime/acks/consecutive-misses.txt`).
 
 The webhook secret is **not** in the repo: the generated file carries a placeholder that
-`Install-TestSuite.ps1` replaces during installation with the value of the global variable
-`NP_TESTSUITE_WEBHOOK_SECRET` (generated from a CSPRNG on first run).
+`Install-TestSuite.ps1` replaces during installation with the value of the secret global variable
+`NP_TESTSUITE_WEBHOOK_SECRET`. The API never returns a secret value, so every installation
+generates a new one from a CSPRNG and writes it to both the global and the webhook definition.
 
 ## Cadence
 
@@ -115,7 +117,7 @@ One `scheduleTrigger` per workflow, 7-field Quartz cron, minute offsets staggere
 | Tier | Cron | Content |
 |---|---|---|
 | A — 5 min | `0 0/5` … `0 4/5 * * * ? *` | light engine types, file system, ControlFlow, edge conditions, variable resolution |
-| B — 15 min | `0 5/15`, `0 10/15 * * * ? *` | zipOperation, sql, powerManagement, the five negative workflows |
+| B — 15 min | `0 5/15`, `0 10/15 * * * ? *` | zipOperation, sql, the five negative workflows |
 | C — 30 min | `0 7/30`, `0 22/30 * * * ? *` | integration and invasive |
 | D — 10 min | `0 3/10 * * * ? *` | trigger drivers |
 
@@ -140,6 +142,11 @@ python scripts/test-suite/build_suite.py
 # Single workflow as an assertion
 np workflow run '[TestSuite] textFileEdit' --wait     # exit 0 = all assertions held
 ```
+
+Verification requires the `continuous` profile by default. Pass `-Profiles continuous,integration`
+or the exact profiles selected during installation when validating additional cases. Missing or
+disabled required workflows and zero verified workflows fail the check. Window mode paginates the
+execution history and applies every manifest expectation to every completed run in the window.
 
 **On an installed, production-hardened instance** (release gate, `RELEASING.md` step 6)
 the suite runs fully green only with three preparations:

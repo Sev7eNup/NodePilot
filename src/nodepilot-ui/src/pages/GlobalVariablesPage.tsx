@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useColumnResize } from '../hooks/useColumnResize';
 import { api } from '../api/client';
+import { useAsyncIdentity } from '../hooks/useAsyncIdentity';
 import { DependencyLink } from '../components/dependencies/DependencyLink';
 import { ModalShell } from '../components/common/ModalShell';
 import { MobileCardList } from '../components/common/MobileCardList';
@@ -80,6 +81,7 @@ export function GlobalVariablesPage() {
   const [selectedFolderId, setSelectedFolderId] = useState<string>(ROOT_FOLDER_ID);
   const [form, setForm] = useState<FormState>(() => emptyForm(ROOT_FOLDER_ID));
   const [showDialog, setShowDialog] = useState(false);
+  const captureSession = useAsyncIdentity(showDialog ? form.id ?? '' : null);
 
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<ColKey | null>('name');
@@ -122,7 +124,7 @@ export function GlobalVariablesPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (f: FormState) => {
+    mutationFn: async ({ form: f }: { form: FormState; current: () => boolean }) => {
       if (f.id) {
         // For secret variables where the value wasn't re-entered, send null so the server
         // keeps the existing ciphertext. Any other case ships the current value.
@@ -144,10 +146,11 @@ export function GlobalVariablesPage() {
         });
       }
     },
-    onSuccess: () => {
+    onSuccess: (_result, request) => {
       queryClient.invalidateQueries({ queryKey: ['global-variables'] });
       queryClient.invalidateQueries({ queryKey: ['global-folders'] });
-      setShowDialog(false);
+      // A closed dialog must not close the one opened after it.
+      if (request.current()) setShowDialog(false);
     },
     onError: (err: Error) => toast.error(t('common:saveFailed', { message: err.message })),
   });
@@ -693,7 +696,8 @@ export function GlobalVariablesPage() {
               {form.id ? t('globals:editTitle') : t('globals:createTitle')}
             </h3>
 
-            <div className="space-y-3">
+            {/* Locked while saving, so the response never discards edits made after the submit. */}
+            <fieldset disabled={saveMutation.isPending} className="space-y-3 min-w-0 border-0 p-0">
               <div>
                 <label className="block text-xs font-medium text-on-surface-variant mb-1">{t('globals:fields.name')}</label>
                 <input
@@ -755,7 +759,7 @@ export function GlobalVariablesPage() {
                   className="w-full px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-            </div>
+            </fieldset>
 
             <div className="flex justify-end gap-2 mt-5">
               <button
@@ -765,7 +769,7 @@ export function GlobalVariablesPage() {
                 {t('common:cancel')}
               </button>
               <button
-                onClick={() => saveMutation.mutate(form)}
+                onClick={() => saveMutation.mutate({ form, current: captureSession() })}
                 disabled={!form.name.trim() || (!form.id && !form.value) || saveMutation.isPending}
                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50"
               >

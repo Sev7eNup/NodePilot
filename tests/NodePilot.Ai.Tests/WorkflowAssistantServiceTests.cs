@@ -533,7 +533,7 @@ public class WorkflowAssistantServiceTests
         };
         var fake = new FakeLlmClient().EnqueueStream("ok");
         // History only goes out with the key of the context it came from (same profile here).
-        var key = WorkflowAssistantService.HistoryContextKey("default", LlmTestOptions.WithProfile().Profiles["default"]);
+        var key = LlmHistoryContext.Key("default", LlmTestOptions.WithProfile().Profiles["default"]);
         await Run(NewService(fake), Req("Und s1?", history: history) with { HistoryContextKey = key });
 
         var call = fake.Calls.Single();

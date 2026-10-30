@@ -21,6 +21,7 @@ interface UseWorkflowPersistenceArgs {
 
 interface WorkflowSnapshot {
   workflowId: string;
+  generation: number;
   revision: number;
   body: {
     name: string;
@@ -64,7 +65,7 @@ export function useWorkflowPersistence({
   const savingRef = useRef(false);
   const publishRef = useRef(false);
   // True while replaceDraft runs: no autosave and no follow-up save may write the old draft.
-  const holdSavesRef = useRef(false);
+  const holdSavesRef = useRef<symbol | null>(null);
   const syncedWorkflowIdRef = useRef<string | undefined>(undefined);
   const renderedWorkflowIdRef = useRef(workflowId);
   const draftGenerationRef = useRef(0);
@@ -84,6 +85,7 @@ export function useWorkflowPersistence({
       renderedWorkflowIdRef.current = workflowId;
       // Even switching away and back to the same ID invalidates work from the prior visit.
       draftGenerationRef.current += 1;
+      holdSavesRef.current = null;
     }
     draftRef.current = { workflowId, name, description: workflow?.description ?? '', graph: { nodes, edges } };
   }, [workflowId, name, workflow?.description, nodes, edges]);
@@ -109,6 +111,7 @@ export function useWorkflowPersistence({
     if (!draft.workflowId) return null;
     return {
       workflowId: draft.workflowId,
+      generation: draftGenerationRef.current,
       revision: revisionRef.current,
       body: {
         name: draft.name,
@@ -122,16 +125,19 @@ export function useWorkflowPersistence({
   const saveMutation = useMutation({
     mutationFn: (snapshot: WorkflowSnapshot) => api.put(`/workflows/${snapshot.workflowId}`, snapshot.body),
     onSuccess: (_response, snapshot) => {
-      if (draftRef.current.workflowId === snapshot.workflowId)
+      if (draftRef.current.workflowId === snapshot.workflowId && draftGenerationRef.current === snapshot.generation)
         baseVersionRef.current = snapshot.body.expectedVersion + 1;
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
     },
-    onError: (err) => reportSaveError(err),
+    onError: (err, snapshot) => {
+      if (draftRef.current.workflowId === snapshot.workflowId && draftGenerationRef.current === snapshot.generation) reportSaveError(err);
+    },
   });
 
   const saveLoopRef = useRef<Promise<unknown> | null>(null);
-  const saveLatest = useCallback((): Promise<unknown> => {
-    if (saveLoopRef.current) return saveLoopRef.current;
+  const saveLatest = useCallback(function saveCurrentDraft(): Promise<unknown> {
+    if (saveLoopRef.current) return saveLoopRef.current.then((response) =>
+      dirtyRef.current && !holdSavesRef.current ? saveCurrentDraft() : response);
 
     const run = (async () => {
       savingRef.current = true;
@@ -144,7 +150,7 @@ export function useWorkflowPersistence({
           response = await saveMutation.mutateAsync(snapshot);
 
           // A route change owns a different draft. Never carry a follow-up across it.
-          if (draftRef.current.workflowId !== snapshot.workflowId) return response;
+          if (draftRef.current.workflowId !== snapshot.workflowId || draftGenerationRef.current !== snapshot.generation) return response;
           if (holdSavesRef.current) return response;
           if (revisionRef.current === snapshot.revision) {
             updateDirty(false);
@@ -265,16 +271,21 @@ export function useWorkflowPersistence({
    * the canvas; on failure the draft stays dirty and the next edit or Save writes it.
    */
   const replaceDraft = useCallback(async (operation: () => Promise<unknown>): Promise<void> => {
-    holdSavesRef.current = true;
+    const owner = { workflowId: draftRef.current.workflowId, generation: draftGenerationRef.current, revision: revisionRef.current };
+    const current = () => draftRef.current.workflowId === owner.workflowId && draftGenerationRef.current === owner.generation;
+    const hold = Symbol('replace-draft');
+    holdSavesRef.current = hold;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     try {
       if (saveLoopRef.current) await saveLoopRef.current.catch(() => undefined);
+      if (!current() || revisionRef.current !== owner.revision) return;
       await operation();
+      if (!current() || revisionRef.current !== owner.revision) return;
       draftGenerationRef.current += 1;
       revisionRef.current += 1;
       updateDirty(false);
     } finally {
-      holdSavesRef.current = false;
+      if (holdSavesRef.current === hold) holdSavesRef.current = null;
     }
   }, [updateDirty]);
 

@@ -46,6 +46,8 @@ internal sealed class ScorchApiClient : IScorchApiClient, IDisposable
 
     internal ScorchApiClient(ScorchWorkloadConfiguration configuration, HttpMessageHandler handler)
     {
+        // Enforced here too, so no caller can reach SCOrch over remote HTTP with default credentials.
+        SwitcherConfigurationValidator.RequireScorchTransport(configuration.ApiBaseUrl);
         _configuration = configuration;
         _baseUri = new Uri(configuration.ApiBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
         _http = new HttpClient(handler)

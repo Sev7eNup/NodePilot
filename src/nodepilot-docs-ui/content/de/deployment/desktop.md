@@ -163,7 +163,7 @@ Der Installer:
 - erstellt `desktop.json`,
 - übergibt den einmaligen Setup-Token geschützt an die Electron-Shell.
 
-Der Setup-Token geht in das Profil des **interaktiven** Benutzers — also des Benutzers, unter dem die Shell anschließend läuft. Das ist nicht zwingend derjenige, der den Installer startet: Der Installer läuft eleviert, und gibt ein Standardbenutzer am UAC-Dialog die Anmeldedaten eines *anderen* Administratorkontos ein, sind das zwei verschiedene Profile. Der Installer ermittelt den interaktiven Benutzer deshalb ausdrücklich, statt vom eigenen Profil auszugehen.
+Der Setup-Token geht in das Profil des Benutzers, der den Installer **gestartet** hat — also des Benutzers, unter dem die Shell anschließend läuft. Das ist nicht zwingend das Konto, unter dem der Installer läuft: Der Installer läuft eleviert, und gibt ein Standardbenutzer am UAC-Dialog die Anmeldedaten eines *anderen* Administratorkontos ein, sind das zwei verschiedene Profile. Auch der Konsolenbenutzer taugt nicht als Ersatz, denn bei Remotedesktop oder einem Benutzerwechsel ist das jemand anderes. Der Installer ermittelt deshalb das Konto, das ihn gestartet hat, und übergibt den Token genau diesem Konto. Lässt sich das Konto nicht ermitteln, bricht die Provisionierung mit einer Meldung ab, statt den Token einem anderen Profil zu geben.
 
 Scheitert die Provisionierung, meldet der Installer das mit einem Verweis auf sein Log unter `%TEMP%\nodepilot-provision.log` und startet die Shell nicht — statt eine erfolgreiche Installation zu melden, die anschließend nicht startet. Ursachen und Abhilfen stehen im [Desktop-Troubleshooting](https://github.com/Sev7eNup/NodePilot/blob/main/docs/desktop-troubleshooting.md), eine Übersicht aller Logdateien unter [Logs & Diagnose](logs).
 

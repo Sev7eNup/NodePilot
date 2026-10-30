@@ -108,12 +108,12 @@ public class WorkflowEngineDebugTests
         var runTask = _engine.ExecuteAsync(wf, "debug", CancellationToken.None, debugEnabled: true);
 
         // Wait for the pause: the engine should pause at step-2.
-        await WaitFor(() => _engine.GetPausedSteps(wf.Executions.Select(e => e.Id).FirstOrDefault()) is var _ &&
+        await WaitFor(() => _engine.GetPausedSnapshots(wf.Executions.Select(e => e.Id).FirstOrDefault()) is var _ &&
                              _db.WorkflowExecutions.AsNoTracking().FirstOrDefault() is { } exec &&
-                             _engine.GetPausedSteps(exec.Id).Contains("step-2"));
+                             _engine.GetPausedSnapshots(exec.Id).Any(p => p.StepId == "step-2"));
 
         var execution = _db.WorkflowExecutions.AsNoTracking().First();
-        _engine.GetPausedSteps(execution.Id).Should().Contain("step-2");
+        _engine.GetPausedSnapshots(execution.Id).Should().Contain(p => p.StepId == "step-2");
 
         // step-1 should be terminal (Succeeded) by now; step-2 is Paused.
         var step2Row = _db.StepExecutions.AsNoTracking().First(s => s.StepId == "step-2");
@@ -127,6 +127,22 @@ public class WorkflowEngineDebugTests
         var final = await runTask.WaitAsync(TimeSpan.FromSeconds(5));
         final.Status.Should().Be(ExecutionStatus.Succeeded);
         _capturedVariables.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ManualFalseBreakpointCondition_DoesNotPause()
+    {
+        var definition = BuildBreakpointWorkflow().Replace("\"breakpoint\":true",
+            "\"breakpoint\":true,\"breakpointCondition\":\"{{manual.flag}}\"");
+        var workflow = CreateWorkflow(definition);
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var result = await _engine.ExecuteAsync(workflow, "debug", timeout.Token,
+            new Dictionary<string, string> { ["flag"] = "false" }, debugEnabled: true);
+        result.Status.Should().Be(ExecutionStatus.Succeeded);
+        _notifier.Verify(n => n.StepPausedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<DateTime>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -148,7 +164,7 @@ public class WorkflowEngineDebugTests
             debugEnabled: true);
 
         await WaitFor(() => _db.WorkflowExecutions.AsNoTracking().FirstOrDefault() is { } exec
-                            && _engine.GetPausedSteps(exec.Id).Contains("step-2"));
+                            && _engine.GetPausedSnapshots(exec.Id).Any(p => p.StepId == "step-2"));
 
         var execution = _db.WorkflowExecutions.AsNoTracking().First();
         var step = _db.StepExecutions.AsNoTracking().Single(row => row.StepId == "step-2");
@@ -197,7 +213,7 @@ public class WorkflowEngineDebugTests
         var runTask = _engine.ExecuteAsync(wf, "debug", CancellationToken.None, debugEnabled: true);
 
         await WaitFor(() => _db.WorkflowExecutions.AsNoTracking().FirstOrDefault() is { } exec &&
-                             _engine.GetPausedSteps(exec.Id).Contains("step-2"));
+                             _engine.GetPausedSnapshots(exec.Id).Any(p => p.StepId == "step-2"));
 
         var execution = _db.WorkflowExecutions.AsNoTracking().First();
         _capturedVariables = null; // reset — only step-2's variables matter here
@@ -220,7 +236,7 @@ public class WorkflowEngineDebugTests
         var runTask = _engine.ExecuteAsync(wf, "debug", CancellationToken.None, debugEnabled: true);
 
         await WaitFor(() => _db.WorkflowExecutions.AsNoTracking().FirstOrDefault() is { } exec &&
-                             _engine.GetPausedSteps(exec.Id).Contains("step-2"));
+                             _engine.GetPausedSnapshots(exec.Id).Any(p => p.StepId == "step-2"));
 
         var execution = _db.WorkflowExecutions.AsNoTracking().First();
         _engine.Resume(execution.Id, "step-2", DebugResumeCommand.Stop, null).Should().BeTrue();
@@ -252,10 +268,10 @@ public class WorkflowEngineDebugTests
         var runTask = _engine.ExecuteAsync(wf, "debug", CancellationToken.None, debugEnabled: true);
 
         await WaitFor(() => _db.WorkflowExecutions.AsNoTracking().FirstOrDefault() is { } exec &&
-                             _engine.GetPausedSteps(exec.Id).Contains("step-2"));
+                             _engine.GetPausedSnapshots(exec.Id).Any(p => p.StepId == "step-2"));
 
         var execution = _db.WorkflowExecutions.AsNoTracking().First();
-        _engine.GetPausedSteps(execution.Id).Should().Contain("step-2");
+        _engine.GetPausedSnapshots(execution.Id).Should().Contain(p => p.StepId == "step-2");
 
         _engine.Resume(execution.Id, "step-2", DebugResumeCommand.Continue, null).Should().BeTrue();
         var final = await runTask.WaitAsync(TimeSpan.FromSeconds(5));
@@ -292,7 +308,7 @@ public class WorkflowEngineDebugTests
         var runTask = _engine.ExecuteAsync(wf, "debug", CancellationToken.None, debugEnabled: true);
 
         await WaitFor(() => _db.WorkflowExecutions.AsNoTracking().FirstOrDefault() is { } exec &&
-                             _engine.GetPausedSteps(exec.Id).Contains("step-2"));
+                             _engine.GetPausedSnapshots(exec.Id).Any(p => p.StepId == "step-2"));
 
         var execution = _db.WorkflowExecutions.AsNoTracking().First();
         (await _engine.CancelAsync(execution.Id)).Should().BeTrue();
@@ -367,7 +383,7 @@ public class WorkflowEngineDebugOverrideTests
             debugEnabled: true);
 
         await WaitFor(() => _db.WorkflowExecutions.AsNoTracking().FirstOrDefault() is { } exec
-                            && _engine.GetPausedSteps(exec.Id).Contains("step-2"));
+                            && _engine.GetPausedSnapshots(exec.Id).Any(p => p.StepId == "step-2"));
 
         var execution = _db.WorkflowExecutions.AsNoTracking().First();
         _engine.Resume(execution.Id, "step-2", DebugResumeCommand.Continue,

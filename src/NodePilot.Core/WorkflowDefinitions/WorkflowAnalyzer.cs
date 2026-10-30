@@ -69,7 +69,6 @@ public static class WorkflowAnalyzer
         if (FindCycle(doc.Adjacency) is { Count: > 0 } cycle)
             findings.Add(new Finding("error", "cycle", null, $"Cycle detected: {string.Join(" → ", cycle)} → {cycle[0]}. The engine has no inDegree fallback; cyclic graphs Fail."));
 
-        AddDuplicateOutputVariableFindings(doc, findings);
         AddDuplicatePublishedParamFindings(doc, findings);
         AddUnresolvedReferenceFindings(doc, definition, findings);
 
@@ -278,30 +277,6 @@ public static class WorkflowAnalyzer
         }
     }
 
-    private static void AddDuplicateOutputVariableFindings(WorkflowDefinitionDocument doc, List<Finding> findings)
-    {
-        var seen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var node in doc.Nodes)
-        {
-            if (doc.DisabledNodeIds.Contains(node.Id)) continue;
-            if (IsAnnotation(node.Type)) continue;
-            var outputVariable = node.Data.OutputVariable;
-            if (string.IsNullOrWhiteSpace(outputVariable)) continue;
-
-            if (seen.TryGetValue(outputVariable, out var firstNodeId))
-            {
-                findings.Add(new Finding(
-                    "error",
-                    "dup-output-variable",
-                    node.Id,
-                    $"outputVariable '{outputVariable}' is already used by node '{firstNodeId}' — downstream references {{{{{outputVariable}.output}}}} are ambiguous."));
-            }
-            else
-            {
-                seen[outputVariable] = node.Id;
-            }
-        }
-    }
 
     private static void AddStartJobRunspaceFindings(WorkflowDefinitionDocument doc, List<Finding> findings)
     {

@@ -6,6 +6,13 @@ import { localizedPath, resolveRoute, SOLUTION_SLUGS, type SiteRoute } from './r
 import { solutions } from './solutions'
 import { formatDuration, videoEpisodes } from './videos'
 
+// Listings of the project on other sites, so search engines can tie the name to this website.
+const projectProfiles = [
+  'https://www.producthunt.com/products/nodepilot',
+  'https://alternativeto.net/software/nodepilot/about/',
+  'https://www.libhunt.com/r/NodePilot',
+]
+
 export function siteHref(base: string, route: SiteRoute, lang: Lang): string {
   const path = localizedPath(route, lang)
   return `${base}${path}${path ? '/' : ''}`
@@ -238,7 +245,7 @@ export function renderSiteHead(doc: Document, route: SiteRoute, lang: Lang, orig
   // The project as publisher, with its logo, so search engines can tell it from other products of the same name.
   const organization = { '@id': `${origin}/#organization` }
   const graph: Record<string, unknown>[] = [
-    { '@type': 'Organization', ...organization, name: 'NodePilot', url: `${origin}/`, logo: new URL(`${base}logo.png`, origin).href, sameAs: [blogAuthor.url] },
+    { '@type': 'Organization', ...organization, name: 'NodePilot', url: `${origin}/`, logo: new URL(`${base}logo.png`, origin).href, sameAs: [blogAuthor.url, ...projectProfiles] },
     { '@type': 'WebSite', '@id': `${origin}/#website`, url: `${origin}/`, name: 'NodePilot', inLanguage: ['de', 'en'], publisher: organization },
   ]
   graph.push({ '@type': route.page === 'article' ? 'BlogPosting' : 'WebPage', '@id': `${url}#page`, url, headline: meta.title.replace(/ \| NodePilot(?: Blog)?$/, ''), description: meta.description, inLanguage: lang, isPartOf: { '@id': `${origin}/#website` }, ...(route.page === 'article' ? { author: { ...blogAuthor, ...organization }, publisher: organization, ...(entry?.publishedAt ? { datePublished: entry.publishedAt } : {}), ...(entry?.modifiedAt ? { dateModified: entry.modifiedAt } : {}), mainEntityOfPage: url, image: new URL(`${base}og-image.png`, origin).href } : {}) })

@@ -55,7 +55,7 @@ export function RetentionSection() {
   };
 
   return (
-    <div className="space-y-4">
+    <fieldset disabled={editor.isPending} className="space-y-4 min-w-0 border-0 p-0">
       <CompactCard headingMargin="mb-4" icon={DataBase} title="Executions">
         <HotReloadHint isHotReloadable={data.isHotReloadable} />
         <ExecutionsForm
@@ -107,7 +107,7 @@ export function RetentionSection() {
         </button>
       </div>
       {editor.dialog(buildPayload())}
-    </div>
+    </fieldset>
   );
 }
 

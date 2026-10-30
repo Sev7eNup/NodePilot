@@ -13,18 +13,24 @@
 param(
     [string]$DomainDn = 'DC=np,DC=lab',
     [string]$UpnSuffix = 'np.lab',
-    [string]$OuName = 'NodePilot-SsoTest',
+    [string]$OuName,
     [string]$DcFqdn = 'dc01.np.lab',
     [string]$Server = $null,
     [string]$ServicePassword = 'Lab#20260802!Kq7z',
     # Must match Setup-LabDirectory.ps1. The prefix is separate so that existing NodePilot
     # groups of a live LDAP binding stay untouched.
-    [string]$AccessGroup = 'NPTest-Access',
-    [string]$AdminsGroup = 'NPTest-Admins',
-    [string]$UserPrefix = 'nptest',
+    [string]$AccessGroup,
+    [string]$AdminsGroup,
+    [string]$UserPrefix,
     [switch]$AsEnvBlock
 )
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/LabIdentity.ps1"
+$identity = Resolve-NodePilotLabIdentity -UserPrefix $UserPrefix -OuName $OuName -DomainDn $DomainDn -AccessGroup $AccessGroup -AdminsGroup $AdminsGroup
+$UserPrefix = $identity.UserPrefix
+$OuName = $identity.OuName
+$AccessGroup = $identity.AccessGroup
+$AdminsGroup = $identity.AdminsGroup
 Import-Module ActiveDirectory -ErrorAction Stop
 
 $srv = @{}
@@ -55,7 +61,7 @@ if (-not $AsEnvBlock) {
     ""
 }
 
-$serviceBindDn = "CN=svc-$UserPrefix-dir,OU=$OuName,$DomainDn"
+$serviceBindDn = $identity.ServiceBindDn
 @"
 `$env:Authentication__LocalLoginMode                        = 'BreakGlassOnly'
 `$env:Authentication__MaxAuthorizationStalenessMinutes      = '15'

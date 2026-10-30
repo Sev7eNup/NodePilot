@@ -67,6 +67,7 @@ describe('website SEO contract', () => {
     const graph = JSON.parse(document.querySelector('[data-site-schema]')!.textContent!)['@graph']
     const organization = graph.find((item: Record<string, string>) => item['@type'] === 'Organization')
     expect(organization.logo).toBe(`${origin}/logo.png`)
+    expect(organization.sameAs).toEqual(expect.arrayContaining(['https://github.com/Sev7eNup/NodePilot', 'https://www.producthunt.com/products/nodepilot']))
     expect(graph.find((item: Record<string, string>) => item['@type'] === 'WebSite').publisher['@id']).toBe(organization['@id'])
   })
 

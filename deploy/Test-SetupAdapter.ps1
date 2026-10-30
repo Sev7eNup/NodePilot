@@ -1801,6 +1801,29 @@ try {
         -State ([pscustomobject]@{ Determined = $true; Allowed = $true; Detail = '' })
     Assert-True -Name 'a host that may fetch the password passes' -Condition ($permitted.Status -eq 'Pass')
 
+    & {
+        # Execute the generated advice against in-memory AD boundaries only.
+        function Get-ADServiceAccount {
+            param($Identity, $Properties, $ErrorAction)
+            if ($Properties -ne 'PrincipalsAllowedToRetrieveManagedPassword') { throw 'Existing grants were not requested.' }
+            [pscustomobject]@{ PrincipalsAllowedToRetrieveManagedPassword = @(
+                [pscustomobject]@{ DistinguishedName = 'CN=ExistingGroup,DC=test' }, 'CN=ExistingHost,DC=test') }
+        }
+        function Get-ADComputer {
+            param($Identity, $ErrorAction)
+            [pscustomobject]@{ DistinguishedName = 'CN=NewHost,DC=test' }
+        }
+        function Set-ADServiceAccount {
+            param($Identity, $PrincipalsAllowedToRetrieveManagedPassword, $ErrorAction)
+            Assert-True -Name 'gMSA advice preserves existing grants while adding the host' -Condition (
+                @($PrincipalsAllowedToRetrieveManagedPassword).Count -eq 3 -and
+                $PrincipalsAllowedToRetrieveManagedPassword -contains 'CN=ExistingGroup,DC=test' -and
+                $PrincipalsAllowedToRetrieveManagedPassword -contains 'CN=ExistingHost,DC=test' -and
+                $PrincipalsAllowedToRetrieveManagedPassword -contains 'CN=NewHost,DC=test')
+        }
+        & ([scriptblock]::Create($denied.Remediation))
+    }
+
     # Not knowing is not evidence: an unreachable directory must not refuse an install.
     $unknown = New-NodePilotGmsaRetrievalResult -Sam 'q-sdvorch2' -Title $gmsaTitle `
         -State ([pscustomobject]@{ Determined = $false; Allowed = $false; Detail = 'no directory could be reached' })

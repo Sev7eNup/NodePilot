@@ -103,6 +103,8 @@
     "emptyQuestion": "Please enter a question.",
     "regenerate": "Regenerate answer",
     "historyDropped": "The earlier conversation was not sent because the AI profile or the script sharing setting changed.",
+    "persistenceUnavailable": "Browser storage is unavailable or full. Chat still works in this tab, but new messages may be lost on reload. Copy anything you need to keep.",
+    "persistenceTrimmed": "Only recent chat history will survive a reload because the browser storage budget was reached. Older messages remain available in this tab.",
     "retry": "Try again",
     "scrollToBottom": "Scroll to bottom",
     "suggestion1": "Explain this workflow",
@@ -129,7 +131,6 @@
     "scopeSelectionHint": "Scope the question to the selected nodes"
   },
   "knowledge": {
-    "historyDropped": "Earlier conversation was not sent because it could not be matched to the current AI profile.",
     "title": "AI Chat",
     "subtitle": "Ask NodePilot — docs, workflows, operations, source code",
     "inputPlaceholder": "Ask about NodePilot, your workflows, or the source code…",

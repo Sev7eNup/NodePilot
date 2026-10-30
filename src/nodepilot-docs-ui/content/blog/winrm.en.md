@@ -1,4 +1,4 @@
-# Understanding WinRM: what a successful connection actually proves
+# Testing WinRM: what Test-WSMan actually proves
 
 `Test-WSMan` returns a response. Initially, this establishes only that the addressed WinRM service responded to an identification request. Diagnosis depends on which additional prerequisites the particular invocation actually tests.
 
@@ -7,6 +7,19 @@ Without an explicitly supplied authentication parameter, `Test-WSMan` sends its 
 Several separate checks stand between a reachable service and a permitted operation. Keeping them separate provides a path through configuration in which permissions are examined where they actually matter.
 
 These examples concern Windows with Active Directory and PowerShell remoting over WS-Management. Computer names and paths are placeholders. Diagnostic commands are explicitly distinguished from configuration changes.
+
+## Testing a WinRM connection step by step
+
+Run these checks from the management computer that will later start the automation. Each step tests one more prerequisite, so the first step that fails shows where to continue. `$target` stands for the fully qualified name of the target computer, for example `srv-app01.contoso.com`.
+
+| Step | Command | A success proves | Not yet proven |
+|---|---|---|---|
+| 1 | `Test-NetConnection -ComputerName $target -Port 5985` | The TCP port is reachable, 5986 for HTTPS | That WinRM answers on this port |
+| 2 | `Test-WSMan -ComputerName $target` | The WinRM service answers an anonymous request | That the user can authenticate |
+| 3 | `Test-WSMan -ComputerName $target -Authentication Kerberos` | WinRM accepts the current user with Kerberos | That the PowerShell endpoint is accessible |
+| 4 | `Invoke-Command -ComputerName $target -Authentication Kerberos -ScriptBlock { $env:COMPUTERNAME }` | A PowerShell session opens and runs a command | That the account may perform the actual task |
+
+To check the WinRM status on the target itself, `Get-Service -Name WinRM` shows the service and `winrm enumerate winrm/config/listener` the configured listeners with their addresses. The following sections explain what each layer involves and where a failed step leads.
 
 ## From the client to the remote system's identity
 

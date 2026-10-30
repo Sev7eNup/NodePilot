@@ -7,6 +7,10 @@ namespace NodePilot.Core.Interfaces;
 /// onto each other one to one.</summary>
 public enum DebugResumeCommand { Continue, StepOver, Stop }
 
+/// <summary>A currently waiting breakpoint with the same redacted values as its live event.</summary>
+public sealed record DebugPausedStepSnapshot(string StepId, string? StepLabel, DateTime PausedAt,
+    string Reason, IReadOnlyDictionary<string, string> Variables);
+
 public interface IWorkflowEngine
 {
     Task<WorkflowExecution> ExecuteAsync(Workflow workflow, string triggeredBy, CancellationToken ct,
@@ -40,8 +44,6 @@ public interface IWorkflowEngine
     bool Resume(Guid executionId, string stepId, DebugResumeCommand command,
         IReadOnlyDictionary<string, string>? overrides);
 
-    /// <summary>Step ids of all currently paused steps of an execution. REST fallback for the
-    /// frontend to rebuild the debug UI after a page reload that missed the SignalR event.
-    /// </summary>
-    IReadOnlyCollection<string> GetPausedSteps(Guid executionId);
+    /// <summary>Current redacted pauses for rebuilding the debugger after missed live events.</summary>
+    IReadOnlyCollection<DebugPausedStepSnapshot> GetPausedSnapshots(Guid executionId);
 }

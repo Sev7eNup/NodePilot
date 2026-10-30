@@ -31,7 +31,8 @@ public sealed record GenerateScriptRequest(
     string? StepId,
     IReadOnlyList<UpstreamVariableDto> UpstreamVariables,
     string? CurrentScript,
-    bool IncludeCurrentScript = false);
+    bool IncludeCurrentScript = false,
+    string? ExpectedRecipientKey = null);
 
 /// <summary>
 /// Request body for <c>POST /api/ai/generate-workflow</c>. Just a free-text prompt — all activity

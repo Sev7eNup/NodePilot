@@ -1023,6 +1023,54 @@ Assert-TextMatches -Name 'a failed first install is narrated as an undo' `
 # wording written for an upgrade.
 Assert-TextMatches -Name 'the rollback names the service it registered itself' `
     -Text $rollbackBlock -Pattern "FoundMessage `"Removing the service '\`$ServiceName' that this run registered\.`""
+# The install root carries the execute grant for the service identity. A failed gMSA A-to-B
+# reinstall restored A's binaries under B's DACL, so A could not start them.
+Assert-TextMatches -Name 'the installer snapshots the install root DACL before changing it' `
+    -Text $installerScript -Pattern '(?s)\$previousInstallRootAccess = Get-NodePilotDirectoryAccessSnapshot -Path \$InstallPath.*?\$installRootAclApplied = \$true\s*\r?\nSet-DirectoryAclForService -Path \$InstallPath'
+Assert-TextMatches -Name 'the rollback restores install root access before the binaries and the service' `
+    -Text $rollbackBlock -Pattern '(?s)Restore-NodePilotDirectoryAccessSnapshot -Snapshot \$previousInstallRootAccess.*?Restore-NodePilotBinaryBackup -Backup \$installRollback.*?Restore-ServiceRollbackSnapshot -Snapshot \$previousService'
+& {
+    . $ArtifactSecurityPath
+    $root = Join-Path ([IO.Path]::GetTempPath()) ('nodepilot-installroot-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $root | Out-Null
+    # LocalService and NetworkService stand in for gMSA A and gMSA B.
+    $identityA = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-19')
+    $identityB = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-20')
+    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    $setRootAcl = {
+        param($ServiceIdentity)
+        $acl = New-Object System.Security.AccessControl.DirectorySecurity
+        $acl.SetAccessRuleProtection($true, $false)
+        foreach ($grant in @(@($me, 'FullControl'), @($ServiceIdentity, 'ReadAndExecute'))) {
+            $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+                $grant[0], $grant[1], 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+        }
+        Set-Acl -LiteralPath $root -AclObject $acl
+    }
+    $grantsTo = {
+        param($Path, $Sid)
+        @((Get-Acl -LiteralPath $Path).Access | Where-Object {
+            $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $Sid -and
+            ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::ExecuteFile)
+        }).Count -gt 0
+    }
+    try {
+        & $setRootAcl $identityA
+        $snapshot = Get-NodePilotDirectoryAccessSnapshot -Path $root
+        & $setRootAcl $identityB
+        Restore-NodePilotDirectoryAccessSnapshot -Snapshot $snapshot
+        [IO.File]::WriteAllText((Join-Path $root 'NodePilot.Api.exe'), 'restored binary')
+        $restored = Join-Path $root 'NodePilot.Api.exe'
+        if (-not (& $grantsTo $restored $identityA) -or (& $grantsTo $restored $identityB)) {
+            throw 'Deployment template check failed: a restored binary must be executable by the previous identity only.'
+        }
+        if ($null -ne (Get-NodePilotDirectoryAccessSnapshot -Path (Join-Path $root 'absent'))) {
+            throw 'Deployment template check failed: an absent install root has no access snapshot.'
+        }
+    }
+    finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-Host '  OK  a failed identity change gives the previous identity its install root access back' -ForegroundColor DarkGray
+}
 Assert-TextMatches -Name 'the rollback hands the secrets back to the previous identity too' `
     -Text $rollbackBlock -Pattern '(?s)Set-NodePilotServiceOwnedFileAcl[\s\S]{0,200}\$previousAclIdentity'
 # Guarded, so a failure before the ACL was ever touched does not rewrite a directory this run had
@@ -1203,17 +1251,105 @@ if ($purgeBlockStart -lt 0) {
 }
 $purgeBlock = $uninstallScript.Substring($purgeBlockStart)
 Assert-TextMatches -Name 'purging takes ownership before deleting owner-only files' `
-    -Text $purgeBlock -Pattern 'takeown\.exe'
-# "BUILTIN\Administrators" does not resolve on a non-English Windows.
+    -Text $purgeBlock -Pattern '(?s)Grant-NodePilotPurgeAccess -Path \$DataPath.*?Remove-Item -LiteralPath \$DataPath'
+$purgeAccessStart = $uninstallScript.IndexOf('function Grant-NodePilotPurgeAccess')
+if ($purgeAccessStart -lt 0) {
+    throw 'Deployment template check failed: could not locate the purge ownership helper in the uninstaller.'
+}
+$purgeAccess = $uninstallScript.Substring($purgeAccessStart,
+    $uninstallScript.IndexOf("`nWrite-Step", $purgeAccessStart) - $purgeAccessStart)
+# "BUILTIN\Administrators" does not resolve on a non-English Windows, and takeown /D expects a
+# localized answer (Y on English, J on German Windows). /A names the group without either.
+Assert-TextMatches -Name 'ownership goes to Administrators without a localized name' `
+    -Text $purgeAccess -Pattern 'takeown\.exe /F \$ItemPath /A'
+Assert-TextDoesNotMatch -Name 'takeown is never given a localized confirmation answer' `
+    -Text $uninstallScript -Pattern 'takeown[^\r\n]*/D\b'
 Assert-TextMatches -Name 'the ownership grant uses the well-known SID, not a localised group name' `
-    -Text $purgeBlock -Pattern 'S-1-5-32-544'
+    -Text $purgeAccess -Pattern 'S-1-5-32-544'
 Assert-TextDoesNotMatch -Name 'the ownership grant must not use a localised group name' `
-    -Text $purgeBlock -Pattern 'BUILTIN\\Administrators'
+    -Text $purgeAccess -Pattern 'BUILTIN\\Administrators'
 # (OI) and (CI) are CONTAINER inheritance flags. Applied to a leaf file, icacls drops them, reports
 # "Successfully processed 1 files" and adds no ACE whatsoever - so the grant looks like it worked
 # and the file stays undeletable. Measured on the lab host against jwt-secret.key.
 Assert-TextDoesNotMatch -Name 'the grant must not carry container inheritance flags' `
-    -Text $purgeBlock -Pattern 'icacls[^\r\n]*\(OI\)'
+    -Text $purgeAccess -Pattern 'icacls[^\r\n]*\(OI\)'
+
+# A failed native step leaves the data in place and fails the uninstall instead of deleting part
+# of a tree it could not open.
+Assert-TextMatches -Name 'ownership failures stop the purge before anything is deleted' `
+    -Text $purgeBlock -Pattern '(?s)if \(\$ownershipFailures\.Count -gt 0\) \{.*?\$dataPathRemaining = \$true.*?\}\s*else \{\s*try \{\s*Remove-Item -LiteralPath \$DataPath'
+
+# The helper against a real tree with a folder this account cannot list until its "ownership" is
+# taken, which is what an owner-only directory looks like to an administrator.
+& {
+    $uninstallErrors = $null
+    $uninstallAst = [System.Management.Automation.Language.Parser]::ParseFile(
+        $UninstallScriptPath, [ref]$null, [ref]$uninstallErrors)
+    if ($uninstallErrors.Count) { throw 'Uninstaller contains PowerShell syntax errors.' }
+    $helper = $uninstallAst.Find({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Grant-NodePilotPurgeAccess'
+    }, $false)
+    . ([scriptblock]::Create($helper.Extent.Text))
+    $fixture = Join-Path ([IO.Path]::GetTempPath()) ('nodepilot-purge-' + [Guid]::NewGuid().ToString('N'))
+    $locked = Join-Path $fixture 'keys'
+    New-Item -ItemType Directory -Path (Join-Path $locked 'inner') -Force | Out-Null
+    foreach ($file in @('jwt-secret.key', 'keys\key-1.xml', 'keys\inner\key-2.xml')) {
+        [IO.File]::WriteAllText((Join-Path $fixture $file), 'fixture')
+    }
+    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    $deny = New-Object System.Security.AccessControl.FileSystemAccessRule($me, 'ListDirectory', 'Deny')
+    $lockedAcl = Get-Acl -LiteralPath $locked
+    $lockedAcl.AddAccessRule($deny)
+    Set-Acl -LiteralPath $locked -AclObject $lockedAcl
+    $calls = New-Object 'System.Collections.Generic.List[string]'
+    $unlock = {
+        param($ItemPath)
+        $calls.Add("own:$ItemPath")
+        if ($ItemPath -eq $locked) {
+            $acl = Get-Acl -LiteralPath $locked
+            [void]$acl.RemoveAccessRule($deny)
+            Set-Acl -LiteralPath $locked -AclObject $acl
+        }
+        0
+    }
+    try {
+        $failures = @(Grant-NodePilotPurgeAccess -Path $fixture -TakeOwnership $unlock `
+            -GrantAdministrators { param($ItemPath) $calls.Add("grant:$ItemPath"); 0 })
+        $expected = @($fixture, (Join-Path $fixture 'jwt-secret.key'), $locked, (Join-Path $locked 'inner'),
+            (Join-Path $locked 'key-1.xml'), (Join-Path $locked 'inner\key-2.xml'))
+        $missing = @($expected | Where-Object {
+            $calls.IndexOf("own:$_") -lt 0 -or $calls.IndexOf("grant:$_") -lt $calls.IndexOf("own:$_") })
+        if ($failures.Count -ne 0 -or $missing.Count -ne 0) {
+            throw "Deployment template check failed: purge ownership must reach every item behind an unlistable folder (missing: $($missing -join ', '))."
+        }
+
+        $calls.Clear()
+        $failures = @(Grant-NodePilotPurgeAccess -Path $fixture `
+            -TakeOwnership { param($ItemPath) $calls.Add("own:$ItemPath"); if ($ItemPath -like '*jwt-secret.key') { 1 } else { 0 } } `
+            -GrantAdministrators { param($ItemPath) $calls.Add("grant:$ItemPath"); 0 })
+        if ($failures.Count -ne 1 -or $failures[0] -notmatch 'takeown exited with 1' -or
+            $calls.Contains("grant:$(Join-Path $fixture 'jwt-secret.key')")) {
+            throw 'Deployment template check failed: a failed takeown must be reported and must skip the grant.'
+        }
+    }
+    finally {
+        $acl = Get-Acl -LiteralPath $locked
+        [void]$acl.RemoveAccessRule($deny)
+        Set-Acl -LiteralPath $locked -AclObject $acl
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host '  OK  purge ownership is taken item by item without a localized answer and reports native failures' -ForegroundColor DarkGray
+}
+
+# A failed cleanup must stay repeatable: the marker and deploy\ are removed only after everything
+# else is gone, and both setup uninstallers abort before Inno removes anything.
+Assert-TextMatches -Name 'the uninstaller keeps the marker and its scripts while anything is left' `
+    -Text $uninstallScript -Pattern '(?s)if \(\$installPathRemaining -or \$backupsRemaining -or \$dataPathRemaining\) \{.*?exit 1\s*\}.*?Remove-Item -LiteralPath \$recoveryHelperPath.*?Remove-Item -LiteralPath \$markerPath'
+Assert-TextMatches -Name 'the uninstaller defers deploy\ while it empties the install directory' `
+    -Text $uninstallScript -Pattern "\`$entry\.Name -eq \`$recoveryHelperName\) \{ continue \}"
+Assert-TextMatches -Name 'a failed service deletion stops the uninstall before files are removed' `
+    -Text $uninstallScript -Pattern '(?s)\$deleteExit -ne 0 -and \$deleteExit -ne 1072\) \{\s*throw'
 
 # --- server setup wizard contracts -------------------------------------------------------------
 # The Pascal side has no unit-test story at all, so what CAN be pinned statically is pinned here
@@ -1225,6 +1361,16 @@ Assert-TextDoesNotMatch -Name 'the server setup must not use a [Run] section' `
     -Text $serverIss -Pattern '(?mi)^\s*\[Run\]'
 Assert-TextMatches -Name 'every Exec result is inspected' `
     -Text $serverIss -Pattern '(?m)ResultCode\s*<>\s*0'
+# Abort in usUninstall is the one place Inno stops an uninstall before it removes files and the
+# Apps & Features entry, with a non-zero exit code for /SILENT callers.
+$serverUninstallStep = [regex]::Match($serverIss,
+    '(?s)procedure CurUninstallStepChanged\(CurUninstallStep: TUninstallStep\);.*?\r?\nend;').Value
+Assert-TextMatches -Name 'a failed server cleanup aborts the uninstall' `
+    -Text $serverUninstallStep -Pattern '(?s)else if ResultCode <> 0 then\s*begin.*?Abort;\s*end;'
+Assert-TextMatches -Name 'a server cleanup that cannot start aborts the uninstall' `
+    -Text $serverUninstallStep -Pattern "(?s)if not Exec\('powershell\.exe', Arguments.*?then\s*begin.*?Abort;\s*end"
+Assert-TextMatches -Name 'a missing server cleanup script aborts while the installation marker exists' `
+    -Text $serverUninstallStep -Pattern "(?s)if not FileExists\(ScriptPath\) then\s*begin\s*//[^\r\n]*\r?\n\s*//[^\r\n]*\r?\n\s*if not RegKeyExists\(HKLM64, 'SOFTWARE\\NodePilot\\Server'\) then Exit;.*?Abort;"
 
 # Windows Server 2022 is build 20348. Copying the desktop installer's 22000 would make the SERVER
 # setup refuse to run on the only operating system it targets.
@@ -2875,14 +3021,68 @@ Assert-TextMatches -Name 'the desktop shell launch is gated on provisioning succ
 #    the token, and the only remaining copy was SYSTEM-owned and unreadable. Pin that the profile is
 #    resolved rather than assumed - asserting merely that the function is *called* would not catch a
 #    regression that passes it the wrong value, which is how the 1.2.8 PATH defect slipped through.
-Assert-TextMatches -Name 'the handoff profile is resolved from the interactive user' `
-    -Text $desktopProvision -Pattern '(?s)function Get-InteractiveUserProfile.*?Win32_ComputerSystem'
-Assert-TextMatches -Name 'the handoff target comes from the resolved profile, not the current process' `
-    -Text $desktopProvision -Pattern '(?s)\$handoffBase\s*=\s*\$interactive\.LocalAppData'
+#    The console user is no substitute either: under RDP or a switched user it is someone else.
+#    Setup identifies the account that started it and passes its SID.
+Assert-TextMatches -Name 'the handoff target comes from the resolved profile' `
+    -Text $desktopProvision -Pattern '(?s)\$handoffBase\s*=\s*\$handoffTarget\.LocalAppData'
 Assert-TextMatches -Name 'the handoff ACL is granted to the resolved user' `
-    -Text $desktopProvision -Pattern '(?s)\$handoffOwnerSid\s*=\s*\$interactive\.Sid'
+    -Text $desktopProvision -Pattern '(?s)\$handoffOwnerSid\s*=\s*\$handoffTarget\.Sid'
 Assert-TextMatches -Name 'the handoff directory is built from the resolved base' `
     -Text $desktopProvision -Pattern "\`$handoffDir = Join-Path \`$handoffBase 'NodePilot'"
+Assert-TextDoesNotMatch -Name 'the handoff never falls back to the console user or this process profile' `
+    -Text $desktopProvision -Pattern 'Win32_ComputerSystem|\$handoffBase\s*=\s*\$env:LOCALAPPDATA'
+Assert-TextMatches -Name 'setup identifies the account that started it as that account' `
+    -Text $desktopIss -Pattern '(?s)function OriginalUserSid\(\).*?ExecAsOriginalUser\(.*?WindowsIdentity\]::GetCurrent\(\)\.User\.Value'
+Assert-TextMatches -Name 'setup passes that account to the provisioner' `
+    -Text $desktopIss -Pattern "(?s)procedure ProvisionRuntime\(\).*?SetupUserSid := OriginalUserSid\(\);.*?-HandoffUserSid"
+& {
+    $tokens = $null; $parseErrors = $null
+    $provisionAst = [Management.Automation.Language.Parser]::ParseInput($desktopProvision, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Desktop provisioner did not parse.' }
+    $resolver = $provisionAst.Find({ param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Resolve-DesktopHandoffTarget'
+    }, $false)
+    if (-not $resolver) { throw 'Resolve-DesktopHandoffTarget was not found in the desktop provisioner.' }
+    . ([scriptblock]::Create($resolver.Extent.Text))
+    $fixtureProfile = Join-Path ([IO.Path]::GetTempPath()) ('nodepilot-handoff-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $fixtureProfile | Out-Null
+    $setupUserSid = 'S-1-5-21-1111111111-2222222222-3333333333-1001'
+    function Get-ItemProperty {
+        param($Path, $Name, $ErrorAction)
+        if ($Path -notlike "*\ProfileList\$setupUserSid") { throw "fixture: no profile at $Path" }
+        [pscustomobject]@{ ProfileImagePath = $fixtureProfile }
+    }
+    # A console user that differs from the setup user, as under RDP or a switched user.
+    function Get-CimInstance { [pscustomobject]@{ UserName = 'CONTOSO\console-user' } }
+    try {
+        $target = Resolve-DesktopHandoffTarget -HandoffUserSid $setupUserSid
+        if ($target.Sid.Value -ne $setupUserSid -or $target.LocalAppData -ne (Join-Path $fixtureProfile 'AppData\Local')) {
+            throw 'Deployment template check failed: the handoff must go to the account that started setup.'
+        }
+        foreach ($case in @(
+                @{ Name = 'no setup account'; Sid = '' },
+                @{ Name = 'an account without a profile'; Sid = 'S-1-5-21-1111111111-2222222222-3333333333-1002' },
+                @{ Name = 'a value that is not a SID'; Sid = 'CONTOSO\someone' })) {
+            $refused = $false
+            try { [void](Resolve-DesktopHandoffTarget -HandoffUserSid $case.Sid) } catch { $refused = $true }
+            if (-not $refused) {
+                throw "Deployment template check failed: the handoff must fail explicitly for $($case.Name)."
+            }
+        }
+    }
+    finally { Remove-Item -LiteralPath $fixtureProfile -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-Host '  OK  the first-run handoff goes to the setup account and fails explicitly when it is unknown' -ForegroundColor DarkGray
+}
+
+# Same contract as the server uninstaller: a failed cleanup keeps the installation retryable.
+$desktopUninstallStep = [regex]::Match($desktopIss,
+    '(?s)procedure CurUninstallStepChanged\(CurUninstallStep: TUninstallStep\);.*?\r?\nend;').Value
+Assert-TextMatches -Name 'a failed desktop cleanup aborts the uninstall' `
+    -Text $desktopUninstallStep -Pattern '(?s)else if ResultCode <> 0 then\s*begin.*?Abort;\s*end;'
+Assert-TextMatches -Name 'a desktop cleanup that cannot start aborts the uninstall' `
+    -Text $desktopUninstallStep -Pattern "(?s)if not Exec\('powershell\.exe', Params.*?then\s*begin.*?Abort;\s*end"
+Assert-TextMatches -Name 'a missing desktop cleanup script aborts while a service is registered' `
+    -Text $desktopUninstallStep -Pattern '(?s)if not FileExists\(ScriptPath\) then.*?RegKeyExists\(HKLM64, ''SYSTEM\\CurrentControlSet\\Services\\NodePilot''\).*?Abort;'
 
 # 2b. Install over an installation, uninstall, install again. Each defect below left a machine that
 #     looked installed or uninstalled and was neither.
@@ -2891,6 +3091,32 @@ $desktopUninstall = Get-Content -LiteralPath (Join-Path $desktopDirectory 'Unins
 $desktopPrepare   = Get-Content -LiteralPath (Join-Path $desktopDirectory 'Prepare-DesktopSetup.ps1') -Raw
 $desktopRuntime   = Get-Content -LiteralPath (Join-Path $desktopDirectory 'DesktopRuntime.ps1') -Raw
 $desktopUpdate    = Get-Content -LiteralPath (Join-Path $desktopDirectory 'Update-Desktop.ps1') -Raw
+& {
+    $tokens = $null; $parseErrors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseInput($desktopUpdate, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Desktop updater did not parse.' }
+    $command = $ast.Find({ param($node)
+        $node -is [Management.Automation.Language.CommandAst] -and
+        $node.GetCommandName() -eq 'powershell.exe' -and $node.Extent.Text.Contains('Provision-LocalDb.ps1')
+    }, $true)
+    if (-not $command) { throw 'Desktop reprovisioning invocation missing.' }
+    function powershell.exe {
+        param([switch]$NoProfile, $ExecutionPolicy, $File, $InstallPath, $DataPath, $ApiServiceName, $DbServiceName, $HandoffUserSid)
+        [pscustomobject]@{ Install = $InstallPath; Data = $DataPath; Api = $ApiServiceName; Db = $DbServiceName; Sid = $HandoffUserSid }
+    }
+    $InstallPath = Join-Path $env:TEMP 'custom app'
+    $DataPath = Join-Path $env:TEMP 'custom data'
+    $ApiServiceName = 'CustomApi'; $DbServiceName = 'CustomDb'
+    $HandoffUserSid = 'S-1-5-21-1-2-3-1001'
+    $actual = & ([scriptblock]::Create($command.Extent.Text))
+    if ($actual.Install -ne $InstallPath -or $actual.Data -ne $DataPath -or
+        $actual.Api -ne $ApiServiceName -or $actual.Db -ne $DbServiceName) {
+        throw 'Desktop reprovisioning lost custom paths or service identities.'
+    }
+    if ($actual.Sid -ne $HandoffUserSid) {
+        throw 'Desktop reprovisioning must name the account that receives the first-run handoff.'
+    }
+}
 
 # A failed provisioning ended an unattended install with exit code 0, or - worse - left it waiting
 # forever on a message box that /SUPPRESSMSGBOXES does not suppress.

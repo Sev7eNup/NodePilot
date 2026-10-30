@@ -13,6 +13,24 @@ const snapshot = (value: string, etag: string): SettingsSectionResponse<{ value:
 afterEach(() => { onlineManager.setOnline(true); vi.restoreAllMocks(); });
 
 describe('settings draft ownership', () => {
+  it('preserves edits made during a save while advancing the draft ETag', async () => {
+    vi.spyOn(adminSettings, 'getSection').mockResolvedValue(snapshot('initial', 'v1'));
+    let finish!: (value: SettingsSectionResponse<{ value: string }>) => void;
+    const put = vi.spyOn(adminSettings, 'putSection').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useSectionForm('Test', { value: '' }), {
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
+    await waitFor(() => expect(result.current.form?.value).toBe('initial'));
+    act(() => { result.current.set!({ value: 'submitted' }); result.current.save!({ Value: 'submitted' }); });
+    await waitFor(() => expect(put).toHaveBeenCalledOnce());
+    act(() => { result.current.set!({ value: 'newer draft' }); result.current.save!({ Value: 'ignored while pending' }); });
+    await act(async () => finish(snapshot('submitted', 'v2')));
+    await waitFor(() => expect(result.current.data?.etag).toBe('v2'));
+    expect(result.current.form?.value).toBe('newer draft');
+    act(() => result.current.save!({ Value: 'newer draft' }));
+    await waitFor(() => expect(put).toHaveBeenLastCalledWith('Test', { Value: 'newer draft' }, 'v2'));
+  });
   it('retries conflicts through the same guarded save pipeline without adopting a rejected snapshot', async () => {
     vi.spyOn(adminSettings, 'getSection').mockResolvedValue(snapshot('initial', 'v1'));
     let rejectRetry!: (reason: unknown) => void;

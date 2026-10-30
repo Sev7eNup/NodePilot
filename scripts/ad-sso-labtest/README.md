@@ -87,16 +87,22 @@ certificate warning interstitial gets in the way.
 
 ## Test directory
 
+`LabIdentity.ps1` supplies the defaults for every provisioning script, probe, and database
+check: prefix `nptest`, OU `NodePilot-SsoTest`, and groups `NPTest-Access` / `NPTest-Admins`.
+Pass the same `-UserPrefix` to every command when using a custom prefix (1-12 letters,
+digits, or hyphens). Pass matching OU/group overrides to the scripts that use them.
+`Setup-ApiHost.ps1` derives its service bind DN from those inputs unless explicitly overridden.
+
 | Account | Groups | Purpose |
 |---|---|---|
-| `svc-npdir` | – | LDAPS service bind |
-| `np.alice` | **only** `NodePilot-Admins` (in `NodePilot-Access`) | Happy path, transitive mapping → Admin |
-| `np.carol` | `NodePilot-Access` | Viewer default (no RoleMapping hit) |
-| `np.bob` | none | AllowedGroup gate: 401, **no** JIT row |
-| `np.dave` | `NodePilot-Access` | Race drill (leave untouched until W18) |
-| `np.erin` | `NodePilot-Access` | Disable/revocation drills |
+| `svc-nptest-dir` | – | LDAPS service bind |
+| `nptest.alice` | **only** `NPTest-Admins` (in `NPTest-Access`) | Happy path, transitive mapping → Admin |
+| `nptest.carol` | `NPTest-Access` | Viewer default (no RoleMapping hit) |
+| `nptest.bob` | none | AllowedGroup gate: 401, **no** JIT row |
+| `nptest.dave` | `NPTest-Access` | Race drill (leave untouched until W18) |
+| `nptest.erin` | `NPTest-Access` | Disable/revocation drills |
 
-The nesting is essential: alice is **only** in `NodePilot-Admins`. A successful
+The nesting is essential: alice is **only** in `NPTest-Admins`. A successful
 login therefore proves that NodePilot reads transitive `tokenGroups` rather than just `memberOf`.
 
 ## Scripts
@@ -291,7 +297,7 @@ Leave `Cluster:Enabled` at `false` — otherwise `DirectorySynchronizationServic
 `ExternalAuthorizationStalenessService` do not run and the revocation drills measure nothing.
 Check `/healthz/leader` → 200 beforehand.
 
-### 9. Run the suite (npcli01, locally interactive as np.alice)
+### 9. Run the suite (npcli01, locally interactive as nptest.alice)
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\ad-sso-live-test.ps1 `
@@ -301,6 +307,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\ad-sso-live-test.ps1 `
 
 Drills separately, because they are long-running or disruptive:
 
+For W16, prepare a long-running test workflow and give `nptest.erin` the Operator role
+through a separate role-mapping group that does **not** grant admission or nest into
+`NPTest-Access`. Erin must still depend on direct `NPTest-Access` membership for admission;
+adding her to `NPTest-Admins` would invalidate this experiment. The default Viewer role
+supports W15 only. A requested W16 fails if execution is rejected, lacks an ID, or never
+reaches Running. Only an authentication denial (401/403) alongside a healthy independent
+admin session counts as revocation. Network/server errors fail the drill. Group membership
+is restored in `finally`, including failures after removal.
+
 ```powershell
 .\ad-sso-live-test.ps1 -IncludeOutageDrill -DcVmName dc01 -HyperVHost <hv-host>
 .\ad-sso-live-test.ps1 -IncludeRevocationDrill -RevocationWorkflowId <guid>   # 3-16 min
@@ -308,6 +323,10 @@ Drills separately, because they are long-running or disruptive:
 ```
 
 ### 10. Secure the evidence
+
+The database checks require evidence for the selected prefix. Revocation also requires
+exactly one Erin user before asserting zero active sessions, so an absent identity cannot
+produce a green result. Queries fail on database errors.
 
 ```powershell
 .\Get-KerberosEvidence.ps1 -Role Client              # on npcli01
@@ -365,13 +384,13 @@ Not scriptable — evidence belongs in `evidence/`:
 | W21 | Kerberos survives the GPO | W5 with the Deny GPO active → 200 |
 | W23 | Windows-only topology | Restart with `Ldap__Enabled=false` → boot ok, SSO ok, `methods.ldap=false`, `/healthz/directory` still `Healthy` |
 | W24 | Restart semantics | `Windows__Enabled=false` **without** restart → `methods` keeps reporting `windows=true` (process-start snapshot); after restart `windows=false` and endpoint 404 |
-| W26 | Username collision | Create a local user `np.alice@np.lab` without an external identity, SSO with a different SID → 401, audit `USER_WINDOWS_REFUSED_COLLISION`, **no** auto-merge |
-| W27 | SPN duplicate (destructive, last) | `setspn -A HTTP/npapi01.np.lab NPLAB\np.bob`, repeat W5 → Kerberos breaks; afterwards `setspn -D`. Purpose: document the failure pattern |
+| W26 | Username collision | Create a local user `nptest.alice@np.lab` without an external identity, SSO with a different SID → 401, audit `USER_WINDOWS_REFUSED_COLLISION`, **no** auto-merge |
+| W27 | SPN duplicate (destructive, last) | `setspn -A HTTP/npapi01.np.lab NPLAB\nptest.bob`, repeat W5 → Kerberos breaks; afterwards `setspn -D`. Purpose: document the failure pattern |
 
 ### Order dependencies
 
-W0/W4 before PHASE B · W1–W12 in sequence · W13/W15/W16 only with `np.erin` (never with alice, otherwise
-the admin is gone) · W18 before any other `np.dave` contact · **W19 strictly before W20**
+W0/W4 before PHASE B · W1–W12 in sequence · W13/W15/W16 only with `nptest.erin` (never with alice, otherwise
+the admin is gone) · W18 before any other `nptest.dave` contact · **W19 strictly before W20**
 (afterwards the app branch is dead) · W17/W23/W24 need restarts, put them at the end · W27 dead last.
 
 ## Pitfalls

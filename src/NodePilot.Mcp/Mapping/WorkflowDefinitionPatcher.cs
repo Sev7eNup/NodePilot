@@ -106,11 +106,12 @@ public static class WorkflowDefinitionPatcher
     {
         var result = new JsonArray();
         if (proposed.ValueKind != JsonValueKind.Object || !proposed.TryGetProperty(arrayName, out var arr) || arr.ValueKind != JsonValueKind.Array)
-            return result;
+            throw new ArgumentException($"'{arrayName}' must be an array.");
 
         foreach (var item in arr.EnumerateArray())
         {
-            if (item.ValueKind != JsonValueKind.Object || JsonNode.Parse(item.GetRawText()) is not JsonObject obj) continue;
+            if (item.ValueKind != JsonValueKind.Object || JsonNode.Parse(item.GetRawText()) is not JsonObject obj)
+                throw new ArgumentException($"Every member of '{arrayName}' must be an object.");
             JsonObject? source = null;
             var id = IdOf(obj);
             if (id is not null) originalById.TryGetValue(id, out source);

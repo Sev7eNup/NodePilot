@@ -17,6 +17,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { useColumnResize } from '../hooks/useColumnResize';
+import { useAsyncIdentity } from '../hooks/useAsyncIdentity';
 import { api } from '../api/client';
 import { ModalShell } from '../components/common/ModalShell';
 import { MobileCardList } from '../components/common/MobileCardList';
@@ -142,6 +143,7 @@ export function UsersPage() {
   const currentUsername = useAuthStore((s) => s.username);
   const isMobile = useIsMobile();
   const [dialog, setDialog] = useState<DialogMode>(null);
+  const captureSession = useAsyncIdentity(dialog);
 
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<ColKey | null>('username');
@@ -166,19 +168,20 @@ export function UsersPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (body: CreateUserPayload) => api.post<UserRow>('/users', body),
-    onSuccess: () => {
+    mutationFn: ({ body }: { body: CreateUserPayload; current: () => boolean }) => api.post<UserRow>('/users', body),
+    onSuccess: (_result, request) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      setDialog(null);
+      // A closed dialog must not close the one opened after it.
+      if (request.current()) setDialog(null);
     },
     onError: (err: Error) => toast.error(t('common:createFailed', { message: err.message })),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: UpdateUserPayload }) => api.put(`/users/${id}`, body),
-    onSuccess: () => {
+    mutationFn: ({ id, body }: { id: string; body: UpdateUserPayload; current: () => boolean }) => api.put(`/users/${id}`, body),
+    onSuccess: (_result, request) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      setDialog(null);
+      if (request.current()) setDialog(null);
     },
     onError: (err: Error) => toast.error(t('common:updateFailed', { message: err.message })),
   });
@@ -505,7 +508,7 @@ export function UsersPage() {
       {dialog?.kind === 'create' && (
         <CreateUserDialog
           onCancel={() => setDialog(null)}
-          onSubmit={(body) => createMutation.mutate(body)}
+          onSubmit={(body) => createMutation.mutate({ body, current: captureSession() })}
           pending={createMutation.isPending}
         />
       )}
@@ -514,7 +517,7 @@ export function UsersPage() {
           user={dialog.user}
           isSelf={dialog.user.username === currentUsername}
           onCancel={() => setDialog(null)}
-          onSubmit={(body) => updateMutation.mutate({ id: dialog.user.id, body })}
+          onSubmit={(body) => updateMutation.mutate({ id: dialog.user.id, body, current: captureSession() })}
           pending={updateMutation.isPending}
         />
       )}
@@ -522,7 +525,7 @@ export function UsersPage() {
         <PasswordDialog
           user={dialog.user}
           onCancel={() => setDialog(null)}
-          onSubmit={(password) => updateMutation.mutate({ id: dialog.user.id, body: { password } })}
+          onSubmit={(password) => updateMutation.mutate({ id: dialog.user.id, body: { password }, current: captureSession() })}
           pending={updateMutation.isPending}
         />
       )}
@@ -556,7 +559,7 @@ function CreateUserDialog({
 
   return (
     <DialogShell title={t('users:createTitle')} onCancel={onCancel}>
-      <div className="space-y-3">
+      <fieldset disabled={pending} className="space-y-3 min-w-0 border-0 p-0">
         <div>
           <label className="block text-xs font-medium text-on-surface-variant mb-1">{t('users:fields.username')}</label>
           <input
@@ -600,7 +603,7 @@ function CreateUserDialog({
             <span className="block text-[11px] text-outline">{t('users:breakGlassHint')}</span>
           </span>
         </label>
-      </div>
+      </fieldset>
       <div className="flex justify-end gap-2 mt-5">
         <button
           onClick={onCancel}
@@ -640,7 +643,7 @@ function EditUserDialog({
 
   return (
     <DialogShell title={t('users:editTitle', { username: user.username })} onCancel={onCancel}>
-      <div className="space-y-3">
+      <fieldset disabled={pending} className="space-y-3 min-w-0 border-0 p-0">
         <div>
           <label className="block text-xs font-medium text-on-surface-variant mb-1">{t('users:fields.role')}</label>
           <select
@@ -677,7 +680,7 @@ function EditUserDialog({
             </span>
           </label>
         )}
-      </div>
+      </fieldset>
       <div className="flex justify-end gap-2 mt-5">
         <button
           onClick={onCancel}
@@ -714,7 +717,7 @@ function PasswordDialog({
 
   return (
     <DialogShell title={t('users:passwordTitle', { username: user.username })} onCancel={onCancel}>
-      <div className="space-y-3">
+      <fieldset disabled={pending} className="space-y-3 min-w-0 border-0 p-0">
         <p className="text-xs text-on-surface-variant">
           {t('users:resetPasswordHint')}
         </p>
@@ -742,7 +745,7 @@ function PasswordDialog({
             <p className="text-[11px] text-red-600 mt-0.5">{t('users:passwordsDontMatch')}</p>
           )}
         </div>
-      </div>
+      </fieldset>
       <div className="flex justify-end gap-2 mt-5">
         <button
           onClick={onCancel}

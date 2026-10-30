@@ -1,3 +1,4 @@
+import { ChatPersistenceNotice } from './ChatPersistenceNotice';
 import {
   Add,
   Checkbox,
@@ -36,6 +37,7 @@ import {
   finalizeStreaming,
   isAbort,
   lastHistoryContextKey,
+  contextBoundHistory,
   markToolDoneOnLast,
   patchLastAssistant,
   trimHistory,
@@ -215,7 +217,7 @@ export function AiWorkflowChatPanel({
       const scoped = scopeToSelection && selection && selection.nodeLabels.length > 0
         ? `[Bezogen auf die ausgewählten Nodes: ${selection.nodeLabels.join(', ')}] ${typed}`
         : typed;
-      const history: AiChatTurn[] = messages.map((m) => ({ role: m.role, content: m.content }));
+      const history: AiChatTurn[] = contextBoundHistory(messages).map((m) => ({ role: m.role, content: m.content }));
       setMessages((prev) => [...prev, { role: 'user', content: typed }]);
       setInput('');
       setMention(null);
@@ -245,7 +247,7 @@ export function AiWorkflowChatPanel({
     for (let i = messages.length - 1; i >= 0; i--) { if (messages[i].role === 'user') { lastUserIdx = i; break; } }
     if (lastUserIdx < 0) return;
     const question = messages[lastUserIdx].content;
-    const history: AiChatTurn[] = messages.slice(0, lastUserIdx).map((m) => ({ role: m.role, content: m.content }));
+    const history: AiChatTurn[] = contextBoundHistory(messages.slice(0, lastUserIdx)).map((m) => ({ role: m.role, content: m.content }));
     setMessages((prev) => prev.slice(0, lastUserIdx + 1)); // cut off everything after the last question
     const canvas = getCurrentDefinition();
     void streamAssistant(question, history, lastHistoryContextKey(messages.slice(0, lastUserIdx)), canvas, canvas, getDiagnostics?.());
@@ -440,6 +442,7 @@ export function AiWorkflowChatPanel({
         )}
       </div>
       {/* Error + Retry */}
+      <ChatPersistenceNotice />
       {error && (
         <div role="alert" className="mx-3.5 mb-2 flex items-start justify-between gap-2 whitespace-pre-wrap rounded-lg border border-error/30 bg-error-container/20 px-2.5 py-2 text-xs text-on-error-container">
           <span className="min-w-0 flex-1">{error}</span>

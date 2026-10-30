@@ -33,13 +33,13 @@ public class DebugHandleTests
         var handle = new DebugHandle();
         var awaitTask = handle.AwaitResumeAsync("step-1", CancellationToken.None);
 
-        var overrides = new Dictionary<string, string> { ["globals.ENV"] = "prod", ["manual.x"] = "42" };
+        var overrides = new Dictionary<string, string> { ["step.param.ENV"] = "prod", ["manual.x"] = "42" };
         handle.Resume("step-1", new ResumeRequest(ResumeCommand.StepOver, overrides));
 
         var got = await awaitTask.WaitAsync(TimeSpan.FromSeconds(2));
         got.Command.Should().Be(ResumeCommand.StepOver);
         got.Overrides.Should().NotBeNull();
-        got.Overrides!["globals.ENV"].Should().Be("prod");
+        got.Overrides!["step.param.ENV"].Should().Be("prod");
         got.Overrides["manual.x"].Should().Be("42");
     }
 

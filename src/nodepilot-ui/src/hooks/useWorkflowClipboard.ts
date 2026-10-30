@@ -57,7 +57,8 @@ export function useWorkflowClipboard(
   const insertFragment = useCallback((fragment: WorkflowFragment, dx: number, dy: number) => {
     const { nodes, setNodes, setEdges } = sourceRef.current;
     const existingGroupIds = new Set(nodes.filter((n) => n.type === 'group').map((n) => n.id));
-    const pasted = remapFragment(fragment, { existingGroupIds, dx, dy });
+    const existingAliases = new Set(nodes.flatMap((n) => typeof n.data.outputVariable === 'string' ? [n.data.outputVariable] : []));
+    const pasted = remapFragment(fragment, { existingGroupIds, existingAliases, dx, dy });
     // Pasting writes through the setters directly, so onNodesChange never fires and the editor's
     // automatic dirty detection would miss the new nodes.
     commitHistory('Paste');

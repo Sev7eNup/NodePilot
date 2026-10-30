@@ -126,7 +126,7 @@ describe('signalrReducer.mergeListingOnly', () => {
 });
 
 describe('signalrReducer.mergeHydrated', () => {
-  it('merges hydrated databus entries without overwriting live entries', () => {
+  it('replaces old databus entries and replays only events received during hydration', () => {
     const hydrated: LiveExecutionsById = {
       e1: baseExec({
         databus: {
@@ -145,8 +145,14 @@ describe('signalrReducer.mergeHydrated', () => {
 
     const next = mergeHydrated(hydrated, prev);
 
-    expect(next.e1.databus['s1.param.freeGb'].value).toBe('43');
-    expect(next.e1.databus['s1.param.status'].value).toBe('ok');
+    expect(next.e1.databus['s1.param.freeGb'].value).toBe('42');
+    expect(next.e1.databus['s1.param.status']).toBeUndefined();
+    const fresh = mergeHydrated(hydrated, prev, [{ type: 'StepCompleted', evt: {
+      executionId: 'e1', workflowId: 'wf1', stepId: 's1', status: 'Succeeded', completedAt: '2026-10-28T12:00:00Z',
+      outputParameters: { freeGb: '44', status: 'new' },
+    } }]);
+    expect(fresh.e1.databus['s1.param.freeGb'].value).toBe('44');
+    expect(fresh.e1.databus['s1.param.status'].value).toBe('new');
   });
 });
 

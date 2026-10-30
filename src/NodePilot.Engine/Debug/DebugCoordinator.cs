@@ -72,7 +72,9 @@ internal sealed class DebugCoordinator
         pauseGuard.CancelAfter(TimeSpan.FromMinutes(debug.MaxPauseMinutes));
 
         // Register before either REST persistence or SignalR can expose the pause.
-        var resumeTask = debug.AwaitResumeAsync(node.Id, pauseGuard.Token);
+        var reason = causedByStepOver ? "stepOver" : "breakpoint";
+        var resumeTask = debug.AwaitResumeAsync(node.Id, pauseGuard.Token,
+            new DebugPausedStepSnapshot(node.Id, node.Data.Label, pauseStart, reason, redactedVariables));
         EngineMetrics.DebugSessionsActive.Add(1);
         var outcome = "failed";
         ResumeRequest resume;
@@ -84,7 +86,7 @@ internal sealed class DebugCoordinator
             await stepDb.SaveChangesAsync(ct);
             await _notifier.StepPausedAsync(execution.Id, execution.WorkflowId, node.Id,
                 node.Data.Label, redactedVariables, pauseStart,
-                causedByStepOver ? "stepOver" : "breakpoint");
+                reason);
             resume = await resumeTask;
             outcome = resume.Command.ToString();
         }
@@ -114,28 +116,6 @@ internal sealed class DebugCoordinator
         IReadOnlyDictionary<string, string>? appliedOverrides = null;
         if (resume.Overrides is { Count: > 0 })
         {
-            // Reject attempts to poison globals (read-only by design) or reserved engine
-            // keys (e.g. __callDepth for sub-workflow recursion), and cap the override
-            // size so a debug client can't blast megabytes of overrides into the dict.
-            const int MaxOverrideEntries = 256;
-            const int MaxOverrideValueBytes = 64 * 1024;
-            if (resume.Overrides.Count > MaxOverrideEntries)
-                throw new InvalidOperationException(
-                    $"Debug override: too many entries ({resume.Overrides.Count}); max is {MaxOverrideEntries}.");
-            foreach (var (k, v) in resume.Overrides)
-            {
-                if (string.IsNullOrEmpty(k))
-                    throw new InvalidOperationException("Debug override: empty key is not allowed.");
-                if (k.StartsWith("globals.", StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException(
-                        $"Debug override: 'globals.*' keys are read-only during debug (offending key: '{k}').");
-                if (k.StartsWith("__", StringComparison.Ordinal))
-                    throw new InvalidOperationException(
-                        $"Debug override: reserved engine key '{k}' cannot be overridden.");
-                if (v is not null && v.Length > MaxOverrideValueBytes)
-                    throw new InvalidOperationException(
-                        $"Debug override: value for '{k}' exceeds {MaxOverrideValueBytes} bytes.");
-            }
             foreach (var (k, v) in resume.Overrides)
                 variables[k] = v;
             // Context.Variables points at this same dict (by reference), so the PowerShell-backed

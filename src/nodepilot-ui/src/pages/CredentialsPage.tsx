@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
 import { api } from '../api/client';
+import { useAsyncIdentity } from '../hooks/useAsyncIdentity';
 import type { Credential } from '../types/api';
 import { DependencyLink } from '../components/dependencies/DependencyLink';
 import { useRole } from '../lib/rbac';
@@ -55,6 +56,7 @@ export function CredentialsPage() {
   // so if the user leaves the date untouched we send this exact string back — a
   // CLI-set time-of-day (e.g. T18:00:00Z) must not be rewritten to midnight by a rename.
   const [originalExpiresAt, setOriginalExpiresAt] = useState<string | null>(null);
+  const captureSession = useAsyncIdentity(showCreate ? '' : editingId);
 
   /** `<input type="date">` value (yyyy-MM-dd) -> ISO UTC midnight; empty stays null. */
   const toIsoExpiry = (d: string) => (d ? `${d}T00:00:00Z` : null);
@@ -69,7 +71,7 @@ export function CredentialsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (_current: () => boolean) =>
       api.post('/credentials', {
         name: form.name,
         username: form.username,
@@ -77,8 +79,10 @@ export function CredentialsPage() {
         domain: form.domain || null,
         expiresAt: toIsoExpiry(form.expiresAt),
       }),
-    onSuccess: () => {
+    onSuccess: (_result, current) => {
       queryClient.invalidateQueries({ queryKey: ['credentials'] });
+      // A response for a closed panel must not close the record opened after it.
+      if (!current()) return;
       setShowCreate(false);
       setForm(emptyForm);
     },
@@ -86,7 +90,7 @@ export function CredentialsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: ({ id }: { id: string; current: () => boolean }) =>
       api.put(`/credentials/${id}`, {
         name: form.name,
         username: form.username,
@@ -95,15 +99,18 @@ export function CredentialsPage() {
         domain: form.domain || null,
         expiresAt: resolveExpiry(form.expiresAt),
       }),
-    onSuccess: () => {
+    onSuccess: (_result, request) => {
       queryClient.invalidateQueries({ queryKey: ['credentials'] });
+      toast.success(t('credentials:saved'));
+      if (!request.current()) return;
       setEditingId(null);
       setForm(emptyForm);
       setOriginalExpiresAt(null);
-      toast.success(t('credentials:saved'));
     },
     onError: (err: Error) => toast.error(t('common:saveFailed', { message: err.message })),
   });
+
+  const saving = createMutation.isPending || updateMutation.isPending;
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/credentials/${id}`),
@@ -134,7 +141,8 @@ export function CredentialsPage() {
             aria-label={t(editingId !== null ? 'credentials:edit' : 'credentials:addCredential')}
             className="bg-surface-low rounded-md p-3 mb-4 space-y-3"
           >
-            <div className="grid grid-cols-2 gap-3">
+            {/* Locked while saving, so the response never discards edits made after the submit. */}
+            <fieldset disabled={saving} className="grid grid-cols-2 gap-3 min-w-0 border-0 p-0">
               <input
                 type="text"
                 value={form.name}
@@ -181,11 +189,14 @@ export function CredentialsPage() {
                   className="w-full px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                 />
               </div>
-            </div>
+            </fieldset>
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => (editingId !== null ? updateMutation.mutate(editingId) : createMutation.mutate())}
+                onClick={() => (editingId !== null
+                  ? updateMutation.mutate({ id: editingId, current: captureSession() })
+                  : createMutation.mutate(captureSession()))}
+                disabled={saving}
                 className="np-btn np-btn-primary"
               >
                 {t('common:save')}

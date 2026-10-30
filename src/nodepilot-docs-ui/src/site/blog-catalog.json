@@ -537,24 +537,24 @@
       "gmsa-service-accounts"
     ],
     "publishedAt": "2026-10-18",
-    "modifiedAt": null,
+    "modifiedAt": "2026-10-29",
     "text": {
       "de": {
-        "title": "WinRM verstehen: Was eine erfolgreiche Verbindung tatsächlich belegt",
+        "title": "WinRM-Verbindung testen: was Test-WSMan wirklich prüft",
         "seoTitle": "WinRM-Verbindung testen: was Test-WSMan wirklich prüft",
-        "summary": "Test-WSMan antwortet, aber Remoting scheitert? Was ein WinRM-Verbindungstest belegt: Listener, Verschlüsselung, Kerberos, SPN, Rechte, JEA und Double Hop.",
+        "summary": "WinRM-Verbindung Schritt für Schritt testen: was Test-WSMan belegt und was nicht, von Listener und Kerberos bis zu Rechten, JEA und Double Hop.",
         "lead": "Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich?",
         "category": "PRAXIS",
-        "indexTitle": "WinRM verstehen: Was eine erfolgreiche Verbindung tatsächlich belegt",
+        "indexTitle": "WinRM-Verbindung testen: was Test-WSMan wirklich prüft",
         "teaser": "Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich?"
       },
       "en": {
-        "title": "Understanding WinRM: what a successful connection actually proves",
+        "title": "Testing WinRM: what Test-WSMan actually proves",
         "seoTitle": "Testing WinRM: what Test-WSMan actually proves",
-        "summary": "Test-WSMan answers but remoting fails? What a WinRM connection test proves: listeners, encryption, Kerberos and SPNs, permissions, JEA and the double hop.",
+        "summary": "Test a WinRM connection step by step: what Test-WSMan proves and what it does not, from listeners and Kerberos to permissions, JEA and the double hop.",
         "lead": "What does a successful WinRM connection test actually prove?",
         "category": "PRACTICE",
-        "indexTitle": "Understanding WinRM: what a successful connection actually proves",
+        "indexTitle": "Testing WinRM: what Test-WSMan actually proves",
         "teaser": "What does a successful WinRM connection test actually prove?"
       }
     },

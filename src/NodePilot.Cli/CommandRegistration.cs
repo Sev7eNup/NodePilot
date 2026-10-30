@@ -114,7 +114,7 @@ public static class CommandRegistration
             e.AddCommand<ExecRetryCommand>("retry").WithDescription("Re-run with the original parameters.");
             e.AddCommand<ExecWatchCommand>("watch").WithDescription("Stream live step events (SignalR, polling fallback).");
             e.AddCommand<ExecResumeCommand>("resume").WithDescription("Resume a debug-paused step (continue|stepOver|stop).");
-            e.AddCommand<ExecPausedStepsCommand>("paused-steps").WithDescription("List currently paused step ids of an execution.");
+            e.AddCommand<ExecPausedStepsCommand>("paused-steps").WithDescription("List paused step snapshots of an execution.");
         });
 
         // -- audit ---------------------------------------------------------------

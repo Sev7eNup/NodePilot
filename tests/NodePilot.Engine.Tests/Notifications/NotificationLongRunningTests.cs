@@ -51,7 +51,6 @@ public class NotificationLongRunningTests
             new NodePilot.Scheduler.SystemAlerts.SystemAlertCatalog(Array.Empty<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource>()),
             new ConfigurationBuilder().Build(), NullLogger<NotificationDispatcher>.Instance,
             NodePilot.TestCommons.TestDatabaseAvailability.Available);
-        d.ScanSafetyLag = TimeSpan.Zero;
         d.LongRunningThreshold = threshold;
         d.QueuedLongThreshold = threshold;
         return d;

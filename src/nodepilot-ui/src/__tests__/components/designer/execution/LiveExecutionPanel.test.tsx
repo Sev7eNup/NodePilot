@@ -116,6 +116,19 @@ describe('LiveTab SignalR group lifecycle', () => {
 });
 
 describe('LiveTab paused-step debugger', () => {
+  it('discards overrides when an external resume reveals a different paused step', async () => {
+    const client = new QueryClient();
+    const step = (id: string): LiveExecution['steps'][number] => ({ executionId: 'exec-1', workflowId: 'wf-1', stepId: id,
+      stepType: 'runScript', status: 'Paused', pausedAt: `2026-10-28T10:00:0${id === 'a' ? 1 : 2}Z`, pausedVariables: { 'manual.destination': id } });
+    const a = step('a'); const b = step('b');
+    const view = (steps: LiveExecution['steps']) => <QueryClientProvider client={client}>{liveTabEl({ executionsLive: [{ ...makeExec('exec-1'), steps }] })}</QueryClientProvider>;
+    const { rerender } = render(view([a, b]));
+    fireEvent.click(screen.getByRole('button'));
+    fireEvent.change(await screen.findByDisplayValue('a'), { target: { value: 'a-only-override' } });
+    rerender(view([{ ...a, status: 'Running' }, b]));
+    expect(await screen.findByDisplayValue('b')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('a-only-override')).not.toBeInTheDocument();
+  });
   it('reports a failed resume and keeps the edited variables for a retry', async () => {
     useToastStore.setState({ toasts: [] });
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
@@ -126,7 +139,7 @@ describe('LiveTab paused-step debugger', () => {
       ...makeExec('exec-1'),
       steps: [{
         executionId: 'exec-1', workflowId: 'wf-1', stepId: 'step-a', stepName: 'Halted', stepType: 'runScript',
-        status: 'Paused', pausedAt: '2026-06-23T10:00:02Z', pausedVariables: { 'globals.Env': 'prod' },
+        status: 'Paused', pausedAt: '2026-06-23T10:00:02Z', pausedVariables: { 'manual.Env': 'prod', 'globals.ReadOnly': 'immutable' },
       }],
     };
     // Same mutation cache as the app, so a mutation without its own onError reaches the toast.
@@ -134,6 +147,7 @@ describe('LiveTab paused-step debugger', () => {
     render(<QueryClientProvider client={client}>{liveTabEl({ executionsLive: [paused] })}</QueryClientProvider>);
     fireEvent.click(screen.getByRole('button'));
 
+    expect(await screen.findByDisplayValue('immutable')).toHaveAttribute('readonly');
     fireEvent.change(await screen.findByDisplayValue('prod'), { target: { value: 'test' } });
     fireEvent.click(screen.getByRole('button', { name: /Continue/ }));
 

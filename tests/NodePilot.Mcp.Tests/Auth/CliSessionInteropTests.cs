@@ -55,7 +55,11 @@ public sealed class CliSessionInteropTests
         var dir = Path.Combine(Path.GetTempPath(), "np-mcp-interop-" + Guid.NewGuid().ToString("N"));
         try
         {
-            new TokenStore(dir).PathFor("prod").Should().Be(Path.Combine(dir, "session-prod.dat"));
+            var cliStore = new TokenStore(dir);
+            cliStore.Save("prod.eu", new StoredSession { Server = "https://np.example", Token = "cli-session" });
+            var mcpStore = new TokenStore(dir);
+            mcpStore.Load("PROD.EU")?.Token.Should().Be("cli-session");
+            mcpStore.Load("prod_eu").Should().BeNull();
         }
         finally
         {

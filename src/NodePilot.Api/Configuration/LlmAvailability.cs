@@ -6,7 +6,7 @@ namespace NodePilot.Api.Configuration;
 
 /// <summary>
 /// Error codes for the two ways the LLM integration can be unavailable. Every AI endpoint checks
-/// both before calling a service, because <see cref="ILlmClientFactory.Create"/> throws without an
+/// both before calling a service, because <see cref="ILlmClientFactory.Create(LlmConnection)"/> throws without an
 /// active profile and that must surface as a 503 instead of an unhandled exception.
 /// </summary>
 public static class LlmAvailability

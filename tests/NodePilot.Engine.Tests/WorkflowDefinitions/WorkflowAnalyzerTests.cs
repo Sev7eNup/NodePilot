@@ -32,6 +32,31 @@ public class WorkflowAnalyzerTests
     }
 
     [Fact]
+    public void DisabledDuplicateAlias_DoesNotReplaceActiveProducer()
+    {
+        var definition = WorkflowDefinitionDocument.Parse("""
+            {"nodes":[
+              {"id":"active","type":"activity","data":{"activityType":"manualTrigger","outputVariable":"value","config":{}}},
+              {"id":"disabled","type":"activity","data":{"activityType":"log","outputVariable":"value","disabled":true,"config":{}}}
+            ],"edges":[]}
+            """);
+        definition.OutputVariableToStepId["value"].Should().Be("active");
+    }
+
+    [Fact]
+    public void DuplicateActiveAliases_AreRejectedCaseInsensitively()
+    {
+        using var json = JsonDocument.Parse("""
+            {"nodes":[
+              {"id":"one","type":"activity","data":{"activityType":"manualTrigger","outputVariable":"Value","config":{}}},
+              {"id":"two","type":"activity","data":{"activityType":"log","outputVariable":"value","config":{}}}
+            ],"edges":[]}
+            """);
+        var result = WorkflowDefinitionStructuralValidator.Validate(json.RootElement);
+        result.IsValid.Should().BeFalse();
+    }
+
+    [Fact]
     public void LongChainWithDuplicateName_StopsAtTheBudgetAndSaysSo()
     {
         // A chain of n nodes needs n(n-1)/2 ancestor visits, just above the budget here.

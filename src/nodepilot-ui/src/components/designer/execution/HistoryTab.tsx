@@ -590,6 +590,11 @@ function StepTimeline({ steps, executionStart, workflowId, executionId, onScrubT
               </button>
               {isOpen && (
                 <div className="px-12 pb-3 pt-1.5 bg-surface-low/40 border-t border-outline-variant/10 space-y-2">
+                  {r.step.targetMachine && (
+                    <p className="text-[11px] text-on-surface-variant">
+                      {t('execution.inspector.recordedTarget')}: <span className="font-mono text-on-surface">{r.step.targetMachine}</span>
+                    </p>
+                  )}
                   {['aiAgent', 'aiAgentTeam'].includes(r.step.stepType) ? <AgentRunPanel executionId={executionId} stepId={r.step.stepId}>
                     <StepInputBlock workflowId={workflowId} stepId={r.step.stepId} />
                   </AgentRunPanel> : <StepInputBlock workflowId={workflowId} stepId={r.step.stepId} />}

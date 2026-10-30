@@ -38,7 +38,9 @@ winrm quickconfig -transport:https   # nur für Maschinen mit HTTPS
 
 Zugriff auf den Endpunkt haben per Default nur lokale Administratoren und Mitglieder von `Remote Management Users`. Ohne eine dieser Mitgliedschaften scheitert der Schritt am Endpunkt, obwohl die Anmeldung selbst gelingt.
 
-Der credential-lose Pfad braucht zusätzlich **resource-based constrained delegation** auf jeder Zielmaschine, damit die Dienstidentität per Kerberos durchreicht — Rezept unter [Produktions-Deployment](../deployment/production). Mit hinterlegten Credentials ist keine Delegation nötig; die Dienstidentität ist für den Zugriff dann irrelevant.
+Für ein Ziel ohne hinterlegte Credentials verbindet sich NodePilot direkt als Dienstprozessidentität: als gMSA oder unter LocalSystem als Computerkonto des Hosts. Erteile diesem Konto die erforderlichen Endpunkt- und Ressourcenrechte. Bei LocalSystem in einer Active/Passive-Installation muss jedes Knotenkonto berechtigt sein.
+
+Dieser direkte erste Hop erfordert keine resource-based constrained delegation. NodePilot impersoniert dafür keinen Browserbenutzer. Richte Delegation nur für eine gesondert begründete Topologie mit delegiertem Benutzer oder zweitem Hop ein. Bei hinterlegten Credentials wird stattdessen deren Konto berechtigt.
 
 Der Verbindungstest einer Maschine (`POST /api/machines/{id}/test`) verlangt ein Credential und antwortet sonst `400 MACHINE_CREDENTIAL_REQUIRED`. Er kann den credential-losen Pfad also nicht prüfen — Workflow-Schritte laufen in dieser Lage trotzdem.
 

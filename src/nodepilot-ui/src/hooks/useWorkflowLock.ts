@@ -20,17 +20,20 @@ interface UseWorkflowLockArgs {
  */
 export function useWorkflowLock({ workflowId, workflow, currentUserId, roleCanWrite }: UseWorkflowLockArgs) {
   const queryClient = useQueryClient();
-  const invalidate = () => {
+  const invalidate = (_response: unknown, id: string) => {
     queryClient.invalidateQueries({ queryKey: ['workflows'] });
-    queryClient.invalidateQueries({ queryKey: ['workflow', workflowId] });
+    queryClient.invalidateQueries({ queryKey: ['workflow', id] });
   };
-  const lockMutation = useMutation({ mutationFn: () => api.post<Workflow>(`/workflows/${workflowId}/lock`, {}), onSuccess: invalidate });
-  const unlockMutation = useMutation({ mutationFn: () => api.post<Workflow>(`/workflows/${workflowId}/unlock`, {}), onSuccess: invalidate });
-  const forceUnlockMutation = useMutation({ mutationFn: () => api.post<Workflow>(`/workflows/${workflowId}/force-unlock`, {}), onSuccess: invalidate });
-  const disableMutation = useMutation({ mutationFn: () => api.post(`/workflows/${workflowId}/disable`, {}), onSuccess: invalidate });
+  const lockMutation = useMutation({ mutationFn: (id: string) => api.post<Workflow>(`/workflows/${id}/lock`, {}), onSuccess: invalidate });
+  const unlockMutation = useMutation({
+    mutationFn: (id: string) => api.post<Workflow>(`/workflows/${id}/unlock`, {}),
+    onSuccess: invalidate,
+  });
+  const forceUnlockMutation = useMutation({ mutationFn: (id: string) => api.post<Workflow>(`/workflows/${id}/force-unlock`, {}), onSuccess: invalidate });
+  const disableMutation = useMutation({ mutationFn: (id: string) => api.post(`/workflows/${id}/disable`, {}), onSuccess: invalidate });
   // Re-enables a disabled workflow without taking the edit-lock, for the Publish/Disable toggle.
   // /enable returns 423 while any user holds the lock, so callers disable the button in that state.
-  const enableMutation = useMutation({ mutationFn: () => api.post(`/workflows/${workflowId}/enable`, {}), onSuccess: invalidate });
+  const enableMutation = useMutation({ mutationFn: (id: string) => api.post(`/workflows/${id}/enable`, {}), onSuccess: invalidate });
 
   // Edit-lock state derived from the loaded workflow. `canWrite` requires the current user to
   // hold the lock: a workflow must be checked out before it can be edited, so an editor without
@@ -40,11 +43,14 @@ export function useWorkflowLock({ workflowId, workflow, currentUserId, roleCanWr
   const isLockedByOther = isLocked && !isLockedByMe;
   const canWrite = roleCanWrite && isLockedByMe;
 
-  const lock = useCallback(() => { lockMutation.mutate(); }, [lockMutation]);
-  const unlockAsync = useCallback(() => unlockMutation.mutateAsync(), [unlockMutation]);
-  const forceUnlock = useCallback(() => { forceUnlockMutation.mutate(); }, [forceUnlockMutation]);
-  const disable = useCallback(() => { disableMutation.mutate(); }, [disableMutation]);
-  const enable = useCallback(() => { enableMutation.mutate(); }, [enableMutation]);
+  const lock = useCallback(() => { if (workflowId) lockMutation.mutate(workflowId); }, [lockMutation, workflowId]);
+  const unlockAsync = useCallback(() => {
+    if (!workflowId) return Promise.resolve();
+    return unlockMutation.mutateAsync(workflowId);
+  }, [unlockMutation, workflowId]);
+  const forceUnlock = useCallback(() => { if (workflowId) forceUnlockMutation.mutate(workflowId); }, [forceUnlockMutation, workflowId]);
+  const disable = useCallback(() => { if (workflowId) disableMutation.mutate(workflowId); }, [disableMutation, workflowId]);
+  const enable = useCallback(() => { if (workflowId) enableMutation.mutate(workflowId); }, [enableMutation, workflowId]);
 
   return {
     isLocked,

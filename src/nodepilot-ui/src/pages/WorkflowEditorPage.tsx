@@ -285,18 +285,7 @@ function WorkflowEditorInner() {
   // Graph as of the last pause in editing — carries the whole-graph passes (lint, autosave
   // draft) so they do not run per frame.
   const settledGraph = useSettledGraph(nodes, edges);
-  const { historyPast, historyFuture, commitHistory, undo, redo } = useWorkflowHistory(id, graphSource, markDirty);
-
-  // Debounced commit for rapid property edits (e.g. typing in script field).
-  // Structural changes (disabled, breakpoint, outputVariable) still commit immediately.
-  const propertyEditTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const commitHistoryForPropertyEdit = useCallback(() => {
-    if (propertyEditTimer.current) clearTimeout(propertyEditTimer.current);
-    propertyEditTimer.current = setTimeout(() => {
-      commitHistory();
-      propertyEditTimer.current = null;
-    }, 800);
-  }, [commitHistory]);
+  const { historyPast, historyFuture, commitHistory, commitPropertyEdit, undo, redo } = useWorkflowHistory(id, graphSource, markDirty);
 
   // Tracks which workflow id was already fit-viewed, so lifecycle refetches
   // (lock/unlock/publish/disable) do not re-fit and steal the user's current zoom and pan.
@@ -778,8 +767,10 @@ function WorkflowEditorInner() {
 
   const handleNodeDataUpdate = useCallback(
     (nodeId: string, newData: Record<string, unknown>) => {
-      const isStructural = 'disabled' in newData || 'breakpoint' in newData || 'outputVariable' in newData || 'breakpointCondition' in newData;
-      if (isStructural) commitHistory('Edit property'); else commitHistoryForPropertyEdit();
+      const previous = nodes.find((n) => n.id === nodeId)?.data;
+      const isStructural = ['disabled', 'breakpoint', 'outputVariable', 'breakpointCondition']
+        .some((key) => key in newData && previous?.[key] !== newData[key]);
+      if (isStructural) commitHistory('Edit property'); else commitPropertyEdit();
       markDirty();
       // Merge onto the existing node data instead of replacing it. Callers that pass a full
       // data object are unaffected, but partial-patch callers such as the context menu's
@@ -802,7 +793,7 @@ function WorkflowEditorInner() {
         }
         return nds.map((n) => (n.id === nodeId ? { ...n, data: { ...(n.data as Record<string, unknown>), ...newData } } : n));
       });
-    }, [setNodes, setEdges, edges, commitHistory, commitHistoryForPropertyEdit, markDirty],
+    }, [nodes, setNodes, setEdges, edges, commitHistory, commitPropertyEdit, markDirty],
   );
 
   const handleBulkApply = useCallback(
@@ -1528,7 +1519,7 @@ function WorkflowEditorInner() {
         execution={{ showRunDialog, confirmRunWithParams, closeRunDialog, lastExecutionList, run, cancelRun, isRunning }}
         actions={{
           undo, redo, copySelection: copyToClipboard, pasteBuffer: pasteFromClipboard, duplicateSelection,
-          groupSelection, selected, deleteNodeById, selectAll, navigateNode, handleQuickEditSave, jumpToNode, jumpToEdge, toggleFullscreen, zoomToSelection,
+          groupSelection, selected, deleteNodeById, deleteEdgeById: handleEdgeDelete, selectAll, navigateNode, handleQuickEditSave, jumpToNode, jumpToEdge, toggleFullscreen, zoomToSelection,
           fitViewAll, exportPng, exportJson,
         }}
         layout={layout}

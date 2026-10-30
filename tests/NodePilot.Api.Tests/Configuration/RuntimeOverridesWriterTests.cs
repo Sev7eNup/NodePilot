@@ -35,6 +35,42 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
     }
 
     [Fact]
+    public void ReplaceAll_ProtectedTarget_PreservesAccessPolicyOnFileAndBackup()
+    {
+        var writer = NewWriter();
+        writer.ReplaceAll(new JsonObject { ["value"] = "original" });
+        var file = new FileInfo(writer.OverridesPath);
+        var acl = file.GetAccessControl(System.Security.AccessControl.AccessControlSections.Access);
+        acl.SetAccessRuleProtection(isProtected: true, preserveInheritance: true);
+        file.SetAccessControl(acl);
+        var expected = file.GetAccessControl(System.Security.AccessControl.AccessControlSections.Access)
+            .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access);
+
+        writer.ReplaceAll(new JsonObject { ["value"] = "updated" });
+
+        var backup = Directory.GetFiles(_tempDir, "*.bak.*").Should().ContainSingle().Subject;
+        foreach (var path in new[] { writer.OverridesPath, backup })
+            new FileInfo(path).GetAccessControl(System.Security.AccessControl.AccessControlSections.Access)
+                .GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access).Should().Be(expected);
+        Directory.GetFiles(_tempDir, "*.tmp").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ReplaceAll_LockedTarget_PreservesOriginalAndRemovesTemporaryContent()
+    {
+        var writer = NewWriter();
+        writer.ReplaceAll(new JsonObject { ["value"] = "original" });
+        using (new FileStream(writer.OverridesPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var replace = () => writer.ReplaceAll(new JsonObject { ["value"] = "new-secret" });
+            replace.Should().Throw<IOException>();
+            Directory.GetFiles(_tempDir, "*.tmp").Should().BeEmpty();
+        }
+        writer.ReadOrEmpty()["value"]!.GetValue<string>().Should().Be("original");
+        Directory.GetFiles(_tempDir, "*.bak.*").Should().BeEmpty();
+    }
+
+    [Fact]
     public void TryUpdateSectionAtomic_LowerCaseSection_RemainsLoadable()
     {
         var writer = NewWriter();
