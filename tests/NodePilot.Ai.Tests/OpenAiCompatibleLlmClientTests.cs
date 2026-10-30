@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
@@ -100,6 +102,27 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
 
         ex.Kind.Should().Be(LlmErrorKind.Unauthorized);
         ex.HttpStatus.Should().Be(401);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_UpstreamErrorBody_IsNotWrittenToTheLog()
+    {
+        const string secret = "sk-syntheticUpstreamSecret";
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(401).WithBody("invalid api key " + secret));
+        var logger = new Mock<ILogger<OpenAiCompatibleLlmClient>>();
+        var config = new LlmClientConfig(
+            Endpoint: LlmEndpointGuard.ResolveEndpoint(_server.Url!),
+            ApiKey: null, Model: "test-model", MaxTokens: 100, Temperature: null, TimeoutSeconds: 90);
+        var client = new OpenAiCompatibleLlmClient(new SingleClientHttpClientFactory(), config, logger.Object);
+
+        await Assert.ThrowsAsync<LlmException>(() =>
+            client.CompleteAsync(new LlmRequest("sys", "user"), CancellationToken.None));
+
+        var logs = logger.Invocations.Where(i => i.Method.Name == "Log").ToList();
+        logs.Should().Contain(i => i.Arguments[2].ToString()!.Contains("401"));
+        logs.Should().NotContain(i => i.Arguments[2].ToString()!.Contains(secret)
+            || (i.Arguments[3] != null && i.Arguments[3]!.ToString()!.Contains(secret)));
     }
 
     [Fact]

@@ -22,10 +22,16 @@ internal sealed class SettingsConfigurationSnapshot : IDisposable
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(runtime.ToJsonString()));
         runtimeProvider.Load(stream);
         var replacement = new SnapshotProvider(runtimeProvider, EffectiveSourceDetector.SourceRuntime);
+        var sourceProviders = source.Providers.ToList();
+        // The host registers prefixed environment providers ahead of the appsettings files; only
+        // an environment or command-line provider after them ranks above the runtime file.
+        var lastAppsettings = sourceProviders.FindLastIndex(p => EffectiveSourceDetector.Classify(p)
+            is EffectiveSourceDetector.SourceAppsettings or EffectiveSourceDetector.SourceProduction);
         var providers = new List<IConfigurationProvider>();
         var replaced = false;
-        foreach (var provider in source.Providers)
+        for (var i = 0; i < sourceProviders.Count; i++)
         {
+            var provider = sourceProviders[i];
             var origin = EffectiveSourceDetector.Classify(provider);
             if (origin == EffectiveSourceDetector.SourceRuntime)
             {
@@ -34,7 +40,8 @@ internal sealed class SettingsConfigurationSnapshot : IDisposable
             }
             else
             {
-                if (!replaced && origin is EffectiveSourceDetector.SourceEnv or EffectiveSourceDetector.SourceCli)
+                if (!replaced && i > lastAppsettings
+                    && origin is EffectiveSourceDetector.SourceEnv or EffectiveSourceDetector.SourceCli)
                 {
                     providers.Add(replacement);
                     replaced = true;
