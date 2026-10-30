@@ -104,7 +104,8 @@ replace across labels and configuration values.
 Display options cover node styles and sizes, connection routing, grid snapping and
 automatic layout. Expert overlays show target machines, failure rates, execution
 coverage, variable flow and the critical path. On phones and portrait tablets, the mobile view
-provides a read-only graph with live status, pan and zoom.
+provides a read-only graph with live status, pan and zoom. A desktop editor that is already
+open stays mounted when the window narrows, so its unsaved draft is kept.
 
 ## Versions, export and AI
 
