@@ -13,7 +13,9 @@ Admins can force-release another user's lock.
 
 Changes are saved automatically after 5 seconds without further edits when write
 permission is available. Manual save and a warning before leaving with unsaved changes
-remain available. Lint errors block publishing, while warnings require confirmation.
+remain available. If the workflow was saved elsewhere in the meantime, the save is rejected:
+the draft stays on the canvas, autosave stops and a reload shows the current version.
+Lint errors block publishing, while warnings require confirmation.
 The lint panel links each finding to the affected node or edge.
 
 ## Canvas and workflow structure

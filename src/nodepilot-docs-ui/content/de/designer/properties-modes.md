@@ -96,7 +96,7 @@ Bei einem Breakpoint pausiert der Debug-Lauf vor dem betroffenen Schritt. Danach
 
 ## Speichern, veröffentlichen und exportieren
 
-Änderungen werden nach einer kurzen Bearbeitungspause automatisch als Entwurf gespeichert. `Ctrl+S` speichert den Entwurf sofort.
+Änderungen werden nach einer kurzen Bearbeitungspause automatisch als Entwurf gespeichert. `Ctrl+S` speichert den Entwurf sofort. Wurde der Workflow inzwischen an anderer Stelle gespeichert, wird das Speichern abgelehnt: Der Entwurf bleibt auf dem Canvas, das automatische Speichern stoppt, und erst ein Neuladen zeigt den aktuellen Stand.
 
 **Veröffentlichen** übernimmt den aktuellen Entwurf als ausführbare Version. Abhängig vom Workflow-Status kann dieselbe Aktion den Workflow aktivieren oder deaktivieren. Frühere Versionen bleiben über den Versionsverlauf verfügbar.
 

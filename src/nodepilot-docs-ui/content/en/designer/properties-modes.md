@@ -96,7 +96,7 @@ At a breakpoint, the debug run pauses before the step concerned. The following a
 
 ## Saving, publishing and exporting
 
-Changes are saved automatically as a draft after a short editing pause. `Ctrl+S` saves the draft immediately.
+Changes are saved automatically as a draft after a short editing pause. `Ctrl+S` saves the draft immediately. If the workflow was saved elsewhere in the meantime, the save is rejected: the draft stays on the canvas, autosave stops and a reload shows the current version.
 
 **Publishing** promotes the current draft to the executable version. Depending on the workflow's state, the same action can enable or disable the workflow. Earlier versions remain available through the version history.
 
