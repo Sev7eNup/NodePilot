@@ -263,9 +263,12 @@ unnecessary:
 
 The detection ignores case and trailing slashes. Local runtimes such as Ollama, LM Studio, vLLM, LocalAI or llama.cpp understand chat completions only.
 
-With the Responses API, NodePilot always sends the instruction **not** to store the request at the
-provider. Without that instruction OpenAI would retain every request there for 30 days by default,
-whereas chat completions stores nothing.
+With the Responses API, NodePilot sends `store: false` to disable the corresponding application-state
+persistence. This does **not** guarantee zero retention at the provider. OpenAI's abuse-monitoring
+logs are separate and can contain prompts and responses for both Responses and Chat Completions.
+Review the provider's [data controls](https://developers.openai.com/api/docs/guides/your-data),
+including your organization's approved retention settings and feature exceptions, before sending
+scripts or operational data. NodePilot cannot grant provider-side Zero Data Retention through this flag.
 
 Reasoning models accept no sampling parameters and reject a request that carries `temperature`.
 Since that value is optional, NodePilot drops it in such a case and repeats the request

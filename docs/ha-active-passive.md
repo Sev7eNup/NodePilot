@@ -108,7 +108,7 @@ every orphan has been cleaned up within that period.
   },
   "Database": { "Provider": "sqlserver" },
   "ConnectionStrings": {
-    "DefaultConnection": "Server=sql-cluster.example.com;Database=NodePilot;Trusted_Connection=True;Encrypt=True"
+    "DefaultConnection": "Server=sql-cluster.example.com;Database=NodePilot;Trusted_Connection=True;Encrypt=Strict;TrustServerCertificate=False"
   },
   "Secrets": {
     "Provider": "AesGcm",                 // MANDATORY in a cluster — DPAPI is rejected at boot

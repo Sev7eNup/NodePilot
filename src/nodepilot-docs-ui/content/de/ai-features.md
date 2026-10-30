@@ -268,9 +268,13 @@ Schalter dafür ist bewusst nicht nötig:
 Die Erkennung ignoriert Groß-/Kleinschreibung und abschließende Schrägstriche. Lokale Runtimes wie
 Ollama, LM Studio, vLLM, LocalAI oder llama.cpp verstehen ausschließlich Chat Completions.
 
-Bei der Responses-API sendet NodePilot immer die Anweisung, die Anfrage **nicht** beim Anbieter zu
-speichern. Ohne diese Anweisung würde OpenAI dort standardmäßig jede Anfrage 30 Tage aufbewahren,
-während Chat Completions nichts speichert.
+Bei der Responses-API sendet NodePilot `store: false`, um die zugehörige Speicherung des
+Anwendungszustands auszuschalten. Das garantiert **keine** vollständige Nichtaufbewahrung beim
+Anbieter. OpenAIs Protokolle zur Missbrauchserkennung sind davon getrennt und können bei Responses
+und Chat Completions Prompts und Antworten enthalten. Prüfe vor der Übertragung von Skripten oder
+Betriebsdaten die [Datenkontrollen des Anbieters](https://developers.openai.com/api/docs/guides/your-data),
+einschließlich der für deine Organisation genehmigten Aufbewahrungsregeln und Funktionsausnahmen.
+NodePilot kann mit diesem Schalter keine anbieterseitige Zero Data Retention gewähren.
 
 Reasoning-Modelle nehmen keine Sampling-Parameter an und weisen eine Anfrage mit `temperature`
 zurück. Da dieser Wert optional ist, lässt NodePilot ihn in einem solchen Fall weg und wiederholt

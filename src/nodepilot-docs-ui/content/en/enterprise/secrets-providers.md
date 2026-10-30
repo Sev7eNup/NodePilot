@@ -78,8 +78,10 @@ unencrypted backups.
 **Step 2 — bulk re-encrypt:**
 
 ```bash
-curl -X POST -H "Authorization: Bearer <admin-token>" \
-     http://nodepilot-vip/api/secrets/reencrypt
+curl --proto "=https" --fail-with-body --show-error --silent \
+     --write-out "\nHTTP %{http_code}\n" \
+     -X POST -H "Authorization: Bearer <admin-token>" \
+     https://nodepilot-vip/api/secrets/reencrypt
 ```
 
 - `200 OK` → a clean cutover (`partialSuccess: false`).

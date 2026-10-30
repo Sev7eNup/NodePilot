@@ -79,23 +79,26 @@ output.elasticsearch:
   index: "nodepilot-%{+yyyy.MM.dd}"
 ```
 
-## Splunk HEC
+## Splunk
 
-```yaml
-filebeat.inputs:
-  - type: filestream
-    paths: ['C:\ProgramData\NodePilot\logs\nodepilot-[0-9]*.log']
-    parsers: [{ ndjson: {} }]
-output.http:
-  url: https://splunk.example.com:8088/services/collector/event
-  headers:
-    Authorization: "Splunk {{HEC_TOKEN}}"
+Use Splunk Universal Forwarder to monitor ECS JSON log files. Filebeat has no generic HTTP output. Configure the receiver and TLS using your Splunk deployment's approved `outputs.conf`, then add this `inputs.conf` stanza:
+
+```ini
+[monitor://C:\ProgramData\NodePilot\logs\nodepilot-*.log]
+disabled = 0
+whitelist = nodepilot-[0-9].*\.log$
+index = nodepilot
+sourcetype = _json
 ```
+
+Create/authorize the `nodepilot` index, grant the forwarder read access to the log directory, restart it, and verify a synthetic event in the receiver. This uses Splunk forwarding, not HEC. If HEC is mandatory, select a collector with explicit Splunk HEC support and validate its event envelope and TLS settings.
+
+[Splunk: inputs.conf](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/9.4/get-data-from-files-and-directories/monitor-files-and-directories-with-inputs.conf) · [Splunk: forwarder configuration](https://help.splunk.com/en/splunk-enterprise/forward-and-process-data/universal-forwarder-manual/9.2/configure-the-universal-forwarder/configure-the-universal-forwarder-using-configuration-files)
 
 ## Operator checklist
 
 - [ ] `Logging:Format=ecs-json` in `appsettings.Production.json`.
-- [ ] Filebeat / Vector / Fluentd installed alongside the NodePilot service.
+- [ ] A collector such as Filebeat, Vector, Fluentd or Splunk Universal Forwarder is installed alongside the NodePilot service.
 - [ ] The log file path matches `Logging:File:Path` (production: `C:\ProgramData\NodePilot\logs\nodepilot-.log`).
 - [ ] One sample event indexed end to end in the SIEM (smoke test).
 - [ ] At least one dashboard panel created on `nodepilot.execution_id`.

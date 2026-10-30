@@ -1,9 +1,9 @@
 # SIEM-Friendly Logging (ECS-JSON)
 
 NodePilot ships an Elastic Common Schema 1.x JSON formatter for use with Elastic
-Filebeat, Splunk HEC, Microsoft Sentinel, or any other SIEM that ingests structured
+Filebeat, Splunk, Microsoft Sentinel, or any other SIEM that ingests structured
 logs. Application logs and audit events flow through the same Serilog pipeline so a
-single Filebeat sidecar covers both.
+single supported collector can read both.
 
 ## Enabling
 
@@ -148,23 +148,32 @@ output.elasticsearch:
   index: "nodepilot-%{+yyyy.MM.dd}"
 ```
 
-## Splunk HEC sample
+## Splunk file monitoring
 
-```yaml
-filebeat.inputs:
-  - type: filestream
-    paths: ['C:\ProgramData\NodePilot\logs\nodepilot-[0-9]*.log']
-    parsers: [{ ndjson: {} }]
-output.http:
-  url: https://splunk.firma.de:8088/services/collector/event
-  headers:
-    Authorization: "Splunk {{HEC_TOKEN}}"
+Use Splunk Universal Forwarder to monitor the ECS JSON logs. Filebeat has no generic
+HTTP output. Configure the receiver and TLS through your deployment's approved
+`outputs.conf`, then add this `inputs.conf` stanza:
+
+```ini
+[monitor://C:\ProgramData\NodePilot\logs\nodepilot-*.log]
+whitelist = nodepilot-[0-9].*\.log$
+disabled = 0
+index = nodepilot
+sourcetype = _json
 ```
+
+The whitelist excludes the plain-text support log. Create and authorize the `nodepilot`
+index, grant the forwarder read access to the log directory, restart it, and verify a
+synthetic event at the receiver. This uses Splunk forwarding. If HEC is required, choose
+a collector with explicit Splunk HEC support and validate its event envelope and TLS settings.
+
+See [Splunk inputs.conf monitoring](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/9.4/get-data-from-files-and-directories/monitor-files-and-directories-with-inputs.conf)
+and [forwarder configuration](https://help.splunk.com/en/splunk-enterprise/forward-and-process-data/universal-forwarder-manual/9.2/configure-the-universal-forwarder/configure-the-universal-forwarder-using-configuration-files).
 
 ## What is NOT in this version
 
 - **No Audit-Outbox push pipeline yet.** AuditLog table rows are still queryable via
-  `GET /api/audit`; SIEM ingest of audit events requires Filebeat reading the same
+  `GET /api/audit`; SIEM ingest of audit events requires a supported collector reading the same
   ECS log file (Audit-Writer events render through Serilog when Logging:Format=ecs-json).
   A dedicated outbox + push-sink with retry / backpressure is on the roadmap
   ([`roadmap.md`](roadmap.md), "Audit- und SIEM-Zustellung über eine Outbox absichern").
@@ -174,7 +183,7 @@ output.http:
 ## Operator checklist
 
 - [ ] `Logging:Format=ecs-json` set in `appsettings.Production.json`.
-- [ ] Filebeat / Vector / Fluentd installed alongside the NodePilot service.
+- [ ] Filebeat / Splunk Universal Forwarder / Vector / Fluentd installed alongside the NodePilot service.
 - [ ] Log file path matches `Logging:File:Path` (code default `<ContentRoot>/logs/nodepilot-.log`; the production installer points it at `C:\ProgramData\NodePilot\logs\nodepilot-.log`).
 - [ ] One sample event indexed end-to-end in the SIEM (smoke test).
 - [ ] At least one dashboard panel created on `nodepilot.execution_id` to validate the namespace.
