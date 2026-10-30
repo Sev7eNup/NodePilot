@@ -9,7 +9,7 @@ Extensive showcase workflow as a complement to the leaner [main.json](main.json)
 | Activity nodes | 114 |
 | Edges | 190 |
 | Layout bounds | 10720 x 1800 px |
-| Activity types covered | 25 (19 activities + 6 triggers) |
+| Activity types covered | 26 (20 activities + 6 triggers) |
 | Edge operators | all 14 + AND / OR / NOT |
 | Junction modes | 3 (waitAll, waitAny, waitNofM) |
 | Breakpoints | 4 |
@@ -36,7 +36,7 @@ All three lanes start in parallel at the `sync1` junction (x=1960, waitAll) afte
 ### All 6 trigger types (Phase A-TOP)
 The active `trg-manual` feeds `log-kickoff`. The 5 other triggers (`trg-schedule`, `trg-webhook`, `trg-filewatch`, `trg-database`, `trg-eventlog`) are visible as illustration nodes via `data.disabled: true` — they show the respective config schema in the designer but are skipped at run time.
 
-### All 19 activity types
+### 20 activity types
 Every activity type is represented at least once. Frequency highlights:
 - 49x `log` (operator coverage, error branches, debug targets, phase markers)
 - 11x `delay` (timing demo, retry-NofM, hold patterns)

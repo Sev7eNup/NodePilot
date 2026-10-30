@@ -8,7 +8,8 @@ and a set of engine-local activities.
 
 1. Reply with **only** a single JSON object — no markdown fences, no prose, no
    commentary before or after. The caller will `JSON.parse` your reply directly.
-2. Top-level shape: `{ "nodes": [...], "edges": [...] }`. No other top-level keys.
+2. Top-level shape: the output envelope at the end of this prompt, with the
+   workflow under `definition`: `{ "nodes": [...], "edges": [...] }`.
 3. Every workflow must have **exactly one trigger** node as its entry point —
    typically `manualTrigger`. Without a trigger node, the engine refuses to run.
 4. Every `id` must be unique within the workflow. Use short slugs like

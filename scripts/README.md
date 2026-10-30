@@ -1,6 +1,6 @@
 # Sample & test workflows
 
-A curated, importable set of example workflows covering **every** one of the 27 activities and 6
+A curated, importable set of example workflows covering 27 of the 29 activities (all except `aiAgent`/`aiAgentTeam`) and all 6
 triggers — individually and in combination. Import through the UI (`Import`) or
 `POST /api/workflows/import`.
 
@@ -16,7 +16,7 @@ triggers — individually and in combination. Import through the UI (`Import`) o
 
 | File | Contents |
 |---|---|
-| `muster-alle-aktivitaeten.json` | **The master**: one workflow that exercises all 27 activities in variation (all 14 edge operators, AND/OR/NOT, disabled edges/nodes, retry, all 3 junction modes, decision/forEach/startWorkflow) plus a child. Roots: manualTrigger (active) + scheduleTrigger (disabled, for demonstration). |
+| `muster-alle-aktivitaeten.json` | **The master**: one workflow that exercises 27 of the 29 activities (all except `aiAgent`/`aiAgentTeam`) in variation (all 14 edge operators, AND/OR/NOT, disabled edges/nodes, retry, all 3 junction modes, decision/forEach/startWorkflow) plus a child. Roots: manualTrigger (active) + scheduleTrigger (disabled, for demonstration). |
 | `muster-einzeltests.json` | **33 individual tests** — one workflow per activity (`Test — <activity>`) and per trigger. Each activity workflow runs through **all (safe) variants** of its activity (for example fileOperation create/exists/copy/rename/move/delete, folderOperation plus list, fileHash SHA256/SHA1/MD5/SHA384/SHA512, zipOperation compress+extract with all 3 compression levels, registry all 8 operations + all 6 value types, textFileEdit all 6 operations + encoding/lineEnding/occurrences/appendIfMissing/backupSuffix/dryRun, waitForCondition script/pathExists/serviceRunning/portOpen/httpOk, restApi all 6 HTTP methods, wmiQuery query/wql/invokeMethod, xml/jsonQuery inline+file × single+all, generateText all 7 modes, junction all 3 modes, forEach auto/json/lines, runScript engine+isolated+transcript+successExitCodes, startWorkflow wait+fire-and-forget). Destructive variants (serviceManagement stop/restart/create/delete, powerManagement shutdown/restart, scheduledTask register/unregister) are **not** run against real resources. Plus a shared `Muster Test: Child`. |
 | `muster-kombinationen.json` | **Combinations/topology**: `Muster — Trigger → Databus` (proving that trigger output parameters land on the data bus), `Muster — Variable-Pipe` (passing data through runScript→jsonQuery→decision) and `Muster — Sub-Workflow (Parent)` + child (startWorkflow + forEach fan-out). |
 

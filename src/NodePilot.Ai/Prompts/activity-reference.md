@@ -38,8 +38,8 @@ visual-only documentation, not executed: `type: "stickyNote"` and `type: "group"
   "source": "step-1",
   "target": "step-2",
   "type": "labeled",
-  "sourceHandle": "out",
-  "targetHandle": "in",
+  "sourceHandle": "right",
+  "targetHandle": "left",
   "data": {
     "label": "On Success",
     "condition": "step-1.success"
@@ -49,7 +49,7 @@ visual-only documentation, not executed: `type: "stickyNote"` and `type: "group"
 
 `condition` shortcuts: `"<sourceId>.success"`, `"<sourceId>.failed"`, or `null`
 (always). For complex conditions use `conditionExpression` (an object with
-operators `==`, `!=`, `<`, `>`, `contains`, `startsWith`, `endsWith`, `matches`,
+operators `==`, `!=`, `<`, `>`, `<=`, `>=`, `contains`, `startsWith`, `endsWith`, `matches`,
 `isEmpty`, `isNotEmpty`, `isTrue`, `isFalse`, plus `group` AND/OR and `not`) —
 keep it simple, prefer the `condition` shortcut where possible. `sourceHandle` /
 `targetHandle` pin which port an edge attaches to — preserve them on edges you are

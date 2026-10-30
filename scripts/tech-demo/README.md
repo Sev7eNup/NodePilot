@@ -6,7 +6,7 @@ A sample workflow that demonstrates every activity, every edge condition operato
 
 | File | Purpose |
 |---|---|
-| `main.json` | Main workflow (37 nodes, ~55 edges) |
+| `main.json` | Main workflow (39 nodes, ~55 edges) |
 | `child.json` | Small sub-workflow (3 nodes) that the main workflow calls via `startWorkflow` |
 | `seed.ps1` | Seed script — signs in, creates and publishes the demo workflows |
 
@@ -31,9 +31,9 @@ If workflows with the same name already exist, it asks: `k` = keep, `r` = delete
 
 ## What the workflow shows
 
-### Activities (all 18)
+### Activities (17)
 
-`manualTrigger`, `log`, `delay`, `runScript`, `fileOperation`, `folderOperation`, `serviceManagement`, `registryOperation`, `wmiQuery`, `startProgram`, `junction`, `restApi`, `sql`, `xmlQuery`, `jsonQuery`, `emailNotification`, `startWorkflow`, `returnData`.
+`manualTrigger`, `log`, `delay`, `runScript`, `fileOperation`, `serviceManagement`, `registryOperation`, `wmiQuery`, `startProgram`, `junction`, `restApi`, `sql`, `xmlQuery`, `jsonQuery`, `emailNotification`, `startWorkflow`, `returnData`.
 
 ### Edge condition operators (all 14)
 
@@ -85,6 +85,6 @@ Each Phase E branch in `main.json` is a condition that shows one or more of thes
 |---|---|
 | `waitNofM` config key | `requiredCount` (NOT `n` — an unknown key falls back to the default 1) |
 | Boolean truthiness | Empty, `"false"` (case-insensitive), `"0"` = falsy. Everything else truthy. PowerShell `[string]$true` = `"True"` → truthy ✓ |
-| `runScript` param capture | All locally declared variables are exposed automatically as `param.*` (ProcessExecutionEngine appends a capture block to the script). No marker needed. |
+| `runScript` param capture | Variables the script assigns itself are exposed automatically as `param.*` (PowerShellScriptWrapper: injection in the outer scope, script and capture in the inner scope); passed-through upstream parameters and PowerShell automatic variables are not. No marker needed. |
 | `{{var.output}}` in script text | Inserted as a PowerShell single-quoted string (`'value'`). Do not add quotes yourself. |
 | `targetMachineId: "localhost"` | Triggers the localhost bypass → runs in-process without a WinRM session. Ideal for the demo. |

@@ -1,16 +1,16 @@
 # NodePilot Stress-Test Workflow
 
-Artificial load workflow: fans out from `log-start` into **11 parallel branches** and collects them again with `junction-all` (`waitAll`). Uses only engine-local activities + `runScript` with `targetMachineId: "localhost"` (in-process bypass) — **no WinRM target needed**.
+Artificial load workflow: fans out from `log-start` into **11 parallel branches** and collects them again with `junction-all` (`waitAll`). Uses only engine-local activities + `runScript` with `targetMachineId: "localhost"` (localhost bypass) — **no WinRM target needed**.
 
 ## Branches (all parallel)
 
 | # | Activity | Workload |
 |---|---|---|
 | 1 | `runScript` | Prime sieve up to 2·10⁶ |
-| 2 | `runScript` | Σ√i for i=1..10⁷ |
-| 3 | `runScript` | SHA-256 chained 200,000× |
-| 4 | `runScript` | 50,000 regex matches on generated log lines |
-| 5 | `runScript` | 250×250 matrix multiplication |
+| 2 | `runScript` | Σ√i for i=1..5·10⁶ per pass |
+| 3 | `runScript` | SHA-256 chained, in blocks of 50,000 |
+| 4 | `runScript` | Regex matches on generated log lines, 25,000 per pass |
+| 5 | `runScript` | 200×200 matrix multiplication |
 | 6 | `runScript` | Sort 10⁶ integers |
 | 7 | `jsonQuery` | `$.items[?(@.val > 50)].id` on a 20-item array |
 | 8 | `jsonQuery` | `$..name` on a nested org structure |
@@ -18,7 +18,7 @@ Artificial load workflow: fans out from `log-start` into **11 parallel branches*
 | 10 | `xmlQuery` | `sum(//host[@up='y']/@cpu)` (XPath aggregate) |
 | 11 | `delay` | 55 s |
 
-All 6 `runScript` branches run **in-process** → the API spawns 6 concurrent PowerShell runspaces that keep ~all cores busy for a while.
+All 6 `runScript` branches run locally on the API host (`engine: auto` → one Windows PowerShell 5.1 process each) → 6 concurrent `powershell.exe` processes that keep ~all cores busy for a while.
 
 ## Import
 
