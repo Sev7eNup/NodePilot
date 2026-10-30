@@ -20,7 +20,7 @@ namespace NodePilot.Engine.Activities;
 /// <c>FileSystemOperation:TextEdit:MaxFileSizeMB</c>) caps the size this activity accepts.
 ///
 /// Every mutation is written to <c>&lt;path&gt;.nodepilot-tmp-&lt;guid&gt;</c> and then
-/// <c>Move-Item -Force</c>d over the original, so a failed write leaves the original untouched.
+/// atomically replaces the original while retaining its access-control metadata.
 /// <c>backupSuffix</c> copies the file to a sibling <i>before</i> the mutation, which keeps the
 /// pre-edit content available even after a successful edit.
 /// </summary>
@@ -379,8 +379,25 @@ public class TextFileEditActivity : BaseRemoteActivity
             if ($DryRun) { return }
             $tmp = $Path + '.nodepilot-tmp-' + ([guid]::NewGuid().ToString('N'))
             $bytes = $Encoding.GetPreamble() + $Encoding.GetBytes($Text)
-            [System.IO.File]::WriteAllBytes($tmp, $bytes)
-            Move-Item -LiteralPath $tmp -Destination $Path -Force
+            $existing = [System.IO.File]::Exists($Path)
+            try {
+                if ($existing) {
+                    # Protect the staging file before it contains any original or edited data.
+                    $acl = Get-Acl -LiteralPath $Path
+                    [System.IO.File]::WriteAllBytes($tmp, [byte[]]@())
+                    Set-Acl -LiteralPath $tmp -AclObject $acl -ErrorAction Stop
+                }
+                [System.IO.File]::WriteAllBytes($tmp, $bytes)
+                if ($existing) {
+                    # ReplaceFile preserves the destination DACL and metadata. Do not fall back
+                    # to Move-Item: that would replace protected permissions with inherited ones.
+                    [System.IO.File]::Replace($tmp, $Path, [System.Management.Automation.Language.NullString]::Value)
+                } else {
+                    [System.IO.File]::Move($tmp, $Path)
+                }
+            } finally {
+                if ([System.IO.File]::Exists($tmp)) { [System.IO.File]::Delete($tmp) }
+            }
         }
 
         function Backup-NpFile {

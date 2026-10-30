@@ -59,7 +59,8 @@ internal static class VariableResolver
         string text,
         Func<string, string?> resolveGlobal,
         Func<string, string?> resolveManual,
-        Func<string, string, string?, string?> resolveStep)
+        Func<string, string, string?, string?> resolveStep,
+        ICollection<string>? unresolved = null)
         => AnyTemplatePattern.Replace(text, match =>
         {
             if (match.Groups["global"].Success && resolveGlobal(match.Groups["global"].Value) is { } global)
@@ -70,15 +71,23 @@ internal static class VariableResolver
             if (match.Groups["step"].Success)
             {
                 var param = match.Groups["param"].Success ? match.Groups["param"].Value : null;
-                return resolveStep(match.Groups["step"].Value, match.Groups["tail"].Value, param) ?? match.Value;
+                if (resolveStep(match.Groups["step"].Value, match.Groups["tail"].Value, param) is { } value)
+                    return value;
+                unresolved?.Add(match.Value);
+                return match.Value;
             }
 
             // An unknown {{globals.output}} or {{manual.output}} is also a reference to a step
             // named "globals" or "manual", which is how the step pattern reads it.
             var stepMatch = StepPattern.Match(match.Value);
-            if (!stepMatch.Success || stepMatch.Length != match.Length) return match.Value;
-            var stepParam = stepMatch.Groups[3].Success ? stepMatch.Groups[3].Value : null;
-            return resolveStep(stepMatch.Groups[1].Value, stepMatch.Groups[2].Value, stepParam) ?? match.Value;
+            if (stepMatch.Success && stepMatch.Length == match.Length)
+            {
+                var stepParam = stepMatch.Groups[3].Success ? stepMatch.Groups[3].Value : null;
+                if (resolveStep(stepMatch.Groups[1].Value, stepMatch.Groups[2].Value, stepParam) is { } value)
+                    return value;
+            }
+            unresolved?.Add(match.Value);
+            return match.Value;
         });
 
     /// <summary>Reads a step result value for a template tail; null when the tail cannot resolve.</summary>
@@ -261,12 +270,13 @@ internal static class VariableResolver
         IReadOnlyDictionary<string, string>? outputVariableToStepId,
         IReadOnlyDictionary<string, string>? globalVariables,
         IReadOnlySet<string> doNotResolveFields,
-        IReadOnlyDictionary<string, string>? manualParameters = null)
+        IReadOnlyDictionary<string, string>? manualParameters = null,
+        ICollection<string>? unresolved = null)
     {
         if (doNotResolveFields is null || doNotResolveFields.Count == 0
             || config.ValueKind != JsonValueKind.Object)
         {
-            return ResolveVariables(config, results, outputVariableToStepId, globalVariables, manualParameters);
+            return ResolveVariables(config, results, outputVariableToStepId, globalVariables, manualParameters, unresolved);
         }
 
         // Re-assemble the object property-by-property: protected fields are passed through
@@ -288,7 +298,7 @@ internal static class VariableResolver
             }
             else
             {
-                var subResolved = ResolveVariables(prop.Value, results, outputVariableToStepId, globalVariables, manualParameters);
+                var subResolved = ResolveVariables(prop.Value, results, outputVariableToStepId, globalVariables, manualParameters, unresolved);
                 sb.Append(subResolved.GetRawText());
             }
         }
@@ -302,7 +312,8 @@ internal static class VariableResolver
     internal static JsonElement ResolveVariables(JsonElement config, IReadOnlyDictionary<string, ActivityResult> results,
         IReadOnlyDictionary<string, string>? outputVariableToStepId,
         IReadOnlyDictionary<string, string>? globalVariables = null,
-        IReadOnlyDictionary<string, string>? manualParameters = null)
+        IReadOnlyDictionary<string, string>? manualParameters = null,
+        ICollection<string>? unresolved = null)
     {
         var configJson = config.GetRawText();
         if (string.IsNullOrEmpty(configJson) || !configJson.Contains("{{"))
@@ -319,7 +330,7 @@ internal static class VariableResolver
                 ? JsonEscape(manual) : null,
             (step, tail, param) => variableMap.TryGetValue(step, out var result)
                 && ReadStepValue(result, tail, param) is { } value
-                    ? JsonEscape(value) : null);
+                    ? JsonEscape(value) : null, unresolved);
 
         // Dispose the JsonDocument so its pooled buffers return to the ArrayPool. Returning
         // RootElement directly would leak the buffer; Clone() detaches the element from the

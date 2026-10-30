@@ -47,13 +47,11 @@ public class LogActivity : IActivityExecutor
                 });
             }
 
-            // Sanitize before the message touches any logger: strip CR/LF (log-forging), drop
-            // ANSI escape sequences (parser-confusion), trim to MaxMessageChars, then run
-            // through the secret redactor so a `message: "pw={{step.param.pw}}"` won't leak.
-            var sanitized = SanitizeForLog(rawMessage);
+            // Redact complete values before flattening lines or truncating delimiters.
+            var sanitized = SanitizeForLog(_redactor.Redact(rawMessage) ?? rawMessage);
             if (sanitized.Length > MaxMessageChars)
                 sanitized = sanitized[..MaxMessageChars] + "…(truncated)";
-            var message = _redactor.Redact(sanitized) ?? sanitized;
+            var message = sanitized;
 
             // SupportLog=true marks user-authored log lines as operator-relevant; the sub-sink in
             // LoggingSetup filters on this scope property and also writes the entry into

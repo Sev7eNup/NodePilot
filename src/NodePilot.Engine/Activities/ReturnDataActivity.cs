@@ -67,8 +67,8 @@ public class ReturnDataActivity : IActivityExecutor
         var persistParams = new Dictionary<string, string>();
         foreach (var prop in dataEl.EnumerateObject())
         {
-            var raw = Cap(PowerShellOperation.JsonElementToScalarString(prop.Value));
-            outputParams[prop.Name] = raw;
+            var raw = PowerShellOperation.JsonElementToScalarString(prop.Value);
+            outputParams[prop.Name] = Cap(raw);
             // Redact per value, never across the finished document. A careless workflow that
             // echoes a secret here would otherwise persist it unmasked and hand it to any
             // startWorkflow parent — but several default patterns have value classes that do not

@@ -49,7 +49,8 @@ internal sealed class StepRunner
         IReadOnlyDictionary<string, ActivityResult> previousResults,
         IReadOnlyDictionary<string, string> outputVariableToStepId,
         IReadOnlyDictionary<string, string> globalVariables,
-        IReadOnlyDictionary<string, string>? manualParameters = null)
+        IReadOnlyDictionary<string, string>? manualParameters = null,
+        ICollection<string>? unresolved = null)
     {
         // runScript AND custom:<key> activities resolve {{...}} inside their own executor with
         // PowerShell-safe single-quote quoting, so the generic resolver must leave their config
@@ -57,17 +58,19 @@ internal sealed class StepRunner
         if (string.Equals(activityType, "runScript", StringComparison.OrdinalIgnoreCase)
             || CustomActivityType.IsCustomType(activityType))
         {
+            if (unresolved is not null)
+                foreach (var token in FindUnresolvedStepReferences(activityType, config)) unresolved.Add(token);
             return config;
         }
 
         if (FieldsNotToResolve.TryGetValue(activityType ?? string.Empty, out var protectedFields))
         {
             return VariableResolver.ResolveVariablesExcept(
-                config, previousResults, outputVariableToStepId, globalVariables, protectedFields, manualParameters);
+                config, previousResults, outputVariableToStepId, globalVariables, protectedFields, manualParameters, unresolved);
         }
 
         return VariableResolver.ResolveVariables(
-            config, previousResults, outputVariableToStepId, globalVariables, manualParameters);
+            config, previousResults, outputVariableToStepId, globalVariables, manualParameters, unresolved);
     }
 
     internal StepRunner(
@@ -228,9 +231,10 @@ internal sealed class StepRunner
             // and routed through ResolveVariablesExcept, which substitutes every OTHER
             // field but passes the protected ones through verbatim. The activity executor
             // then rejects the call if the protected text still carries {{...}} residue.
+            var unresolved = new List<string>();
             var configForExecution = ResolveConfigForExecution(
                 node.Type, node.Data.Config, previousResults, outputVariableToStepId, globalVariables,
-                inputParameters);
+                inputParameters, unresolved);
 
             // T-7.1: Fail the step early when step-pattern placeholders survive resolution
             // unsubstituted. This surfaces typos, deleted-step references, and wrong
@@ -245,7 +249,6 @@ internal sealed class StepRunner
             // worst outcome available. The literal reaches PowerShell as code, the step
             // succeeds, and the run reports green having written a placeholder string wherever
             // the real value belonged — measured end to end as "Ergebnis: {sibling.output}".
-            var unresolved = FindUnresolvedStepReferences(node.Type, configForExecution);
             if (unresolved.Count > 0)
             {
                 var resolvesItsOwnTemplates =
@@ -267,7 +270,7 @@ internal sealed class StepRunner
 
             if (debug is not null && (node.Data.Breakpoint || debug.StepOverArmed))
             {
-                var shouldPause = ShouldPauseForDebug(node, previousResults, outputVariableToStepId, globalVariables, debug);
+                var shouldPause = ShouldPauseForDebug(node, previousResults, outputVariableToStepId, globalVariables, debug, inputParameters);
                 if (shouldPause)
                 {
                     var overrides = await _debugCoordinator.HandlePauseAsync(
@@ -666,14 +669,15 @@ internal sealed class StepRunner
         IReadOnlyDictionary<string, ActivityResult> previousResults,
         IReadOnlyDictionary<string, string> outputVariableToStepId,
         IReadOnlyDictionary<string, string> globalVariables,
-        DebugHandle debug)
+        DebugHandle debug,
+        IReadOnlyDictionary<string, string>? inputParameters = null)
     {
         if (!node.Data.Breakpoint || debug.StepOverArmed)
             return true;
         if (string.IsNullOrWhiteSpace(node.Data.BreakpointCondition))
             return true;
 
-        var resolved = VariableResolver.ResolveStringValue(node.Data.BreakpointCondition, previousResults, outputVariableToStepId, globalVariables) ?? "";
+        var resolved = VariableResolver.ResolveStringValue(node.Data.BreakpointCondition, previousResults, outputVariableToStepId, globalVariables, inputParameters) ?? "";
         return resolved.Length > 0
             && !resolved.Equals("false", StringComparison.OrdinalIgnoreCase)
             && !resolved.Equals("0", StringComparison.OrdinalIgnoreCase)
