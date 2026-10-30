@@ -14,7 +14,7 @@ Zwei Ausnahmen sind Relaxations und defaulten auf `false`: `PrometheusScrapeAllo
 | `SqlActivity:RequireConnectionRef` | `true` | Nur named `connectionRef` statt inline `connectionString` (Dev: `false`) |
 | `StartProgram:DisallowShellExecute` | `true` | Verwirft `useShellExecute=true` (Dev: `false`). Nur ein explizites `false` schaltet ab; ein Wert, der kein Boolean ist, lässt die Sperre an |
 | `Trigger:Database:RequireConnectionRef` | `true` | Nur named `connectionRef` für `databaseTrigger` (Dev: `false`) |
-| `Security:StrictAllowedHosts` | `true` | Boot-Abbruch bei unsafe `AllowedHosts` (z. B. `*`) (Dev: `false`). Die Installer schreiben `localhost` immer mit in `AllowedHosts` — ihre eigene Health-Probe geht an `https://localhost:<port>/healthz/ready`, die der Host-Filter sonst mit 400 abweist |
+| `Security:StrictAllowedHosts` | `true` | Boot-Abbruch bei unsafe `AllowedHosts` (z. B. `*`) (Dev: `false`); ein Settings-Save, der diese Kombination erzeugen würde, wird abgelehnt. Die Installer schreiben `localhost` immer mit in `AllowedHosts` — ihre eigene Health-Probe geht an `https://localhost:<port>/healthz/ready`, die der Host-Filter sonst mit 400 abweist |
 | `Webhook:RequireSecret` | `true` | `webhookTrigger` erzwingt ein konfiguriertes Secret — verifiziert je nach `signatureMode` als `X-Webhook-Secret`-Header oder HMAC-Signatur (Dev: `false`) |
 | `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` | `false` | `/metrics` anonym erreichbar |
 

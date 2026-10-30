@@ -14,7 +14,7 @@ Two exceptions are relaxations and default to `false`: `PrometheusScrapeAllowAno
 | `SqlActivity:RequireConnectionRef` | `true` | Only a named `connectionRef` instead of an inline `connectionString` (development: `false`) |
 | `StartProgram:DisallowShellExecute` | `true` | Rejects `useShellExecute=true` (development: `false`). Only an explicit `false` turns it off; a value that is not a boolean keeps the block on |
 | `Trigger:Database:RequireConnectionRef` | `true` | Only a named `connectionRef` for `databaseTrigger` (development: `false`) |
-| `Security:StrictAllowedHosts` | `true` | Aborts the boot on an unsafe `AllowedHosts` (e.g. `*`) (development: `false`). The installers always add `localhost` to `AllowedHosts` — their own health probe goes to `https://localhost:<port>/healthz/ready`, which the host filter would otherwise reject with 400 |
+| `Security:StrictAllowedHosts` | `true` | Aborts the boot on an unsafe `AllowedHosts` (e.g. `*`) (development: `false`); a settings save that would produce this combination is rejected. The installers always add `localhost` to `AllowedHosts` — their own health probe goes to `https://localhost:<port>/healthz/ready`, which the host filter would otherwise reject with 400 |
 | `Webhook:RequireSecret` | `true` | `webhookTrigger` requires a configured secret — verified as an `X-Webhook-Secret` header or an HMAC signature depending on `signatureMode` (development: `false`) |
 | `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` | `false` | Makes `/metrics` reachable anonymously |
 

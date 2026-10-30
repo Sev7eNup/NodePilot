@@ -80,7 +80,9 @@ The workflow assistant masks named secrets before the model call. With
 `ShareScriptsWithAssistant` enabled, however, the provider receives scripts, SQL, and arguments
 to the extent that secret detection does not mask them. This detection is heuristic.
 Changing the profile, endpoint, or sharing switch excludes the previous
-chat history from the next call.
+chat history from the next call. The global knowledge chat applies the same rule and also
+treats a model change as a new context; the answer then notes that the earlier conversation
+was not sent.
 
 Script generation sends the current script only with the separate approval
 `IncludeCurrentScript=true`. It receives upstream variables as a schema without their values.
