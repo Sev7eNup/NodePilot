@@ -1,90 +1,90 @@
 # NodePilot Tech-Demo — Full Showcase
 
-Ein Muster-Workflow, der jede Activity, jeden Edge-Condition-Operator und jede Control-Flow-Variante demonstriert, die NodePilot unterstützt.
+A sample workflow that demonstrates every activity, every edge condition operator and every control-flow variant that NodePilot supports.
 
-## Dateien
+## Files
 
-| Datei | Zweck |
+| File | Purpose |
 |---|---|
-| `main.json` | Haupt-Workflow (39 Nodes, ~55 Edges) |
-| `child.json` | Kleiner Sub-Workflow (3 Nodes), den der Haupt-Workflow via `startWorkflow` aufruft |
-| `seed.ps1` | Seed-Script — meldet sich an, erstellt und veröffentlicht die Demo-Workflows |
+| `main.json` | Main workflow (39 nodes, ~55 edges) |
+| `child.json` | Small sub-workflow (3 nodes) that the main workflow calls via `startWorkflow` |
+| `seed.ps1` | Seed script — signs in, creates and publishes the demo workflows |
 
-`seed.ps1` liest die Definitionen, erstellt die Workflows über `POST /api/workflows`
-und veröffentlicht sie anschließend über `POST /api/workflows/{id}/publish`.
+`seed.ps1` reads the definitions, creates the workflows via `POST /api/workflows`
+and then publishes them via `POST /api/workflows/{id}/publish`.
 
-## Aufruf
+## Usage
 
-Backend muss laufen (Default `http://localhost:5000`).
+The backend must be running (default `http://localhost:5000`).
 
 ```powershell
-# Aus dem Repo-Root:
+# From the repo root:
 ./scripts/tech-demo/seed.ps1
 
-# Oder mit expliziten Parametern:
+# Or with explicit parameters:
 ./scripts/tech-demo/seed.ps1 -BaseUrl http://localhost:5000 -AdminUser admin -AdminPassword 'Abcd1234!' -Force
 ```
 
-Das Script erkennt automatisch, ob NodePilot im Bootstrap-Modus ist (leere User-Tabelle + `admin-setup.token` vorhanden) und nutzt dann den `X-Setup-Token`-Header für den First-Admin-Login. Ansonsten fragt es das Passwort normal ab.
+The script detects automatically whether NodePilot is in bootstrap mode (empty user table + `admin-setup.token` present) and then uses the `X-Setup-Token` header for the first-admin login. Otherwise it prompts for the password as usual.
 
-Bei bereits existierenden Workflows gleichen Namens wird gefragt: `k` = behalten, `r` = löschen + neu anlegen, `a` = abbrechen. Mit `-Force` wird immer ersetzt. Auch Ersetzen braucht den eigenen Bearbeitungslock; fremde Sperren werden nicht aufgehoben. Mehrdeutige Namen führen zum Abbruch.
+If workflows with the same name already exist, it asks: `k` = keep, `r` = delete + recreate, `a` = abort. With `-Force` it always replaces. Replacing also requires your own edit lock; foreign locks are not released. Ambiguous names abort the run.
 
-## Was der Workflow zeigt
+## What the workflow shows
 
 ### Activities (17)
 
 `manualTrigger`, `log`, `delay`, `runScript`, `fileOperation`, `serviceManagement`, `registryOperation`, `wmiQuery`, `startProgram`, `junction`, `restApi`, `sql`, `xmlQuery`, `jsonQuery`, `emailNotification`, `startWorkflow`, `returnData`.
 
-### Edge-Condition-Operatoren (alle 14)
+### Edge condition operators (all 14)
 
-- **Numerisch:** `==` `!=` `<` `>` `<=` `>=`
+- **Numeric:** `==` `!=` `<` `>` `<=` `>=`
 - **String:** `contains` `startsWith` `endsWith` `matches`
-- **Unär:** `isEmpty` `isNotEmpty` `isTrue` `isFalse`
-- **Kombinatoren:** `AND`-Gruppe, `OR`-Gruppe, `NOT`
-- **Legacy-Shortcuts:** `stepId.success`, `stepId.failed`
+- **Unary:** `isEmpty` `isNotEmpty` `isTrue` `isFalse`
+- **Combinators:** `AND` group, `OR` group, `NOT`
+- **Legacy shortcuts:** `stepId.success`, `stepId.failed`
 
-Jeder Phase-E-Branch in `main.json` ist eine Kondition, die einen oder mehrere dieser Operatoren zeigt.
+Each Phase E branch in `main.json` is a condition that shows one or more of these operators.
 
-### Junction-Modi (alle 3)
+### Junction modes (all 3)
 
-- `waitAll` → `junction-all` (Phase D, wartet auf 5 Parallel-Branches)
-- `waitAny` → `junction-match`, `junction-rest`, `junction-any`, `junction-final` (feuert auf den ersten erfolgreichen Branch)
-- `waitNofM` → `junction-nofm` (`requiredCount: 2` von 3 Branches)
+- `waitAll` → `junction-all` (Phase D, waits for 5 parallel branches)
+- `waitAny` → `junction-match`, `junction-rest`, `junction-any`, `junction-final` (fires on the first successful branch)
+- `waitNofM` → `junction-nofm` (`requiredCount: 2` of 3 branches)
 
-### Weitere Features
+### Further features
 
-- **Retry-Policy:** `collect-host` (exponential 2x), `prog-cmd` (linear 3x), `rest-get` (exponential 3x)
-- **Step-Timeouts:** `collect-host` (60s), `rest-get` (15s), Remote-Activities (30s)
-- **Node-Level `disabled`:** `log-disabled-node` → erscheint als `Skipped`
-- **Node-Level `breakpoint`:** `log-breakpoint` → pausiert im Debug-Run
-- **Edge-Level `disabled`:** `email-notify` → `log-nowhere` Edge feuert nie
-- **Error-Path:** `rest-get.failed` → `log-rest-fail` (Demo für On-Failure-Branching)
-- **Sub-Workflow:** `invoke-child` ruft `child.json`-Workflow auf, dessen `returnData` als `{{child.param.*}}` zurückkommt
+- **Retry policy:** `collect-host` (exponential 2x), `prog-cmd` (linear 3x), `rest-get` (exponential 3x)
+- **Step timeouts:** `collect-host` (60s), `rest-get` (15s), remote activities (30s)
+- **Node-level `disabled`:** `log-disabled-node` → appears as `Skipped`
+- **Node-level `breakpoint`:** `log-breakpoint` → pauses in the debug run
+- **Edge-level `disabled`:** `email-notify` → `log-nowhere` edge never fires
+- **Error path:** `rest-get.failed` → `log-rest-fail` (demo of on-failure branching)
+- **Sub-workflow:** `invoke-child` calls the `child.json` workflow, whose `returnData` comes back as `{{child.param.*}}`
 
-## Testen in der UI
+## Testing in the UI
 
-1. Workflow öffnen (Link kommt vom Seed-Script).
-2. **Layout-Check:** LTR, keine überlappenden Edges, 11 Phasen klar voneinander getrennt.
-3. **Run** klicken → Parameter-Dialog mit Defaults:
-   - `environment` = `staging` (lass so, um `log-eq-neq` zu skippen; setze auf `production`, um den Branch zu feuern)
-   - `threshold` = `80` (disk-alarm-Schwelle)
+1. Open the workflow (the link comes from the seed script).
+2. **Layout check:** LTR, no overlapping edges, 11 phases clearly separated from each other.
+3. Click **Run** → parameter dialog with defaults:
+   - `environment` = `staging` (leave as is to skip `log-eq-neq`; set to `production` to fire the branch)
+   - `threshold` = `80` (disk-alarm threshold)
    - `dryRun` = `false`
    - `pattern` = `Windows.*`
-4. **Start** → Live-Status via SignalR, ~15 Sekunden Laufzeit.
-5. Nach dem Lauf: **Execution-Details** öffnen, Step-Status prüfen:
-   - `log-disabled-node` sollte `Skipped` sein
-   - `log-nowhere` sollte nicht in der Step-Liste sein (Edge disabled → Node unreachable → Skipped)
-   - `email-notify` schlägt fehl (kein SMTP konfiguriert), das ist erwartet — der "Always"-Edge führt weiter
-   - `rest-get`: Status hängt von httpbin.org-Erreichbarkeit ab, beide Pfade (Success→SQL, Failure→log) führen über `junction-rest` zurück auf den Main-Path
+4. **Start** → live status via SignalR, ~15 seconds runtime.
+5. After the run: open **execution details**, check the step status:
+   - `log-disabled-node` should be `Skipped`
+   - `log-nowhere` should not be in the step list (edge disabled → node unreachable → skipped)
+   - `email-notify` fails (no SMTP configured), that is expected — the "Always" edge continues
+   - `rest-get`: the status depends on whether httpbin.org is reachable, both paths (success→SQL, failure→log) lead back to the main path via `junction-rest`
 
-**Debug-Test:** "Run with Debug" → Workflow pausiert bei `log-breakpoint` → Variable-Inspector zeigt `host.param.*`, `rest.param.*` etc. → "Continue" läuft weiter.
+**Debug test:** "Run with Debug" → the workflow pauses at `log-breakpoint` → the variable inspector shows `host.param.*`, `rest.param.*` etc. → "Continue" runs on.
 
-## Verifizierte Engine-Details (wichtig beim Editieren)
+## Verified engine details (important when editing)
 
-| Detail | Wert |
+| Detail | Value |
 |---|---|
-| `waitNofM`-Config-Key | `requiredCount` (NICHT `n` — ein unbekannter Schlüssel fällt auf den Default 1 zurück) |
-| Boolean-Truthiness | Leer, `"false"` (case-insensitive), `"0"` = falsy. Alles andere truthy. PowerShell-`[string]$true` = `"True"` → truthy ✓ |
-| `runScript`-Param-Capture | Variablen, die das Skript selbst zuweist, werden automatisch als `param.*` exponiert (PowerShellScriptWrapper: Injektion im äußeren, Skript und Capture im inneren Scope); durchgereichte Upstream-Parameter und PowerShell-Automatiken nicht. Kein Marker nötig. |
-| `{{var.output}}` in Script-Text | Wird als PowerShell-single-quoted-String eingesetzt (`'value'`). Nicht selbst zusätzlich quoten. |
-| `targetMachineId: "localhost"` | Löst Localhost-Bypass aus → läuft in-process ohne WinRM-Session. Ideal für Demo. |
+| `waitNofM` config key | `requiredCount` (NOT `n` — an unknown key falls back to the default 1) |
+| Boolean truthiness | Empty, `"false"` (case-insensitive), `"0"` = falsy. Everything else truthy. PowerShell `[string]$true` = `"True"` → truthy ✓ |
+| `runScript` param capture | Variables the script assigns itself are exposed automatically as `param.*` (PowerShellScriptWrapper: injection in the outer scope, script and capture in the inner scope); passed-through upstream parameters and PowerShell automatic variables are not. No marker needed. |
+| `{{var.output}}` in script text | Inserted as a PowerShell single-quoted string (`'value'`). Do not add quotes yourself. |
+| `targetMachineId: "localhost"` | Triggers the localhost bypass → runs in-process without a WinRM session. Ideal for the demo. |

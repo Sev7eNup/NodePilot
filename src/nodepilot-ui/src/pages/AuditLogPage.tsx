@@ -40,6 +40,16 @@ interface AuditTextFilters {
 const FILTER_DEBOUNCE_MS = 300;
 const GUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
+/**
+ * Turns a `datetime-local` value (wall-clock time in the browser's zone) into a UTC instant.
+ * Sending the raw value would let the server read it as UTC and shift the window by the offset.
+ */
+function localInputToUtcIso(value: string): string | null {
+  if (!value.trim()) return null;
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? null : instant.toISOString();
+}
+
 /** True when an id field holds something the server could never match. */
 function isIncompleteId(value: string): boolean {
   return value.trim() !== '' && !GUID_PATTERN.test(value.trim());
@@ -121,8 +131,10 @@ export function AuditLogPage() {
       if (appliedText.resourceId.trim()) params.set('resourceId', appliedText.resourceId.trim());
       if (appliedText.userId.trim()) params.set('userId', appliedText.userId.trim());
       if (appliedText.ipAddress.trim()) params.set('ipAddress', appliedText.ipAddress.trim());
-      if (since.trim()) params.set('since', since);
-      if (until.trim()) params.set('until', until);
+      const sinceUtc = localInputToUtcIso(since);
+      const untilUtc = localInputToUtcIso(until);
+      if (sinceUtc) params.set('since', sinceUtc);
+      if (untilUtc) params.set('until', untilUtc);
       if (overrides) for (const [k, v] of Object.entries(overrides)) params.set(k, v);
       return params;
     },

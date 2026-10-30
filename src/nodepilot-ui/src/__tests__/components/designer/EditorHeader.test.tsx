@@ -182,6 +182,20 @@ describe('EditorHeader — designer back button (location.state)', () => {
     expect(capturedPathname).toBe('/workflows');
   });
 
+  it('dependencyEntry_returnsToTheOriginalHistoryEntry', () => {
+    renderWithState(
+      { fromDependencies: true },
+      [
+        { pathname: '/dependencies', search: '?kind=machine&id=host&view=map&related=workflow:wf-current' },
+        { pathname: '/workflows/wf-current', state: { fromDependencies: true } },
+      ], 1,
+    );
+    const back = screen.getByRole('button', { name: 'Back to dependencies' });
+    expect(back).not.toBeDisabled();
+    fireEvent.click(back);
+    expect(capturedPathname).toBe('/dependencies');
+  });
+
   it('withoutFromWorkflow_rendersOnlyTheArrow', () => {
     renderWithState(undefined);
     // The arrow itself is titled "Back to workflow list"; no second button exists.

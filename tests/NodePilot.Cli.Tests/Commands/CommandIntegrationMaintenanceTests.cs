@@ -172,6 +172,37 @@ public class CommandIntegrationMaintenanceTests
             && e.RequestMessage!.Method == "POST");
     }
 
+    [Theory]
+    [InlineData("create")]
+    [InlineData("update")]
+    public void Maintenance_UnknownDayToken_FailsBeforeAnyRequest(string verb)
+    {
+        using var h = new CommandTestHarness();
+        string[] args = verb == "create"
+            ? ["maintenance", "create", "--name", "Weekend", "--days", "Sat,Sundya", "--start", "00:00", "--end", "23:59"]
+            : ["maintenance", "update", Guid.NewGuid().ToString(), "--days", "Sat,Sundya"];
+
+        var result = h.Run(args);
+
+        result.ExitCode.Should().Be(ExitCodes.Error);
+        result.StdErr.Should().Contain("Invalid day 'Sundya'");
+        h.Server.LogEntries.Should().NotContain(e => e.RequestMessage!.AbsolutePath.StartsWith("/api/maintenance-windows"));
+    }
+
+    [Fact]
+    public void MaintenanceCreate_FullWeekendInAnySpelling_PostsBothDays()
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/maintenance-windows").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(201).WithBodyAsJson(WindowJson(Guid.NewGuid(), "Weekend")));
+
+        var result = h.Run("maintenance", "create", "--name", "Weekend", "--days", " saturday , SUN ");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        // Sun == bit 0, Sat == bit 6 -> 0b1000001 == 65.
+        h.Server.LogEntries.Last().RequestMessage!.Body!.Should().Contain("\"weeklyDaysMask\":65");
+    }
+
     [Fact]
     public void MaintenanceUpdate_FetchesCurrentThenPuts()
     {

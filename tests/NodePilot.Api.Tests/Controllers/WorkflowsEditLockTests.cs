@@ -643,6 +643,61 @@ public class WorkflowsEditLockTests
         workflow.CheckedOutByUserId.Should().Be(OwnerId);
     }
 
+    private const string UnsatisfiableJunctionDefinition = """
+    {
+      "nodes": [
+        { "id": "t", "type": "activity", "data": { "activityType": "manualTrigger", "config": {} } },
+        { "id": "a", "type": "activity", "data": { "activityType": "log", "config": {} } },
+        { "id": "b", "type": "activity", "data": { "activityType": "log", "config": {} } },
+        { "id": "j", "type": "junction", "data": { "activityType": "junction", "config": { "mode": "waitNofM", "requiredCount": 3 } } }
+      ],
+      "edges": [
+        { "id": "e1", "source": "t", "target": "a" },
+        { "id": "e2", "source": "t", "target": "b" },
+        { "id": "e3", "source": "a", "target": "j" },
+        { "id": "e4", "source": "b", "target": "j" }
+      ]
+    }
+    """;
+
+    [Fact]
+    public async Task Publish_JunctionRequiringMoreInputsThanItHas_IsRejectedAndRemainsLocked()
+    {
+        var db = CreateContext();
+        await SeedUserAsync(db, OwnerId, "alice");
+        var workflow = NewWorkflow(enabled: false, lockedBy: OwnerId);
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewHarness(db).Editing.Publish(
+            workflow.Id,
+            new PublishWorkflowRequest("NofM", null, UnsatisfiableJunctionDefinition, ExpectedVersion: 1),
+            CancellationToken.None);
+
+        var badRequest = result.Result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        badRequest.Value!.ToString().Should().Contain("invalid_junction_required_count");
+        await db.Entry(workflow).ReloadAsync();
+        workflow.IsEnabled.Should().BeFalse();
+        workflow.CheckedOutByUserId.Should().Be(OwnerId);
+    }
+
+    [Fact]
+    public async Task Enable_JunctionRequiringMoreInputsThanItHas_IsRejectedLikePublish()
+    {
+        var db = CreateContext();
+        var workflow = NewWorkflow(enabled: false);
+        workflow.DefinitionJson = UnsatisfiableJunctionDefinition;
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var result = await NewHarness(db).Workflows.Enable(workflow.Id, CancellationToken.None);
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        badRequest.Value!.ToString().Should().Contain("invalid_junction_required_count");
+        await db.Entry(workflow).ReloadAsync();
+        workflow.IsEnabled.Should().BeFalse();
+    }
+
     [Fact]
     public async Task Publish_WhenVersionSnapshotAlreadyExists_Returns409()
     {

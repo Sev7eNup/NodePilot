@@ -3,13 +3,13 @@
 **Status:** Accepted - 2026-06-29 · Amended - 2026-07-07 (error-shape guidance revised, see Amendment)
 **Scope:** HTTP API validation, error responses, and audit guardrails.
 
-## Kontext
+## Context
 
 The API used a mix of ad-hoc error payloads (`{ message }`, `{ error }`, `{ code, message }`) and
 controller-local validation. This made clients parse several shapes and left the boundary between
 request-shape validation, HTTP composition checks, and domain invariants implicit.
 
-## Entscheidung
+## Decision
 
 Client-visible 4xx responses from API controllers use RFC 7807 `ProblemDetails`.
 
@@ -46,7 +46,7 @@ Validation belongs at the narrowest layer that has enough information:
 Mutating API actions should emit an audit event or carry an explicit exemption. The architecture
 test `MutatingActionAuditCoverageTests` guards this at the controller layer.
 
-## Konsequenzen
+## Consequences
 
 - API clients can prefer `ProblemDetails.detail`, `ProblemDetails.title`, and the `code` extension
   instead of branching over legacy payload shapes.
@@ -98,13 +98,13 @@ The convention, matching what `CapacityExceptionHandler` had already established
   instead. Tests must exercise the handler directly rather than through a Development-hosted
   `WebApplicationFactory`, which would pass while proving nothing.
 
-## Amendment (2026-08-07): `DATABASE_UNAVAILABLE` — und die Grenze zu ADR 0011
+## Amendment (2026-08-07): `DATABASE_UNAVAILABLE` — and the boundary to ADR 0011
 
-Der Database-Availability-Breaker ([ADR 0011](0011-database-availability-breaker.md)) ergänzt den
-zweiten stabilen Datenbank-Code: **`DATABASE_UNAVAILABLE`** (Breaker offen, Body
-`{code, message, retryAfterSeconds, reason, retryable}`, ein Writer: `DatabaseUnavailableResponse`
-— bewusst kein ProblemDetails, weil der Result-Filter dieser ADR bei einem Middleware-Kurzschluss
-nicht läuft). `DATABASE_TIMEOUT` behält seine Bedeutung „eine Abfrage war langsam, Breaker zu".
-Arbeitsteilung: **diese ADR regelt die Form der Fehlerantwort, ADR 0011 das Verhalten unter der
-ausgefallenen Abhängigkeit.** Das SPA verzweigt ausschließlich auf `code`; `message` ist Diagnostik
-und wird nie gerendert.
+The database availability breaker ([ADR 0011](0011-database-availability-breaker.md)) adds the
+second stable database code: **`DATABASE_UNAVAILABLE`** (breaker open, body
+`{code, message, retryAfterSeconds, reason, retryable}`, a single writer: `DatabaseUnavailableResponse`
+— deliberately not ProblemDetails, because this ADR's result filter does not run on a middleware
+short-circuit). `DATABASE_TIMEOUT` keeps its meaning "a query was slow, breaker closed".
+Division of labor: **this ADR governs the shape of the error response, ADR 0011 the behavior under the
+failed dependency.** The SPA branches exclusively on `code`; `message` is diagnostics
+and is never rendered.

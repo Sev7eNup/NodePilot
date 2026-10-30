@@ -185,6 +185,7 @@ jobs:
           .\deploy\Test-FailoverFixtures.ps1
           .\deploy\Test-ServerRuntimeStaging.ps1
           .\scripts\release-lab\server\Test-RemoteSqlCleanup.ps1
+          .\scripts\release-lab\Test-UpgradeMatrix.ps1
           .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
           .\scripts\test-suite\Test-WorkflowCatalogue.ps1
           .\scripts\Test-DevReset.ps1
@@ -204,6 +205,7 @@ jobs:
           .\deploy\Test-FailoverFixtures.ps1
           .\deploy\Test-ServerRuntimeStaging.ps1
           .\scripts\release-lab\server\Test-RemoteSqlCleanup.ps1
+          .\scripts\release-lab\Test-UpgradeMatrix.ps1
           .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
           .\scripts\test-suite\Test-WorkflowCatalogue.ps1
           .\scripts\Test-DevReset.ps1

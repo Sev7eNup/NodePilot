@@ -1,10 +1,10 @@
 import type { CarbonIconType } from '@carbon/icons-react';
 import {
   Activity, Apps, Archive, Calendar, ChartLine, Chat, Dashboard, DataBase, Document,
-  FlowModeler, Group, Notification, PlayFilledAlt, Screen, Security, Settings, ValueVariable,
+  FlowModeler, Group, Notification, Password, PlayFilledAlt, Screen, Security, Settings, ShareKnowledge, ValueVariable,
 } from '@carbon/icons-react';
 
-export type BadgeKind = 'workflows' | 'running' | 'machines' | 'alerts' | 'live';
+export type BadgeKind = 'workflows' | 'running' | 'machines' | 'credentials' | 'alerts' | 'live';
 
 /** Live capability flag (from GET /api/ai/knowledge/capabilities) that gates a nav item's
  *  visibility beyond the coarse `adminOnly`. Currently only the AI-Chat entry uses it. */
@@ -15,12 +15,21 @@ export type NavItem = {
   icon: CarbonIconType;
   key: string;
   adminOnly?: boolean;
+  /** Admin and Operator only, like `canWrite` in lib/rbac.ts. */
+  requiresWrite?: boolean;
   badge?: BadgeKind;
   /** When set, the item is shown only if the matching AI-knowledge capability is true. */
   capabilityKey?: CapabilityKey;
 };
 
 export type NavGroup = { labelKey: string; items: NavItem[] };
+
+/** Role gate shared by the sidebar and the breadcrumb so both hide the same items. */
+export function isNavItemVisibleForRole(item: NavItem, role: string | null): boolean {
+  if (item.adminOnly) return role === 'Admin';
+  if (item.requiresWrite) return role === 'Admin' || role === 'Operator';
+  return true;
+}
 
 /** Shared source of truth for the sidebar and the app-header breadcrumb. */
 export const navGroups: NavGroup[] = [
@@ -38,6 +47,7 @@ export const navGroups: NavGroup[] = [
     labelKey: 'groupInfrastructure',
     items: [
       { to: '/machines', icon: Screen, key: 'machines', badge: 'machines' },
+      { to: '/credentials', icon: Password, key: 'credentials', requiresWrite: true, badge: 'credentials' },
       { to: '/global-variables', icon: ValueVariable, key: 'globals' },
       { to: '/custom-activities', icon: Apps, key: 'customNodes' },
       { to: '/maintenance-windows', icon: Calendar, key: 'maintenance' },
@@ -46,6 +56,7 @@ export const navGroups: NavGroup[] = [
   {
     labelKey: 'groupMonitoring',
     items: [
+      { to: '/dependencies', icon: ShareKnowledge, key: 'dependencies' },
       { to: '/metrics', icon: ChartLine, key: 'metrics' },
       { to: '/alerts', icon: Notification, key: 'alerts', badge: 'alerts' },
       { to: '/support-log', icon: Document, key: 'supportLog', adminOnly: true },

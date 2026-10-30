@@ -1,14 +1,68 @@
-# AI in NodePilot: from the first script to failure analysis
+# AI workflow automation for Windows: from a prompt to verified PowerShell
 
-> Create a PowerShell script that queries the Spooler, wuauserv, and WinRM services. Return their names and states as a table. The script must not start or stop any services. If a service is missing, indicate this in the output.
+AI workflow automation connects model assistance to an executable process. For Windows administration, that can mean an AI drafts a PowerShell script, a person reviews its target and commands, and a workflow runs the approved task. Observable results must then establish whether the task worked.
 
-This task can be described directly in NodePilot's script editor. An existing script and the available workflow variables provide context. A configured model connection is required, with its settings described at the end of this article.
+Our example is a read-only service inventory. A stopped service is initially an observation, not a proven defect. A failed query must remain visible. That gives us the following prompt:
+
+> Create a Windows PowerShell 5.1 script that queries Spooler, wuauserv, and WinRM. Return each service's name, state and query error as JSON, with computer name, UTC time and PowerShell version. Do not start or stop services. Check all three names even if one fails. Emit the report before a final terminating error if any query failed. A stopped service that was successfully queried is not a failure for this inventory task.
+
+This task can be described directly in NodePilot's script editor. An existing script is included only with explicit permission for that request; available workflow variables supply their schema, not their values. A configured model connection is required, with its settings described at the end of this article.
 
 The assistant in the designer instead receives the open workflow as context and can use the available execution history for analysis. Global chat draws on enabled knowledge sources and operational data. This integration saves assembling information that would otherwise need to be copied or described for a separate chat.
 
 For the service check, open and maximize the script editor in a `runScript` Activity. Use the AI feature icon to enter the instruction shown above.
 
 The generated suggestion can be inserted at the cursor or replace the existing script. Initially, this changes only the editor contents. Before a test run, review the target machine and the commands in particular.
+
+## Check the suggestion against observable results
+
+The following version is an editorial reference script tested locally under Windows PowerShell 5.1. It is not presented as a verbatim response from a particular model. A generated suggestion can differ, but it needs to meet the same requirements.
+
+```powershell
+$serviceNames = @('Spooler', 'wuauserv', 'WinRM')
+$checks = @(foreach ($name in $serviceNames) {
+    try {
+        $service = Get-Service -Name $name -ErrorAction Stop
+        [pscustomobject]@{
+            Name = $name
+            State = [string]$service.Status
+            QuerySucceeded = $true
+            Error = $null
+        }
+    }
+    catch {
+        [pscustomobject]@{
+            Name = $name
+            State = 'Unknown'
+            QuerySucceeded = $false
+            Error = $_.Exception.Message
+        }
+    }
+})
+$serviceReport = [pscustomobject]@{
+    Computer = $env:COMPUTERNAME
+    ObservedAtUtc = [DateTime]::UtcNow.ToString('o')
+    PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+    QuerySucceeded = @($checks | Where-Object { -not $_.QuerySucceeded }).Count -eq 0
+    Services = $checks
+}
+$serviceReport | ConvertTo-Json -Depth 4
+if (-not $serviceReport.QuerySucceeded) {
+    throw 'One or more service queries failed; inspect the report.'
+}
+```
+
+The report contains an entry for every requested name. `QuerySucceeded` describes whether the query succeeded, not whether the application is healthy. If a service is missing or cannot be read, its state remains `Unknown`; the error message supplies an investigation lead. The final `throw` signals that the inventory is incomplete. The [PowerShell try/catch guide](https://www.nodepilot.run/en/blog/powershell-try-catch/) explains this error behavior.
+
+Before accepting the script, check that it only performs the requested queries, uses the intended names, propagates failures and retains machine-readable output. For example, `Format-Table` in a data pipeline would produce a different output form from the requested JSON.
+
+| Counter-test | Expected evidence |
+| --- | --- |
+| Query a service present on the test host | Computer, time and a state matching an independent Get-Service query |
+| Add a name that definitely does not exist | The existing service remains in the report; the extra entry has Unknown and QuerySucceeded false; the script then throws |
+| An existing service is already stopped | Its state is Stopped; a successful query remains successful. Do not stop a service for this test. |
+
+The first two cases were executed locally. The third describes the evaluation rule; no service was stopped for this article. Repeat the counter-tests in your workflow under its actual identity. A local script test does not establish a successful remote run or a tested model connection.
 
 ![Workflow designer with a selected PowerShell Activity that queries services](images/designer-dark.png)
 
@@ -20,7 +74,7 @@ For these adjustments, the main saving is repeatedly transferring content betwee
 
 In the workflow overview, “AI Generate” opens the dialog for a new draft. The more clearly the description identifies the trigger and expected result, the more precisely the task is bounded. For the service check, it might read:
 
-> Create a manually triggered workflow that checks the Spooler, wuauserv, and WinRM services on a Windows machine still to be selected. Log the state of each service. Return a final report identifying missing or stopped services. Do not change any services.
+> Create a manually triggered workflow with a PowerShell service query on a Windows machine still to be selected. Use the JSON report described above. Successfully queried stopped services are inventory observations. Failed queries must fail the checking step. Do not change services or add automatic repair.
 
 Before creation, NodePilot displays a preview containing the generated definition and the number of nodes and connections. The workflow is created only after confirmation. The target machine and credentials must then be selected and the connections reviewed, since the description has not settled those details. The draft's exact structure depends on the model used.
 
@@ -93,4 +147,4 @@ A supported OpenAI-compatible endpoint is required, and connectivity can be test
 
 The endpoint choice also determines where model requests go. With an external provider, the prompt and accompanying context leave the local installation. Although NodePilot redacts detected secrets before transmission, operational content from an error log may still be included in the request.
 
-The [AI features documentation](https://nodepilot.run/docs/#/en/ai-features) describes setup and knowledge sources. Fields and outputs for `llmQuery`, `aiAgent`, and `aiAgentTeam` are documented in the [Activity reference](https://nodepilot.run/docs/#/en/activities-reference).
+The [AI features documentation](https://www.nodepilot.run/docs/en/ai-features/) describes setup and knowledge sources. Fields and outputs for `llmQuery`, `aiAgent`, and `aiAgentTeam` are documented in the [Activity reference](https://www.nodepilot.run/docs/en/activities-reference/). A locally hosted model also consumes resources, and external providers may charge for usage. AI assistance is not required for ordinary [PowerShell automation](https://www.nodepilot.run/en/powershell-automation/).

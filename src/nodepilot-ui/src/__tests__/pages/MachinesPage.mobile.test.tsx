@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router';
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -47,9 +48,9 @@ function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
   patchFetch();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
+    <MemoryRouter><QueryClientProvider client={qc}>
       <MachinesPage />
-    </QueryClientProvider>,
+    </QueryClientProvider></MemoryRouter>,
   );
 }
 

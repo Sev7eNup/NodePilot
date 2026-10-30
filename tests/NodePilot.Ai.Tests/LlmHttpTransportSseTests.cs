@@ -32,7 +32,7 @@ public sealed class LlmHttpTransportSseTests
         await foreach (var data in Transport().ReadSseDataAsync(resp, CancellationToken.None, CancellationToken.None))
             payloads.Add(data);
 
-        payloads.Should().Equal("{\"a\":1}", "{\"b\":2}");
+        payloads.Should().Equal("{\"a\":1}", "{\"b\":2}", "[DONE]");
     }
 
     [Fact]

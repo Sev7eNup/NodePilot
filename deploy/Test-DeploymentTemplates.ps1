@@ -2266,9 +2266,20 @@ Assert-TextDoesNotMatch -Name 'the registry ACL is never addressed with -Literal
     -Text $installerCode.Substring($registryAclStart, $registryAclEnd - $registryAclStart) `
     -Pattern '-LiteralPath'
 
+# The service probes its own SCM recovery actions in that key; without read access a gMSA
+# install cannot offer the restart from the UI.
+Assert-TextMatches -Name 'the restricted service registry key stays readable by the service account' `
+    -Text $installerCode.Substring($registryAclStart, $registryAclEnd - $registryAclStart) `
+    -Pattern '(?s)if \(-not \$SkipServiceRule\) \{[\s\S]{0,200}RegistryAccessRule\(\s*\$ServiceAccount,\s*\[Security\.AccessControl\.RegistryRights\]::ReadKey'
+foreach ($registryAclCall in @([regex]::Matches($installerCode, 'Set-ServiceRegistryAclForSecrets -Path [^\r\n]*'))) {
+    if ($registryAclCall.Value -notmatch '-ServiceAccount \$\w+(\.\w+)? -SkipServiceRule:\$\w+') {
+        throw "Deployment template check failed: '$($registryAclCall.Value.Trim())' must pass the service account and -SkipServiceRule."
+    }
+}
+
 Assert-TextMatches -Name 'the service registry key is restricted before the passphrase is written' `
     -Text $installerScript `
-    -Pattern '(?s)if \(\$SeedBackupPassphrase\) \{[\s\S]{0,400}Set-ServiceRegistryAclForSecrets[\s\S]{0,400}Provisioning__SeedBackupPassphrase'
+    -Pattern '(?s)if \(\$SeedBackupPassphrase\) \{[\s\S]{0,400}Set-ServiceRegistryAclForSecrets[\s\S]{0,500}Provisioning__SeedBackupPassphrase'
 
 # Every BSTR copy of a SecureString is zeroed and freed in a finally block after the assignment;
 # PtrToStringBSTR straight over SecureStringToBSTR leaves the plaintext in unmanaged memory.
@@ -2366,7 +2377,7 @@ Write-Host '  OK  the installer prints the trigger key and setup token only with
         [pscustomobject]@{ ReturnValue = 0 }
     }
     function Set-ServiceRegistryAclForSecrets {
-        param($Path)
+        param($Path, $ServiceAccount, [switch]$SkipServiceRule)
         $state.Events.Add('acl')
         if ($state.AclFails) { throw 'Fixture ACL failure' }
     }

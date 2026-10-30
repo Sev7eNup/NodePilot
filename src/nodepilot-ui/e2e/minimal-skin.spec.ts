@@ -155,7 +155,11 @@ test.describe('Minimal skins across the application', () => {
       expect(await geometry()).toEqual(originalGeometry);
       await chooseDesignerSkin(page, label);
       expect(await geometry()).toEqual(originalGeometry);
+      // Narrowing keeps the open editor (and its draft); a fresh load on a phone gets the mobile graph.
       await page.setViewportSize({ width: 390, height: 844 });
+      await expect(check).toBeVisible();
+      await page.reload();
+      await expect(page.locator('html')).toHaveAttribute('data-skin', skin);
       await expect(page.getByText(/read-only view/i)).toBeVisible();
       await expect(page.locator('.np-mobile-canvas')).toBeVisible();
       await expect(page.locator('.react-flow__edge-path').first()).toBeAttached();

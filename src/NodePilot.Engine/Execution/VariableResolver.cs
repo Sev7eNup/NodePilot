@@ -9,6 +9,14 @@ namespace NodePilot.Engine.Execution;
 
 internal static class VariableResolver
 {
+    internal static Guid? ParseExplicitCredentialId(string? original, string? resolved)
+    {
+        if (string.IsNullOrWhiteSpace(original)) return null;
+        if (!Guid.TryParse(resolved, out var id) || id == Guid.Empty)
+            throw new InvalidOperationException("The explicit credential must resolve to a non-empty credential GUID.");
+        return id;
+    }
+
     // Pre-compiled shared regexes used by both JSON-config expansion and single-string
     // resolution. Also consumed directly by <see cref="PowerShell.PowerShellActivitySupport"/>
     // (GlobalsPattern/StepPattern) for its PowerShell-quoted script-expansion path.

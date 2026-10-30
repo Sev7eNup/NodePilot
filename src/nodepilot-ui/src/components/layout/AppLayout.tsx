@@ -28,6 +28,9 @@ function AppContent() {
   // Open state of the mobile nav drawer. Not persisted: it starts closed on every load and
   // closes again on navigation (effect below) and on backdrop click.
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Workflow whose desktop editor is mounted. Narrowing the window keeps that editor, because
+  // swapping in the mobile view would unmount it and drop its unsaved draft.
+  const [desktopEditorId, setDesktopEditorId] = useState<string | null>(null);
 
   // Close the mobile drawer whenever the route changes (tapping a nav link navigates).
   useEffect(() => {
@@ -35,11 +38,15 @@ function AppContent() {
   }, [location.pathname]);
 
   const editorMatch = location.pathname.match(/^\/workflows\/([^/]+)$/);
+  const editorId = editorMatch?.[1] ?? null;
+  const showMobileEditor = isMobile && (editorId === null || editorId !== desktopEditorId);
+  const mountedDesktopEditor = editorId !== null && !showMobileEditor ? editorId : null;
+  if (mountedDesktopEditor !== desktopEditorId) setDesktopEditorId(mountedDesktopEditor);
 
   if (editorMatch) {
     return (
       <>
-        {isMobile ? (
+        {showMobileEditor ? (
           // Phones get a read-only, pannable graph with live status. Editing is desktop only.
           <Suspense fallback={null}>
             <MobileWorkflowView workflowId={editorMatch[1]} />

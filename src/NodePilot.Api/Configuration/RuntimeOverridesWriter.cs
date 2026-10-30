@@ -227,6 +227,21 @@ public sealed class RuntimeOverridesWriter
         }
     }
 
+    /// <summary>Replaces the document only while it still matches the caller's snapshot.</summary>
+    public bool TryReplaceAll(string expectedEtag, JsonObject replacement)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        using var mutex = AcquireMutex();
+        try
+        {
+            if (!string.Equals(ComputeEtag(ReadOrEmpty()), expectedEtag, StringComparison.Ordinal)) return false;
+            EnsureDirectoryExists();
+            WriteAtomic(replacement.DeepClone().AsObject());
+            return true;
+        }
+        finally { mutex.ReleaseMutex(); }
+    }
+
     /// <summary>
     /// Compute the ETag for a given top-level section (or the empty-object ETag if the
     /// section is missing). Stable across key reordering — keys are canonicalized
@@ -242,7 +257,7 @@ public sealed class RuntimeOverridesWriter
     // The settings screen groups host filtering with Security, but ASP.NET consumes the
     // root AllowedHosts key. ETag, audit and responses must see the same logical section
     // that the atomic write updates, including changes made directly to that root key.
-    private static JsonObject? ProjectSection(JsonObject root, string sectionPath)
+    internal static JsonObject? ProjectSection(JsonObject root, string sectionPath)
     {
         var section = NavigateSection(root, sectionPath) as JsonObject;
         if (!sectionPath.Equals("Security", StringComparison.OrdinalIgnoreCase)) return section;
@@ -358,7 +373,7 @@ public sealed class RuntimeOverridesWriter
         }
     }
 
-    private static void ApplySectionInternal(JsonObject root, string sectionPath, JsonObject newSection)
+    internal static void ApplySectionInternal(JsonObject root, string sectionPath, JsonObject newSection)
     {
         if (sectionPath.Equals("Security", StringComparison.OrdinalIgnoreCase))
         {

@@ -1,6 +1,6 @@
 {
   "title": "Settings",
-  "subtitle": "Manage your personal UI and stored credentials. Administrators find the global configuration (integrations, security, database …) in the \"System\" tab.",
+  "subtitle": "Set the theme and language of the interface. Administrators find the global configuration (integrations, security, database …) in the \"System\" tab.",
   "appearance": "Appearance",
   "theme": "Theme",
   "themeLight": "Light",

@@ -79,23 +79,26 @@ output.elasticsearch:
   index: "nodepilot-%{+yyyy.MM.dd}"
 ```
 
-## Splunk HEC
+## Splunk
 
-```yaml
-filebeat.inputs:
-  - type: filestream
-    paths: ['C:\ProgramData\NodePilot\logs\nodepilot-[0-9]*.log']
-    parsers: [{ ndjson: {} }]
-output.http:
-  url: https://splunk.firma.de:8088/services/collector/event
-  headers:
-    Authorization: "Splunk {{HEC_TOKEN}}"
+Nutze Splunk Universal Forwarder zum Einlesen der ECS-JSON-Logdateien. Filebeat bietet keinen generischen HTTP-Output. Konfiguriere Empfänger und TLS über die für deine Splunk-Umgebung freigegebene `outputs.conf` und ergänze diese Stanza in `inputs.conf`:
+
+```ini
+[monitor://C:\ProgramData\NodePilot\logs\nodepilot-*.log]
+disabled = 0
+whitelist = nodepilot-[0-9].*\.log$
+index = nodepilot
+sourcetype = _json
 ```
+
+Lege den Index `nodepilot` mit passenden Berechtigungen an, gib dem Forwarder Lesezugriff auf das Logverzeichnis, starte ihn neu und prüfe ein synthetisches Ereignis am Empfänger. Dieser Weg verwendet Splunk-Forwarding, nicht HEC. Falls HEC erforderlich ist, wähle einen Collector mit ausdrücklicher Splunk-HEC-Unterstützung und prüfe Ereignisformat und TLS-Einstellungen.
+
+[Splunk: inputs.conf](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/9.4/get-data-from-files-and-directories/monitor-files-and-directories-with-inputs.conf) · [Splunk: forwarder configuration](https://help.splunk.com/en/splunk-enterprise/forward-and-process-data/universal-forwarder-manual/9.2/configure-the-universal-forwarder/configure-the-universal-forwarder-using-configuration-files)
 
 ## Operator-Checkliste
 
 - [ ] `Logging:Format=ecs-json` in `appsettings.Production.json`.
-- [ ] Filebeat / Vector / Fluentd neben dem NodePilot-Service installiert.
+- [ ] Ein Collector wie Filebeat, Vector, Fluentd oder Splunk Universal Forwarder ist neben dem NodePilot-Service installiert.
 - [ ] Log-File-Path matched `Logging:File:Path` (Produktion: `C:\ProgramData\NodePilot\logs\nodepilot-.log`).
 - [ ] Ein Sample-Event end-to-end im SIEM indexed (Smoke-Test).
 - [ ] Mind. ein Dashboard-Panel auf `nodepilot.execution_id` erstellt.

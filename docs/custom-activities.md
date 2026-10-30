@@ -58,7 +58,8 @@ script engine and no new backend execution path.
   different route: it publishes whatever the script assigns, and the wrapper's scope split keeps
   read-only upstream parameters out.
 - Parameter names must match `[A-Za-z0-9_]+` (PowerShell variable grammar). Input and output names
-  must be **disjoint**; `exitCode` is reserved.
+  must be **disjoint**; `exitCode`, `Params` and the PowerShell automatic/preference variables
+  (`PowerShellReservedVariables`) are reserved. Save and run apply the same check.
 
 ## Security
 
@@ -127,7 +128,8 @@ values) are encrypted under the backup passphrase inside the fully encrypted v4 
 plaintext-envelope schemas are rejected by the current reader.
 Version-history snapshots are excluded. Restore is full-fidelity (the enabled state is preserved, unlike the `.npca` import which
 forces disabled), conflict policies skip/overwrite apply by `Key` (rename is unsupported — a key is
-embedded in workflow references — and falls back to skip with a warning). A workflow node's
+embedded in workflow references — and falls back to skip with a warning); overwrite stages a new
+revision, so the replaced definition lands in the version history. A workflow node's
 `config.__customDefinitionId` is **remapped** to the restored definition id, so overwrite-merge
 restores keep references intact (a no-op for a clean restore, which preserves source ids). Selecting
 workflows automatically includes custom-activity definitions; a missing hard reference aborts before

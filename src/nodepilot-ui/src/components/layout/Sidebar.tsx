@@ -17,7 +17,7 @@ import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useSidebarBadges, type SidebarBadges } from '../../hooks/useSidebarBadges';
 import { BrandLogo } from '../BrandLogo';
 import type { AppLang } from '../../i18n';
-import { navGroups, type BadgeKind } from '../../lib/navigation';
+import { isNavItemVisibleForRole, navGroups, type BadgeKind } from '../../lib/navigation';
 
 // Icon per skin id, plus system. Options and cycle order come from the THEMES registry so a
 // new skin shows up in the quick toggle and the popover without further wiring.
@@ -36,8 +36,9 @@ const LANG_OPTIONS: { value: AppLang; label: string }[] = [
 ];
 
 /** Trailing count badge for a nav item. Neutral for totals, accent for running activity,
- *  warning for alerts, and a pulsing pill for the live-ops entry. Renders nothing when the
- *  count is unavailable (loading or role-gated) or an activity count is zero. */
+ *  warning for alerts and expiring credentials, and a pulsing pill for the live-ops entry.
+ *  Renders nothing when the count is unavailable (loading or role-gated) or an activity count
+ *  is zero. */
 function NavBadge({ kind, badges, liveLabel }: { kind: BadgeKind; badges: SidebarBadges; liveLabel: string }) {
   if (kind === 'live') {
     return (
@@ -50,11 +51,13 @@ function NavBadge({ kind, badges, liveLabel }: { kind: BadgeKind; badges: Sideba
   const value = kind === 'workflows' ? badges.workflows
     : kind === 'running' ? badges.running
       : kind === 'machines' ? badges.machines
-        : badges.alerts;
+        : kind === 'credentials' ? badges.credentials
+          : badges.alerts;
   if (value == null) return null;
-  // Activity counters (running, alerts) hide at zero, where a badge would carry no signal.
-  if ((kind === 'running' || kind === 'alerts') && value <= 0) return null;
-  const cls = kind === 'running' ? ' is-running' : kind === 'alerts' ? ' is-alerts' : '';
+  const warning = kind === 'alerts' || kind === 'credentials';
+  // Activity counters (running, alerts, credentials) hide at zero, where a badge would carry no signal.
+  if ((kind === 'running' || warning) && value <= 0) return null;
+  const cls = kind === 'running' ? ' is-running' : warning ? ' is-alerts' : '';
   return <span className={`np-nav-badge${cls}`}>{value}</span>;
 }
 
@@ -118,7 +121,7 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
       .map((g) => ({
         ...g,
         items: g.items.filter((n) =>
-          (!n.adminOnly || role === 'Admin')
+          isNavItemVisibleForRole(n, role)
           && (!n.capabilityKey || Boolean(aiCaps?.[n.capabilityKey]))),
       }))
       .filter((g) => g.items.length > 0),

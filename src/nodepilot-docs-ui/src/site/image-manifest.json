@@ -1,82 +1,82 @@
 {
   "designer": {
-    "width": 2544,
-    "height": 1265,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2544
+      2880
     ]
   },
   "logs": {
-    "width": 2549,
-    "height": 1271,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2549
+      2880
     ]
   },
   "ai": {
-    "width": 2550,
-    "height": 1272,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2550
+      2880
     ]
   },
   "designer-light": {
-    "width": 2544,
-    "height": 1265,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2544
+      2880
     ]
   },
   "logs-light": {
-    "width": 2549,
-    "height": 1271,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2549
+      2880
     ]
   },
   "ai-light": {
-    "width": 2550,
-    "height": 1272,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2550
+      2880
     ]
   },
   "dashboard": {
-    "width": 2556,
-    "height": 1273,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2556
+      2880
     ]
   },
   "liveops": {
-    "width": 2549,
-    "height": 1271,
+    "width": 2880,
+    "height": 1620,
     "widths": [
       480,
       960,
       1600,
-      2549
+      2880
     ]
   },
   "first-workflow-designer": {

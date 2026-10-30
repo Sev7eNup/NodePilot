@@ -37,29 +37,52 @@ public class RegistryActivity : BaseRemoteActivity
     };
 
     // PowerShell's Test-Path / Get-Item / Remove-Item work on any PSDrive — filesystem,
-    // registry, env, certs. Without a prefix guard a typo like `keyPath: "C:\Windows"`
-    // with `operation: "deleteKey"` would translate into `Remove-Item -Recurse -Force
-    // C:\Windows`. Restrict keyPath to recognised registry-provider prefixes, including
-    // underscore HKEY_* spellings, the explicit `Registry::` PS provider notation, and
-    // trailing colon variants of the drive aliases.
-    private static readonly string[] AllowedRegistryPrefixes =
+    // registry, env, certs. Without a guard a typo like `keyPath: "C:\Windows"` with
+    // `operation: "deleteKey"` would translate into `Remove-Item -Recurse -Force C:\Windows`,
+    // and a bare `HKEY_LOCAL_MACHINE\...` would resolve as a relative filesystem path.
+    // keyPath is therefore accepted only with a known hive and always rewritten to the
+    // provider-qualified `Registry::HKEY_*` form.
+    private static readonly Dictionary<string, string> HiveDriveAliases = new(StringComparer.OrdinalIgnoreCase)
     {
-        "HKLM:", "HKCU:", "HKCR:", "HKU:", "HKCC:",
-        "HKEY_LOCAL_MACHINE", "HKEY_CURRENT_USER", "HKEY_CLASSES_ROOT",
-        "HKEY_USERS", "HKEY_CURRENT_CONFIG", "HKEY_PERFORMANCE_DATA",
-        "Registry::",
+        ["HKLM"] = "HKEY_LOCAL_MACHINE",
+        ["HKCU"] = "HKEY_CURRENT_USER",
+        ["HKCR"] = "HKEY_CLASSES_ROOT",
+        ["HKU"] = "HKEY_USERS",
+        ["HKCC"] = "HKEY_CURRENT_CONFIG",
     };
 
-    internal static bool IsRegistryKeyPath(string? keyPath)
+    private static readonly HashSet<string> HiveRoots = new(StringComparer.OrdinalIgnoreCase)
     {
-        if (string.IsNullOrWhiteSpace(keyPath)) return false;
-        var trimmed = keyPath.TrimStart();
-        foreach (var prefix in AllowedRegistryPrefixes)
+        "HKEY_LOCAL_MACHINE", "HKEY_CURRENT_USER", "HKEY_CLASSES_ROOT",
+        "HKEY_USERS", "HKEY_CURRENT_CONFIG", "HKEY_PERFORMANCE_DATA",
+    };
+
+    private const string RegistryProviderPrefix = "Registry::";
+
+    /// <summary>
+    /// Rewrites a drive alias (<c>HKLM:\…</c>), a bare hive (<c>HKEY_LOCAL_MACHINE\…</c>) or a
+    /// <c>Registry::</c> path to <c>Registry::HKEY_*\…</c>; null when the path names no known hive.
+    /// </summary>
+    internal static string? NormalizeRegistryKeyPath(string? keyPath)
+    {
+        if (string.IsNullOrWhiteSpace(keyPath)) return null;
+        var path = keyPath.Trim();
+
+        if (path.StartsWith(RegistryProviderPrefix, StringComparison.OrdinalIgnoreCase))
+            path = path[RegistryProviderPrefix.Length..];
+        else
         {
-            if (trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                return true;
+            var colon = path.IndexOf(':');
+            if (colon > 0 && HiveDriveAliases.TryGetValue(path[..colon], out var hive))
+            {
+                var subPath = path[(colon + 1)..].TrimStart('\\');
+                return RegistryProviderPrefix + (subPath.Length == 0 ? hive : hive + "\\" + subPath);
+            }
         }
-        return false;
+
+        var separator = path.IndexOf('\\');
+        var root = separator < 0 ? path : path[..separator];
+        return HiveRoots.Contains(root) ? RegistryProviderPrefix + path : null;
     }
 
     public RegistryActivity(
@@ -76,15 +99,15 @@ public class RegistryActivity : BaseRemoteActivity
         var operation = (rawOp ?? "read").Trim();
         var canonicalOp = operation.ToLowerInvariant();
 
-        var keyPath = config.GetStringOrNull("keyPath");
-        if (string.IsNullOrWhiteSpace(keyPath))
+        var rawKeyPath = config.GetStringOrNull("keyPath");
+        if (string.IsNullOrWhiteSpace(rawKeyPath))
             throw new InvalidOperationException("Registry: 'keyPath' is required");
 
-        if (!IsRegistryKeyPath(keyPath))
-            throw new InvalidOperationException(
+        var keyPath = NormalizeRegistryKeyPath(rawKeyPath)
+            ?? throw new InvalidOperationException(
                 $"Registry: 'keyPath' must reference a registry provider path. Allowed prefixes: " +
                 "HKLM:\\, HKCU:\\, HKCR:\\, HKU:\\, HKCC:\\, HKEY_*\\, Registry::. " +
-                $"Got: '{keyPath}'.");
+                $"Got: '{rawKeyPath}'.");
 
         var valueName = config.GetStringOrNull("valueName");
         var value = config.GetStringOrNull("value");

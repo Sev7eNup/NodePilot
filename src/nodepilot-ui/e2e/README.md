@@ -2,10 +2,18 @@
 
 Hermetic Playwright specs for the React SPA. They mock every API call with `page.route`
 (no backend, no Postgres, no WinRM) and run against a `vite preview` build. The full
-[`docs/testing/E2ETests.md`](../../../docs/testing/E2ETests.md) catalogue (86 Teile) is the source of truth; this suite is the **automated
+[`docs/testing/E2ETests.md`](../../../docs/testing/E2ETests.md) catalogue (86 parts) is the source of truth; this suite is the **automated
 UI subset**. Backend-only and environment-bound scenarios are covered elsewhere (noted below).
 
 ## Running
+
+`dependencies.spec.ts` covers object selection, search while typing, usage counts with the
+problems/unused filters and usage sort, direct/indirect explanations, the two-sided map with
+expandable levels, map/history,
+revoked access, changed evidence, analysis limits, mobile keyboard access, the read-only
+designer deep link and the restored scroll position of the wide-layout details panel. Optional `NP_DESIGN_ROUND=<round>` captures desktop/mobile, list and map
+review fixtures; `NP_DESIGN_SKIN=light` selects the light skin (default dark).
+Normal test runs do not write design assets.
 
 Agent budget finalization and packaged CMD/Bash command binding are backend
 regressions in `AgentRuntimeTests` and `AgentSkillTests`; mocked browser tests do
@@ -83,7 +91,7 @@ release acceptance are in [test reliability](../../../docs/testing/test-reliabil
   contracts and REST-hydrated terminal states instead; `test.skip` anything that needs the
   live channel.
 
-## Coverage map (E2ETests.md Teil → spec)
+## Coverage map (E2ETests.md Part → spec)
 
 `ai-agents.spec.ts` additionally covers the admin parallel-member limit, visible team-member selection, separate tools,
 save/reopen without creating extra workflow steps, and drafting a team from a description (blocking issue,
@@ -95,12 +103,12 @@ MCP enable/disable with revision conflicts, power-mode persistence, environment 
 member snapshots, interleaved parallel assignments and batch badges, assignments/rationales, return questions, tool evidence, escaped
 untrusted content, REST pagination and full support export despite a member filter.
 
-Not in the map (no Teil): `_all-screens.spec.ts` — the screenshot-capture spec that renders
+Not in the map (no Part): `_all-screens.spec.ts` — the screenshot-capture spec that renders
 every main screen into `__screens__/*.png`; it documents visuals, it asserts nothing.
 
-| Teil | Topic | Spec |
+| Part | Topic | Spec |
 |---|---|---|
-| 1 | Workflow-Management | `workflow-management.spec.ts` |
+| 1 | Workflow management | `workflow-management.spec.ts` |
 | 2 | Activity-type config UIs | `node-activity-config.spec.ts` |
 | 3 | Node operations | `designer-nodes.spec.ts` |
 | 4 | Edges & conditions | `designer-edges.spec.ts` |
@@ -165,7 +173,7 @@ every main screen into `__screens__/*.png`; it documents visuals, it asserts not
 | 83 | Live-Ops Mission Control: real-time execution timeline (running + recently-finished bars), bar drill-down with failed-step names and the incident actions (cancel / retry / cancel-all / quarantine incl. disable-before-cancel ordering and per-node RBAC gating), stuck strip + overdue bar treatment for long-running runs, step-activity (finished count / last progress, no percentage), window selector 30 m / 1 h with display freeze and the density histogram that fills a window the individual bars cannot cover (columns on a per-lane baseline, below-baseline failure marker), wheel zoom over the track (pointer-anchored, short runs stay clickable, reset via "Back to live view") versus wheel scrolling over the workflow labels, next-fires departure board incl. maintenance-window blackout marking, folder scoping | `operations.spec.ts` |
 | 78 | Alerting rules (list/create/test-fire/secret-redaction/role-gating/gauge-scope-gate/deliveries-modal/cancelledBy-filter) | `alerting.spec.ts` |
 | 79 | Toolbar-layout toggle: compact ⇄ classic toolbar, persisted in designStore, toggle reachable from both layouts | `toolbar-layout.spec.ts` |
-| — (new) | Atelier-Designsprache (einzige Designer-Ansicht): Scope-Klassen + Token-Adaption, Skin-Adaption (helle Skins: weiße Chrome-Platte auf dem Shell-Grund, dunkle: Chrome hebt vom tieferen Canvas ab), kein Umschalter mehr, Persistenz über Reload | `designer-atelier.spec.ts` |
+| — (new) | Atelier design language (the only designer view): scope classes + token adaptation, skin adaptation (light skins: white chrome panel on the shell background; dark: chrome lifts off the deeper canvas), no toggle any more, persistence across reload | `designer-atelier.spec.ts` |
 | 17 (minimal) | Minimal Light / Dark: real skin controls and persistence, flat shell / body portals / login, text contrast and keyboard focus, preserved designer geometry and preferences, mobile canvas and a 720×500 CSS viewport corresponding to a 1440×1000 display at 200% zoom | `minimal-skin.spec.ts` |
 | 17 (ion) | ION Dark: skin controls and persistence, cyan brand asset, shell / body portals / login / AI widget, primary text contrast and keyboard focus, preserved designer geometry and preferences, reduced motion, mobile layout and a 720×500 CSS viewport | `ion-skin.spec.ts` |
 | 80 | Global AI Chat (`/ai-chat`) — SSE Q&A over docs, operational context, source code, DB/text2sql; tool-call indicators, thread persistence, export-to-Markdown, regenerate, role-gated source badges (DB global-Admin only; source Admin/Operator), drag-resizable chat column with persisted width | `ai-chat.spec.ts` |
@@ -180,16 +188,16 @@ every main screen into `__screens__/*.png`; it documents visuals, it asserts not
 ## Not covered as UI e2e (by design)
 
 **Backend / API-only — covered by `dotnet test` (`NodePilot.Api.Tests`, `Engine.Tests`, `Cli.Tests`):**
-Teil 22 (SCOrch XML import parsing), 23 (external trigger API & idempotency), 29 (sub-workflow
+Part 22 (SCOrch XML import parsing), 23 (external trigger API & idempotency), 29 (sub-workflow
 contracts), 34 (migration drift / backend smoke — explicitly backend-only), 35 (secrets
 re-encryption), 40 (force-unlock audit write — the UI force-unlock itself is in `rbac` /
 `status-banner`), 44 (rate-limit headers), 46 (unresolved-template engine behaviour), 47
-(idempotency-key TTL), 49.1–49.4 (retry contract + cancel-all — API-only; Teil 49.5 retry button UI is in `execution-retry.spec.ts`).
+(idempotency-key TTL), 49.1–49.4 (retry contract + cancel-all — API-only; Part 49.5 retry button UI is in `execution-retry.spec.ts`).
 
 **Environment-bound — not hermetically reproducible:**
-Teil 24 & 66 (real-time SignalR / connection status — WebSocket upgrade), 32 (LLM features —
+Part 24 & 66 (real-time SignalR / connection status — WebSocket upgrade), 32 (LLM features —
 need an LLM server), 33 (hardening flags — enforced only in the Production security pipeline),
 43 (observability query — needs a Prometheus backend).
 
-Within otherwise-covered Teile, individual scenarios that require canvas drag, live SignalR
+Within otherwise-covered Parts, individual scenarios that require canvas drag, live SignalR
 streaming, real file-drop, or DevTools offline are marked `test.skip` with an inline reason.

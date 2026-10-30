@@ -189,6 +189,37 @@ public sealed class CustomActivityBackupTests : IDisposable
     }
 
     [Fact]
+    public async Task OverwriteRestore_FencesStaleEditorsAndPreservesMonotonicHistory()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        var adminId = SeedAdmin(src);
+        await SeedAsync(src, enabled: true);
+        var backup = await ExportAsync(src);
+        using var dst = TestDbFactory.Create();
+        SeedAdmin(dst, adminId);
+        var definition = await SeedAsync(dst, enabled: true);
+        var store = new CustomActivityDefinitionStore(dst);
+        var input = new CustomActivityDefinitionInput { Key = definition.Key, Name = "Before restore", ScriptTemplate = "'before'" };
+        definition = await store.UpdateAsync(definition.Id, input, definition.ConcurrencyToken, "editor", ct);
+        var staleToken = definition.ConcurrencyToken;
+
+        await Restore(dst).RestoreAsync(backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>
+        {
+            [BackupSections.CustomActivities] = RestoreConflictPolicy.Overwrite,
+        }, RestoreActor, ct);
+
+        var restored = (await store.GetByIdAsync(definition.Id, ct))!;
+        restored.Version.Should().Be(3);
+        restored.ConcurrencyToken.Should().NotBe(staleToken);
+        var staleWrite = () => store.UpdateAsync(restored.Id, input, staleToken, "editor", ct);
+        await staleWrite.Should().ThrowAsync<CustomActivityConcurrencyException>();
+        var next = await store.UpdateAsync(restored.Id, input, restored.ConcurrencyToken, "editor", ct);
+        next.Version.Should().Be(4);
+        (await store.GetVersionsAsync(restored.Id, ct)).Select(version => version.Version).Should().BeEquivalentTo([1, 2, 3]);
+    }
+
+    [Fact]
     public async Task WorkflowOnlyExport_AutoIncludesReferencedCustomActivityDefinitions()
     {
         using var src = TestDbFactory.Create();

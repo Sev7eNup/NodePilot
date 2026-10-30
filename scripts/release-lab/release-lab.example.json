@@ -21,13 +21,48 @@
       "service": "postgresql-16"
     }
   },
-  "previousRelease": {
-    "serverSetup": "C:\\path\\to\\NodePilot-Server-Setup-<previous>.exe",
-    "preinstallRuntimes": true,
-    "preGrantSystemForLocalSql": true,
-    "canInstallPostgres": false,
-    "desktopSetup": "C:\\path\\to\\NodePilot-Desktop-Setup-<previous>.exe"
-  },
+  "upgradeReleases": [
+    {
+      "version": "1.4.5",
+      "serverSetup": "C:\\path\\to\\NodePilot-Server-Setup-1.4.5.exe",
+      "desktopSetup": "C:\\path\\to\\NodePilot-Desktop-Setup-1.4.5.exe",
+      "preinstallRuntimes": false,
+      "preGrantSystemForLocalSql": false,
+      "canInstallPostgres": true
+    },
+    {
+      "version": "1.4.4",
+      "serverSetup": "C:\\path\\to\\NodePilot-Server-Setup-1.4.4.exe",
+      "desktopSetup": "C:\\path\\to\\NodePilot-Desktop-Setup-1.4.4.exe",
+      "preinstallRuntimes": false,
+      "preGrantSystemForLocalSql": false,
+      "canInstallPostgres": true
+    },
+    {
+      "version": "1.4.3",
+      "serverSetup": "C:\\path\\to\\NodePilot-Server-Setup-1.4.3.exe",
+      "desktopSetup": "C:\\path\\to\\NodePilot-Desktop-Setup-1.4.3.exe",
+      "preinstallRuntimes": false,
+      "preGrantSystemForLocalSql": false,
+      "canInstallPostgres": true
+    },
+    {
+      "version": "1.4.2",
+      "serverSetup": "C:\\path\\to\\NodePilot-Server-Setup-1.4.2.exe",
+      "desktopSetup": "C:\\path\\to\\NodePilot-Desktop-Setup-1.4.2.exe",
+      "preinstallRuntimes": false,
+      "preGrantSystemForLocalSql": false,
+      "canInstallPostgres": true
+    },
+    {
+      "version": "1.4.1",
+      "serverSetup": "C:\\path\\to\\NodePilot-Server-Setup-1.4.1.exe",
+      "desktopSetup": "C:\\path\\to\\NodePilot-Desktop-Setup-1.4.1.exe",
+      "preinstallRuntimes": false,
+      "preGrantSystemForLocalSql": false,
+      "canInstallPostgres": true
+    }
+  ],
   "remoteSql": {
     "vm": "HYD-CM1",
     "fqdn": "cm1.corp.contoso.com",

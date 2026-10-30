@@ -1,8 +1,8 @@
 # NodePilot Prometheus Metrics — Validated Inventory
 
-**Stand:** 2026-10-22. Standard-Instrumentierung und `RAW_METRICS_SAMPLE.txt` gegen einen Live-Scrape der Windows-Dev-API abgeglichen: OpenTelemetry SDK 1.19.1, Process-Instrumentierung 1.19.0-rc.1; `process_cpu_time_seconds_total` trägt `cpu_mode`. Workflow-Namen/-IDs, Instanz-ID und externe Host-/DNS-Adressen im Sample sind pseudonymisiert; Messwerte und übrige Labels stammen aus dem Scrape. Das Sample zeigt die auf dieser Instanz entstandenen Serien, nicht jeden möglichen Ausführungspfad. Hinweis: Tags, die über `TelemetryConstants.Attributes.*`-Konstanten (`nodepilot.*`) gesetzt werden, exportieren mit `nodepilot_`-Präfix als Label (z.B. `nodepilot_llm_kind`); reine String-Tags (`result`, `status`, `source`, `operation`, …) nicht.
+**As of:** 2026-10-22. Standard instrumentation and `RAW_METRICS_SAMPLE.txt` reconciled against a live scrape of the Windows dev API: OpenTelemetry SDK 1.19.1, Process instrumentation 1.19.0-rc.1; `process_cpu_time_seconds_total` carries `cpu_mode`. Workflow names/IDs, instance ID, and external host/DNS addresses in the sample are pseudonymized; measured values and other labels come from the scrape. The sample shows the series that arose on this instance, not every possible execution path. Note: tags set via `TelemetryConstants.Attributes.*` constants (`nodepilot.*`) export as a label with a `nodepilot_` prefix (e.g. `nodepilot_llm_kind`); plain string tags (`result`, `status`, `source`, `operation`, …) do not.
 
-## Naming-Regel (OpenTelemetry .NET → Prometheus)
+## Naming Rule (OpenTelemetry .NET → Prometheus)
 
 | Instrument-Name (Source) | Unit | Prometheus-Export |
 |---|---|---|
@@ -11,31 +11,31 @@
 | `nodepilot.execution.nodes_executed` | `1` (histogram) | `nodepilot_execution_nodes_executed_{bucket,sum,count}` |
 | `nodepilot.executions.active` | `1` (UpDownCounter) | `nodepilot_executions_active` |
 
-**Wichtig:** Einheit `ms` wird als `_milliseconds` an den Metric-Namen angehängt. Die alten Dashboards verwendeten `nodepilot_execution_duration_bucket` — das existiert nicht.
+**Important:** The unit `ms` is appended to the metric name as `_milliseconds`. The old dashboards used `nodepilot_execution_duration_bucket` — that does not exist.
 
 ---
 
 ## NodePilot Engine Metrics (`NodePilot.Engine` Meter)
 
-### Counters (alle mit `_total` Suffix)
+### Counters (all with `_total` suffix)
 
-| Prometheus name | Tags | Beschreibung |
+| Prometheus name | Tags | Description |
 |---|---|---|
-| `nodepilot_executions_started_total` | `workflow_id`, `workflow_name`, `trigger_type` | Workflow-Runs gestartet |
-| `nodepilot_executions_completed_total` | `workflow_id`, `workflow_name`, `status` (Succeeded/Failed/Cancelled) | Workflow-Runs in Terminal-State |
-| `nodepilot_execution_cancellations_total` | `reason`=`user_or_token`: `workflow_id`, `workflow_name`, `reason` | Execution per User/Token gecancelt (zählt Executions) |
-| `nodepilot_execution_cancellations_total` | `reason`=`junction_race`: nur `reason`, **keine** Workflow-Tags | zählt einen **Step** (nicht den Lauf), der nach erfüllter waitAny/waitNofM-Junction übersprungen wird; der Lauf läuft weiter. Für Cancel-Raten nach `reason` filtern (die Dashboards nutzen `reason!="junction_race"`) |
-| `nodepilot_executions_rejected_total` | `reason` (global_cap/per_user_cap) | Capacity-Cap-Rejections |
-| `nodepilot_steps_executed_total` | `activity_type`, `status` | Step-Executions |
-| `nodepilot_step_retry_attempts_total` | `activity_type` | Retry-Attempts (>0) |
-| `nodepilot_db_save_changes_total` | `operation`, `status` | EF SaveChanges in Engine-Pfad |
-| `nodepilot_audit_writes_total` | `result`, `error_class` (nur bei `result="failure"`) | Audit-Log-Writes |
-| `nodepilot_output_redaction_hits_total` | `pattern_kind` | OutputRedactor-Treffer |
-| `nodepilot_debug_resume_commands_total` | `mode` (Continue/StepOver/Stop) | Debug-Resume-Calls |
-| `nodepilot_subworkflow_invocations_total` | `wait_mode`, `depth_bucket` | Sub-Workflow-Aufrufe |
-| `nodepilot_subworkflow_depth_exceeded_total` | — | Max-Depth-Verletzungen |
-| `nodepilot_support_events_dropped_total` | `reason` | Support-Events verworfen (Buffer-Overflow etc.) |
-| `nodepilot_support_events_written_total` | — | Support-Events in DB geschrieben |
+| `nodepilot_executions_started_total` | `workflow_id`, `workflow_name`, `trigger_type` | Workflow runs started |
+| `nodepilot_executions_completed_total` | `workflow_id`, `workflow_name`, `status` (Succeeded/Failed/Cancelled) | Workflow runs in terminal state |
+| `nodepilot_execution_cancellations_total` | `reason`=`user_or_token`: `workflow_id`, `workflow_name`, `reason` | Execution cancelled by user/token (counts executions) |
+| `nodepilot_execution_cancellations_total` | `reason`=`junction_race`: only `reason`, **no** workflow tags | counts a **step** (not the run) that is skipped after a waitAny/waitNofM junction is satisfied; the run continues. To get cancel rates, filter by `reason` (the dashboards use `reason!="junction_race"`) |
+| `nodepilot_executions_rejected_total` | `reason` (global_cap/per_user_cap) | Capacity cap rejections |
+| `nodepilot_steps_executed_total` | `activity_type`, `status` | Step executions |
+| `nodepilot_step_retry_attempts_total` | `activity_type` | Retry attempts (>0) |
+| `nodepilot_db_save_changes_total` | `operation`, `status` | EF SaveChanges in the engine path |
+| `nodepilot_audit_writes_total` | `result`, `error_class` (only with `result="failure"`) | Audit log writes |
+| `nodepilot_output_redaction_hits_total` | `pattern_kind` | OutputRedactor hits |
+| `nodepilot_debug_resume_commands_total` | `mode` (Continue/StepOver/Stop) | Debug resume calls |
+| `nodepilot_subworkflow_invocations_total` | `wait_mode`, `depth_bucket` | Sub-workflow invocations |
+| `nodepilot_subworkflow_depth_exceeded_total` | — | Max-depth violations |
+| `nodepilot_support_events_dropped_total` | `reason` | Support events dropped (buffer overflow etc.) |
+| `nodepilot_support_events_written_total` | — | Support events written to DB |
 
 ### Histograms
 
@@ -84,7 +84,7 @@
 | `nodepilot_dispatch_items_processed_total` | `result` |
 | `nodepilot_dispatch_claims_total` | `result` (`success`/`empty`, …) |
 | `nodepilot_security_revoked_tokens_deleted_total` | — |
-| `nodepilot_machine_test_connections_total` | `result`, `source` (nur `exception`) |
+| `nodepilot_machine_test_connections_total` | `result`, `source` (`exception` only) |
 | `nodepilot_maintenance_window_crud_total` | `operation`, `result` |
 | `nodepilot_maintenance_window_api_blocks_total` | `source`, `scope` |
 | `nodepilot_maintenance_window_overrides_total` | — |
@@ -125,13 +125,13 @@
 | `nodepilot_trigger_events_total` | `trigger_type`, `event_kind` |
 | `nodepilot_retention_rows_deleted_total` | `nodepilot_retention_service` |
 | `nodepilot_retention_sweep_errors_total` | `nodepilot_retention_service` |
-| `nodepilot_maintenance_window_blocks_total` | `trigger_type` | Trigger-Fire wegen Maintenance-Window unterdrückt |
-| `nodepilot_maintenance_window_snapshot_refresh_errors_total` | — | Fehler beim Snapshot-Refresh |
-| `nodepilot_audit_archive_verified_total` | — | Audit-Archiv-Segmente verifiziert (Hash OK) |
-| `nodepilot_audit_archive_hash_drift_total` | — | Audit-Archiv: SHA-256 weicht ab |
-| `nodepilot_audit_archive_sidecar_missing_total` | — | Audit-Archiv: Sidecar-Hashdatei fehlt |
-| `nodepilot_scheduler_triggers_admission_deferred_total` | `trigger_type` | Trigger-Admission zurückgestellt (Persistenz vorübergehend nicht verfügbar) |
-| `nodepilot_scheduler_triggers_fires_skipped_total` | `trigger_type` | Nach Neustart/Failover übersprungene Trigger-Signale |
+| `nodepilot_maintenance_window_blocks_total` | `trigger_type` | Trigger fire suppressed due to maintenance window |
+| `nodepilot_maintenance_window_snapshot_refresh_errors_total` | — | Errors during snapshot refresh |
+| `nodepilot_audit_archive_verified_total` | — | Audit archive segments verified (hash OK) |
+| `nodepilot_audit_archive_hash_drift_total` | — | Audit archive: SHA-256 differs |
+| `nodepilot_audit_archive_sidecar_missing_total` | — | Audit archive: sidecar hash file missing |
+| `nodepilot_scheduler_triggers_admission_deferred_total` | `trigger_type` | Trigger admission deferred (persistence temporarily unavailable) |
+| `nodepilot_scheduler_triggers_fires_skipped_total` | `trigger_type` | Trigger signals skipped after restart/failover |
 
 ### Histograms
 
@@ -162,48 +162,48 @@
 |---|---|---|
 | `nodepilot_credential_crypto_calls_total` | counter | `operation`, `result`, `provider` (Dpapi/AesGcm) |
 | `nodepilot_credential_crypto_duration_milliseconds_*` | histogram | `operation`, `provider` |
-| `nodepilot_credential_crypto_legacy_reads_total` | counter | `legacy_provider` (Provider-Rotation: Reads über den Legacy-Protector) |
+| `nodepilot_credential_crypto_legacy_reads_total` | counter | `legacy_provider` (provider rotation: reads via the legacy protector) |
 
 ---
 
-## Standard OTel-Instrumentation (immer da)
+## Standard OTel Instrumentation (always present)
 
 ### .NET Runtime (`OpenTelemetry.Instrumentation.Runtime`)
 
 | Prometheus name | Type | Notes |
 |---|---|---|
 | `dotnet_gc_collections_total` | counter | Label `gc_heap_generation` ∈ {gen0,gen1,gen2} |
-| `dotnet_gc_heap_total_allocated_bytes_total` | counter | Allocations seit Start |
-| `dotnet_gc_pause_time_seconds_total` | counter | Akkumulierte GC-Pause-Zeit |
-| `dotnet_gc_last_collection_heap_size_bytes` | gauge | Heap-Size bei letzter Collection; Label `gc_heap_generation` ∈ {gen0,gen1,gen2,loh,poh} |
-| `dotnet_gc_last_collection_heap_fragmentation_size_bytes` | gauge | Fragmentation; Label `gc_heap_generation` wie oben |
-| `dotnet_gc_last_collection_memory_committed_size_bytes` | gauge | Commit-Size |
-| `dotnet_jit_compiled_methods_total` | counter | JIT-Methoden-Count |
-| `dotnet_jit_compilation_time_seconds_total` | counter | JIT-Compile-Zeit |
-| `dotnet_jit_compiled_il_size_bytes_total` | counter | JIT-IL-Größe |
-| `dotnet_thread_pool_thread_count_total` | counter (delta sample) | TP-Worker-Threads |
-| `dotnet_thread_pool_queue_length_total` | counter | TP-Queue-Items pro Sample |
-| `dotnet_thread_pool_work_item_count_total` | counter | Abgearbeitete TP-Items |
-| `dotnet_monitor_lock_contentions_total` | counter | Lock-Contention |
-| `dotnet_exceptions_total` | counter | Geworfene Exceptions |
-| `dotnet_assembly_count` | gauge | Geladene Assemblies |
-| `dotnet_timer_count` | gauge | Aktive Timers |
-| `dotnet_process_memory_working_set_bytes` | gauge | Working Set |
-| `dotnet_process_cpu_time_seconds_total` | counter | Label `cpu_mode` für user/system |
-| `dotnet_process_cpu_count` | gauge | Verfügbare Prozessoren |
+| `dotnet_gc_heap_total_allocated_bytes_total` | counter | Allocations since start |
+| `dotnet_gc_pause_time_seconds_total` | counter | Accumulated GC pause time |
+| `dotnet_gc_last_collection_heap_size_bytes` | gauge | Heap size at last collection; label `gc_heap_generation` ∈ {gen0,gen1,gen2,loh,poh} |
+| `dotnet_gc_last_collection_heap_fragmentation_size_bytes` | gauge | Fragmentation; label `gc_heap_generation` as above |
+| `dotnet_gc_last_collection_memory_committed_size_bytes` | gauge | Commit size |
+| `dotnet_jit_compiled_methods_total` | counter | JIT method count |
+| `dotnet_jit_compilation_time_seconds_total` | counter | JIT compile time |
+| `dotnet_jit_compiled_il_size_bytes_total` | counter | JIT IL size |
+| `dotnet_thread_pool_thread_count_total` | counter (delta sample) | TP worker threads |
+| `dotnet_thread_pool_queue_length_total` | counter | TP queue items per sample |
+| `dotnet_thread_pool_work_item_count_total` | counter | Completed TP items |
+| `dotnet_monitor_lock_contentions_total` | counter | Lock contention |
+| `dotnet_exceptions_total` | counter | Exceptions thrown |
+| `dotnet_assembly_count` | gauge | Loaded assemblies |
+| `dotnet_timer_count` | gauge | Active timers |
+| `dotnet_process_memory_working_set_bytes` | gauge | Working set |
+| `dotnet_process_cpu_time_seconds_total` | counter | Label `cpu_mode` for user/system |
+| `dotnet_process_cpu_count` | gauge | Available processors |
 
 ### Process (`OpenTelemetry.Instrumentation.Process`)
 
 | Prometheus name | Type |
 |---|---|
-| `process_cpu_time_seconds_total` | counter (Label `cpu_mode` für user/system) |
-| `process_memory_usage_bytes` | gauge (RSS/Working Set) |
+| `process_cpu_time_seconds_total` | counter (label `cpu_mode` for user/system) |
+| `process_memory_usage_bytes` | gauge (RSS/working set) |
 | `process_memory_virtual_bytes` | gauge |
 | `process_thread_count` | gauge |
 | `process_uptime_seconds` | gauge |
-| `process_windows_handle_count` | gauge (nur Windows) |
+| `process_windows_handle_count` | gauge (Windows only) |
 
-Die Runtime-Instrumentierung liefert dazu `dotnet_process_memory_working_set_bytes`, `dotnet_process_cpu_time_seconds_total` (Label `cpu_mode`) und `dotnet_process_cpu_count` (siehe oben); ein `process_cpu_count` gibt es nicht.
+The runtime instrumentation additionally provides `dotnet_process_memory_working_set_bytes`, `dotnet_process_cpu_time_seconds_total` (label `cpu_mode`), and `dotnet_process_cpu_count` (see above); there is no `process_cpu_count`.
 
 ### ASP.NET Core (`OpenTelemetry.Instrumentation.AspNetCore`)
 
@@ -217,9 +217,9 @@ Die Runtime-Instrumentierung liefert dazu `dotnet_process_memory_working_set_byt
 | `kestrel_active_connections` | gauge | `network_transport`, `network_type`, `server_address`, `server_port` |
 | `kestrel_queued_connections` | gauge | `network_transport`, `network_type`, `server_address`, `server_port` |
 
-### HTTP-Client (`OpenTelemetry.Instrumentation.Http`)
+### HTTP Client (`OpenTelemetry.Instrumentation.Http`)
 
-Aus `AddHttpClientInstrumentation()` (alle ausgehenden `HttpClient`-Aufrufe des API-Prozesses). Die Serien entstehen mit dem ersten ausgehenden Request.
+From `AddHttpClientInstrumentation()` (all outgoing `HttpClient` calls of the API process). The series appear with the first outgoing request.
 
 | Prometheus name | Type | Tags |
 |---|---|---|
@@ -231,16 +231,16 @@ Aus `AddHttpClientInstrumentation()` (alle ausgehenden `HttpClient`-Aufrufe des 
 
 ---
 
-## CRITICAL: Falsche Namen in alten Dashboards
+## CRITICAL: Wrong Names in Old Dashboards
 
-| Falsch (alte Dashboards) | Richtig (real exposed) |
+| Wrong (old dashboards) | Correct (actually exposed) |
 |---|---|
 | `nodepilot_execution_duration_bucket` | `nodepilot_execution_duration_milliseconds_bucket` |
 | `nodepilot_step_duration_bucket` | `nodepilot_step_duration_milliseconds_bucket` |
 | `nodepilot_winrm_session_open_duration_bucket` | `nodepilot_winrm_session_open_duration_milliseconds_bucket` |
 | `nodepilot_winrm_script_duration_bucket` | `nodepilot_winrm_script_duration_milliseconds_bucket` |
 | `nodepilot_trigger_orchestrator_sync_duration_bucket` | `nodepilot_trigger_orchestrator_sync_duration_milliseconds_bucket` |
-| `nodepilot_execution_nodes_executed_bucket` | `nodepilot_execution_nodes_executed_bucket` (KORREKT — unit `1` hängt nichts an) |
+| `nodepilot_execution_nodes_executed_bucket` | `nodepilot_execution_nodes_executed_bucket` (CORRECT — unit `1` appends nothing) |
 | `process_cpu_seconds_total` | `process_cpu_time_seconds_total` |
 | `process_working_set_bytes` | `process_memory_usage_bytes` |
 | `dotnet_gc_heap_size_bytes` | `dotnet_gc_last_collection_heap_size_bytes` |
@@ -250,23 +250,23 @@ Aus `AddHttpClientInstrumentation()` (alle ausgehenden `HttpClient`-Aufrufe des 
 | `process_runtime_dotnet_thread_pool_threads_count` | `dotnet_thread_pool_thread_count_total` |
 | `process_runtime_dotnet_thread_pool_completed_items_count_total` | `dotnet_thread_pool_work_item_count_total` |
 
-Histogram-Suffix-Regel:
-- Source-Unit `ms` → Prometheus-Suffix `_milliseconds`
-- Source-Unit `1` oder leer → kein Unit-Suffix
-- Source-Unit `s` → `_seconds` (HTTP-Histogramme)
-- Source-Unit `By` → `_bytes`
+Histogram suffix rule:
+- Source unit `ms` → Prometheus suffix `_milliseconds`
+- Source unit `1` or empty → no unit suffix
+- Source unit `s` → `_seconds` (HTTP histograms)
+- Source unit `By` → `_bytes`
 
-Counter-Suffix:
-- Counter immer `_total`
-- UpDownCounter NIE `_total` (z.B. `nodepilot_executions_active`, `nodepilot_winrm_sessions_active`)
+Counter suffix:
+- Counter always `_total`
+- UpDownCounter NEVER `_total` (e.g. `nodepilot_executions_active`, `nodepilot_winrm_sessions_active`)
 
 ---
 
 ## Lazy Creation
 
-OpenTelemetry erstellt Counter/Histogram-Time-Series erst beim **ersten Record**. Das heißt:
-- Frischer API-Start → Trigger-Orchestrator-Metriken (Sync-Pass alle 5 s), auf dem Leader die Dispatch-Claim-Metriken (`nodepilot_dispatch_claims_total{result="empty"}` pro Poll) sowie Process/Runtime sind sofort da; HTTP-Server-/Kestrel-Serien ab der ersten Anfrage, `http_client_*` ab dem ersten ausgehenden Request
-- Engine-/Step-/WinRM-Metriken erscheinen erst nach dem ersten Workflow-Run
-- Auth-/LLM-/Audit-Metriken erscheinen erst nach Login bzw. KI-Call
+OpenTelemetry creates counter/histogram time series only on the **first record**. This means:
+- Fresh API start → trigger orchestrator metrics (sync pass every 5 s), on the leader the dispatch claim metrics (`nodepilot_dispatch_claims_total{result="empty"}` per poll), and Process/Runtime are present immediately; HTTP server/Kestrel series from the first request, `http_client_*` from the first outgoing request
+- Engine/step/WinRM metrics appear only after the first workflow run
+- Auth/LLM/audit metrics appear only after a login or AI call
 
-Folge fürs Dashboard: Alle PromQL-Queries die `sum(...)` ohne Default verwenden, sollten `or vector(0)` als Fallback bekommen, damit Stat-Panels nicht "No Data" zeigen.
+Consequence for the dashboard: all PromQL queries that use `sum(...)` without a default should get `or vector(0)` as a fallback, so stat panels do not show "No Data".

@@ -21,6 +21,9 @@ public static class WorkflowAnalyzer
     public sealed record AnalysisResult(
         bool Ok, int NodeCount, int EdgeCount, IReadOnlyList<string> Roots, IReadOnlyList<Finding> Findings);
 
+    /// <summary>Shared budget of ancestor visits for the duplicate published-name check.</summary>
+    public const int MaxPublishedParamAncestorVisits = 2_000_000;
+
     public static AnalysisResult Analyze(JsonElement definition)
     {
         // A broken structure (duplicate ids, dangling edge endpoints) makes every graph finding
@@ -108,6 +111,10 @@ public static class WorkflowAnalyzer
     /// value itself. Two registryOperation reads both publishing <c>value</c> take that name from
     /// their <c>operation</c> and cannot be renamed, so flagging them is noise — but a script
     /// assigning <c>$value</c> next to one of them is a real clash with a real fix.</para>
+    ///
+    /// <para>Every consumer walks all of its ancestors, which grows quadratically on long chains.
+    /// The walks share a budget of <see cref="MaxPublishedParamAncestorVisits"/>; past it the
+    /// check stops and reports <c>analysis-budget-exceeded</c>.</para>
     /// </summary>
     private static void AddDuplicatePublishedParamFindings(
         WorkflowDefinitionDocument doc, List<Finding> findings)
@@ -121,6 +128,27 @@ public static class WorkflowAnalyzer
             authoredByNode[node.Id] = WorkflowDataBusAnalyzer.AuthoredParameters(node);
             typeDerivedByNode[node.Id] = WorkflowDataBusAnalyzer.TypeDerivedParameters(node);
         }
+
+        // Only a name with two publishers, at least one of them authored, can clash. Most
+        // workflows have none, and then no ancestor walk is needed.
+        var publisherCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var authoredAnywhere = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (nodeId, authored) in authoredByNode)
+        {
+            authoredAnywhere.UnionWith(authored);
+            foreach (var name in authored.Concat(typeDerivedByNode[nodeId]).Distinct(StringComparer.OrdinalIgnoreCase))
+                publisherCounts[name] = publisherCounts.GetValueOrDefault(name) + 1;
+        }
+        var candidates = publisherCounts
+            .Where(entry => entry.Value >= 2 && authoredAnywhere.Contains(entry.Key))
+            .Select(entry => entry.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (candidates.Count == 0) return;
+
+        var predecessors = doc.ActiveEdges
+            .GroupBy(edge => edge.Target, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Select(edge => edge.Source).ToList(), StringComparer.Ordinal);
+        var visits = 0;
 
         // name -> the publisher sets already reported, so one clash is not repeated for every
         // consumer downstream of it.
@@ -140,20 +168,37 @@ public static class WorkflowAnalyzer
                 set.Add(nodeId);
             }
 
-            foreach (var ancestorId in doc.FindAncestorNodeIds(consumer.Id))
+            var seen = new HashSet<string>(StringComparer.Ordinal) { consumer.Id };
+            var queue = new Queue<string>();
+            queue.Enqueue(consumer.Id);
+            while (queue.TryDequeue(out var current))
             {
-                if (authoredByNode.TryGetValue(ancestorId, out var authored))
+                if (!predecessors.TryGetValue(current, out var sources)) continue;
+                foreach (var ancestorId in sources)
                 {
-                    foreach (var name in authored)
+                    if (!seen.Add(ancestorId)) continue;
+                    if (++visits > MaxPublishedParamAncestorVisits)
                     {
-                        AddPublisher(name, ancestorId);
-                        authoredNames.Add(name);
+                        findings.Add(new Finding("warning", "analysis-budget-exceeded", null,
+                            $"The duplicate published-name check stopped after {MaxPublishedParamAncestorVisits} ancestor visits " +
+                            $"({doc.Nodes.Count} nodes), so later clashes are not reported. Split the workflow into sub-workflows to analyze it completely."));
+                        return;
                     }
-                }
+                    queue.Enqueue(ancestorId);
 
-                if (typeDerivedByNode.TryGetValue(ancestorId, out var derived))
-                    foreach (var name in derived)
-                        AddPublisher(name, ancestorId);
+                    if (authoredByNode.TryGetValue(ancestorId, out var authored))
+                    {
+                        foreach (var name in authored.Where(candidates.Contains))
+                        {
+                            AddPublisher(name, ancestorId);
+                            authoredNames.Add(name);
+                        }
+                    }
+
+                    if (typeDerivedByNode.TryGetValue(ancestorId, out var derived))
+                        foreach (var name in derived.Where(candidates.Contains))
+                            AddPublisher(name, ancestorId);
+                }
             }
 
             foreach (var (name, publishers) in publishersByName)
@@ -336,35 +381,35 @@ public static class WorkflowAnalyzer
         foreach (var start in adjacency.Keys)
         {
             if (state.GetValueOrDefault(start) != 0) continue;
-            var cycle = Dfs(start, adjacency, state, stack);
-            if (cycle is not null) return cycle;
-        }
-        return null;
-    }
-
-    private static List<string>? Dfs(string node, IReadOnlyDictionary<string, List<string>> adjacency, Dictionary<string, int> state, List<string> stack)
-    {
-        state[node] = 1;
-        stack.Add(node);
-        if (adjacency.TryGetValue(node, out var next))
-        {
-            foreach (var n in next)
+            var pending = new Stack<(string Node, int NextChild)>();
+            state[start] = 1;
+            stack.Add(start);
+            pending.Push((start, 0));
+            while (pending.TryPop(out var frame))
             {
-                var s = state.GetValueOrDefault(n);
-                if (s == 1)
+                if (!adjacency.TryGetValue(frame.Node, out var next) || frame.NextChild >= next.Count)
                 {
-                    var idx = stack.IndexOf(n);
-                    return stack.GetRange(idx, stack.Count - idx);
+                    stack.RemoveAt(stack.Count - 1);
+                    state[frame.Node] = 2;
+                    continue;
                 }
-                if (s == 0)
+
+                pending.Push((frame.Node, frame.NextChild + 1));
+                var child = next[frame.NextChild];
+                var childState = state.GetValueOrDefault(child);
+                if (childState == 1)
                 {
-                    var cycle = Dfs(n, adjacency, state, stack);
-                    if (cycle is not null) return cycle;
+                    var index = stack.IndexOf(child);
+                    return stack.GetRange(index, stack.Count - index);
+                }
+                if (childState == 0)
+                {
+                    state[child] = 1;
+                    stack.Add(child);
+                    pending.Push((child, 0));
                 }
             }
         }
-        stack.RemoveAt(stack.Count - 1);
-        state[node] = 2;
         return null;
     }
 

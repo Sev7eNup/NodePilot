@@ -12,6 +12,83 @@ exhaustive.
 
 ## [Unreleased]
 
+Planned version: **1.5.4**.
+
+## [1.5.3] - 2026-10-30
+
+### Added
+
+- **Dependencies page** under Monitoring. It shows which workflows, machines, credentials, global
+  variables and custom activities use each other, down to the step. Also available through the API,
+  `np dependencies` and the MCP server.
+
+### Changed
+
+- **Saving an outdated draft is rejected**, for example from a second browser tab, instead of
+  overwriting newer changes. Your own scripts that call `PUT /api/workflows/{id}` or `publish` must
+  now send `expectedVersion` (#609).
+- Credentials have their own menu entry under Infrastructure, with a badge for expiring accounts.
+- Script output is limited to 16 million characters per execution (`Engine:MaxCapturedOutputChars`).
+  A step that exceeds it fails (#572).
+- A delayed shutdown or restart requires "Force close applications", because Windows closes
+  applications anyway. To wait without forcing, put a Delay step in front (#613).
+
+### Fixed
+
+- **Designer**
+  - Ending an edit or restoring a version no longer brings the discarded draft back (#596).
+  - Find and replace changes only the selected field, and Replace All changes every match, not just
+    the first 50 (#597, #598).
+  - Typing a new parameter name no longer overwrites an existing parameter (#600).
+  - Narrowing the browser window no longer discards unsaved changes (#604).
+  - Publishing rejects a "wait for N of M" junction that can never be satisfied (#586).
+- **Running workflows**
+  - Registry activities with paths such as `HKEY_LOCAL_MACHINE\…` work on the registry instead of
+    the file system (#614).
+  - Machines with an IPv6 address connect over WinRM (#615).
+  - A file watcher starts its workflow only once per change (#583).
+  - Very large output parameters no longer make a step's outputs unreadable (#573).
+  - Steps on a machine addressed by name count in that machine's statistics (#664).
+  - The live view of a run keeps updating when another viewer leaves at the same moment (#666).
+  - In the debugger, the run's timeout stays paused until every paused branch has resumed (#676).
+  - Step tests use mocked trigger inputs and failed predecessors like a real run (#605).
+- **Backup and restore**
+  - Backups stay consistent when the configuration changes during the export (#608).
+  - Exports larger than the 64 MiB restore limit fail right away instead of at restore (#665).
+  - Restore keeps machines and credentials with the same name apart (#660), gives renamed global
+    variables a usable name (#667), saves overwritten custom activities as a new version (#668) and
+    no longer undoes settings saved while a failed restore ran (#669).
+- **Settings**
+  - Saving settings no longer produces a file that fails at the next start (#611, #663), reverts a
+    change made in the meantime or rejects an inherited LDAP password (#661, #662).
+  - The settings status and the service restart work when the service runs under a gMSA (#580).
+- **AI and MCP**
+  - AI generation reports an error when the answer was cut off, instead of returning it as complete
+    (#610, #684, thanks to mikemikimike).
+  - The AI chat and the MCP server no longer write masked values (`***`) or half-applied conditions
+    into workflows (#582, #581).
+  - Workflow analysis stays fast on very large workflows and says when it had to stop early (#673).
+- **Other**
+  - Custom activities reject reserved PowerShell names such as `Host` or `PID` as parameters (#672).
+  - A SCIM update that only adds permissions no longer cancels the user's running executions (#607).
+  - Changes to notification rules are no longer lost after a brief database error (#670).
+  - The audit log's time filter no longer shifts by the time-zone offset (#599).
+  - One-time maintenance windows that end before they start are always rejected (#659).
+  - `np maintenance --days` rejects unknown day names (#623).
+
+### Security
+
+- Logging out ends the session reliably, even during a token refresh (#658).
+- A step whose credential does not resolve fails instead of running under the default or service
+  account (#677).
+- The global AI chat sends earlier messages only to the AI provider and model they were written for
+  (#674, thanks to mikemikimike).
+- Error messages from the AI provider and from retried steps no longer reach the log with secrets in
+  them (#675).
+- Refused LDAP, Windows and directory logins count as failures in the audit log and SIEM forwarding
+  (#671).
+- Read-only SQL queries reject PostgreSQL escape strings that could hide protected columns (#612).
+
 ## [1.5.2] - 2026-10-24
 
 ### Added
@@ -2074,7 +2151,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.5.2...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.5.3...main
+[1.5.3]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.3
 [1.5.2]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.2
 [1.5.1]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.1
 [1.5.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.0

@@ -71,7 +71,7 @@ internal static class AiStreamSupport
                 await sse.WriteAsync("tool_result", new { toolId = tr.ToolId, toolName = tr.ToolName }, ct);
                 return true;
             case ChatStreamEvent.DoneEvent done:
-                await sse.WriteAsync("done", new { model = done.Model, durationMs = done.DurationMs, generationMs = done.GenerationMs, promptTokens = done.PromptTokens, completionTokens = done.CompletionTokens }, ct);
+                await sse.WriteAsync("done", new { model = done.Model, durationMs = done.DurationMs, generationMs = done.GenerationMs, promptTokens = done.PromptTokens, completionTokens = done.CompletionTokens, historyContextKey = done.HistoryContextKey, historyDropped = done.HistoryDropped }, ct);
                 return true;
             default:
                 return false;

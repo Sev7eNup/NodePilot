@@ -106,7 +106,9 @@ before retrying a start whose response was lost.
   — the agent's `***` never overwrites them, and a
   secret the agent invents on a new node is rejected (masked + noted). A `***` with no stored
   value behind it (for example a condition literal copied onto a new edge id) rejects the whole
-  operation, because it would otherwise be saved as the literal `***`.
+  operation, because it would otherwise be saved as the literal `***`. So does any change to a
+  condition or case array that contains a mask: items have no stable id to restore against, so
+  such edits are made in the designer.
 - Credentials carry no password field; secret global values arrive masked. Create/update accept
   secrets write-only.
 
@@ -118,7 +120,14 @@ Large free-text fields (stdout/stderr, return data, audit details, diagnostics) 
 
 ## Tool catalog
 
-100 default tools across 11 groups, plus 13 gated destructive tools (113 total). (Roles refer to the
+The dependency group adds three read-only tools: `list_dependency_objects`, `get_dependencies`
+and `get_dependency_evidence`. They expose the same permission-filtered static reports as
+the UI, including per-object usage and problem counts, the `problems`/`unused` filters,
+direct/indirect relationships, possible agent calls, evidence, bounded
+analysis and revision-bound pagination. See [Dependencies](dependencies.md) for the scope
+and CLI/API mapping. They never return credential values or script bodies.
+
+103 default tools across 12 groups, plus 13 gated destructive tools (116 total). (Roles refer to the
 authenticated user.)
 
 ### Discovery
@@ -211,7 +220,9 @@ replacement for database permissions against every provider extension.
 ### Canvas assistant (for the in-designer chat — mostly in-process, work on the unsaved definition)
 `analyze_workflow` (unreachable nodes / no-trigger / cycles / remote-without-machine / unresolvable
 `{{…}}` references / duplicate edges + output variables / `Start-Job` in a hosted runspace; the same
-`NodePilot.Core.WorkflowAnalyzer` the AI chat calls, so both surfaces report identical codes) ·
+`NodePilot.Core.WorkflowAnalyzer` the AI chat calls, so both surfaces report identical codes; on very
+large graphs the duplicate published-name check stops after 2,000,000 ancestor visits and reports
+`analysis-budget-exceeded`) ·
 `find_unresolved_references` · `get_available_variables` · `check_styleguide` ·
 `validate_edge_condition` · `validate_activity_config` · `preview_template_resolution` ·
 `suggest_layout` · `diff_workflow_definition` · `get_workflow_node` · `get_failure_context`

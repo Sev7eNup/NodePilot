@@ -5,11 +5,11 @@
 .DESCRIPTION
   From the clean checkpoint: T1 fresh install, a restart (T1b), then T2-T8 (over-install with the
   shell open, uninstall keeping data, reinstall, uninstall deleting everything, reinstall,
-  /DISCARDDATA=1, final uninstall). Then, from the checkpoint again, U1: the previous release and
-  this one over it. See ..\README.md.
+  /DISCARDDATA=1, final uninstall). Then U1 from each of the five previous releases directly to
+  this one, restoring the clean checkpoint before each upgrade. See ..\README.md.
 
 .EXAMPLE
-  .\Invoke-DesktopMatrix.ps1 -ConfigPath C:\lab-cred\release-lab.json -ArtifactDir ..\..\..\out -Version 1.4.1
+  .\Invoke-DesktopMatrix.ps1 -ConfigPath C:\lab-cred\release-lab.json -ArtifactDir ..\..\..\out -Version 1.4.6
 #>
 [CmdletBinding()]
 param(
@@ -20,7 +20,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
+. (Join-Path (Split-Path $here -Parent) 'UpgradeReleases.ps1')
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+$upgradeReleases = @(Get-UpgradeReleases -Config $config -Version $Version -SetupKind desktop)
 $vm = $config.desktop.vm
 $cred = Import-Clixml $config.credentialPath
 $setup = Join-Path $ArtifactDir "NodePilot-Desktop-Setup-$Version.exe"
@@ -46,7 +48,7 @@ function Restore-CleanVm {
     Wait-Guest ([datetime]::MinValue)
 }
 
-function Invoke-Phase([string]$Phase, [string[]]$Files = @()) {
+function Invoke-Phase([string]$Phase, [string[]]$Files = @(), [string]$CaseId = $Phase) {
     $session = New-PSSession -VMName $vm -Credential $cred
     try {
         Invoke-Command -Session $session -ScriptBlock { New-Item -ItemType Directory -Force C:\np-lab | Out-Null }
@@ -58,9 +60,13 @@ function Invoke-Phase([string]$Phase, [string[]]$Files = @()) {
         }
     }
     finally { Remove-PSSession $session }
+    Add-Content $log "=== $CaseId -> $Version"
     Add-Content $log $output
+    $output | Set-Content (Join-Path $ResultsDir "$CaseId.log") -Encoding utf8
     Write-Host $output
-    return $output
+    $summaries = @($output -split "`n" | Where-Object { $_ -match "SUMMARY desktop ${Phase}:" })
+    $passed = $summaries.Count -eq 1 -and $summaries[0] -match ': [1-9][0-9]* passed, 0 failed\s*$' -and $output -notmatch '\bFAIL\b'
+    return [pscustomobject]@{ id = $CaseId; verdict = if ($passed) { 'PASS' } else { 'FAIL' }; summary = $summaries -join '; ' }
 }
 
 $common = @($setup, (Join-Path $here 'DesktopLab.ps1'), (Join-Path $here 'Invoke-GuestDesktopScenarios.ps1'), (Join-Path (Split-Path $here) 'smoke-workflow.json'))
@@ -73,18 +79,25 @@ Invoke-Command -VMName $vm -Credential $cred -ScriptBlock { Restart-Computer -Fo
 Wait-Guest $before
 $outputs += Invoke-Phase 'second'
 
-if ($config.previousRelease.PSObject.Properties['desktopSetup'] -and (Test-Path $config.previousRelease.desktopSetup)) {
+foreach ($release in $upgradeReleases) {
     Restore-CleanVm
-    $previous = Join-Path $ResultsDir 'previous-desktop-setup.exe'
-    Copy-Item $config.previousRelease.desktopSetup $previous -Force
-    $outputs += Invoke-Phase 'upgrade' ($common + $previous)
+    $caseId = "U1-from-$($release.version)"
+    $stage = Join-Path $ResultsDir $caseId
+    New-Item -ItemType Directory -Force $stage | Out-Null
+    $previous = Join-Path $stage 'previous-desktop-setup.exe'
+    Copy-Item -LiteralPath $release.desktopSetup -Destination $previous -Force
+    $result = Invoke-Phase 'upgrade' ($common + $previous) $caseId
+    $result | Add-Member -NotePropertyName sourceVersion -NotePropertyValue $release.version
+    $outputs += $result
 }
-else { Add-Content $log 'U1 N/A: no previousRelease.desktopSetup configured' }
 
 Stop-VM -Name $vm -TurnOff -Force
 Restore-VMCheckpoint -VMSnapshot (Get-VMCheckpoint -VMName $vm -Name $config.desktop.checkpoint) -Confirm:$false
 
-$summaries = @(($outputs -join "`n") -split "`n" | Where-Object { $_ -match 'SUMMARY desktop' })
-$summaries | Set-Content (Join-Path $ResultsDir 'summary.md') -Encoding utf8
-$summaries | Write-Host
-if (-not $summaries -or @($summaries | Where-Object { $_ -notmatch ', 0 failed' }).Count) { exit 1 }
+$summary = @("# Desktop setup $Version - release lab", '', '| Scenario | Source | Target | Verdict | Details |', '|---|---|---|---|---|')
+foreach ($result in $outputs) {
+    $summary += "| $($result.id) | $($result.sourceVersion) | $Version | $($result.verdict) | $($result.summary) |"
+}
+$summary | Set-Content (Join-Path $ResultsDir 'summary.md') -Encoding utf8
+$summary | Write-Host
+if ($outputs.Count -ne 7 -or @($outputs | Where-Object { $_.verdict -ne 'PASS' }).Count) { exit 1 }

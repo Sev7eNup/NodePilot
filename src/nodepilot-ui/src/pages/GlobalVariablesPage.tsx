@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useColumnResize } from '../hooks/useColumnResize';
 import { api } from '../api/client';
+import { DependencyLink } from '../components/dependencies/DependencyLink';
 import { ModalShell } from '../components/common/ModalShell';
 import { MobileCardList } from '../components/common/MobileCardList';
 import { useRole } from '../lib/rbac';
@@ -474,6 +475,7 @@ export function GlobalVariablesPage() {
                     </span>
                   )}
                   <code className="text-sm font-mono font-semibold text-on-surface truncate block" title={v.name}>{v.name}</code>
+                  <DependencyLink kind="variable" id={v.id} />
                 </div>
               )}
               renderFields={(v) => [
@@ -622,9 +624,9 @@ export function GlobalVariablesPage() {
                         </td>
                       )}
                       <td className="px-4 py-2 overflow-hidden">
-                        <code className="text-sm font-mono font-semibold text-on-surface-variant truncate block" title={v.name}>
+                        <div className="flex items-center gap-2"><code className="text-sm font-mono font-semibold text-on-surface-variant truncate block" title={v.name}>
                           {v.name}
-                        </code>
+                        </code><DependencyLink kind="variable" id={v.id} /></div>
                       </td>
                       <td className="px-4 py-2 overflow-hidden">
                         {v.isSecret ? (

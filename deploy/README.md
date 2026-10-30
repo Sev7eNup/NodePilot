@@ -406,7 +406,8 @@ The installer does everything else:
    - Certificate private key: gMSA = Read; skipped under LocalSystem (SYSTEM has read on MachineKeys by default)
     - PostgreSQL: `ConnectionStrings:Postgres` stays empty in JSON; the fully quoted connection string
       lives only in the service-scoped `ConnectionStrings__Postgres` environment value. Before it is
-      written, the service registry key is restricted to SYSTEM/Administrators.
+      written, the service registry key is restricted to SYSTEM/Administrators; a gMSA service
+      account keeps `ReadKey` on its own key (the service probes its SCM recovery actions there).
 7. Firewall rule `NodePilot <name> HTTPS` (domain profile)
 8. Create the service via `Win32_Service.Create` — gMSA (empty password + `sc.exe managedaccount` + a "Log on as a service" grant) or `LocalSystem` (none of those three steps needed), recovery actions, `ASPNETCORE_ENVIRONMENT=Production`
 9. Start the service, poll `https://localhost/healthz/ready`

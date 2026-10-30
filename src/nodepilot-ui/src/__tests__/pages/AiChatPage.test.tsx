@@ -86,6 +86,15 @@ describe('AiChatPage', () => {
     expect(screen.getByText('What is NodePilot?')).toBeInTheDocument();
   });
 
+  it('informs the user when earlier history was dropped', async () => {
+    askMock.mockImplementation(streamMock({ reply: 'Fresh answer', meta: {
+      model: 'new', durationMs: 1, historyContextKey: 'new-key', historyDropped: true,
+    } }));
+    renderPage();
+    await ask('Continue');
+    expect(await screen.findByText(/earlier conversation was not sent/i)).toBeInTheDocument();
+  });
+
   it('renders read-only tool activity when the assistant calls a tool', async () => {
     askMock.mockImplementation((_req: KnowledgeAskRequest, h?: KnowledgeStreamHandlers) => {
       if (!h) return Promise.resolve();

@@ -1,4 +1,5 @@
 {
+  "dependencyStepMissing": "Die Fundstelle wurde geändert: Dieser Schritt ist im aktuellen Workflow nicht mehr vorhanden.",
   "newWorkflow": "Neuer Workflow",
   "untitled": "Ohne Titel",
   "save": "Speichern",
@@ -53,6 +54,7 @@
   "redo": "Wiederherstellen",
   "backTo": "Zurück zu: {{name}}",
   "backToWorkflowList": "Zurück zur Workflow-Liste",
+  "backToDependencies": "Zurück zu Abhängigkeiten",
   "workflowNamePlaceholder": "Workflow-Name…",
   "undoTooltip": "Rückgängig (Ctrl+Z)",
   "redoTooltip": "Wiederherstellen (Ctrl+Y / Ctrl+Shift+Z)",
@@ -350,7 +352,8 @@
     "edgeLabels": "Kanten-Labels",
     "configValues": "Config-Werte",
     "emptyHint": "Gib einen Suchbegriff ein, um Treffer in Nodes und Config-Feldern zu finden.",
-    "noMatches": "Keine Treffer gefunden."
+    "noMatches": "Keine Treffer gefunden.",
+    "resultsLimited": "Die ersten {{shown}} von {{count}} Treffern werden angezeigt. „Alle“ ersetzt jeden Treffer."
   },
   "help": {
     "title": "Tastaturkürzel",

@@ -1,6 +1,9 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
+using System.Data.Common;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data.Security;
@@ -17,6 +20,55 @@ namespace NodePilot.Data.Tests;
 /// </summary>
 public sealed class NotificationRuleStoreTests : IDisposable
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TransientFailureBeforeCommit_ReplaysTrackedChanges(bool delete)
+    {
+        Guid id;
+        await using (var seed = Ctx())
+            id = (await Store(seed).CreateAsync(Draft("before", Route(NotificationChannel.Email, "old@example.test")),
+                null, CancellationToken.None)).Id;
+        var failure = new FailFirstCommit();
+        var options = new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(_conn, o => o.ExecutionStrategy(d => new RetryInjectedFailure(d)))
+            .AddInterceptors(failure).Options;
+        await using (var write = new NodePilotDbContext(options))
+        {
+            if (delete) await Store(write).DeleteAsync(id, CancellationToken.None);
+            else await Store(write).UpdateAsync(id, Draft("after", Route(NotificationChannel.Email, "new@example.test")),
+                null, CancellationToken.None);
+        }
+        failure.Attempts.Should().Be(2);
+        await using var read = Ctx();
+        var row = await Store(read).GetAsync(id, CancellationToken.None);
+        if (delete) row.Should().BeNull();
+        else
+        {
+            row!.Name.Should().Be("after");
+            row.Routes.Should().ContainSingle().Which.Target.Should().Be("new@example.test");
+        }
+    }
+
+    private sealed class InjectedTransientFailure : Exception;
+
+    private sealed class RetryInjectedFailure(ExecutionStrategyDependencies dependencies)
+        : ExecutionStrategy(dependencies, 1, TimeSpan.Zero)
+    {
+        protected override bool ShouldRetryOn(Exception exception) => exception is InjectedTransientFailure;
+    }
+
+    private sealed class FailFirstCommit : DbTransactionInterceptor
+    {
+        public int Attempts { get; private set; }
+        public override ValueTask<InterceptionResult> TransactionCommittingAsync(DbTransaction transaction,
+            TransactionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default)
+        {
+            if (++Attempts == 1) throw new InjectedTransientFailure();
+            return new(result);
+        }
+    }
+
     private readonly SqliteConnection _conn;
 
     public NotificationRuleStoreTests()

@@ -108,6 +108,23 @@ public class AiControllerTests
         auditCall.Details.Should().NotContain("echo hello"); // the prompt itself is never written to the audit log
     }
 
+    [Fact]
+    public async Task GenerateScript_OutputLimitReachedMidStream_EndsWithErrorEventAndNoDone()
+    {
+        var (controller, audit, llm, body) = NewController();
+        llm.EnqueueToolCallStreamWithFinish(Array.Empty<LlmToolCall>(), "length",
+            "$services = Get-Service\n", "Stop-Service -Name Spooler\n");
+
+        var result = await controller.GenerateScript(ScriptReq(), CancellationToken.None);
+
+        result.Should().BeOfType<EmptyResult>();
+        var events = ParseSse(body);
+        events.Should().Contain(e => e.ev == "delta");
+        events.Should().ContainSingle(e => e.ev == "error").Which.data.Should().Contain("LLM_MALFORMED_RESPONSE");
+        events.Should().NotContain(e => e.ev == "done");
+        audit.Calls.Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData(LlmErrorKind.Unreachable, 503, "LLM_UNREACHABLE")]
     [InlineData(LlmErrorKind.Timeout, 503, "LLM_TIMEOUT")]

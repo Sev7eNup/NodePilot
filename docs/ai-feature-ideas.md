@@ -1,125 +1,124 @@
-# AI-Feature-Ideen
+# AI Feature Ideas
 
-> **Status:** Beschreibungstiefe zu den KI-Ideen — Nutzerproblem, vorgeschlagene Funktion, geeignete
-> Stelle, Sicherheitsgrenzen. Dieses Dokument ist keine verbindliche Umsetzungsspezifikation und legt
-> keine konkreten Interfaces fest.
+> **Status:** Depth of description for the AI ideas — user problem, proposed feature, suitable
+> place, security boundaries. This document is not a binding implementation specification and
+> does not fix any concrete interfaces.
 >
-> **Priorisierung und Status stehen ausschließlich in [`roadmap.md`](roadmap.md)** — Ideen 1, 2 und die
-> AI-Chat-Run-Card sind dort gesetzt, der Rest ist trigger-gated. Wenn dieses Dokument und die Roadmap
-> sich widersprechen, gilt die Roadmap.
+> **Prioritization and status are stated exclusively in [`roadmap.md`](roadmap.md)** — ideas 1, 2 and the
+> AI chat run card are committed there, the rest is trigger-gated. If this document and the roadmap
+> contradict each other, the roadmap prevails.
 
-NodePilot besitzt bereits Script- und Workflow-Generierung, den Workflow-Assistenten, den globalen
-Wissens-Chat und die `llmQuery`-Activity. Der größte zusätzliche Nutzen entsteht deshalb durch
-kontextuelle AI-Aktionen in bestehenden Arbeitsabläufen und nicht durch einen weiteren allgemeinen
-Chat.
+NodePilot already has script and workflow generation, the workflow assistant, the global
+knowledge chat, and the `llmQuery` activity. The greatest additional value therefore comes from
+contextual AI actions in existing workflows rather than from yet another general
+chat.
 
 ## 1. Execution Incident Copilot
 
-- **Nutzerproblem:** Bei einer fehlgeschlagenen Workflow Execution müssen Nutzer ErrorOutput,
-  Activity-Verlauf und Workflow Definition heute selbst zusammenführen.
-- **Vorgeschlagene Funktion:** Eine Aktion „Fehler mit KI analysieren“ erklärt die beobachteten
-  Fehler, trennt Evidenz von vermuteten Ursachen und nennt konkrete nächste Prüfungen. Von dort kann
-  der Nutzer den Workflow im Designer öffnen und eine Reparatur vorbereiten.
-- **Geeignete Stelle:** Fehlgeschlagene Einträge in der Execution-Liste, der Operations-Ansicht und
-  dem History-Tab des Designers.
-- **Sicherheitsgrenzen:** Read-only Diagnose für Nutzer mit Folder-Leserecht; ausschließlich
-  redigierte Execution- und Activity-Daten; keine automatische Änderung, kein Retry und kein
-  Publish. Vermutungen müssen als solche gekennzeichnet und auf sichtbare Evidenz zurückgeführt
-  werden.
+- **User problem:** When a workflow execution fails, users currently have to combine ErrorOutput,
+  activity history, and workflow definition themselves.
+- **Proposed feature:** An action "Analyze error with AI" explains the observed
+  errors, separates evidence from suspected causes, and names concrete next checks. From there
+  the user can open the workflow in the designer and prepare a repair.
+- **Suitable place:** Failed entries in the execution list, the Operations view, and
+  the History tab of the designer.
+- **Security boundaries:** Read-only diagnosis for users with folder read permission; only
+  redacted execution and activity data; no automatic change, no retry, and no
+  publish. Suspicions must be marked as such and traced back to visible evidence.
 
-## 2. KI-Reparatur für Lint und Publish
+## 2. AI Repair for Lint and Publish
 
-- **Nutzerproblem:** Lint- und Pre-Publish-Findings zeigen ein Problem und dessen Ort, helfen aber
-  nicht bei der konkreten Reparatur.
-- **Vorgeschlagene Funktion:** „Mit KI beheben“ übergibt ausgewählte deterministische Findings an
-  den Workflow-Assistenten. Dieser erzeugt einen strukturierten Änderungsvorschlag, den der Nutzer
-  als Diff prüft und vollständig oder selektiv übernimmt.
-- **Geeignete Stelle:** Lint-Panel und Pre-Publish-Checklist im Workflow-Designer.
-- **Sicherheitsgrenzen:** Findings werden serverseitig bzw. deterministisch validiert und nicht
-  allein dem Modell geglaubt. Übernehmen erfordert Admin-/Operator-Rechte und den eigenen
-  Edit-Lock; Stale-Hash-Schutz, Secret-Merge und normaler Save-/Publish-Flow bleiben verbindlich.
+- **User problem:** Lint and pre-publish findings show a problem and its location, but do not
+  help with the concrete repair.
+- **Proposed feature:** "Fix with AI" hands selected deterministic findings to
+  the workflow assistant. It produces a structured change proposal, which the user
+  reviews as a diff and applies in full or selectively.
+- **Suitable place:** Lint panel and pre-publish checklist in the workflow designer.
+- **Security boundaries:** Findings are validated server-side and deterministically and are not taken
+  on the model's word alone. Applying requires admin/operator permissions and the user's own
+  edit lock; stale-hash protection, secret merge, and the normal save/publish flow remain binding.
 
-## 3. Activity-Konfigurations-Copilot
+## 3. Activity Configuration Copilot
 
-- **Nutzerproblem:** Komplexe Activity-Konfigurationen wie Decision-Bäume, Cron-Ausdrücke, REST,
-  SQL, JSONPath/XPath, Mappings und Retry-Regeln sind fehleranfällig und erfordern Detailwissen.
-- **Vorgeschlagene Funktion:** „Mit KI konfigurieren“ übersetzt eine natürlichsprachliche Absicht
-  in einen typisierten Konfigurationsentwurf und erlaubt die Übernahme einzelner Felder.
-- **Geeignete Stelle:** Properties-Panel der jeweiligen Activity, beginnend mit den komplexesten
-  Konfigurationen.
-- **Sicherheitsgrenzen:** Der Entwurf muss durch die vorhandene deterministische Validierung und
-  Vorschau laufen. Secret-Werte werden nie übertragen; die Activity wird nicht automatisch
-  ausgeführt, und ein Step-Test bleibt eine separate bewusste Aktion.
+- **User problem:** Complex activity configurations such as decision trees, cron expressions, REST,
+  SQL, JSONPath/XPath, mappings, and retry rules are error-prone and require detailed knowledge.
+- **Proposed feature:** "Configure with AI" translates a natural-language intent
+  into a typed configuration draft and allows applying individual fields.
+- **Suitable place:** Properties panel of the respective activity, starting with the most complex
+  configurations.
+- **Security boundaries:** The draft must pass through the existing deterministic validation and
+  preview. Secret values are never transmitted; the activity is not run automatically,
+  and a step test remains a separate, deliberate action.
 
 ## 4. Workflow Generator v2
 
-- **Nutzerproblem:** Die bestehende Workflow-Generierung ist ein One-shot-Flow mit Statistik- und
-  JSON-Vorschau; Unklarheiten lassen sich vor dem Erstellen nur durch einen neuen Versuch beheben.
-- **Vorgeschlagene Funktion:** Ein geführter Entwurfsprozess stellt Rückfragen, zeigt eine echte
-  Graph-Vorschau, führt Lint aus, markiert ungelöste Referenzen und erlaubt iterative
-  Verfeinerungen.
-- **Geeignete Stelle:** Bestehender Dialog „KI generieren“ auf der Workflow-Übersicht.
-- **Sicherheitsgrenzen:** Der erzeugte Workflow bleibt deaktiviert. Folder-Schreibrechte werden vor
-  dem Erstellen geprüft; Secret-Werte sind ausgeschlossen, und Lint-Fehler müssen vor Publish
-  behoben werden.
+- **User problem:** The existing workflow generation is a one-shot flow with statistics and
+  JSON preview; ambiguities can only be resolved before creation by starting over.
+- **Proposed feature:** A guided drafting process asks follow-up questions, shows a real
+  graph preview, runs lint, marks unresolved references, and allows iterative
+  refinements.
+- **Suitable place:** Existing "Generate with AI" dialog on the workflow overview.
+- **Security boundaries:** The generated workflow stays disabled. Folder write permissions are checked
+  before creation; secret values are excluded, and lint errors must be
+  fixed before publish.
 
-## 5. Reliability- und Optimierungs-Review
+## 5. Reliability and Optimization Review
 
-- **Nutzerproblem:** Coverage, Critical Path, Laufzeiten, Retries und Failure-Heatmap sind einzeln
-  sichtbar, müssen für eine Optimierung aber manuell zusammengeführt werden.
-- **Vorgeschlagene Funktion:** „Workflow optimieren“ identifiziert belegte Engpässe und schlägt
-  Änderungen an Parallelisierung, Timeouts, Retry-Verhalten und Fehlerpfaden vor.
-- **Geeignete Stelle:** Preset im Workflow-Assistenten sowie kontextuelle Aktion an auffälligen
-  Workflows im Dashboard.
-- **Sicherheitsgrenzen:** Jede Empfehlung zeigt Datenfenster, Stichprobengröße und zugrunde liegende
-  Telemetrie. Kleine Stichproben werden kenntlich gemacht; Änderungen nutzen nur den vorhandenen
-  Proposal-Flow und werden nie automatisch publiziert.
+- **User problem:** Coverage, critical path, runtimes, retries, and failure heatmap are each
+  visible on their own, but have to be combined manually for an optimization.
+- **Proposed feature:** "Optimize workflow" identifies evidenced bottlenecks and proposes
+  changes to parallelization, timeouts, retry behavior, and error paths.
+- **Suitable place:** Preset in the workflow assistant and a contextual action on conspicuous
+  workflows in the dashboard.
+- **Security boundaries:** Every recommendation shows the data window, sample size, and underlying
+  telemetry. Small samples are flagged; changes use only the existing
+  proposal flow and are never published automatically.
 
-## 6. Custom-Activity-Copilot
+## 6. Custom Activity Copilot
 
-- **Nutzerproblem:** Das Erstellen einer Custom Activity erfordert gleichzeitig PowerShell-,
-  Contract- und NodePilot-Kenntnisse.
-- **Vorgeschlagene Funktion:** Aus einer Beschreibung entsteht ein Draft mit Name, Key,
-  Inputs/Outputs, PowerShell-Template, Timeout, Success Codes und vorgeschlagenen Testszenarien.
-- **Geeignete Stelle:** Erstellungsdialog der Custom Activities.
-- **Sicherheitsgrenzen:** Neue Definitionen bleiben deaktivierte Drafts. Nur Admins können sie
-  aktivieren; Secrets werden als Referenzen statt als Werte verwendet, und weder Test noch
-  Aktivierung werden automatisch gestartet.
+- **User problem:** Creating a custom activity requires PowerShell, contract, and
+  NodePilot knowledge at the same time.
+- **Proposed feature:** A description yields a draft with name, key,
+  inputs/outputs, PowerShell template, timeout, success codes, and suggested test scenarios.
+- **Suitable place:** Creation dialog of the custom activities.
+- **Security boundaries:** New definitions stay disabled drafts. Only admins can
+  enable them; secrets are used as references instead of values, and neither test nor
+  activation is started automatically.
 
-## 7. AI-Testfall- und Mock-Generator
+## 7. AI Test Case and Mock Generator
 
-- **Nutzerproblem:** Aussagekräftige positive, negative und Grenzfall-Inputs für einen Workflow
-  oder eine einzelne Activity zu erstellen ist zeitaufwendig.
-- **Vorgeschlagene Funktion:** Aus Workflow Contract und Activity-Konfiguration entstehen
-  Testfallentwürfe mit Inputs, Mock-Werten, erwarteten Pfaden und erwarteten Outputs. Ein Entwurf
-  kann in Step-Test oder manuellen Execute-Dialog übernommen werden.
-- **Geeignete Stelle:** Step-Test-Panel, manueller Execute-Dialog und optional ein Test-Preset im
-  Workflow-Assistenten.
-- **Sicherheitsgrenzen:** Generieren und Ausführen bleiben strikt getrennt, weil Activities reale
-  Nebenwirkungen haben können. Historische Werte werden nur redigiert verwendet; destructive
-  Activities erhalten eine deutliche Warnung und werden nie automatisch gestartet.
+- **User problem:** Creating meaningful positive, negative, and edge-case inputs for a workflow
+  or a single activity is time-consuming.
+- **Proposed feature:** From the workflow contract and activity configuration, test case drafts
+  are produced with inputs, mock values, expected paths, and expected outputs. A draft
+  can be carried over into the step test or the manual execute dialog.
+- **Suitable place:** Step test panel, manual execute dialog, and optionally a test preset in the
+  workflow assistant.
+- **Security boundaries:** Generating and running remain strictly separate, because activities may have real
+  side effects. Historical values are used only in redacted form; destructive
+  activities get a clear warning and are never started automatically.
 
-## 8. Kontextueller Operator-Copilot und Schichtbriefing
+## 8. Contextual Operator Copilot and Shift Briefing
 
-- **Nutzerproblem:** Der globale Wissens-Chat kann Betriebsfragen beantworten, kennt beim Wechsel
-  aus einer Fachansicht aber nicht automatisch die gerade ausgewählten Workflows, Executions,
-  Maschinen oder Alerts.
-- **Vorgeschlagene Funktion:** „Diese Ansicht fragen“ öffnet einen kontextuellen Assistenten.
-  Zusätzlich fasst ein on-demand Schichtbriefing neue Fehlschläge, gemeinsame Zielsysteme,
-  gefährdete Schedules und aktuelle Alerts mit Links zur Evidenz zusammen.
-- **Geeignete Stelle:** Dashboard, Operations, Machines und Alerts.
-- **Sicherheitsgrenzen:** Read-only, Folder-RBAC-gescoped und nur mit explizit ausgewählten IDs und
-  Filtern statt vollständigen Seitendumps. Korrelationen werden nicht als bewiesene Ursachen
-  dargestellt; Mutationen bleiben außerhalb dieses Features.
+- **User problem:** The global knowledge chat can answer operational questions, but when switching
+  from a specialist view it does not automatically know the currently selected workflows, executions,
+  machines, or alerts.
+- **Proposed feature:** "Ask about this view" opens a contextual assistant.
+  In addition, an on-demand shift briefing summarizes new failures, shared target systems,
+  endangered schedules, and current alerts with links to the evidence.
+- **Suitable place:** Dashboard, Operations, Machines, and Alerts.
+- **Security boundaries:** Read-only, folder-RBAC-scoped, and only with explicitly selected IDs and
+  filters instead of complete page dumps. Correlations are not presented as proven
+  causes; mutations stay outside this feature.
 
-## Gemeinsame Leitplanken
+## Shared Guardrails
 
-- AI bleibt opt-in und standardmäßig deaktiviert.
-- Vorhandene Rollen-, Folder-RBAC-, Rate-Limit-, SSRF-, Audit- und Secret-Redaktionsregeln gelten
-  unverändert.
-- Deterministische Analyse und Validierung liefern Fakten; das Modell erklärt, priorisiert und
-  formuliert Vorschläge.
-- Schreibende Wirkung erfolgt ausschließlich über sichtbare, bestätigte Vorschläge und die
-  bestehenden Edit-Lock-, Save- und Publish-Abläufe.
-- Prompt- und Antwortinhalte werden nicht ungeprüft in Audit-Logs oder andere langlebige
-  Speicher übernommen.
+- AI stays opt-in and disabled by default.
+- Existing role, folder-RBAC, rate-limit, SSRF, audit, and secret-redaction rules apply
+  unchanged.
+- Deterministic analysis and validation supply facts; the model explains, prioritizes, and
+  words proposals.
+- Write effects occur exclusively through visible, confirmed proposals and the
+  existing edit-lock, save, and publish flows.
+- Prompt and response contents are not carried over unchecked into audit logs or other long-lived
+  storage.
