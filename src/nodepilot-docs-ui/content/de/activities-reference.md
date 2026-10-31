@@ -125,7 +125,7 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 
 ## `textFileEdit`
 
-**Remote.** BOM-aware, atomarer Write (tmp + `Move-Item -Force`).
+**Remote.** BOM-aware, atomarer Write (tmp-Datei + `File.Replace`), der die Berechtigungen der Originaldatei beibehält.
 
 - **Config:** `operation` (append/prepend/insert/delete/replace/replaceLine), `path`, `content`, `lineNumber`, `matchPattern`, `replace`, `useRegex`, `ignoreCase`, `occurrences`, `encoding` (auto/utf8/utf8-bom/utf16le/utf16be/ascii), `lineEnding` (preserve/crlf/lf), `createIfMissing`, `dryRun`, `backupSuffix`, `appendIfMissing` (Exact), `maxFileSizeMB` (default 50)
 - **Outputs:** `param.operation`, `param.path`, `param.linesBefore`/`linesAfter`/`linesChanged`, `param.encoding`, `param.lineEnding`, `param.backupPath`, `param.dryRun`

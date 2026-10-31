@@ -85,6 +85,9 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
   Original, deshalb wird der Aufruf abgelehnt und nichts gespeichert. Dasselbe gilt für eine
   Änderung an einem Bedingungs- oder Case-Array, das ein `***` enthält; diese Änderung erfolgt im
   Designer. Credentials/Globals geben Secrets nie aus.
+- **Versionsprüfung:** `publish_workflow`/`update_workflow_definition` verlangen `expectedVersion`,
+  die Version, die `get_workflow_definition` geliefert hat. Hat zwischenzeitlich jemand gespeichert,
+  antwortet der Server mit `409 workflow_version_conflict`, und der neuere Workflow bleibt unverändert.
 - **Annotations:** Read-Tools `readOnly`, gated Tools `destructive`, enable/disable/lock
   `idempotent`. `execute_workflow` ist **nicht idempotent**: ein erneuter Aufruf startet
   eine weitere Ausführung. Einen unklar beantworteten Start zuerst über die Ausführungen prüfen.

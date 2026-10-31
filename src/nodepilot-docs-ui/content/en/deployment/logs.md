@@ -21,7 +21,7 @@ Not to be confused with logs are the retention **archives** under `C:\ProgramDat
 These places are deliberately empty and do not need to be searched during an incident:
 
 - **The Electron shell keeps no log of its own.** When the desktop window reports an error, the cause is in the application log or in the provisioning log.
-- **`np` and `nodepilot-mcp` do not log to a file.** `%APPDATA%\NodePilot\` holds only `config.json` and `session-<profile>.dat` as state. The MCP server writes its diagnostics to stderr, because stdout belongs to the protocol.
+- **`np` and `nodepilot-mcp` do not log to a file.** `%APPDATA%\NodePilot\` holds only `config.json` and `session-<profile-hash>.dat` as state. The MCP server writes its diagnostics to stderr, because stdout belongs to the protocol.
 - **The bundled desktop PostgreSQL runs without `logging_collector`** and therefore creates no log file of its own. A `NodePilotDb` outage becomes visible through the application log and `/healthz/database`.
 - **The service redirects no standard output.** The console sink goes nowhere in a service context; the files are what counts.
 - **NodePilot writes no entries of its own to the Event Viewer.** What appears there under the service name comes from the Service Control Manager.

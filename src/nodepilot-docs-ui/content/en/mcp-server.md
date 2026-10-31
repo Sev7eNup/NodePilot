@@ -81,6 +81,9 @@ The transport is **stdio** (streamable HTTP is planned as a later option). Windo
   value. A `***` on a new node or edge ID has nothing to restore, so the call is rejected and nothing
   is saved. The same applies to a change in a condition or case array that contains a `***`; make
   that edit in the designer. Credentials/globals never emit secrets.
+- **Version check:** `publish_workflow`/`update_workflow_definition` require `expectedVersion`, the
+  version `get_workflow_definition` returned. If someone saved in between, the server answers
+  `409 workflow_version_conflict` and the newer workflow stays untouched.
 - **Annotations:** read tools are `readOnly`, gated tools `destructive`, and enable/disable/lock
   are `idempotent`. `execute_workflow` is **not idempotent**: calling it again starts another run.
   Check executions before retrying a start whose response was lost.

@@ -500,7 +500,7 @@ The rules that apply:
 
 ## Token storage
 
-DPAPI-encrypted (`CurrentUser` scope) at `%APPDATA%\NodePilot\session-<profile>.dat`. Refresh happens transparently through `TokenRefreshHandler`. The plaintext configuration (server URL, default profile, TLS pin) is in `config.json`.
+DPAPI-encrypted (`CurrentUser` scope) at `%APPDATA%\NodePilot\session-<profile-hash>.dat` (one file per profile; the name is a SHA-256 hash of the case-insensitive profile name). Refresh happens transparently through `TokenRefreshHandler`. The plaintext configuration (server URL, default profile, TLS pin) is in `config.json`.
 
 ## Architectural convention
 

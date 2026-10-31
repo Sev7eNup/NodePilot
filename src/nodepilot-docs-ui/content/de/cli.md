@@ -504,7 +504,7 @@ Regeln, die dabei gelten:
 
 ## Token-Storage
 
-DPAPI-verschlüsselt (`CurrentUser`-Scope) unter `%APPDATA%\NodePilot\session-<profile>.dat`. Refresh transparent via `TokenRefreshHandler`. Plaintext-Config (Server-URL, Default-Profile, TLS-Pin) in `config.json`.
+DPAPI-verschlüsselt (`CurrentUser`-Scope) unter `%APPDATA%\NodePilot\session-<profile-hash>.dat` (eine Datei pro Profil; der Name ist ein SHA-256-Hash des Profilnamens ohne Beachtung der Groß-/Kleinschreibung). Refresh transparent via `TokenRefreshHandler`. Plaintext-Config (Server-URL, Default-Profile, TLS-Pin) in `config.json`.
 
 ## Architektur-Konvention
 
