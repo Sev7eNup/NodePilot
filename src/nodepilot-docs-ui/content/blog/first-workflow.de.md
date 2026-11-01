@@ -22,7 +22,7 @@ Die „Run Script“-Aktivität auswählen und folgendes Skript eintragen:
 $env:COMPUTERNAME
 ```
 
-Als Ausgabevariable `hostInfo` festlegen. Das Feld „Maschine“ bleibt leer, damit das Skript lokal auf dem NodePilot-Host unter der Dienstidentität läuft. Eine separate Zielmaschine und zusätzliche Zugangsdaten sind dafür nicht erforderlich.
+Als Ausgabevariable `hostInfo` festlegen. Das Feld „Ziel-Maschine“ bleibt leer, damit das Skript lokal auf dem NodePilot-Host unter der Dienstidentität läuft. Eine separate Zielmaschine und zusätzliche Zugangsdaten sind dafür nicht erforderlich.
 
 **4. Veröffentlichen und ausführen**
 

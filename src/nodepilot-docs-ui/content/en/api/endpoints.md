@@ -46,7 +46,7 @@ csrf_token() {
 | `POST /{id}/execute` | Start a run — 202 + ExecutionId |
 | `POST /{id}/duplicate` | Duplicate — 201 (the copy is born disabled) |
 | `POST /{id}/enable` / `disable` | The kill switch — 204 |
-| `POST /{id}/cancel-all` | Cancel every running execution — 200 |
+| `POST /{id}/cancel-all` | Cancel every running and pending execution — 200 |
 | `POST /{id}/lock` / `unlock` | The edit lock — 200 |
 | `POST /{id}/publish` | Save + enable + unlock (atomically) — 200 |
 | `POST /{id}/force-unlock` | Admin only, breaks someone else's lock — 200 |
@@ -160,13 +160,13 @@ activation visibly. Envelope type: `nodepilot-workflow-export/v1`. Secrets are r
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/executions` | The list (`?workflowId=&activeOnly=&terminalOnly=&includePayloads=`, 500 cap). `includePayloads` is the only one of these that does not filter but changes the response shape: it defaults to `true`, and `false` returns `returnData` and `inputParametersJson` as `null`. `sortBy` (`started`, `status`, `workflow`, `trigger`, `startedBy`, `steps`, `duration`) and `sortDir` (`asc`/`desc`, default `started`/`desc`) sort on the server across all pages; unknown values return 400. Purely narrowing parameters (`page`, `pageSize`, `status`, `search`) are deliberately left out of this table. |
+| `GET /api/executions` | The list (`?workflowId=&activeOnly=&terminalOnly=&includePayloads=`, paged: `{items, page, pageSize, total, totalPages}`). `includePayloads` is the only one of these that does not filter but changes the response shape: it defaults to `true`, and `false` returns `returnData` and `inputParametersJson` as `null`. `sortBy` (`started`, `status`, `workflow`, `trigger`, `startedBy`, `steps`, `duration`) and `sortDir` (`asc`/`desc`, default `started`/`desc`) sort on the server across all pages; unknown values return 400. Purely narrowing parameters (`page`, `pageSize`, `status`, `search`) are deliberately left out of this table. |
 | `GET /api/executions/{id}` | A single execution |
 | `GET /api/executions/{id}/steps` | The steps of an execution |
 | `POST /api/executions/{id}/cancel` / `retry` / `resume` | A single run |
 
 ```bash
-curl -s -b cookie.jar "$NP/api/executions?workflowId=21f1c0d4-...&activeOnly=true" | jq '.[0]'
+curl -s -b cookie.jar "$NP/api/executions?workflowId=21f1c0d4-...&activeOnly=true" | jq '.items[0]'
 curl -s -b cookie.jar "$NP/api/executions/7e3f..." | jq '{status,startedAt,completedAt,triggeredBy}'
 curl -s -b cookie.jar "$NP/api/executions/7e3f.../steps" | jq '.[] | {stepId,status,durationMs}'
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/executions/7e3f.../cancel" -i   # 204
@@ -308,10 +308,10 @@ curl -s -b cookie.jar "$NP/api/observability/summary" | jq '.panels[] | {key,val
 
 ```bash
 # Backup — multipart for preview/restore, the passphrase as a form field
-curl -s -b cookie.jar "$NP/api/backup/manifest" | jq   # {"sections":[{"section":"Credentials","count":12},...]}
+curl -s -b cookie.jar "$NP/api/backup/manifest" | jq   # {"sections":[{"section":"credentials","count":12},...]}
 
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/backup/export" -H 'Content-Type: application/json' \
-  -d '{ "sections":["Credentials","GlobalVariables","Workflows","Settings"],
+  -d '{ "sections":["credentials","globalVariables","workflows","settings"],
         "passphrase":"correct-horse-battery-staple" }' -o backup.npbackup
 
 # Restore: file + passphrase + policy (skip|rename|overwrite, overridable per section)

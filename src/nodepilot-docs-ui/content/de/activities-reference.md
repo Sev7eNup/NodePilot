@@ -97,7 +97,7 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 
 **Hybrid.** Führt PowerShell aus — mit gesetzter Maschine über NodePilots managed WinRM-Session; **ohne** Maschine engine-local im API-Host, wo das Script die Remote-Verbindung via `Invoke-Command`/`New-PSSession` auch selbst managen kann (SCOrch-Stil, Trade-offs siehe [Remote-Execution](configuration/remote-execution)).
 
-- **Config:** `script`, `engine` (`auto`/`powershell`/`pwsh`/`runspace`), `timeoutSeconds`, `isolated` (bool, nur lokal — eigener Prozess im Windows Job Object: Crash-/Leak-Containment, keine verwaisten Prozesse) + optionale Caps `memoryLimitMb` (lässt Allokationen fehlschlagen, terminiert nicht) / `maxProcesses`, `successExitCodes` (komma-separiert, opt-in Exit-Code-Gate)
+- **Config:** `script`, `engine` (`auto`/`powershell`/`pwsh`/`runspace`), `timeoutSeconds`, `isolated` (bool, nur lokal — eigener Prozess im Windows Job Object: Crash-/Leak-Containment, keine verwaisten Prozesse) + optionale Caps `memoryLimitMb` (lässt Allokationen fehlschlagen, terminiert nicht) / `maxProcesses`, `successExitCodes` (komma-separiert, opt-in Exit-Code-Gate), `transcript` (bool — zeichnet Befehle und Ausgabe verschränkt wie in einer Konsole auf)
 - **Engine (nur lokal; ein Remote-Step läuft immer in Windows PowerShell 5.1 auf dem Ziel):**
   - `auto` (Standard) und `powershell` führen das Skript in Windows PowerShell 5.1 als eigenen Prozess aus. Ein lokaler Step sieht damit dieselben Module wie dasselbe Skript remote: alle Windows-Module und alle Module, die auf dem NodePilot-Server für alle Benutzer installiert sind.
   - `pwsh` nimmt einen PowerShell-7-Prozess und setzt eine PowerShell-7-Installation voraus.
@@ -121,13 +121,13 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 **Remote.**
 
 - **Config:** `operation` (copy/move/delete/exists/list/create/rename), `path`, `destination`, `newName`. Asserts `-PathType Container`. `list` enumeriert direkte Children.
-- **Outputs:** `param.operation`, `param.path`, `param.exists`, `param.fullName`, `param.creationTime`, `param.newPath`/`param.newName`; `list` → `param.items` + `param.count` + `param.truncated`
+- **Outputs:** `param.operation`, `param.path`, `param.destination`, `param.exists`, `param.fullName`, `param.creationTime`, `param.newPath`/`param.newName`; `list` → `param.items` + `param.count` + `param.truncated`
 
 ## `textFileEdit`
 
 **Remote.** BOM-aware, atomarer Write (tmp + `Move-Item -Force`).
 
-- **Config:** `operation` (append/prepend/insert/delete/replace/replaceLine), `path`, `content`, `lineNumber`, `matchPattern`, `replace`, `useRegex`, `ignoreCase`, `occurrences`, `encoding` (auto/utf8/utf8-bom/utf16le/utf16be/ascii), `lineEnding` (preserve/crlf/lf), `createIfMissing`, `dryRun`, `backupSuffix`, `appendIfMissing` (Exact), `maxFileSizeMB` (default 50)
+- **Config:** `operation` (append/prepend/insert/delete/replace/replaceLine), `path`, `content`, `lineNumber`, `lineRange` (`[from,to]`, Selektor für `delete`), `matchPattern`, `replace`, `useRegex`, `ignoreCase`, `occurrences`, `encoding` (auto/utf8/utf8-bom/utf16le/utf16be/ascii), `lineEnding` (preserve/crlf/lf), `createIfMissing`, `dryRun`, `backupSuffix`, `appendIfMissing`, `appendIfMissingExact` (default `true`), `maxFileSizeMB` (default 50)
 - **Outputs:** `param.operation`, `param.path`, `param.linesBefore`/`linesAfter`/`linesChanged`, `param.encoding`, `param.lineEnding`, `param.backupPath`, `param.dryRun`
 
 ## `serviceManagement`
@@ -148,7 +148,7 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 
 **Remote.**
 
-- **Config:** `className`, `namespace`, `filter`, `mode` (`query`/`wql`/`invokeMethod`), `captureProperties` (optionales `string[]`). Mit `captureProperties` → erste Row in `param.<Name>` + `param.count`. Ohne → Legacy-Text `output`. Property-Namen müssen CIM-konform sein (`^[A-Za-z_][A-Za-z0-9_]*$`).
+- **Config:** `className`, `namespace`, `filter`, `mode` (`query`/`wql`/`invokeMethod`), `query` (für `wql`), `methodName`/`arguments` (für `invokeMethod`), `captureProperties` (optionales `string[]`). Mit `captureProperties` → erste Row in `param.<Name>` + `param.count`. Ohne → Legacy-Text `output`. Property-Namen müssen CIM-konform sein (`^[A-Za-z_][A-Za-z0-9_]*$`).
 - **Outputs:** `param.*`, `param.count`, `output`
 
 ## `startProgram`
@@ -206,13 +206,13 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 **Engine-local.**
 
 - **Config:** `url`, `method`, `body`, `headers` (bei einem Request mit Body wandert ein hier gesetzter `Content-Type` auf die Entity — kein zweites, widersprüchliches Feld auf der Leitung; ein unparsbarer Wert bleibt unbeachtet und der Body geht weiter als `application/json` raus. Ein Request ohne Body und jedes GET/HEAD hat keine Entity, ein dort gesetzter `Content-Type` fällt weg), `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy`
-- **Outputs:** `param.statusCode` (Response-Body in `output` als `HTTP {code}\n{body}`; Headers nicht als `param`)
+- **Outputs:** `param.statusCode` (Response-Body in `output` als `HTTP {code} {status}\n{body}`; Headers nicht als `param`)
 
 ## `sql`
 
 **Engine-local.** Connection-Precedence: `connectionRef` > Builder > raw `connectionString`.
 
-- **Config:** `provider` (sqlserver/sqlite/postgres), `query`, `timeoutSeconds`. Connection-Optionen: (a) Builder — SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode` (`VerifyFull` + `Trust Server Certificate=false` default; schwächere Modi nur für literale Loopback-Hosts); SQLite: `dataSource`; (b) raw `connectionString`; (c) named `connectionRef` aus `SqlActivity:ConnectionStrings:{name}`. Die Postgres-TLS-Policy gilt auch für raw/ref.
+- **Config:** `provider` (sqlserver/sqlite/postgres), `query`, `parameters` (benannte Query-Parameter), `timeoutSeconds`. Connection-Optionen: (a) Builder — SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode` (`VerifyFull` + `Trust Server Certificate=false` default; schwächere Modi nur für literale Loopback-Hosts); SQLite: `dataSource`; (b) raw `connectionString`; (c) named `connectionRef` aus `SqlActivity:ConnectionStrings:{name}`. Die Postgres-TLS-Policy gilt auch für raw/ref.
 - **Outputs:** SELECT → `param.rowCount` + erste-Row-Spalten als `param.<col>` + `param.row{i}_{col}` (erste 20 Rows) + `param.truncated`/`param.flatKeysTruncated`. DML/DDL → `param.rowsAffected` + `param.rowCount`
 - Die Form hängt am Statement, nicht an der Trefferzahl: ein `SELECT` ohne Treffer liefert
   weiterhin die SELECT-Form (`[]`, `param.rowCount` von 0) und kein `rowsAffected`. Skalare
@@ -223,7 +223,7 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 **Engine-local.** Einzeler-Empfänger. SMTP via `Smtp:*`.
 
-- **Config:** `to`, `subject`, `body`, `isHtml`
+- **Config:** `to`, `subject`, `body`, `isHtml`, `timeoutSeconds`
 - **Outputs:** —
 
 ## `delay`
@@ -238,7 +238,7 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 **Engine-local, controlFlow.**
 
 - **Config:** `mode` (waitAll/waitAny/waitNofM), `requiredCount` (für waitNofM)
-- **Outputs:** —
+- **Outputs:** `param.*` der vorgelagerten Steps (bei gleichem Namen gilt der erste Wert)
 
 ## `forEach`
 
@@ -259,7 +259,7 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 **Engine-local, controlFlow.**
 
 - **Config:** `workflowNameOrId`, `parameters`, `waitForCompletion`, `timeoutSeconds`
-- **Outputs:** sync → `param.*` (gespiegelt aus Child-`returnData`) + immer `param.__executionId`/`__status`/`__workflowId`/`__workflowName`. fire-and-forget → `param.workflowId`/`param.workflowName`/`param.waited`
+- **Outputs:** sync → `param.*` (gespiegelt aus Child-`returnData`) + immer `param.__executionId`/`__status`/`__workflowId`/`__workflowName`. fire-and-forget → `param.workflowId`/`param.workflowName`/`param.executionId`/`param.waited`
 
 ## `returnData`
 
@@ -296,14 +296,14 @@ Die JSONPath-Bibliothek wird im Speicher bereitgestellt; auf dem Ziel ist keine 
 **Engine-local.**
 
 - **Config:** `level` (info/warning/error), `message`
-- **Outputs:** —
+- **Outputs:** `output` (Meldung), `param.level`, `param.message`
 
 ## `generateText`
 
 **Engine-local.** Entropie aus `RandomNumberGenerator`, rejection-sampled (kein Modulo-Bias). Generierter Wert wird **nicht** redigiert.
 
 - **Config:** `mode` (`alphanumeric` default /`alphabetic`/`numeric`/`hex`/`guid`/`password`/`custom`), `length` (1–1024, default 16; ignoriert für `guid`), `customCharset` (required für `mode=custom`), `excludeAmbiguous` (entfernt verwechslungsfähige Zeichen 0/O, 1/l/I …). `password` = nur Charset-Preset (keine Policy-Garantie).
-- **Outputs:** `output` (generierter String), `param.text`
+- **Outputs:** `output` (generierter String), `param.text`, `param.length`
 
 ## `llmQuery`
 

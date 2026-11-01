@@ -147,7 +147,7 @@ Routes + role gating live on the controllers in `src/NodePilot.Api/Controllers/`
 | `POST /cancel-all` | Cancels all `Running` **and** `Pending` executions of the workflow. |
 | `PUT /concurrency-limit` | Sets `MaxConcurrentExecutions` (1..1000, `null` = unlimited). `maxConcurrentExecutions` is **required** (missing → 400, otherwise `{}` would silently clear the limit), `0` is rejected. No edit lock, no version bump, no history snapshot. |
 | `POST /executions/{id}/cancel\|retry\|resume` | A single run. Resume body: `{"stepId": "<node-id>", "mode": "continue"\|"stepOver"\|"stop", "overrides": {}}` — `stepId` is **required**. |
-| `POST /{id}/rollback` | Like `Update`, snapshots the previous definition into the version history. |
+| `POST /{id}/rollback/{version}` | Like `Update`, snapshots the previous definition into the version history. |
 
 **Disable+cancel-all = quarantine.**
 

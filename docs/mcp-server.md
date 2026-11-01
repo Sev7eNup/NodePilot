@@ -89,7 +89,8 @@ Destructive/admin tools are **not registered at all** unless `NODEPILOT_MCP_ALLO
 
 `delete_workflow`, `force_unlock_workflow`, `cancel_all_executions`, `test_step`, `delete_machine`,
 `delete_credential`, `delete_global_variable`, `delete_global_variable_folder`,
-`delete_alerting_rule`, `delete_system_alert_policy`, `restart_service`.
+`delete_alerting_rule`, `delete_system_alert_policy`, `delete_agent_mcp_server`, `delete_agent_skill`,
+`restart_service`.
 
 Every tool also carries MCP annotations: read tools are `readOnly`, the gated ones are
 `destructive`, and `enable`/`disable`/`lock`/`unlock`/`cancel` are `idempotent`.
@@ -243,8 +244,9 @@ large graphs the duplicate published-name check stops after 2,000,000 ancestor v
 `test_step` (Operator+, executes a real activity; config override also requires Edit + own lock) ·
 `delete_workflow` (Admin) · `force_unlock_workflow` (Admin) · `cancel_all_executions` ·
 `delete_machine` (Admin) · `delete_credential` (Admin) · `delete_global_variable` (Admin) ·
-`delete_global_variable_folder` (Admin, `recursive=true` nimmt Unterordner + Variablen mit) ·
+`delete_global_variable_folder` (Admin, `recursive=true` also removes subfolders + variables) ·
 `delete_alerting_rule` (Admin) · `delete_system_alert_policy` (Admin) ·
+`delete_agent_mcp_server` (Admin) · `delete_agent_skill` (Admin) ·
 `restart_service` (Admin, `confirm=true`, restarts the Windows service; 409 when it cannot self-restart)
 
 ## Agent activities and registries

@@ -14,7 +14,7 @@ Die AI-Funktionen sind standardmäßig deaktiviert. Die zugehörigen Schaltfläc
 
 ## Script-Editor
 
-**Ort:** `runScript`-Activity öffnen, Script-Editor maximieren und die AI-Funktion über das Sparkles-Symbol starten. Die Schaltfläche steht nur den Rollen Admin und Operator zur Verfügung.
+**Ort:** `runScript`-Activity öffnen, Script-Editor maximieren und die AI-Funktion über die Schaltfläche **KI** (Zauberstab-Symbol) starten. Die Schaltfläche steht nur den Rollen Admin und Operator zur Verfügung.
 
 **Geeignet für:**
 
@@ -23,7 +23,7 @@ Die AI-Funktionen sind standardmäßig deaktiviert. Die zugehörigen Schaltfläc
 - Fehlerkorrektur oder Vereinfachung
 - Anpassung an verfügbare Workflow-Variablen
 
-Ein vorhandenes Script und verfügbare Variablen werden als Kontext berücksichtigt. Das Ergebnis kann am Cursor eingefügt oder als vollständiger Ersatz übernommen werden.
+Verfügbare Workflow-Variablen werden als Kontext berücksichtigt, ohne ihre Werte. Das vorhandene Script geht nur mit, wenn es im Dialog ausdrücklich zum Senden freigegeben wird. Das Ergebnis kann am Cursor eingefügt oder als vollständiger Ersatz übernommen werden.
 
 Die Übernahme ändert nur den Inhalt im Editor. Vor dem Speichern und Ausführen ist eine Prüfung auf Befehle, Pfade, Berechtigungen und verwendete Variablen erforderlich.
 
@@ -33,7 +33,7 @@ Im Workflow-Bereich stehen zwei Funktionen zur Verfügung.
 
 ### Neuen Workflow erzeugen
 
-**Ort:** Workflow-Übersicht, Aktion **KI generieren**.
+**Ort:** Workflow-Übersicht, Schaltfläche **Neuer KI-Workflow**.
 
 Aus einer Beschreibung erstellt NodePilot einen vollständigen Workflow-Entwurf mit Triggern, Activities und Verbindungen. Vor dem Anlegen erscheinen eine Vorschau, die erzeugte Definition und die Anzahl der Nodes und Edges. Erst die Bestätigung legt den Workflow an.
 
@@ -221,7 +221,7 @@ in Sekunden.
 | `Password` | zugehöriges Kennwort; besser über die Umgebungsvariable `Llm__Proxy__Password` setzen |
 | `UseDefaultCredentials` | meldet sich mit den Windows-Anmeldedaten des Dienstkontos am Proxy an — der Normalfall bei domänenintegrierten Proxys |
 
-Loopback-Ziele (`localhost`, `127.0.0.0/8`, `::1`) werden unabhängig von `Mode` und `BypassList`
+HTTP-Loopback-Ziele (`localhost`, `127.0.0.0/8`, `::1`) werden unabhängig von `Mode` und `BypassList`
 immer direkt verbunden, damit Prompt und API-Schlüssel den Host nicht unverschlüsselt verlassen.
 
 Zu beachten: Läuft der Verkehr über einen Proxy, löst dieser die Zieladresse auf. Die zusätzliche
@@ -244,7 +244,7 @@ Die Fehlermeldung benennt die Stufe, an der es gescheitert ist:
 |---|---|
 | `LLM endpoint DNS:` | Der Name konnte nicht aufgelöst werden — falscher Name, falsches Suffix, oder der Namensdienst antwortet nicht. |
 | `LLM endpoint TCP:` | Der Rechner war nicht erreichbar. *Abgelehnt* heißt: der Host antwortet, aber auf diesem Port hört nichts. *Keine Antwort* heißt in aller Regel Firewall oder Netzsegment. |
-| `LLM endpoint TLS:` | Die Verbindung stand, aber die Verschlüsselung kam nicht zustande — häufig ein verlangtes Client-Zertifikat oder ein Zertifikat, dem der Server nicht vertraut. |
+| `LLM endpoint TLS (<URL>):` | Die Verbindung stand, aber die Verschlüsselung kam nicht zustande — häufig ein verlangtes Client-Zertifikat oder ein Zertifikat, dem der Server nicht vertraut. |
 | `accepted the request but sent no answer` | Alles in Ordnung, das Modell hat nur zu lange gebraucht. Hier ist ein höheres `TimeoutSeconds` die richtige Antwort. |
 
 Ein Zertifikatshinweis, der oft Zeit kostet: NodePilot prüft gegen den Zertifikatsspeicher der

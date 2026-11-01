@@ -14,7 +14,7 @@ The AI features are disabled by default. The corresponding buttons (script edito
 
 ## Script editor
 
-**Where:** open a `runScript` activity, maximize the script editor and start the AI feature through the sparkles icon. The button is only available to the Admin and Operator roles.
+**Where:** open a `runScript` activity, maximize the script editor and start the AI feature through the **AI** button (magic-wand icon). The button is only available to the Admin and Operator roles.
 
 **Suitable for:**
 
@@ -23,7 +23,7 @@ The AI features are disabled by default. The corresponding buttons (script edito
 - Fixing errors or simplifying
 - Adapting to the available workflow variables
 
-An existing script and the available variables are taken into account as context. The result can be inserted at the cursor or accepted as a complete replacement.
+The available workflow variables are taken into account as context, without their values. The existing script is only included when it is explicitly released for sending in the dialog. The result can be inserted at the cursor or accepted as a complete replacement.
 
 Accepting it only changes the content in the editor. Before saving and running, a review of the commands, paths, permissions and variables used is required.
 
@@ -33,7 +33,7 @@ Two features are available in the workflow area.
 
 ### Generating a new workflow
 
-**Where:** the workflow overview, the **Generate with AI** action.
+**Where:** the workflow overview, the **New AI Workflow** button.
 
 From a description, NodePilot creates a complete workflow draft with triggers, activities and connections. Before it is created, a preview, the generated definition and the number of nodes and edges are shown. Only your confirmation creates the workflow.
 
@@ -218,7 +218,7 @@ has not been opened, a proxy changes nothing. So check first which stage fails: 
 | `Password` | The matching password; better set through the environment variable `Llm__Proxy__Password` |
 | `UseDefaultCredentials` | Authenticates to the proxy with the service account's Windows credentials — the normal case with domain-integrated proxies |
 
-Loopback targets (`localhost`, `127.0.0.0/8`, `::1`) are always connected directly regardless of
+HTTP loopback targets (`localhost`, `127.0.0.0/8`, `::1`) are always connected directly regardless of
 `Mode` and `BypassList`, so that the prompt and API key never leave the host unencrypted.
 
 Note: if the traffic goes through a proxy, the proxy resolves the target address. The additional
@@ -241,7 +241,7 @@ The error message names the stage at which it failed:
 |---|---|
 | `LLM endpoint DNS:` | The name could not be resolved — a wrong name, a wrong suffix, or the name service is not answering. |
 | `LLM endpoint TCP:` | The machine was not reachable. *Refused* means: the host answers, but nothing is listening on that port. *No answer* almost always means a firewall or a network segment. |
-| `LLM endpoint TLS:` | The connection was established but encryption did not come about — often a required client certificate, or a certificate the server does not trust. |
+| `LLM endpoint TLS (<URL>):` | The connection was established but encryption did not come about — often a required client certificate, or a certificate the server does not trust. |
 | `accepted the request but sent no answer` | Everything is fine, the model simply took too long. Here a higher `TimeoutSeconds` is the right answer. |
 
 One certificate note that often costs time: NodePilot validates against the **machine's** certificate

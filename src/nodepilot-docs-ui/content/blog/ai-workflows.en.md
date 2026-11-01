@@ -72,7 +72,7 @@ For these adjustments, the main saving is repeatedly transferring content betwee
 
 ## Expand the service check into a workflow
 
-In the workflow overview, “AI Generate” opens the dialog for a new draft. The more clearly the description identifies the trigger and expected result, the more precisely the task is bounded. For the service check, it might read:
+In the workflow overview, “New AI Workflow” opens the dialog for a new draft. The more clearly the description identifies the trigger and expected result, the more precisely the task is bounded. For the service check, it might read:
 
 > Create a manually triggered workflow with a PowerShell service query on a Windows machine still to be selected. Use the JSON report described above. Successfully queried stopped services are inventory observations. Failed queries must fail the checking step. Do not change services or add automatic repair.
 
