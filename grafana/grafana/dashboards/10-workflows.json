@@ -927,7 +927,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (workflow_name) (increase(nodepilot_executions_completed_total{workflow_name=~\"$workflow_name\",status=\"Succeeded\"}[$__range])) / clamp_min(sum by (workflow_name) (increase(nodepilot_executions_completed_total{workflow_name=~\"$workflow_name\"}[$__range])), 0.0001)",
+          "expr": "(sum by (workflow_name) (increase(nodepilot_executions_completed_total{workflow_name=~\"$workflow_name\",status=\"Succeeded\"}[$__range])) or on(workflow_name) sum by (workflow_name) (0 * nodepilot_executions_completed_total{workflow_name=~\"$workflow_name\"})) / (sum by (workflow_name) (increase(nodepilot_executions_completed_total{workflow_name=~\"$workflow_name\"}[$__range])) > 0)",
           "legendFormat": "{{workflow_name}}",
           "refId": "A"
         }

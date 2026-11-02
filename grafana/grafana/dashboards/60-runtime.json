@@ -84,7 +84,7 @@
       },
       "targets": [
         {
-          "expr": "100 * (sum(rate(process_cpu_time_seconds_total[1m])) / on() group_left() avg(process_cpu_count))",
+          "expr": "100 * (sum(rate(process_cpu_time_seconds_total[1m])) / on() group_left() avg(dotnet_process_cpu_count))",
           "refId": "A",
           "legendFormat": "cpu"
         }
@@ -455,8 +455,8 @@
       },
       "targets": [
         {
-          "expr": "100 * (sum by (process_cpu_state) (rate(process_cpu_time_seconds_total[1m])) / on() group_left() avg(process_cpu_count))",
-          "legendFormat": "{{process_cpu_state}}",
+          "expr": "100 * (sum by (cpu_mode) (rate(process_cpu_time_seconds_total[1m])) / on() group_left() avg(dotnet_process_cpu_count))",
+          "legendFormat": "{{cpu_mode}}",
           "refId": "A"
         }
       ],
@@ -1315,7 +1315,7 @@
       },
       "targets": [
         {
-          "expr": "process_cpu_count",
+          "expr": "dotnet_process_cpu_count",
           "refId": "A",
           "legendFormat": "cores"
         }

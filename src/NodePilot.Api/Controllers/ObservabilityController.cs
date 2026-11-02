@@ -215,12 +215,12 @@ public class ObservabilityController : ControllerBase
         var queries = new (string Key, string Title, string Query, string Unit)[]
         {
             ("executions_per_minute", "Executions / min (5m rate)",
-                "sum(rate(nodepilot_executions_started[5m])) * 60", "per_min"),
+                "sum(rate(nodepilot_executions_started_total[5m])) * 60", "per_min"),
             ("success_rate_1h", "Success rate (1h)",
-                "sum(rate(nodepilot_executions_completed{status=\"Succeeded\"}[1h])) / clamp_min(sum(rate(nodepilot_executions_completed[1h])), 0.00001)",
+                "(sum(rate(nodepilot_executions_completed_total{status=\"Succeeded\"}[1h])) or vector(0)) / clamp_min(sum(rate(nodepilot_executions_completed_total[1h])), 0.00001)",
                 "ratio"),
             ("failed_last_1h", "Failed executions (1h)",
-                "sum(increase(nodepilot_executions_completed{status=\"Failed\"}[1h]))", "count"),
+                "sum(increase(nodepilot_executions_completed_total{status=\"Failed\"}[1h]))", "count"),
             ("active_executions", "Active executions",
                 "sum(nodepilot_executions_active)", "count"),
             ("p95_duration_5m", "p95 duration (5m, ms)",
