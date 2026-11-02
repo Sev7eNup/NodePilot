@@ -5,16 +5,16 @@
   "workflows": [
     {
       "name": "Temp File Cleanup",
-      "description": "Archives a temp folder into a ZIP, then inventories the folder and computes the archive checksum in parallel. After both checks succeed, aged-out originals are removed and a summary mail is sent.",
+      "description": "Archives a temp folder into a new ZIP per source folder and run, then inventories the folder and computes the archive checksum in parallel. After both checks succeed, aged-out originals are removed and a summary mail is sent. Earlier archives are never replaced, so files a previous run deleted stay recoverable.",
       "definition": {
         "nodes": [
           { "id": "note_input", "type": "stickyNote", "position": { "x": 0, "y": 60 },
             "style": { "width": 640, "height": 110 },
             "data": { "label": "Note", "activityType": "note",
-              "text": "Phase A - Input\nThe two trigger parameters are the only thing to fill in. Both are declared as strings: the run dialog sends strings, and a number would be rejected on execute.",
+              "text": "Phase A - Input\nThe three trigger parameters are the only thing to fill in. All are declared as strings: the run dialog sends strings, and a number would be rejected on execute. Each run writes a new archive under archiveRoot.",
               "fontSize": 13, "disabled": true } },
-          { "id": "note_finish", "type": "stickyNote", "position": { "x": 740, "y": 60 },
-            "style": { "width": 1480, "height": 110 },
+          { "id": "note_finish", "type": "stickyNote", "position": { "x": 900, "y": 60 },
+            "style": { "width": 1440, "height": 110 },
             "data": { "label": "Note", "activityType": "note",
               "text": "Phase B - Verify and clean\nInventory and checksum run in parallel after successful archiving. waitAll joins both checks; only successful checks allow deletion. The summary mail follows successful cleanup.",
               "fontSize": 13, "disabled": true } },
@@ -27,12 +27,25 @@
                 "title": "Temp File Cleanup",
                 "parameters": [
                   { "name": "path",          "type": "string", "required": true, "default": "C:\\Windows\\Temp" },
-                  { "name": "olderThanDays", "type": "string", "required": true, "default": "30" }
+                  { "name": "olderThanDays", "type": "string", "required": true, "default": "30" },
+                  { "name": "archiveRoot",   "type": "string", "required": true, "default": "C:\\Archive" }
                 ]
               }
             } },
 
-          { "id": "inventory", "type": "activity", "position": { "x": 740, "y": 560 },
+          { "id": "archivePath", "type": "activity", "position": { "x": 300, "y": 400 },
+            "data": {
+              "label": "runScript: new archive path for this run",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "archivePath",
+              "config": {
+                "script": "# One archive per source folder and run: a later run must never replace the only copy of files an earlier run deleted.\n$sourceKey = ({{trg.param.path}}.TrimEnd('\\') -replace '[^A-Za-z0-9]+', '-').Trim('-')\nif ($sourceKey.Length -gt 60) { $sourceKey = $sourceKey.Substring($sourceKey.Length - 60) }\n$runStamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')\n$archiveFile = Join-Path {{trg.param.archiveRoot}} ('temp-cleanup-{0}-{1}-{2}.zip' -f $sourceKey, $runStamp, [guid]::NewGuid().ToString('N'))\nif (Test-Path -LiteralPath $archiveFile) { throw \"Archive already exists: $archiveFile\" }\nWrite-Output $archiveFile",
+                "timeoutSeconds": 30
+              }
+            } },
+
+          { "id": "inventory", "type": "activity", "position": { "x": 900, "y": 560 },
             "data": {
               "label": "folderOperation: list the temp folder",
               "activityType": "folderOperation",
@@ -41,7 +54,7 @@
               "config": { "operation": "list", "path": "{{trg.param.path}}" }
             } },
 
-          { "id": "archive", "type": "activity", "position": { "x": 400, "y": 400 },
+          { "id": "archive", "type": "activity", "position": { "x": 600, "y": 400 },
             "data": {
               "label": "zipOperation: archive the folder",
               "activityType": "zipOperation",
@@ -50,22 +63,22 @@
               "config": {
                 "operation": "compress",
                 "source": "{{trg.param.path}}",
-                "destination": "C:\\Archive\\temp-cleanup.zip",
+                "destination": "{{archivePath.param.archiveFile}}",
                 "compressionLevel": "Optimal",
-                "force": true
+                "force": false
               }
             } },
 
-          { "id": "checksum", "type": "activity", "position": { "x": 740, "y": 240 },
+          { "id": "checksum", "type": "activity", "position": { "x": 900, "y": 240 },
             "data": {
               "label": "fileHash: checksum the archive",
               "activityType": "fileHash",
               "targetMachineId": "localhost",
               "outputVariable": "checksum",
-              "config": { "path": "C:\\Archive\\temp-cleanup.zip", "algorithm": "SHA256" }
+              "config": { "path": "{{archive.param.destination}}", "algorithm": "SHA256" }
             } },
 
-          { "id": "purge", "type": "activity", "position": { "x": 1380, "y": 400 },
+          { "id": "purge", "type": "activity", "position": { "x": 1500, "y": 400 },
             "data": {
               "label": "runScript: remove the archived files",
               "activityType": "runScript",
@@ -77,14 +90,14 @@
               }
             } },
 
-          { "id": "gather", "type": "activity", "position": { "x": 1080, "y": 400 },
+          { "id": "gather", "type": "activity", "position": { "x": 1200, "y": 400 },
             "data": {
               "label": "Junction: waitAll (2)",
               "activityType": "junction",
               "config": { "mode": "waitAll" }
             } },
 
-          { "id": "mail", "type": "activity", "position": { "x": 1680, "y": 400 },
+          { "id": "mail", "type": "activity", "position": { "x": 1800, "y": 400 },
             "data": {
               "label": "Email: cleanup summary",
               "activityType": "emailNotification",
@@ -96,7 +109,7 @@
               }
             } },
 
-          { "id": "ret", "type": "activity", "position": { "x": 1980, "y": 400 },
+          { "id": "ret", "type": "activity", "position": { "x": 2100, "y": 400 },
             "data": {
               "label": "Return: archive and checksum",
               "activityType": "returnData",
@@ -109,8 +122,10 @@
             } }
         ],
         "edges": [
-          { "id": "e_trg_archive", "source": "trg", "target": "archive", "type": "labeled",
+          { "id": "e_trg_path", "source": "trg", "target": "archivePath", "type": "labeled",
             "data": { "label": "Always" } },
+          { "id": "e_path_archive", "source": "archivePath", "target": "archive", "type": "labeled",
+            "data": { "label": "On Success", "condition": "archivePath.success" } },
           { "id": "e_archive_checksum", "source": "archive", "target": "checksum", "type": "labeled",
             "data": { "label": "On Success", "condition": "archive.success" } },
           { "id": "e_archive_inventory", "source": "archive", "target": "inventory", "type": "labeled",

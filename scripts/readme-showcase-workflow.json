@@ -4,8 +4,8 @@
   "exportedAt": "2026-07-22T22:00:00Z",
   "workflows": [
     {
-      "name": "Nightly Fleet Health Check & Auto-Remediation",
-      "description": "Showcase workflow for the GitHub README - a scatter/gather pattern: nightly schedule triggers host discovery, three probes (disk, services, event-log) fan out and run in parallel, a junction gathers them, a decision routes to an ops alert or an all-green log, and the run returns a structured nightly report.",
+      "name": "Nightly Host Health Check",
+      "description": "Showcase workflow for the GitHub README - a scatter/gather pattern: a nightly schedule starts three probes of the NodePilot host (disk, services, event log) in parallel, a junction gathers them, an aggregation step turns their structured results into a verdict, and a decision routes to an ops alert or an all-green log before the run returns a structured nightly report. To cover other hosts, give each probe a targetMachineId.",
       "definition": {
         "nodes": [
           {
@@ -21,7 +21,7 @@
               "outputVariable": "trig",
               "config": {
                 "cronExpression": "0 0 2 * * ? *",
-                "description": "Nightly fleet health check, every night at 02:00"
+                "description": "Nightly host health check, every night at 02:00"
               }
             }
           },
@@ -33,13 +33,13 @@
               "y": 240
             },
             "data": {
-              "label": "runScript: Discover target hosts",
+              "label": "runScript: Identify the probed host",
               "activityType": "runScript",
               "outputVariable": "init",
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 60,
-                "script": "# Pull the managed-host list from the fleet registry\n$hosts = @('SRV-WEB-01','SRV-DB-01','SRV-FILE-01')\n$hostList = $hosts -join ','\nWrite-Output $hostList"
+                "script": "# The probes below run on the NodePilot host itself. To check other hosts, give each probe a targetMachineId.\n$hostList = $env:COMPUTERNAME\nWrite-Output $hostList"
               }
             }
           },
@@ -56,7 +56,7 @@
               "outputVariable": "logstart",
               "config": {
                 "level": "info",
-                "message": "Nightly fleet health check started - targets={{init.output}}"
+                "message": "Nightly host health check started - host={{init.output}}"
               }
             }
           },
@@ -74,7 +74,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 60,
-                "script": "$free = (Get-PSDrive C).Free / 1GB\n$freeGb = [math]::Round($free,1)\nWrite-Output (\"{0} GB free on C:\" -f $freeGb)"
+                "script": "# fault below the free-space floor, unavailable when the drive cannot be read\n$minFreeGb = 10\ntry {\n  $drive = Get-PSDrive -Name C -PSProvider FileSystem -ErrorAction Stop\n  $freeGb = [math]::Round($drive.Free / 1GB, 1)\n  $diskState = if ($freeGb -ge $minFreeGb) { 'ok' } else { 'fault' }\n  $diskDetail = \"$freeGb GB free on C: (minimum $minFreeGb GB)\"\n} catch {\n  $diskState = 'unavailable'\n  $diskDetail = \"C: could not be read: $($_.Exception.Message)\"\n}\nWrite-Output $diskDetail"
               }
             }
           },
@@ -92,7 +92,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 60,
-                "script": "Get-Service Spooler,wuauserv,WinRM |\n  Select-Object Name,Status |\n  Format-Table -AutoSize | Out-String"
+                "script": "# fault when a required service is not running, unavailable when one cannot be found\n$required = @('EventLog', 'Schedule', 'WinRM')\n$notRunning = @()\n$notFound = @()\nforeach ($name in $required) {\n  $service = Get-Service -Name $name -ErrorAction SilentlyContinue\n  if ($null -eq $service) { $notFound += $name }\n  elseif ($service.Status -ne 'Running') { $notRunning += \"$name is $($service.Status)\" }\n}\nif ($notFound.Count -gt 0) { $svcState = 'unavailable'; $svcDetail = \"not found: $($notFound -join ', ')\" }\nelseif ($notRunning.Count -gt 0) { $svcState = 'fault'; $svcDetail = $notRunning -join ', ' }\nelse { $svcState = 'ok'; $svcDetail = \"running: $($required -join ', ')\" }\nWrite-Output $svcDetail"
               }
             }
           },
@@ -110,7 +110,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 60,
-                "script": "Get-WinEvent -LogName System -MaxEvents 5 -ErrorAction SilentlyContinue |\n  Select-Object TimeCreated,Id,LevelDisplayName |\n  Format-Table -AutoSize | Out-String"
+                "script": "# fault on critical System events in the last 24 hours, unavailable when the log cannot be read\n$since = (Get-Date).AddHours(-24)\n$readError = $null\ntry {\n  $critical = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1; StartTime = $since } -ErrorAction Stop)\n} catch {\n  # Get-WinEvent reports an empty result as an error.\n  if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*') { $readError = $_.Exception.Message }\n  $critical = @()\n}\nif ($readError) { $evtState = 'unavailable'; $evtDetail = \"System log could not be read: $readError\" }\nelseif ($critical.Count -gt 0) { $evtState = 'fault'; $evtDetail = \"$($critical.Count) critical event(s), latest id $($critical[0].Id) at $($critical[0].TimeCreated.ToString('s'))\" }\nelse { $evtState = 'ok'; $evtDetail = 'no critical events in the last 24 hours' }\nWrite-Output $evtDetail"
               }
             }
           },
@@ -144,7 +144,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 60,
-                "script": "# Gather the three probe outputs and decide whether anything needs attention\n$disk = {{disk.output}}\n$svc = {{svc.output}}\n$evt = {{evt.output}}\n$issuesFound = 'false'\n$summary = \"Disk: $disk | Services: $svc | Events: $evt\"\nWrite-Output $summary"
+                "script": "# A probe that did not complete is missing evidence, never a healthy result.\n$diskRan = {{disk.success}}\n$svcRan = {{svc.success}}\n$evtRan = {{evt.success}}\n$findings = @()\nif ($diskRan -ne 'true') { $findings += 'disk: probe did not complete' }\nelseif ({{disk.param.diskState}} -ne 'ok') { $findings += 'disk: ' + {{disk.param.diskDetail}} }\nif ($svcRan -ne 'true') { $findings += 'services: probe did not complete' }\nelseif ({{svc.param.svcState}} -ne 'ok') { $findings += 'services: ' + {{svc.param.svcDetail}} }\nif ($evtRan -ne 'true') { $findings += 'event log: probe did not complete' }\nelseif ({{evt.param.evtState}} -ne 'ok') { $findings += 'event log: ' + {{evt.param.evtDetail}} }\n$issuesFound = if ($findings.Count -gt 0) { 'true' } else { 'false' }\n$summary = if ($findings.Count -gt 0) { $findings -join ' | ' } else { 'disk, services and event log are healthy' }\nWrite-Output $summary"
               }
             }
           },
@@ -196,7 +196,7 @@
                     }
                   }
                 ],
-                "defaultCaseName": "all-green"
+                "defaultCaseName": "issues-found"
               }
             }
           },
@@ -213,9 +213,9 @@
               "outputVariable": "alert",
               "config": {
                 "to": "ops-team@example.com",
-                "subject": "[NodePilot] Fleet health check needs attention",
+                "subject": "[NodePilot] Host health check needs attention",
                 "isHtml": false,
-                "body": "The nightly fleet health check flagged an issue.\n\nSummary:\n{{agg.output}}\n\nInvestigate via the NodePilot operations cockpit."
+                "body": "The nightly health check of {{init.output}} flagged an issue.\n\nFindings:\n{{agg.output}}\n\nInvestigate via the NodePilot operations cockpit."
               }
             }
           },
@@ -232,7 +232,7 @@
               "outputVariable": "green",
               "config": {
                 "level": "info",
-                "message": "Fleet health check passed - no action required. {{agg.output}}"
+                "message": "Health check of {{init.output}} passed - no action required. {{agg.output}}"
               }
             }
           },
@@ -267,7 +267,7 @@
                 "data": {
                   "summary": "{{agg.output}}",
                   "issuesFound": "{{agg.param.issuesFound}}",
-                  "targets": "{{init.output}}",
+                  "host": "{{init.output}}",
                   "disk": "{{disk.output}}",
                   "services": "{{svc.output}}",
                   "events": "{{evt.output}}"
@@ -290,7 +290,7 @@
               "label": "Note",
               "activityType": "note",
               "disabled": true,
-              "text": "Phase 1 · Discovery\n\nSchedule fires nightly, discovers the managed-host fleet, and logs the run start."
+              "text": "Phase 1 · Start\n\nSchedule fires nightly, names the probed host and logs the run start. The probes run on the NodePilot host; give them a targetMachineId to check another host."
             }
           },
           {
@@ -308,7 +308,7 @@
               "label": "Note",
               "activityType": "note",
               "disabled": true,
-              "text": "Phase 2 · Parallel probes (scatter)\n\nThree independent checks fan out and run concurrently — disk capacity, service health, and the Windows event log."
+              "text": "Phase 2 · Parallel probes (scatter)\n\nThree independent checks run concurrently — disk capacity, service health and critical System events. Each publishes ok, fault or unavailable."
             }
           },
           {
@@ -326,7 +326,7 @@
               "label": "Note",
               "activityType": "note",
               "disabled": true,
-              "text": "Phase 3 · Triage & report (gather + verdict)\n\nThe junction waits for all probes, aggregation merges the findings, the decision routes to an alert or an all-green log, a junction merges both paths, and the final step returns the nightly report."
+              "text": "Phase 3 · Triage & report (gather + verdict)\n\nThe junction waits for all probes, aggregation turns their states into findings, the decision routes to an alert or an all-green log (missing evidence counts as an issue), a junction merges both paths, and the final step returns the nightly report."
             }
           }
         ],

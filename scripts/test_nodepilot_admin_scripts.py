@@ -250,6 +250,16 @@ class ScriptContracts(unittest.TestCase):
         creates = [body for method, path, body in self.calls if method == "POST" and path == "/api/workflows"]
         publishes = [body for _, path, body in self.calls if path.endswith("/publish")]
         self.assertEqual(4, len(creates))
+        seeded_names = {body["name"] for body in creates}
+        references = set()
+        for filename in ("main.json", "planar.json", "xl.json"):
+            definition = json.loads((ROOT / "tech-demo" / filename).read_text(encoding="utf-8-sig"))
+            for node in definition["nodes"]:
+                data = node.get("data", {})
+                if data.get("activityType") == "startWorkflow":
+                    references.add(data["config"]["workflowNameOrId"])
+        self.assertTrue(references)
+        self.assertTrue(references <= seeded_names, references - seeded_names)
         self.assertTrue(all(body.pop("expectedVersion") == 1 for body in publishes))
         self.assertEqual(creates, publishes)
         self.assertTrue(all(isinstance(body["definitionJson"], str) for body in creates))

@@ -28,7 +28,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $MainName   = "NodePilot Tech-Demo -Full Showcase"
-$ChildName  = "NodePilot Tech-Demo -Child"
+$ChildName  = "NodePilot Tech-Demo - Child"
 $XlName     = "NodePilot Tech-Demo XL"
 $PlanarName = "NodePilot Tech-Demo - Planar Showcase"
 $mainJsonPath   = Join-Path $PSScriptRoot 'main.json'
