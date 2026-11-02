@@ -57,6 +57,10 @@ Planned version: **1.5.4**.
   marker is missing (#682).
 - An OIDC login with an older group list no longer overrides a newer SCIM change, such as a revoked
   group. A token issued before the update is rejected; signing in again with a fresh token works.
+- `minimatch` moves to 11.0.4 in all three npm trees (GHSA-g3hv-75wg-m249, denial of service through
+  glob patterns). In the UI and the documentation site it is only used by ESLint; in the desktop project
+  only desktop packaging uses it, through `@electron/asar`, which now gets `glob` 14 as well. None of it
+  ships in a bundle; the CI audit step rejects it all the same.
 
 ## [1.5.3] - 2026-10-30
 
