@@ -87,6 +87,12 @@ certificate warning interstitial gets in the way.
 
 ## Test directory
 
+`LabIdentity.ps1` supplies the defaults for every provisioning script, probe, and database
+check: prefix `nptest`, OU `NodePilot-SsoTest`, and groups `NPTest-Access` / `NPTest-Admins`.
+Pass the same `-UserPrefix` to every command when using a custom prefix (1-12 letters,
+digits, or hyphens). Pass matching OU/group overrides to the scripts that use them.
+`Setup-ApiHost.ps1` derives its service bind DN from those inputs unless explicitly overridden.
+
 | Account | Groups | Purpose |
 |---|---|---|
 | `svc-nptest-dir` | – | LDAPS service bind |
@@ -301,6 +307,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\ad-sso-live-test.ps1 `
 
 Drills separately, because they are long-running or disruptive:
 
+For W16, prepare a long-running test workflow and give `nptest.erin` the Operator role
+through a separate role-mapping group that does **not** grant admission or nest into
+`NPTest-Access`. Erin must still depend on direct `NPTest-Access` membership for admission;
+adding her to `NPTest-Admins` would invalidate this experiment. The default Viewer role
+supports W15 only. A requested W16 fails if execution is rejected, lacks an ID, or never
+reaches Running. Only an authentication denial (401/403) alongside a healthy independent
+admin session counts as revocation. Network/server errors fail the drill. Group membership
+is restored in `finally`, including failures after removal.
+
 ```powershell
 .\ad-sso-live-test.ps1 -IncludeOutageDrill -DcVmName dc01 -HyperVHost <hv-host>
 .\ad-sso-live-test.ps1 -IncludeRevocationDrill -RevocationWorkflowId <guid>   # 3-16 min
@@ -308,6 +323,10 @@ Drills separately, because they are long-running or disruptive:
 ```
 
 ### 10. Secure the evidence
+
+The database checks require evidence for the selected prefix. Revocation also requires
+exactly one Erin user before asserting zero active sessions, so an absent identity cannot
+produce a green result. Queries fail on database errors.
 
 ```powershell
 .\Get-KerberosEvidence.ps1 -Role Client              # on npcli01

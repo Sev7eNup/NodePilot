@@ -15,12 +15,17 @@ param(
     [string]$NtlmAliasFqdn = 'npapi01-ntlm.np.lab',
     [string]$DcFqdn = 'dc01.np.lab',
     [string]$BaseDn = 'DC=np,DC=lab',
-    [string]$ServiceBindDn = 'CN=svc-npdir,OU=NodePilot,DC=np,DC=lab',
+    [string]$ServiceBindDn,
+    [string]$UserPrefix,
+    [string]$OuName,
     [string]$ServiceBindPassword = 'Lab#20260802!Kq7z',
     [string]$CertificateThumbprint = $null,
     [int]$MaxClockSkewSeconds = 30
 )
 $ErrorActionPreference = 'Continue'
+. "$PSScriptRoot/LabIdentity.ps1"
+$identity = Resolve-NodePilotLabIdentity -UserPrefix $UserPrefix -OuName $OuName -DomainDn $BaseDn
+if (-not $ServiceBindDn) { $ServiceBindDn = $identity.ServiceBindDn }
 $results = New-Object System.Collections.ArrayList
 
 function Add-Check([string]$name, [string]$verdict, [string]$detail) {

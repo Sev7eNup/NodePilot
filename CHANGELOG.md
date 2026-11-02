@@ -55,6 +55,8 @@ Planned version: **1.5.4**.
     workflow (#722).
   - Nightly retention deletes only the run folders it created (#716). The failover drill restarts
     the original leader also after a failed takeover (#715).
+  - The SSO lab drills check the requested run and use the configured account prefix throughout
+    (#717, #645).
   - CI classifies changed files through `scripts/classify-changes.sh`, also for long file lists
     (#729).
 
