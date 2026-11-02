@@ -517,8 +517,9 @@ N("bot14-email", 5260, 1320, "emailNotification: summary", "emailNotification",
           "body": "XL run complete.\nHost: {{host.param.hostName}} ({{host.param.osName}})\nEnv: {{trg-manual.param.environment}}\nCPUs: {{host.param.cpuCount}}\nMem free: {{host.param.memFreeMB}}MB\nDisk free: {{host.param.diskFreeGB}}/{{host.param.diskTotalGB}} GB\nIteration: {{trg-manual.param.iteration}}",
           "isHtml": False})
 
-N("bot15-power", 5260, 1500, "powerManagement: abort (safe)", "powerManagement",
-  targetMachineId="localhost",
+# abort cancels any pending shutdown or restart on the host, so the demo keeps it disabled.
+N("bot15-power", 5260, 1500, "powerManagement: abort (node DISABLED)", "powerManagement",
+  targetMachineId="localhost", disabled=True,
   config={"action": "abort", "delaySeconds": 0, "force": False, "message": ""})
 
 N("bot16-log-disnode", 5260, 1680, "Log: node DISABLED", "log",

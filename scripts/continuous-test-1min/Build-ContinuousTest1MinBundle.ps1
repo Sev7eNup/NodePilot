@@ -27,7 +27,8 @@ $targets = @(
   "Test $dash textFileEdit",
   "Test $dash waitForCondition",
   "Test $dash scheduledTask",
-  "Test $dash powerManagement",
+  # Not "Test - powerManagement": its abort would cancel any pending host restart every minute.
+  'Muster Test: Child',
   "Test $dash decision",
   "Test $dash delay",
   "Test $dash log",

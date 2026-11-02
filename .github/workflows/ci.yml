@@ -186,6 +186,8 @@ jobs:
           .\scripts\release-lab\Test-UpgradeMatrix.ps1
           .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
           .\scripts\test-suite\Test-WorkflowCatalogue.ps1
+          .\scripts\test-suite\Test-TestSuiteVerification.ps1
+          .\scripts\test-suite\Test-TestSuiteSafety.ps1
           .\scripts\ad-sso-labtest\Test-LabContracts.ps1
           .\scripts\Test-DevReset.ps1
           .\scripts\Test-NightlyRetention.ps1
@@ -210,6 +212,8 @@ jobs:
           .\scripts\release-lab\Test-UpgradeMatrix.ps1
           .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
           .\scripts\test-suite\Test-WorkflowCatalogue.ps1
+          .\scripts\test-suite\Test-TestSuiteVerification.ps1
+          .\scripts\test-suite\Test-TestSuiteSafety.ps1
           .\scripts\ad-sso-labtest\Test-LabContracts.ps1
           .\scripts\Test-DevReset.ps1
           .\scripts\Test-NightlyRetention.ps1

@@ -4,8 +4,8 @@
   "exportedAt": "2026-08-30T00:00:00Z",
   "workflows": [
     {
-      "name": "[TestSuite] powerManagement",
-      "description": "The only power action that can run on a cadence without taking the host down.",
+      "name": "[TestSuite-Inv] powerManagement",
+      "description": "Cancels any pending shutdown or restart on the host. Runs only where the host owner has opted into the invasive profile and declared the host disposable.",
       "definition": {
         "nodes": [
           {
@@ -16,10 +16,10 @@
               "y": 260
             },
             "data": {
-              "label": "Schedule: 0 5/15 * * * ? *",
+              "label": "Schedule: 0 7/30 * * * ? *",
               "activityType": "scheduleTrigger",
               "config": {
-                "cronExpression": "0 5/15 * * * ? *",
+                "cronExpression": "0 7/30 * * * ? *",
                 "description": "TestSuite cadence"
               },
               "outputVariable": "trg"
@@ -33,7 +33,7 @@
               "y": 260
             },
             "data": {
-              "label": "power: abort (no-op)",
+              "label": "power: abort",
               "activityType": "powerManagement",
               "config": {
                 "action": "abort"
@@ -55,7 +55,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 60,
-                "script": "\n$out = {{v0.output}}\n# `shutdown /a` exits 1116 when there is nothing to abort; the activity treats that as\n# success on purpose, which is exactly the path a scheduled no-op takes.\nif ([string]::IsNullOrWhiteSpace($out)) { throw \"powerManagement abort produced no output\" }\n$assertOk = 'powerManagement'\n"
+                "script": "\n$out = {{v0.output}}\n# `shutdown /a` exits 1116 when there is nothing to abort; the activity treats that as success.\nif ([string]::IsNullOrWhiteSpace($out)) { throw \"powerManagement abort produced no output\" }\n$assertOk = 'powerManagement'\n"
               },
               "outputVariable": "assert",
               "targetMachineId": "localhost"
