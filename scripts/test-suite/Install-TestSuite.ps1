@@ -152,27 +152,17 @@ if (-not (Test-GlobalPresent -Name 'NP_TESTSUITE_API_URL')) {
   Write-Host "seeded global      : NP_TESTSUITE_API_URL = $BaseUrl/api/workflows"
 }
 
-function Get-GlobalValue {
-  param([string]$Name)
-  # Deliberately not a pipeline: accessing .value on an accidental collection silently
-  # returns every global's value joined together, which is how an unrelated variable's
-  # contents could otherwise end up injected into a workflow file.
-  foreach ($g in $globals) {
-    if ($g.name -eq $Name) { return [string]$g.value }
-  }
-  return $null
-}
-
 function Set-Global {
-  param([string]$Name, [string]$Value, [string]$Description)
+  param([string]$Name, [string]$Value, [string]$Description, [switch]$Secret)
   $existing = $null
   foreach ($g in $globals) { if ($g.name -eq $Name) { $existing = $g; break } }
-  $body = @{ name = $Name; value = $Value; isSecret = $false; description = $Description }
+  $body = @{ name = $Name; value = $Value; isSecret = [bool]$Secret; description = $Description }
   if ($null -eq $existing) {
     $script:globals += Invoke-NodePilotJson -Method POST -Path '/api/global-variables' -Body $body
     Write-Host "seeded global      : $Name"
   }
-  elseif ($existing.value -ne $Value) {
+  # The API masks a secret value, so a secret cannot be compared and is always written.
+  elseif ($Secret -or $existing.value -ne $Value) {
     $null = Invoke-NodePilotJson -Method PUT -Path "/api/global-variables/$($existing.id)" -Body $body
     $existing.value = $Value
     Write-Host "updated global     : $Name"
@@ -189,16 +179,14 @@ elseif (-not (Test-GlobalPresent -Name 'NP_TESTSUITE_PROBE_URL')) {
 }
 
 # The webhook trigger needs a shared secret, and a secret has no business sitting in a
-# committed workflow file. It is generated once here and injected into the definition at
-# install time; the driver reads the same value back through {{globals....}}.
-$webhookSecret = Get-GlobalValue -Name 'NP_TESTSUITE_WEBHOOK_SECRET'
-if ([string]::IsNullOrWhiteSpace($webhookSecret)) {
-  $bytes = [byte[]]::new(36)
-  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-  $webhookSecret = [Convert]::ToBase64String($bytes).Replace('+', 'A').Replace('/', 'B').Replace('=', '')
-  Set-Global -Name 'NP_TESTSUITE_WEBHOOK_SECRET' -Value $webhookSecret `
-    -Description 'TestSuite: shared secret between the webhook trigger and its driver.'
-}
+# committed workflow file. It lives in a secret global, which the API never returns, so every
+# install generates a fresh one; the loop below injects it into the webhook definition and
+# the driver reads it back through {{globals....}}.
+$bytes = [byte[]]::new(36)
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+$webhookSecret = [Convert]::ToBase64String($bytes).Replace('+', 'A').Replace('/', 'B').Replace('=', '')
+Set-Global -Name 'NP_TESTSUITE_WEBHOOK_SECRET' -Value $webhookSecret -Secret `
+  -Description 'TestSuite: shared secret between the webhook trigger and its driver.'
 # Last line of defence before the value is written into a workflow definition.
 if ($webhookSecret -notmatch '^[A-Za-z0-9]{32,}$') {
   throw "NP_TESTSUITE_WEBHOOK_SECRET does not look like a single opaque token; refusing to inject it."
@@ -405,6 +393,17 @@ foreach ($entry in @($manifest.workflows)) {
   # the same sandbox. It is not part of the publish body, so it needs its own call.
   $null = Invoke-NodePilotJson -Method PUT -Path "/api/workflows/$($current.id)/concurrency-limit" `
     -Body @{ maxConcurrentExecutions = 1 }
+}
+
+# --- renamed suite workflows ---------------------------------------------------------
+# A rename leaves the old copy behind, still enabled. powerManagement moved to the invasive
+# profile because its abort cancels any pending host restart, so its old copy must stop.
+foreach ($oldName in @('[TestSuite] powerManagement')) {
+  $old = $existing | Where-Object { $_.name -eq $oldName } | Select-Object -First 1
+  if ($null -ne $old) {
+    $null = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($old.id)/disable"
+    Write-Host "disabled superseded : $oldName"
+  }
 }
 
 # --- webhook endpoint --------------------------------------------------------------

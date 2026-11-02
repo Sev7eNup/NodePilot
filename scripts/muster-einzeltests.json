@@ -2055,7 +2055,7 @@
     },
     {
       "name": "Test — powerManagement",
-      "description": "Variante abort (sicherer No-Op). shutdown/restart/logoff/sleep/hibernate bewusst NICHT — würden die Maschine ausschalten.",
+      "description": "Variante abort, als Knoten deaktiviert: abort bricht jeden ausstehenden Shutdown oder Neustart des Hosts ab, auch einen aus einem Wartungsfenster. Nur auf einem entbehrlichen Host aktivieren. shutdown/restart/logoff/sleep/hibernate bewusst NICHT — würden die Maschine ausschalten.",
       "definition": {
         "nodes": [
           {
@@ -2089,9 +2089,10 @@
               "y": 260
             },
             "data": {
-              "label": "power: abort",
+              "label": "power: abort (deaktiviert)",
               "activityType": "powerManagement",
               "targetMachineId": "localhost",
+              "disabled": true,
               "config": {
                 "action": "abort"
               }

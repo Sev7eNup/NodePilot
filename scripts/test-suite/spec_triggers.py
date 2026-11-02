@@ -34,14 +34,23 @@ EVENT_SOURCE = "NodePilot-TestSuite"
 def _ack(kind, cid_expression, extra=""):
     """Writes runtime/acks/<kind>/<cid>. The cid expression differs per trigger because
     each source hands its payload over in a different shape. The extra block is emitted
-    first because a caller may compute the cid there."""
+    first because a caller may compute the cid there.
+
+    The cid arrives from the trigger payload, so it is parsed as a GUID and the file name
+    is its canonical form; anything else is rejected before a path is built."""
     script = (
         extra +
-        "$cid = " + cid_expression + "\n"
-        "if ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n"
+        "$cidText = " + cid_expression + "\n"
+        "$parsedCid = [guid]::Empty\n"
+        "if (-not [guid]::TryParseExact([string]$cidText, 'D', [ref]$parsedCid)) {\n"
+        "  throw 'trigger fired without a valid correlation id'\n"
+        "}\n"
+        "$cid = $parsedCid.ToString('D')\n"
         "$ackDir = Join-Path '" + ACK_DIR + "' '" + kind + "'\n"
+        "$ackFile = Join-Path $ackDir $cid\n"
+        "if ([IO.Path]::GetDirectoryName($ackFile) -ne $ackDir) { throw \"ack path escaped '$ackDir'\" }\n"
         "New-Item -ItemType Directory -Path $ackDir -Force | Out-Null\n"
-        "Set-Content -LiteralPath (Join-Path $ackDir $cid) -Value (Get-Date -Format o)\n"
+        "Set-Content -LiteralPath $ackFile -Value (Get-Date -Format o)\n"
         "$ackedCid = $cid\n")
     return Step("ack", "Acknowledge: " + kind, "runScript",
                 {"engine": "auto", "timeoutSeconds": 30, "script": script},

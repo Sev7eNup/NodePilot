@@ -42,7 +42,7 @@ Every activity type is represented at least once. Frequency highlights:
 - 11x `delay` (timing demo, retry-NofM, hold patterns)
 - 11x `junction` (all 3 modes in several places)
 - 4x `runScript` (including one with a breakpoint), 4x `fileOperation`/`folderOperation`, 4x `wmiQuery`
-- The rarer ones: 1x `forEach`, 1x `powerManagement` (action=`abort`, safe), 1x `emailNotification`
+- The rarer ones: 1x `forEach`, 1x `powerManagement` (action=`abort`, node disabled: abort cancels any pending shutdown or restart on the host), 1x `emailNotification`
 
 ### All 14 edge operators + AND/OR/NOT
 Phase D-TOP (jmatch-top fan-out) encapsulates the operator gallery in 10 log branches:

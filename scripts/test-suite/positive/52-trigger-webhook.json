@@ -46,7 +46,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 30,
-                "script": "$cid = {{manual.cid}}\nif ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n$ackDir = Join-Path 'C:\\Temp\\NP-TestSuite\\runtime\\acks' 'webhook'\nNew-Item -ItemType Directory -Path $ackDir -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $ackDir $cid) -Value (Get-Date -Format o)\n$ackedCid = $cid\n"
+                "script": "$cidText = {{manual.cid}}\n$parsedCid = [guid]::Empty\nif (-not [guid]::TryParseExact([string]$cidText, 'D', [ref]$parsedCid)) {\n  throw 'trigger fired without a valid correlation id'\n}\n$cid = $parsedCid.ToString('D')\n$ackDir = Join-Path 'C:\\Temp\\NP-TestSuite\\runtime\\acks' 'webhook'\n$ackFile = Join-Path $ackDir $cid\nif ([IO.Path]::GetDirectoryName($ackFile) -ne $ackDir) { throw \"ack path escaped '$ackDir'\" }\nNew-Item -ItemType Directory -Path $ackDir -Force | Out-Null\nSet-Content -LiteralPath $ackFile -Value (Get-Date -Format o)\n$ackedCid = $cid\n"
               },
               "outputVariable": "ack",
               "targetMachineId": "localhost"

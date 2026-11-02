@@ -53,6 +53,10 @@ Planned version: **1.5.4**.
     example writes a new archive per run and keeps the earlier ones (#723). The README showcase
     reports a failed probe instead of success (#724). The tech demo uses one name for its child
     workflow (#722).
+  - The `powerManagement` test moves to the invasive set and needs a disposable host, because
+    `abort` cancels a pending host restart (#720). Acknowledgement files accept only GUID
+    correlation IDs (#721). Verification checks every run in the window and fails when required
+    workflows are missing (#718, #719).
   - Nightly retention deletes only the run folders it created (#716). The failover drill restarts
     the original leader also after a failed takeover (#715).
   - The SSO lab drills check the requested run and use the configured account prefix throughout
