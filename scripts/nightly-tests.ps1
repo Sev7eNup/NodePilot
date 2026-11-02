@@ -25,21 +25,49 @@
   Where run folders are written. Defaults to C:\temp\nodepilot-nightly.
 
 .PARAMETER KeepRuns
-  How many past run folders to retain (older ones are pruned). Default 14.
+  How many past run folders to retain (older ones are pruned). Default 14. Only folders this
+  script created are counted or pruned: a timestamp name plus its run marker file.
 #>
 [CmdletBinding()]
 param(
   [string]$RepoRoot  = 'E:\NodePilot',
   [string]$OutputDir = 'C:\temp\nodepilot-nightly',
-  [int]   $KeepRuns  = 14
+  [ValidateRange(1, 1000)][int]$KeepRuns = 14
 )
 
 $ErrorActionPreference = 'Continue'
 $uiDir = Join-Path $RepoRoot 'src\nodepilot-ui'
 $desktopDir = Join-Path $RepoRoot 'src\nodepilot-desktop'
+
+# A run folder is owned when its name is a run timestamp and it holds a marker naming that
+# timestamp. Retention touches nothing else, so OutputDir may also hold unrelated data.
+$runMarkerName = '.nodepilot-nightly-run'
+$runNamePattern = '^\d{4}-\d{2}-\d{2}_\d{6}$'
+function New-NightlyRunDirectory {
+  param([Parameter(Mandatory)][string]$OutputDir, [Parameter(Mandatory)][string]$Stamp)
+  $dir = Join-Path $OutputDir $Stamp
+  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  Set-Content -LiteralPath (Join-Path $dir $runMarkerName) -Value $Stamp -Encoding ASCII
+  return $dir
+}
+function Remove-ExpiredNightlyRun {
+  param([Parameter(Mandatory)][string]$OutputDir, [Parameter(Mandatory)][ValidateRange(1, 1000)][int]$KeepRuns)
+  $root = (Resolve-Path -LiteralPath $OutputDir).ProviderPath.TrimEnd('\')
+  $comparison = [System.StringComparison]::OrdinalIgnoreCase
+  $owned = @(Get-ChildItem -LiteralPath $root -Directory -Force | Where-Object {
+      $marker = Join-Path $_.FullName $runMarkerName
+      $_.Name -match $runNamePattern -and
+      -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
+      [string]::Equals($_.Parent.FullName.TrimEnd('\'), $root, $comparison) -and
+      (Test-Path -LiteralPath $marker -PathType Leaf) -and
+      (Get-Content -LiteralPath $marker -TotalCount 1) -eq $_.Name
+    })
+  $owned | Sort-Object Name -Descending | Select-Object -Skip $KeepRuns |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+}
+
 $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
-$runDir = Join-Path $OutputDir $stamp
-New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+$runDir = New-NightlyRunDirectory -OutputDir $OutputDir -Stamp $stamp
 
 function Get-Count([string]$text, [string]$pattern) {
   $m = [regex]::Match($text, $pattern)
@@ -199,9 +227,7 @@ $report | Out-File -FilePath (Join-Path $runDir 'report.md') -Encoding utf8
 $report | Out-File -FilePath (Join-Path $OutputDir 'latest.md') -Encoding utf8
 Write-Host $report
 
-# --- Retention: keep the newest $KeepRuns run folders ---
-Get-ChildItem $OutputDir -Directory -ErrorAction SilentlyContinue |
-  Sort-Object Name -Descending | Select-Object -Skip $KeepRuns |
-  ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+# --- Retention: keep the newest $KeepRuns run folders this script created ---
+Remove-ExpiredNightlyRun -OutputDir $OutputDir -KeepRuns $KeepRuns
 
 if ($anyFail) { exit 1 } else { exit 0 }
