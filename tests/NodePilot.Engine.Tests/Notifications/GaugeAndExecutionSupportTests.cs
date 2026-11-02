@@ -80,7 +80,20 @@ public class ExecutionEventSupportTests
             FolderId: Guid.NewGuid(),
             FolderPath: "/ops",
             CancelledBy: null,
+            CallDepth: 0,
             TargetMachine: null);
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(3)]
+    public void EventContexts_PreservePersistedCallDepth(int callDepth)
+    {
+        var row = Row(ExecutionStatus.Failed, "authentication failed") with
+        { ParentExecutionId = callDepth > 0 ? Guid.NewGuid() : null, CallDepth = callDepth };
+        ExecutionEventSupport.BuildContext(row).CallDepth.Should().Be(callDepth);
+        ExecutionEventSupport.BuildCredentialFailureContext(row).CallDepth.Should().Be(callDepth);
+    }
 
     [Theory]
     [InlineData("Kerberos authentication failed")]

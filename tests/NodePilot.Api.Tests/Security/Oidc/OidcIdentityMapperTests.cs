@@ -22,6 +22,7 @@ public sealed class OidcIdentityMapperTests : IDisposable
     private const string AllowedGroup = "nodepilot-users";
     private readonly Microsoft.Data.Sqlite.SqliteConnection _connection;
     private readonly NodePilotDbContext _db;
+    private long _nextIssuedAt = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds();
 
     public OidcIdentityMapperTests()
     {
@@ -56,6 +57,38 @@ public sealed class OidcIdentityMapperTests : IDisposable
         (await _db.DirectoryMemberships.Where(m => m.UserId == result.User.Id)
                 .Select(m => m.GroupKey).ToListAsync())
             .Should().BeEquivalentTo(AllowedGroup, "nodepilot-admins");
+    }
+
+    [Fact]
+    public async Task EqualIssueTime_AllowsIdenticalReplayButRejectsConflictingGroupSnapshot()
+    {
+        var issuedAt = DateTimeOffset.UtcNow.AddSeconds(-10).ToUnixTimeSeconds();
+        var mapper = Mapper();
+        ClaimsPrincipal At(long time, params string[] groups)
+        {
+            var principal = Principal("same-second", "alice@example.test", groups);
+            var identity = (ClaimsIdentity)principal.Identity!;
+            identity.RemoveClaim(identity.Claims.Single(claim => claim.Type == "iat"));
+            identity.AddClaim(new Claim("iat", time.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            return principal;
+        }
+        var first = await mapper.MapAsync(At(issuedAt, AllowedGroup), TestContext.Current.CancellationToken);
+        first.Succeeded.Should().BeTrue();
+        var originalRole = first.User!.Role;
+
+        var replay = await mapper.MapAsync(At(issuedAt, AllowedGroup), TestContext.Current.CancellationToken);
+        replay.Succeeded.Should().BeTrue();
+        var conflicting = await mapper.MapAsync(At(issuedAt, AllowedGroup, "nodepilot-admins"), TestContext.Current.CancellationToken);
+
+        conflicting.Failure.Should().Be(OidcMapFailure.InvalidIdentity);
+        (await _db.Users.AsNoTracking().SingleAsync(u => u.Id == first.User.Id, TestContext.Current.CancellationToken))
+            .Role.Should().Be(originalRole);
+        (await _db.DirectoryMemberships.Where(m => m.UserId == first.User.Id).Select(m => m.GroupKey)
+            .ToListAsync(TestContext.Current.CancellationToken)).Should().Equal(AllowedGroup);
+
+        var newer = await mapper.MapAsync(At(issuedAt + 1, AllowedGroup, "nodepilot-admins"), TestContext.Current.CancellationToken);
+        newer.Succeeded.Should().BeTrue();
+        newer.User!.Role.Should().Be(UserRole.Admin);
     }
 
     [Fact]
@@ -443,13 +476,13 @@ public sealed class OidcIdentityMapperTests : IDisposable
 
     private sealed class InjectedReconciliationException : Exception;
 
-    private static ClaimsPrincipal Principal(string subject, string username, params string[] groups)
+    private ClaimsPrincipal Principal(string subject, string username, params string[] groups)
     {
         var claims = new List<Claim>
         {
             new("iss", Issuer),
             new("sub", subject),
-            new("iat", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()),
+            new("iat", Interlocked.Increment(ref _nextIssuedAt).ToString(System.Globalization.CultureInfo.InvariantCulture)),
             new("preferred_username", username),
         };
         claims.AddRange(groups.Select(group => new Claim("groups", group)));

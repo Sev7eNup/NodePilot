@@ -205,12 +205,9 @@ public class NodePilotDbContext : DbContext
             // both the range and the status filter. WorkflowStatsRefresher and the dashboard
             // still use the left prefix (StartedAt) for their own queries.
             e.HasIndex(x => new { x.StartedAt, x.Status });
-            // Keyset index for the notification event poller: ExecutionEventCollector filters
-            // WHERE CompletedAt <= cutoff AND Status IN (terminal) and paginates by
-            // (CompletedAt, Id). The indexes above only carry CompletedAt as an INCLUDE column,
-            // which cannot serve that ORDER BY / keyset seek, so this index carries it as a key
-            // column; Status stays an INCLUDE for the terminal-status filter.
-            e.HasIndex(x => new { x.CompletedAt, x.Id })
+            // Seek uncollected terminal rows without depending on timestamp/commit ordering.
+            e.HasIndex(x => new { x.TerminalNotificationCollected, x.CompletedAt, x.Id })
+                .HasDatabaseName("IX_WorkflowExecutions_NotificationCollection")
                 .HasAnnotation("SqlServer:Include", new[] { nameof(WorkflowExecution.Status) })
                 .HasAnnotation("Npgsql:IndexInclude", new[] { nameof(WorkflowExecution.Status) });
             e.HasMany(x => x.Steps).WithOne(x => x.WorkflowExecution).HasForeignKey(x => x.WorkflowExecutionId).OnDelete(DeleteBehavior.Cascade);

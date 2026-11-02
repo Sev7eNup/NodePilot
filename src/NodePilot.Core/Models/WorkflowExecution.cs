@@ -9,6 +9,9 @@ public class WorkflowExecution
     public ExecutionStatus Status { get; set; } = ExecutionStatus.Pending;
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
+
+    /// <summary>Committed with terminal notification attempts, including runs that match no rule.</summary>
+    public bool TerminalNotificationCollected { get; set; }
     public string? TriggeredBy { get; set; }
     public string? ErrorMessage { get; set; }
 

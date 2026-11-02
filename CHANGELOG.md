@@ -32,6 +32,11 @@ Planned version: **1.5.4**.
   - Input values that look like `{{…}}` stay plain text and no longer fail the step as unresolved
     references (#686).
   - Editing a text file keeps its permissions (#683).
+- **Notifications**
+  - A run that finishes while the database is briefly unavailable still triggers its notification
+    rules once the commit arrives, even when other runs finished later (#678).
+  - The call depth in notifications of nested sub-workflows is the real depth, not just 0 or 1
+    (#679).
 - **CLI and MCP**
   - `np exec --watch` shows the final state even when the live connection drops the last event
     (#725).
@@ -50,6 +55,8 @@ Planned version: **1.5.4**.
   token stayed visible (#681).
 - Log steps and returned data mask private keys before long values are shortened, also when the end
   marker is missing (#682).
+- An OIDC login with an older group list no longer overrides a newer SCIM change, such as a revoked
+  group. A token issued before the update is rejected; signing in again with a fresh token works.
 - `minimatch` moves to 11.0.4 in all three npm trees (GHSA-g3hv-75wg-m249, denial of service through
   glob patterns). In the UI and the documentation site it is only used by ESLint; in the desktop project
   only desktop packaging uses it, through `@electron/asar`, which now gets `glob` 14 as well. None of it
