@@ -172,6 +172,7 @@ jobs:
           .\deploy\Test-DeploymentTemplates.ps1
           .\deploy\Test-ArtifactSecurity.ps1
           .\deploy\Test-SetupAdapter.ps1
+          .\deploy\Test-FailoverRecovery.ps1
           .\deploy\Test-MachinePath.ps1
           .\deploy\Test-SwitcherConfig.ps1
           .\deploy\Test-DesktopUpdate.ps1
@@ -186,6 +187,7 @@ jobs:
           .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
           .\scripts\test-suite\Test-WorkflowCatalogue.ps1
           .\scripts\Test-DevReset.ps1
+          .\scripts\Test-NightlyRetention.ps1
           .\scripts\Test-ExampleWorkflowScripts.ps1
 
       - name: Deployment security contracts (PowerShell 7)
@@ -193,6 +195,7 @@ jobs:
         run: |
           .\deploy\Test-ArtifactSecurity.ps1
           .\deploy\Test-SetupAdapter.ps1
+          .\deploy\Test-FailoverRecovery.ps1
           .\deploy\Test-MachinePath.ps1
           .\deploy\Test-SwitcherConfig.ps1
           .\deploy\Test-DesktopUpdate.ps1
@@ -207,6 +210,7 @@ jobs:
           .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
           .\scripts\test-suite\Test-WorkflowCatalogue.ps1
           .\scripts\Test-DevReset.ps1
+          .\scripts\Test-NightlyRetention.ps1
           .\scripts\Test-ExampleWorkflowScripts.ps1
 
       - name: Build

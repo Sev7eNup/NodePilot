@@ -53,6 +53,8 @@ Planned version: **1.5.4**.
     example writes a new archive per run and keeps the earlier ones (#723). The README showcase
     reports a failed probe instead of success (#724). The tech demo uses one name for its child
     workflow (#722).
+  - Nightly retention deletes only the run folders it created (#716). The failover drill restarts
+    the original leader also after a failed takeover (#715).
   - CI classifies changed files through `scripts/classify-changes.sh`, also for long file lists
     (#729).
 

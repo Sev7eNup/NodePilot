@@ -166,6 +166,10 @@ Identical to single node, except:
 6. Smoke test: `curl http://nodepilot-a/healthz/leader` → 200, `curl http://nodepilot-b/healthz/leader` → 503 (or the other way round — whichever starts first becomes the leader).
 7. Run `deploy/Test-Failover.ps1`.
 
+The failover drill restores the original leader service in `finally`, including takeover
+timeouts and probe failures. A failed restart is an error requiring manual recovery.
+`-SkipServiceStop` leaves both stopping and restarting to the operator.
+
 ## HAProxy example
 
 ```haproxy
