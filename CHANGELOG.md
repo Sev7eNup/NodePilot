@@ -50,6 +50,10 @@ Planned version: **1.5.4**.
   token stayed visible (#681).
 - Log steps and returned data mask private keys before long values are shortened, also when the end
   marker is missing (#682).
+- `minimatch` moves to 11.0.4 in all three npm trees (GHSA-g3hv-75wg-m249, denial of service through
+  glob patterns). In the UI and the documentation site it is only used by ESLint; in the desktop project
+  only desktop packaging uses it, through `@electron/asar`, which now gets `glob` 14 as well. None of it
+  ships in a bundle; the CI audit step rejects it all the same.
 
 ## [1.5.3] - 2026-10-30
 
