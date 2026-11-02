@@ -30,8 +30,8 @@ param(
     [string]$NtlmAliasFqdn = 'npapi01-ntlm.np.lab',
     # Must match Setup-LabDirectory.ps1. The dedicated prefix keeps the suite from touching
     # foreign accounts in a lab that already has a NodePilot LDAP binding.
-    [string]$UserPrefix = 'nptest',
-    [string]$AccessGroup = 'NPTest-Access',
+    [string]$UserPrefix,
+    [string]$AccessGroup,
 
     # Optional DB verification (evidence for "no JIT row" and "exactly one user").
     [string]$PsqlPath = 'C:\NodePilot-Postgres\pgsql\bin\psql.exe',
@@ -53,6 +53,10 @@ param(
     [int]$RevocationTimeoutMinutes = 16
 )
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/LabIdentity.ps1"
+$identity = Resolve-NodePilotLabIdentity -UserPrefix $UserPrefix -AccessGroup $AccessGroup
+$UserPrefix = $identity.UserPrefix
+$AccessGroup = $identity.AccessGroup
 $results = New-Object System.Collections.ArrayList
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dbReady = [bool]$DbPassword -and (Test-Path $PsqlPath)
@@ -417,6 +421,7 @@ if ($IncludeDisableDrill) {
 # ---------- W15/W16. Revocation after group removal (optional) ----------
 # Directory synchronization reacts to removal; authorization staleness enforces the upper bound.
 if ($IncludeRevocationDrill) {
+    $membershipRemoved = $false
     try {
         Import-Module ActiveDirectory -ErrorAction Stop
         $erin = Invoke-SsoLogin (New-LabCredential "$UserPrefix.erin")
@@ -426,29 +431,58 @@ if ($IncludeRevocationDrill) {
         $erinSession = $erin.Session
         $execId = $null
         if ($RevocationWorkflowId) {
+            if ($erin.Body.role -notin @('Admin', 'Operator')) {
+                throw 'W16 requires erin to have the Admin or Operator role before the drill.'
+            }
             # Decode the URL-encoded np_csrf value before echoing it into the header.
             $erinCsrf = [Uri]::UnescapeDataString((Get-SessionCookie $erinSession 'np_csrf').Value)
             $x = Invoke-JsonPost "$Base/api/workflows/$RevocationWorkflowId/execute" `
                 @{ parameters = @{}; timeoutSeconds = 900 } `
                 @{ 'X-CSRF-Token' = $erinCsrf } ([ref]$erinSession)
-            $execId = $x.Body.executionId
+            $parsedId = [Guid]::Empty
+            if ($x.Status -ne 202 -or -not [Guid]::TryParse([string]$x.Body.id, [ref]$parsedId) -or $parsedId -eq [Guid]::Empty) {
+                throw "W16 execution was not accepted with an id (HTTP $($x.Status))."
+            }
+            $execId = $parsedId.ToString()
             "Execution gestartet: $execId (status=$($x.Status))"
+            $startedAt = Get-Date
+            do {
+                $state = (Invoke-RestMethod -Uri "$Base/api/executions/$execId" -WebSession $adminSession).status
+                if ($state -eq 'Running') { break }
+                if ($state -ne 'Pending' -or ((Get-Date) - $startedAt).TotalSeconds -ge 30) {
+                    throw "W16 requires a running execution before removal; observed $state."
+                }
+                Start-Sleep -Seconds 2
+            } while ($true)
         }
 
         Remove-ADGroupMember -Identity $AccessGroup -Members "$UserPrefix.erin" -Server $DcFqdn -Confirm:$false
+        $membershipRemoved = $true
         $t0 = Get-Date
         $revoked = $false
         while (((Get-Date) - $t0).TotalMinutes -lt $RevocationTimeoutMinutes) {
             Start-Sleep -Seconds 15
             try { Invoke-RestMethod -Uri "$Base/api/auth/me" -WebSession $erinSession | Out-Null }
-            catch { $revoked = $true; break }
+            catch {
+                $response = $_.Exception.Response
+                if ($null -eq $response -or [int]$response.StatusCode -notin @(401, 403)) { throw }
+                # A separate admin session must still work: an outage is not revocation evidence.
+                Invoke-RestMethod -Uri "$Base/api/auth/me" -WebSession $adminSession | Out-Null
+                $revoked = $true
+                break
+            }
         }
         $elapsed = ((Get-Date) - $t0).TotalMinutes
         Add-Result 'W15. Gruppenentzug -> Session revoked <= 15 min' `
             ($revoked -and $elapsed -le 15) ("revoked=$revoked nach {0:N1} min" -f $elapsed)
 
         if ($execId) {
-            $st = try { (Invoke-RestMethod -Uri "$Base/api/executions/$execId" -WebSession $adminSession).status } catch { 'UNBEKANNT' }
+            $stoppedAt = Get-Date
+            do {
+                $st = (Invoke-RestMethod -Uri "$Base/api/executions/$execId" -WebSession $adminSession).status
+                if ($st -notin @('Running', 'Pending') -or ((Get-Date) - $stoppedAt).TotalSeconds -ge 30) { break }
+                Start-Sleep -Seconds 2
+            } while ($true)
             Add-Result 'W16. Laufende Execution gestoppt' ($st -in @('Cancelled', 'Failed')) "executionStatus=$st"
         } else {
             Add-Skip 'W16. Laufende Execution gestoppt' 'kein -RevocationWorkflowId uebergeben'
@@ -461,10 +495,17 @@ if ($IncludeRevocationDrill) {
             Add-Skip 'W15b. DirectorySyncStatus = AccessRevoked' 'keine DB-Verbindung konfiguriert'
         }
 
-        Add-ADGroupMember -Identity $AccessGroup -Members "$UserPrefix.erin" -Server $DcFqdn
-        "$UserPrefix.erin wieder in $AccessGroup aufgenommen."
     } catch {
         Add-Result 'W15/W16. Revocation-Drill' $false "EXCEPTION: $($_.Exception.Message)"
+    } finally {
+        if ($membershipRemoved) {
+            try {
+                Add-ADGroupMember -Identity $AccessGroup -Members "$UserPrefix.erin" -Server $DcFqdn
+                "$UserPrefix.erin wieder in $AccessGroup aufgenommen."
+            } catch {
+                Add-Result 'W15/W16. Restore group membership' $false $_.Exception.Message
+            }
+        }
     }
 } else {
     Add-Skip 'W15/W16. Revocation-Drill' 'nicht angefordert (-IncludeRevocationDrill)'

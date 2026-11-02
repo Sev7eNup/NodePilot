@@ -13,17 +13,23 @@
 param(
     [string]$DomainDn = 'DC=np,DC=lab',
     [string]$UpnSuffix = 'np.lab',
-    [string]$OuName = 'NodePilot-SsoTest',
+    [string]$OuName,
     [string]$Server = $null,
     [string]$LabPassword = 'Lab#20260802!Kq7z',
     # Group names carry their own prefix. A lab that already connects NodePilot over LDAP
     # usually has groups with the product name, and those belong to a live configuration
     # (AllowedGroupSids / GlobalRoleMappings). This suite must never touch them.
-    [string]$AccessGroup = 'NPTest-Access',
-    [string]$AdminsGroup = 'NPTest-Admins',
-    [string]$UserPrefix = 'nptest'
+    [string]$AccessGroup,
+    [string]$AdminsGroup,
+    [string]$UserPrefix
 )
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/LabIdentity.ps1"
+$identity = Resolve-NodePilotLabIdentity -UserPrefix $UserPrefix -OuName $OuName -DomainDn $DomainDn -AccessGroup $AccessGroup -AdminsGroup $AdminsGroup
+$UserPrefix = $identity.UserPrefix
+$OuName = $identity.OuName
+$AccessGroup = $identity.AccessGroup
+$AdminsGroup = $identity.AdminsGroup
 Import-Module ActiveDirectory -ErrorAction Stop
 
 $srv = @{}
