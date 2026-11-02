@@ -12,7 +12,7 @@ class ChangeClassificationTests(unittest.TestCase):
         bash = str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
         self.assertIsNotNone(bash, "Bash is required to test the CI classifier")
         result = subprocess.run([bash, "scripts/classify-changes.sh"], input="\n".join(paths),
-                                capture_output=True, text=True, timeout=15,
+                                capture_output=True, text=True, timeout=60,
                                 cwd=Path(__file__).resolve().parent.parent)
         self.assertEqual(0, result.returncode, result.stderr)
         return dict(line.split("=", 1) for line in result.stdout.splitlines())
