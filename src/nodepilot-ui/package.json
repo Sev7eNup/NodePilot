@@ -94,6 +94,7 @@
     "vitest": "^4.1.4"
   },
   "overrides": {
-    "dompurify": "^3.4.17"
+    "dompurify": "^3.4.17",
+    "minimatch": "^11.0.4"
   }
 }
