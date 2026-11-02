@@ -23,7 +23,7 @@ const NOTES: Record<'de' | 'en', Record<string, string>> = {
   de: {
     note_probe: '1. Freien Speicher simulieren\nIm Startdialog gibst du freeSpaceGb ein. Die Demo übernimmt diesen Wert für die Speicherplatzprüfung; sie liest kein echtes Laufwerk.',
     note_branch: '2. Einen Zweig auswählen\nUnter 10 GB: critical. Unter 25 GB: warning. Sonst: healthy. Junction: waitAny führt den gewählten Zweig wieder zum Ergebnis zusammen.',
-    note_input: '1. Ordner und Alter wählen\npath ist der Quellordner, olderThanDays die Altersgrenze in Tagen. Lass für diese Übung beide Werte unverändert. Es werden keine echten Dateien verändert.',
+    note_input: '1. Ordner und Alter wählen\npath ist der Quellordner, olderThanDays die Altersgrenze in Tagen, archiveRoot der Ordner für das ZIP dieses Laufs. Lass für diese Übung alle drei Werte unverändert. Es werden keine echten Dateien verändert.',
     note_finish: '2. Parallel arbeiten und zusammenführen\nPrüfsumme und Bereinigung laufen gleichzeitig. Junction: waitAll wartet auf beide, bevor die Abschlussmail startet.',
     note_check: '1. Dienstzustand simulieren\nStarte manuell mit serviceState = Stopped. Die Entscheidung wählt den Wiederherstellungszweig. Diese Übung hat keinen Zeitplan.',
     note_recover: '2. Starten und erneut prüfen\nNach dem Start wartet der Workflow kurz und liest den Status erneut. Running führt zur Erfolgsmeldung; ein anderer Status zur Fehlermeldung.',
@@ -31,7 +31,7 @@ const NOTES: Record<'de' | 'en', Record<string, string>> = {
   en: {
     note_probe: '1. Simulate free space\nEnter freeSpaceGb in the start dialog. The demo uses that value for the disk-space check; it does not read a real drive.',
     note_branch: '2. Select one branch\nBelow 10 GB: critical. Below 25 GB: warning. Otherwise: healthy. Junction: waitAny joins the selected branch back into the result.',
-    note_input: '1. Choose folder and age\npath is the source folder; olderThanDays is the age threshold in days. Leave both unchanged for this exercise. No real files are modified.',
+    note_input: '1. Choose folder and age\npath is the source folder; olderThanDays is the age threshold in days; archiveRoot is the folder for the ZIP of this run. Leave all three unchanged for this exercise. No real files are modified.',
     note_finish: '2. Work in parallel, then join\nChecksum and cleanup run together. Junction: waitAll waits for both before starting the summary email.',
     note_check: '1. Simulate a service state\nStart manually with serviceState = Stopped. The decision selects recovery. This exercise does not run on a schedule.',
     note_recover: '2. Start and verify\nAfter starting the service, wait briefly and read its state again. Running leads to confirmation; another state leads to a failure notification.',
