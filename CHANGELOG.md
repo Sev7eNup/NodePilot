@@ -49,6 +49,10 @@ Planned version: **1.5.4**.
     `dotnet_process_cpu_count` (#736).
   - The Grafana reliability ranking also lists workflows that never succeeded (#737).
 - **Examples, test suite and tooling**
+  - The Windows Update health example applies `freshnessDays` (#734). The temp-file cleanup
+    example writes a new archive per run and keeps the earlier ones (#723). The README showcase
+    reports a failed probe instead of success (#724). The tech demo uses one name for its child
+    workflow (#722).
   - CI classifies changed files through `scripts/classify-changes.sh`, also for long file lists
     (#729).
 

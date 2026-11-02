@@ -186,6 +186,7 @@ jobs:
           .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
           .\scripts\test-suite\Test-WorkflowCatalogue.ps1
           .\scripts\Test-DevReset.ps1
+          .\scripts\Test-ExampleWorkflowScripts.ps1
 
       - name: Deployment security contracts (PowerShell 7)
         shell: pwsh
@@ -206,6 +207,7 @@ jobs:
           .\scripts\test-suite\Test-InvasiveFixtureOwnership.ps1
           .\scripts\test-suite\Test-WorkflowCatalogue.ps1
           .\scripts\Test-DevReset.ps1
+          .\scripts\Test-ExampleWorkflowScripts.ps1
 
       - name: Build
         run: dotnet build --configuration Release --no-restore
