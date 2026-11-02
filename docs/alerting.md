@@ -38,8 +38,8 @@ and matches this optional `Filter`, deliver via these `Routes` — unless suppre
     episode), or `unhealthy-seeded` (already unhealthy at first sight → silent, never alerts). The
     gauge collector tracks transitions here and uses the episode-start timestamp as the per-occurrence
     idempotency key.
-  - `NotificationDispatcherState` — single-row watermark (`LastCompletedAtSeen` + `LastIdSeen`) for
-    the execution-scan cursor.
+  - `NotificationDispatcherState` — initialization timestamp for terminal collection.
+    `WorkflowExecution.TerminalNotificationCollected` records each consumed execution durably.
 - Store `INotificationRuleStore` → `NotificationRuleStore` (`NodePilot.Data`). Route secrets are
   encrypted at rest via `ISecretProtector`; an `__unchanged__` sentinel lets an edit keep a stored
   secret without re-sending it. `UpdateAsync` **diffs** routes (matched-by-id updated in place, new
@@ -59,9 +59,9 @@ so in an HA cluster only the leader dispatches. Each pass:
    sampling lookback, while the policy is active. If the referenced execution, policy or instance is
    gone, the attempt is failed out with that reason; a system-alert source that throws while
    re-reading counts as a failed try and is logged (first failure, then every 20th in a row).
-2. **Collect** terminal executions since the persisted watermark. On the very first run the watermark
-   is **seeded to "now"** so existing history is never back-alerted; thereafter it advances by
-   `(CompletedAt, Id)`.
+2. **Collect** terminal executions whose collection flag is false, ordered by `(CompletedAt, Id)`.
+   The first run marks currently visible terminal history collected without alerting. Later commits
+   remain eligible regardless of their completion timestamp, including commits delayed by an outage.
 3. **Match** each event against enabled rules: event-type pre-filter → scope → filter AST (via the
    shared `ConditionEvaluator`, `EventFields` = `NotificationContext.ToFieldMap()`) → route-local filters.
 4. **Suppress** after excluding routes with an existing delivery attempt for this occurrence.
@@ -69,7 +69,7 @@ so in an HA cluster only the leader dispatches. Each pass:
    counts distinct event identities toward `MinOccurrences` within `OccurrenceWindowMinutes`,
    including across dispatcher restarts. Re-reading one event cannot renew cooldown or count again.
 5. **Persist** a Pending `NotificationDeliveryAttempt` per route **before any network I/O**
-   (idempotent on `(RuleId, RouteId, EventKey)`), advance the watermark in the same save, **then**
+   (idempotent on `(RuleId, RouteId, EventKey)`), mark the executions collected in the same save, **then**
    send. Delivery is **at-least-once**: a crash after the receiver accepted the message but before
    the final `Sent` update committed leaves a replayable Pending row and can produce a duplicate.
    `EventKey` is included in generic-webhook JSON and in `X-NodePilot-Event-Key`, so receivers can

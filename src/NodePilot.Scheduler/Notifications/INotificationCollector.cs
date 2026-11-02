@@ -20,7 +20,7 @@ internal interface INotificationCollector
 {
     /// <summary>
     /// Collects alertable contexts for this pass. May stage tracked-entity changes on
-    /// <paramref name="db"/> (execution watermark, gauge signal-states) — the dispatcher
+    /// <paramref name="db"/> (execution collection flags or collector state) — the dispatcher
     /// pipeline's single SaveChanges flushes them together with the Pending attempts,
     /// preserving persist-before-send crash-safety. Returns <c>null</c> when there is
     /// nothing to do this pass (the pipeline — including its SaveChanges — is skipped).

@@ -253,7 +253,7 @@ public class NotificationDispatcherTests
         try
         {
             var workflow = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             var ruleId = SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
             SeedExecution(db, workflow, ExecutionStatus.Failed, DateTime.UtcNow);
             var sink = new RecordingSink(NotificationChannel.Email)
@@ -343,7 +343,6 @@ public class NotificationDispatcherTests
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             NullLogger<NotificationDispatcher>.Instance,
             NodePilot.TestCommons.TestDatabaseAvailability.Available);
-        d.ScanSafetyLag = TimeSpan.Zero; // tests seed executions at "now"; disable the commit-visibility lag
         return d;
     }
 
@@ -355,8 +354,25 @@ public class NotificationDispatcherTests
             new NodePilot.Scheduler.SystemAlerts.SystemAlertCatalog(Array.Empty<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource>()),
             config, NullLogger<NotificationDispatcher>.Instance,
             NodePilot.TestCommons.TestDatabaseAvailability.Available);
-        d.ScanSafetyLag = TimeSpan.Zero;
         return d;
+    }
+
+    [Fact]
+    public async Task TerminalExecutionMatchingNoRule_IsStillDurablyCollected()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var workflow = SeedWorkflow(db);
+            SeedInitialization(db, DateTime.UtcNow);
+            SeedRule(db, "ExecutionSucceeded", Route(NotificationChannel.Email, "a@x"));
+            SeedExecution(db, workflow, ExecutionStatus.Failed, DateTime.UtcNow);
+            var sink = new RecordingSink(NotificationChannel.Email);
+            (await Build(factory, sink).DispatchOnceAsync(CancellationToken.None)).Should().Be(0);
+            (await db.WorkflowExecutions.AsNoTracking().SingleAsync()).TerminalNotificationCollected.Should().BeTrue();
+            (await db.NotificationDeliveryAttempts.CountAsync()).Should().Be(0);
+        }
+        finally { await db.DisposeAsync(); await conn.DisposeAsync(); }
     }
 
     private static Guid SeedWorkflow(NodePilotDbContext db, string name = "WF")
@@ -383,13 +399,12 @@ public class NotificationDispatcherTests
         return id;
     }
 
-    private static void SeedWatermark(NodePilotDbContext db, DateTime lastSeen)
+    private static void SeedInitialization(NodePilotDbContext db, DateTime lastSeen)
     {
         db.NotificationDispatcherStates.Add(new NotificationDispatcherState
         {
             Id = NotificationDispatcherState.SingletonId,
-            LastCompletedAtSeen = lastSeen,
-            LastIdSeen = Guid.Empty,
+            InitializedAt = lastSeen,
             UpdatedAt = lastSeen,
         });
         db.SaveChanges();
@@ -415,7 +430,7 @@ public class NotificationDispatcherTests
         => new() { Id = Guid.NewGuid(), Channel = ch, Target = target, Order = order };
 
     [Fact]
-    public async Task FirstRun_SeedsWatermark_DoesNotBackAlertHistory()
+    public async Task FirstRun_MarksVisibleHistoryCollected_DoesNotBackAlertHistory()
     {
         var (db, factory, conn) = CreateEnv();
         try
@@ -428,9 +443,14 @@ public class NotificationDispatcherTests
             var sent = await Build(factory, email).DispatchOnceAsync(CancellationToken.None);
 
             sent.Should().Be(0);
-            email.Sends.Should().BeEmpty("first run seeds the watermark to now — existing history is never back-alerted");
+            email.Sends.Should().BeEmpty("first run marks existing terminal history collected");
             (await db.NotificationDispatcherStates.CountAsync()).Should().Be(1);
             (await db.NotificationDeliveryAttempts.CountAsync()).Should().Be(0);
+            (await db.WorkflowExecutions.AsNoTracking().SingleAsync()).TerminalNotificationCollected.Should().BeTrue();
+
+            SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow.AddMinutes(-10));
+            (await Build(factory, email).DispatchOnceAsync(CancellationToken.None)).Should().Be(1,
+                "a later commit remains eligible even when its CompletedAt predates initialization");
         }
         finally { conn.Dispose(); }
     }
@@ -442,7 +462,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "ExecutionFailed",
                 Route(NotificationChannel.Email, "a@x", 0),
                 Route(NotificationChannel.GenericWebhook, "https://hook", 1));
@@ -467,7 +487,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             const string succeededOnly = """
             {"type":"comparison","op":"==","left":{"kind":"variable","source":"event","name":"status"},"right":{"kind":"literal","value":"Succeeded"}}
             """;
@@ -496,7 +516,7 @@ public class NotificationDispatcherTests
         {
             var wf1 = SeedWorkflow(db, "WF1");
             var wf2 = SeedWorkflow(db, "WF2");
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             var ruleId = SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
             var rule = await db.NotificationRules.FirstAsync(r => r.Id == ruleId);
             rule.CooldownMinutes = 60;
@@ -515,24 +535,23 @@ public class NotificationDispatcherTests
     }
 
     [Fact]
-    public async Task Rescan_AfterWatermarkRollback_DoesNotDoubleSend()
+    public async Task Rescan_AfterCollectionFlagReset_DoesNotDoubleSend()
     {
         var (db, factory, conn) = CreateEnv();
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
             SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow);
             var email = new RecordingSink(NotificationChannel.Email);
             var dispatcher = Build(factory, email);
 
             await dispatcher.DispatchOnceAsync(CancellationToken.None);
-            // Simulate a crash that lost the advanced watermark: roll it back so the same execution
-            // is rescanned.
-            var state = await db.NotificationDispatcherStates.FirstAsync();
-            state.LastCompletedAtSeen = DateTime.UtcNow.AddHours(-1);
-            state.LastIdSeen = Guid.Empty;
+            // Delivery keys remain idempotent even if an execution is explicitly recollected.
+            var execution = await db.WorkflowExecutions.SingleAsync();
+            execution.TerminalNotificationCollected = false;
+            db.Entry(execution).Property(e => e.TerminalNotificationCollected).IsModified = true;
             await db.SaveChangesAsync();
             db.ChangeTracker.Clear();
 
@@ -551,7 +570,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             var ruleId = SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
             var rule = await db.NotificationRules.FirstAsync(r => r.Id == ruleId);
             rule.CooldownMinutes = 60;
@@ -574,7 +593,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
             SeedExecution(db, wf, ExecutionStatus.Succeeded, DateTime.UtcNow); // succeeded, rule only wants failures
             var email = new RecordingSink(NotificationChannel.Email);
@@ -594,7 +613,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "CredentialFailure", Route(NotificationChannel.Email, "a@x"));
             var execId = SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow, "Access denied: invalid password");
             var email = new RecordingSink(NotificationChannel.Email);
@@ -617,7 +636,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
             SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow);
             var calls = 0;
@@ -649,7 +668,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "ExecutionFailed",
                 Route(NotificationChannel.Email, "first@x", order: 0),
                 Route(NotificationChannel.Email, "second@x", order: 1));
@@ -686,7 +705,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
             SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow);
             var email = new RecordingSink(NotificationChannel.Email) { Behavior = () => NotificationSendResult.Fail("down") };
@@ -713,7 +732,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
             SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow);
             var email = new RecordingSink(NotificationChannel.Email) { Behavior = () => NotificationSendResult.Fail("receiver down") };
@@ -753,7 +772,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             // A route whose stored cipher is not valid base64 -> GetRouteSecretAsync throws on
             // decrypt.
             var route = Route(NotificationChannel.GenericWebhook, "https://hook");
@@ -779,7 +798,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             const string filter = """
             {"type":"comparison","op":"==","left":{"kind":"variable","source":"event","name":"cancelledBy"},"right":{"kind":"literal","value":"user"}}
             """;
@@ -809,25 +828,23 @@ public class NotificationDispatcherTests
     }
 
     [Fact]
-    public async Task SafetyLag_SkipsExecutionsNewerThanTheLag()
+    public async Task LateCommitWithOlderCompletionTime_IsCollectedOnNextPass()
     {
         var (db, factory, conn) = CreateEnv();
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
-            SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow); // within the lag window
+            SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow);
             var email = new RecordingSink(NotificationChannel.Email);
             var dispatcher = Build(factory, email);
-            dispatcher.ScanSafetyLag = TimeSpan.FromMinutes(1);
+            (await dispatcher.DispatchOnceAsync(CancellationToken.None)).Should().Be(1);
 
-            (await dispatcher.DispatchOnceAsync(CancellationToken.None)).Should().Be(0, "too-recent rows are held back to dodge the commit-visibility race");
-            email.Sends.Should().BeEmpty();
-
-            SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow.AddMinutes(-5)); // safely older than the lag
+            SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow.AddMinutes(-5));
             await dispatcher.DispatchOnceAsync(CancellationToken.None);
-            email.Sends.Should().HaveCount(1);
+            email.Sends.Should().HaveCount(2, "eligibility follows durable collection, not timestamp order");
+            (await dispatcher.DispatchOnceAsync(CancellationToken.None)).Should().Be(0);
         }
         finally { conn.Dispose(); }
     }
@@ -839,7 +856,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "ExecutionFailed", Route(NotificationChannel.Email, "a@x"));
             var execId = SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow.AddMinutes(-1), errorMessage: "boom");
             // Two failed steps — the LAST-completing one must win; a machine-less failed
@@ -888,7 +905,7 @@ public class NotificationDispatcherTests
         try
         {
             var wf = SeedWorkflow(db);
-            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedInitialization(db, DateTime.UtcNow.AddHours(-1));
             SeedRule(db, "ExecutionSucceeded", Route(NotificationChannel.Email, "a@x"));
             var execId = SeedExecution(db, wf, ExecutionStatus.Succeeded, DateTime.UtcNow.AddMinutes(-1));
             db.StepExecutions.Add(new StepExecution

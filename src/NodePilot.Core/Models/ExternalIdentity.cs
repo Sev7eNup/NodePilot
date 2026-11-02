@@ -34,4 +34,7 @@ public sealed class ExternalIdentity
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime LastSeenAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Latest accepted OIDC or SCIM group observation for this authority.</summary>
+    public DateTime? GroupsObservedAt { get; set; }
 }

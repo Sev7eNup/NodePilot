@@ -543,6 +543,7 @@ public sealed class BackupRestoreService(
                 UserId = targetUserId,
                 Authority = authority,
                 Subject = subject,
+                GroupsObservedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.TryParse(
                     node?["createdAt"]?.GetValue<string>(),
                     System.Globalization.CultureInfo.InvariantCulture,

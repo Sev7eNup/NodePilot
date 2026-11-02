@@ -698,6 +698,16 @@ public sealed partial class ScimProvisioningService(
         if (currentAdminCount > 0 && currentAdminCount - currentAffectedAdmins + postAffectedAdmins == 0)
             return "The last active administrator cannot be demoted.";
 
+        var identities = await db.ExternalIdentities
+            .Where(identity => identity.Authority == authority && userIds.Contains(identity.UserId))
+            .ToListAsync(ct);
+        foreach (var identity in identities)
+        {
+            if (string.Equals(identity.Authority, authority, StringComparison.Ordinal)
+                && (identity.GroupsObservedAt is null || identity.GroupsObservedAt < now))
+                identity.GroupsObservedAt = now;
+        }
+
         foreach (var user in users)
         {
             if (changedUsers.Contains(user.Id))

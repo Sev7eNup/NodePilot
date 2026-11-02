@@ -14,6 +14,7 @@ LDAP and Windows SSO originally used provider-specific user fields, long-lived a
 - `DirectoryMembership` snapshots are authority-scoped. AD is refreshed every one to five minutes; external authorization may never be older than 15 minutes. Deactivation or group removal revokes sessions and stops pending or active automated execution.
 - AD admission requires an explicit group allowlist, LDAPS with certificate validation and service-bind credentials. Local authentication defaults to `BreakGlassOnly`; Windows SSO is Kerberos-only and requires an operator attestation that NTLM is blocked by host/domain policy.
 - OIDC uses Authorization Code + PKCE and a server-side temporary ticket store. SCIM 2.0 provisions users and groups under the same issuer authority. Both remain separately release-gated; SAML is out of scope.
+- Each identity records the latest accepted group observation. OIDC callbacks older than a committed OIDC or SCIM observation are rejected inside the authorization transaction; token freshness alone cannot supersede a newer provisioning change.
 - Authentication scheme changes are restart-required. Until real AD/Kerberos/LDAPS tests through the production proxy pass, the product label is **AD SSO Preview**, not enterprise-ready.
 
 ## Konsequenzen

@@ -18,7 +18,7 @@ namespace NodePilot.Scheduler;
 /// Leader-gated alerting dispatcher. Each pass: (1) re-sends any Pending delivery attempts left
 /// over from a crashed pass or due for a backoff retry, then (2) runs the execution-family <see
 /// cref="INotificationCollector"/>s
-/// (terminal executions since the persisted watermark, long-running, queued-long) for CUSTOM rules,
+/// (uncollected terminal executions, long-running, queued-long) for CUSTOM rules,
 /// AND the <see cref="NodePilot.Scheduler.SystemAlerts.SystemAlertEvaluator"/> for SYSTEM policies
 /// —
 /// both through the SHARED match -> suppress -> persist-Pending -> send pipeline: a Pending
@@ -34,7 +34,7 @@ namespace NodePilot.Scheduler;
 /// system
 /// policy (ADR 0008). The collectors own their EventKey shapes (collection AND crash recovery);
 /// this
-/// class owns the pass loop and pipeline. The execution watermark is seeded to "now" on first run,
+/// class owns the pass loop and pipeline. Visible terminal history is marked collected on first run,
 /// and
 /// system policies stamp an activation watermark, so existing history is never back-alerted.</para>
 /// </summary>
@@ -59,7 +59,7 @@ public class NotificationDispatcher : BackgroundService
     private readonly ILogger<NotificationDispatcher> _logger;
     private readonly TimeSpan _interval;
 
-    // The pass order is deliberate: execution watermark first (the primary source), then the
+    // The pass order is deliberate: terminal executions first (the primary source), then the
     // signal/derived collectors. Each collector also answers recovery for its own EventKey shape.
     private readonly ExecutionEventCollector _executionCollector;
     private readonly LongRunningExecutionCollector _longRunningCollector;
@@ -70,13 +70,6 @@ public class NotificationDispatcher : BackgroundService
     // sustain /
     // episode state), then reuse this dispatcher's suppress -> persist-Pending -> send primitives.
     private readonly SystemAlertEvaluator _systemEvaluator;
-
-    // Test seams — forwarded to the owning collector so tests keep configuring the dispatcher.
-    internal TimeSpan ScanSafetyLag
-    {
-        get => _executionCollector.ScanSafetyLag;
-        set => _executionCollector.ScanSafetyLag = value;
-    }
 
     internal TimeSpan LongRunningThreshold
     {
@@ -226,7 +219,7 @@ public class NotificationDispatcher : BackgroundService
     /// <summary>
     /// Shared match -> suppress -> persist-Pending -> send pipeline for any collector's contexts.
     /// One SaveChanges flushes the Pending attempts together with whatever state the collector has
-    /// already staged on the tracked context (execution watermark / gauge signal-states) —
+    /// already staged on the tracked context (execution collection flags / gauge signal-states) —
     /// preserving the persist-before-send crash-safety. Then each attempt is sent and statuses
     /// saved.
     /// </summary>
@@ -289,7 +282,7 @@ public class NotificationDispatcher : BackgroundService
     /// <summary>
     /// Shared tail of both delivery paths. One unconditional SaveChanges flushes whatever the
     /// caller
-    /// staged on the tracked context — the collector's watermark / signal-states, or the
+    /// staged on the tracked context — the collector's collection flags / signal-states, or the
     /// system-alert
     /// evaluator's match/episode state — together with the Pending attempts, even when nothing
     /// fired
