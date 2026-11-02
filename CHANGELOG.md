@@ -43,11 +43,19 @@ Planned version: **1.5.4**.
   - The MCP server rejects broken nodes and edges before it merges a workflow change (#726).
   - All MCP requests, including dependency queries, wait until the server connection is ready
     (#727).
+- **Monitoring**
+  - The observability summary queries the counter names the exporter actually publishes, so
+    executions per minute, success rate and failures show values again. The Grafana CPU panels use
+    `dotnet_process_cpu_count` (#736).
+  - The Grafana reliability ranking also lists workflows that never succeeded (#737).
+- **Examples, test suite and tooling**
+  - CI classifies changed files through `scripts/classify-changes.sh`, also for long file lists
+    (#729).
 
 ### Security
 
-- The CLI and the MCP server no longer follow redirects with the login token, so the token is never
-  sent to another host (#711).
+- The CLI, the MCP server and the Python admin scripts under `scripts/` no longer follow redirects
+  with the login token, so the token is never sent to another host (#711).
 - Logging out with the CLI also ends the MCP server's session right away (#712).
 - MCP alerting output shows webhook targets only as scheme, host and port, because the rest of the
   URL can contain tokens (#730).

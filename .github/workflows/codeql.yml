@@ -78,21 +78,11 @@ jobs:
           echo "Changed files:"
           printf '%s\n' "$changed" | sed 's/^/  /'
 
-          # C#: sources plus everything that can change the compilation CodeQL analyses.
-          cs=false
-          if printf '%s\n' "$changed" \
-               | grep -qE '(\.cs$|\.csproj$|\.props$|\.targets$|\.slnx$|^global\.json$|^dotnet-tools\.json$)'; then
-            cs=true
+          if ! classification="$(printf '%s\n' "$changed" | bash scripts/classify-changes.sh)"; then
+            both "classification failed — analysing both languages"
           fi
-
-          js=false
-          if printf '%s\n' "$changed" | grep -qE '(\.(ts|tsx|js|jsx|mjs|cjs)$|package-lock\.json$)'; then
-            js=true
-          fi
-
-          echo "cs=$cs" >> "$GITHUB_OUTPUT"
-          echo "js=$js" >> "$GITHUB_OUTPUT"
-          echo "=> csharp=$cs javascript-typescript=$js"
+          printf '%s\n' "$classification" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$classification"
 
   analyze-csharp:
     name: Analyze (csharp)

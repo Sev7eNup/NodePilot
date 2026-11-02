@@ -90,14 +90,11 @@ jobs:
           echo "Changed files:"
           printf '%s\n' "$changed" | sed 's/^/  /'
 
-          # Anything that is not a markdown file or a documentation image counts as code.
-          if printf '%s\n' "$changed" | grep -qvE '(\.md$|^docs/images/)'; then
-            decide true "non-documentation changes present — running every job"
+          if ! classification="$(printf '%s\n' "$changed" | bash scripts/classify-changes.sh)"; then
+            decide true "classification failed — running every job"
           fi
-
-          echo "code=false" >> "$GITHUB_OUTPUT"
-          echo "=> documentation only — skipping frontend, desktop and e2e."
-          echo "   Backend and docs-ui still run: markdown is an input to both."
+          printf '%s\n' "$classification" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$classification"
 
   backend:
     name: Backend build + tests
@@ -216,6 +213,9 @@ jobs:
       - name: Administration script HTTP contracts
         shell: pwsh
         run: python -m unittest discover -s scripts -p test_nodepilot_admin_scripts.py -v
+
+      - name: Test CI change classification
+        run: python -m unittest discover -s scripts -p test_ci_classification.py -v
 
       - name: Restore local tools (reportgenerator)
         run: dotnet tool restore
