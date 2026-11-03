@@ -22,6 +22,9 @@ param(
     # Directory containing the new app\ desktop\ pgsql\ deploy\ tools\ payload (full-update mode only).
     [string] $NewArtifactPath,
     [int]    $KeepBackupCount = 3,
+    # Receives the first-run setup token when no administrator exists yet: the account running
+    # this update unless another SID is given.
+    [string] $HandoffUserSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value,
     [switch] $BackupOnly
 )
 
@@ -120,9 +123,18 @@ foreach ($component in $components) {
 }
 
 $backupFile = New-DatabaseBackup
+# The provisioner deletes and re-registers both services. Their old registrations, including the
+# API's connection string, are needed to restore the database and to start the old binaries.
+$serviceSnapshots = @(
+    Get-DesktopServiceSnapshot -Name $DbServiceName
+    Get-DesktopServiceSnapshot -Name $ApiServiceName
+)
 $rollbackRoot = Join-Path $DataPath ("rollback\{0}" -f (Get-Date).ToString('yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Force -Path $rollbackRoot | Out-Null
 $swappedComponents = New-Object 'System.Collections.Generic.List[string]'
+# The data directory's ACL propagates into the rollback copies, so a restored component gets the
+# access it had in the install directory back from here.
+$componentAcls = @{}
 $previousDesktopJsonBytes = $null
 $previousDesktopJsonAcl = $null
 if (Test-Path -LiteralPath $DesktopJson) {
@@ -138,7 +150,10 @@ function Stop-Everything {
 
 function Start-Services {
     foreach ($svc in @($DbServiceName, $ApiServiceName)) {
-        if (Get-Service -Name $svc -ErrorAction SilentlyContinue) { & sc.exe start $svc | Out-Null }
+        if (-not (Get-Service -Name $svc -ErrorAction SilentlyContinue)) {
+            throw "Service '$svc' is not registered and cannot be started."
+        }
+        & sc.exe start $svc | Out-Null
         Start-Sleep -Seconds 2
     }
 }
@@ -192,7 +207,10 @@ try {
     foreach ($c in $components) {
         $cur = Join-Path $InstallPath $c
         $new = Join-Path $NewArtifactPath $c
-        if (Test-Path -LiteralPath $cur) { Move-Item -LiteralPath $cur -Destination (Join-Path $rollbackRoot $c) -Force }
+        if (Test-Path -LiteralPath $cur) {
+            $componentAcls[$c] = Get-Acl -LiteralPath $cur
+            Move-Item -LiteralPath $cur -Destination (Join-Path $rollbackRoot $c) -Force
+        }
         # Record before copy so a partially copied new component is removed on failure, even
         # when the previous installation did not yet contain that component.
         $swappedComponents.Add($c)
@@ -200,7 +218,9 @@ try {
     }
 
     Write-Step 'Re-provisioning'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $InstallPath 'deploy\Provision-LocalDb.ps1') -InstallPath $InstallPath
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $InstallPath 'deploy\Provision-LocalDb.ps1') `
+        -InstallPath $InstallPath -DataPath $DataPath -ApiServiceName $ApiServiceName -DbServiceName $DbServiceName `
+        -HandoffUserSid $HandoffUserSid
     if ($LASTEXITCODE -ne 0) { throw "Provisioner exited with code $LASTEXITCODE." }
 
     if (-not (Test-Ready)) { throw 'Health check failed after update.' }
@@ -218,6 +238,9 @@ catch {
             if (Test-Path -LiteralPath $cur) { Remove-Item -LiteralPath $cur -Recurse -Force }
             if (Test-Path -LiteralPath $saved) {
                 Move-Item -LiteralPath $saved -Destination $cur -Force
+                # Re-applying the original ACL re-propagates inheritance from the install directory,
+                # so NetworkService can run PostgreSQL again.
+                if ($componentAcls.ContainsKey($c)) { Set-Acl -LiteralPath $cur -AclObject $componentAcls[$c] }
             }
         }
         # The shell handoff lives outside the swapped binaries. Restore its origin and ACL
@@ -228,6 +251,9 @@ catch {
         } elseif (Test-Path -LiteralPath $DesktopJson) {
             Remove-Item -LiteralPath $DesktopJson -Force -ErrorAction Stop
         }
+        # The provisioner may have deleted both services or registered new ones. The restore
+        # below reads the API registration and starts the database service.
+        Restore-DesktopServiceSnapshots -Snapshots $serviceSnapshots
         # The API migrates and writes the database at startup. Keep it stopped until the
         # complete snapshot has been restored, and leave it stopped if restoration fails.
         Restore-DatabaseBackup
