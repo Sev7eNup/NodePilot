@@ -1078,6 +1078,18 @@ function Get-NodePilotGmsaRetrievalState {
     catch { return & $unknown $_.Exception.Message }
 }
 
+function Get-NodePilotGmsaRetrievalRemediation {
+    param([Parameter(Mandatory)][string]$Sam, [Parameter(Mandatory)][string]$ComputerName)
+    $accountLiteral = $Sam.Replace("'", "''")
+    $computerLiteral = $ComputerName.Replace("'", "''")
+    @(
+        ('$account = Get-ADServiceAccount -Identity ''{0}'' -Properties PrincipalsAllowedToRetrieveManagedPassword -ErrorAction Stop' -f $accountLiteral)
+        '$principals = @($account.PrincipalsAllowedToRetrieveManagedPassword | ForEach-Object { if ($_ -is [string]) { $_ } else { $_.DistinguishedName } })'
+        ('$principals += (Get-ADComputer -Identity ''{0}'' -ErrorAction Stop).DistinguishedName' -f $computerLiteral)
+        'Set-ADServiceAccount -Identity $account -PrincipalsAllowedToRetrieveManagedPassword @($principals | Sort-Object -Unique) -ErrorAction Stop'
+    ) -join "`r`n"
+}
+
 function New-NodePilotGmsaRetrievalResult {
     <#
       The verdict for the LDAP answer, separated from the directory call so every branch is
@@ -1110,8 +1122,7 @@ function New-NodePilotGmsaRetrievalResult {
             -RemediationHint ('Allow this host to retrieve the password, then RESTART it - a computer ' +
                               "account's group membership only reaches the machine through a new " +
                               'Kerberos ticket. As Domain Admin:') `
-            -Remediation ("Set-ADServiceAccount -Identity $Sam -PrincipalsAllowedToRetrieveManagedPassword " +
-                          "(Get-ADComputer '$env:COMPUTERNAME')") `
+            -Remediation (Get-NodePilotGmsaRetrievalRemediation -Sam $Sam -ComputerName $env:COMPUTERNAME) `
             -AbortMessage "$env:COMPUTERNAME may not retrieve the managed password of '$Sam'."
     }
     New-NodePilotPreflightResult -Id 'gmsa' -Title $Title -Status 'Pass' `

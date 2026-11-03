@@ -172,6 +172,7 @@ jobs:
           .\deploy\Test-DeploymentTemplates.ps1
           .\deploy\Test-ArtifactSecurity.ps1
           .\deploy\Test-SetupAdapter.ps1
+          .\deploy\Test-LocalServerHttp.ps1
           .\deploy\Test-FailoverRecovery.ps1
           .\deploy\Test-MachinePath.ps1
           .\deploy\Test-SwitcherConfig.ps1
@@ -198,6 +199,7 @@ jobs:
         run: |
           .\deploy\Test-ArtifactSecurity.ps1
           .\deploy\Test-SetupAdapter.ps1
+          .\deploy\Test-LocalServerHttp.ps1
           .\deploy\Test-FailoverRecovery.ps1
           .\deploy\Test-MachinePath.ps1
           .\deploy\Test-SwitcherConfig.ps1

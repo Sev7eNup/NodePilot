@@ -2234,11 +2234,16 @@ begin
     ScriptPath := ExpandConstant('{app}\deploy\Uninstall-NodePilot.ps1');
     if not FileExists(ScriptPath) then
     begin
+      // The script removes the marker only after a complete cleanup, so without the marker there
+      // is nothing left for it to do and Inno may finish.
+      if not RegKeyExists(HKLM64, 'SOFTWARE\NodePilot\Server') then Exit;
       SuppressibleMsgBox('The NodePilot uninstall script is missing:' + #13#10 + ScriptPath + #13#10#13#10 +
-        'The Windows service and its firewall rules have NOT been removed. Run ' +
-        'Uninstall-NodePilot.ps1 by hand, or reinstall and uninstall again.',
+        'The Windows service and its firewall rules have NOT been removed, and this uninstall ' +
+        'was stopped. Reinstall NodePilot Server, then uninstall again.',
         mbCriticalError, MB_OK, IDOK);
-      Exit;
+      // Abort in usUninstall ends the uninstaller with a non-zero exit code before Inno removes
+      // any file or registry entry, so the installation stays retryable.
+      Abort;
     end;
 
     // Built HERE, at uninstall time. This is the whole reason the [UninstallRun] section is gone.
@@ -2273,15 +2278,24 @@ begin
     Arguments := Arguments + Switches;
 
     if not Exec('powershell.exe', Arguments, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-      SuppressibleMsgBox('Could not start PowerShell to remove the NodePilot service.',
-        mbCriticalError, MB_OK, IDOK)
+    begin
+      SuppressibleMsgBox('Could not start PowerShell to remove the NodePilot service. ' +
+        'Nothing was removed; run the uninstall again.',
+        mbCriticalError, MB_OK, IDOK);
+      Abort;
+    end
     else if ResultCode <> 0 then
-      // Reported, not swallowed. The script exits non-zero when it had to leave files behind, and
-      // an operator who is told that can act on it.
-      SuppressibleMsgBox('The NodePilot uninstall reported problems (exit code ' +
+    begin
+      // The script exits non-zero while something is left. It keeps the marker and deploy\ in
+      // that case, and the abort keeps the uninstaller and its Apps & Features entry, so the
+      // same uninstall can be repeated once the cause is fixed.
+      SuppressibleMsgBox('The NodePilot uninstall could not finish (exit code ' +
         IntToStr(ResultCode) + ').' + #13#10#13#10 +
-        'Check %TEMP% for details; some files or the Windows service may still be present.',
+        'The uninstall was stopped and NodePilot Server stays registered. Fix the problem ' +
+        'reported by Uninstall-NodePilot.ps1, then uninstall again.',
         mbError, MB_OK, IDOK);
+      Abort;
+    end;
   end;
 
   if CurUninstallStep = usPostUninstall then

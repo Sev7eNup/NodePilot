@@ -1023,6 +1023,54 @@ Assert-TextMatches -Name 'a failed first install is narrated as an undo' `
 # wording written for an upgrade.
 Assert-TextMatches -Name 'the rollback names the service it registered itself' `
     -Text $rollbackBlock -Pattern "FoundMessage `"Removing the service '\`$ServiceName' that this run registered\.`""
+# The install root carries the execute grant for the service identity. A failed gMSA A-to-B
+# reinstall restored A's binaries under B's DACL, so A could not start them.
+Assert-TextMatches -Name 'the installer snapshots the install root DACL before changing it' `
+    -Text $installerScript -Pattern '(?s)\$previousInstallRootAccess = Get-NodePilotDirectoryAccessSnapshot -Path \$InstallPath.*?\$installRootAclApplied = \$true\s*\r?\nSet-DirectoryAclForService -Path \$InstallPath'
+Assert-TextMatches -Name 'the rollback restores install root access before the binaries and the service' `
+    -Text $rollbackBlock -Pattern '(?s)Restore-NodePilotDirectoryAccessSnapshot -Snapshot \$previousInstallRootAccess.*?Restore-NodePilotBinaryBackup -Backup \$installRollback.*?Restore-ServiceRollbackSnapshot -Snapshot \$previousService'
+& {
+    . $ArtifactSecurityPath
+    $root = Join-Path ([IO.Path]::GetTempPath()) ('nodepilot-installroot-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $root | Out-Null
+    # LocalService and NetworkService stand in for gMSA A and gMSA B.
+    $identityA = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-19')
+    $identityB = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-20')
+    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    $setRootAcl = {
+        param($ServiceIdentity)
+        $acl = New-Object System.Security.AccessControl.DirectorySecurity
+        $acl.SetAccessRuleProtection($true, $false)
+        foreach ($grant in @(@($me, 'FullControl'), @($ServiceIdentity, 'ReadAndExecute'))) {
+            $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+                $grant[0], $grant[1], 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+        }
+        Set-Acl -LiteralPath $root -AclObject $acl
+    }
+    $grantsTo = {
+        param($Path, $Sid)
+        @((Get-Acl -LiteralPath $Path).Access | Where-Object {
+            $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $Sid -and
+            ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::ExecuteFile)
+        }).Count -gt 0
+    }
+    try {
+        & $setRootAcl $identityA
+        $snapshot = Get-NodePilotDirectoryAccessSnapshot -Path $root
+        & $setRootAcl $identityB
+        Restore-NodePilotDirectoryAccessSnapshot -Snapshot $snapshot
+        [IO.File]::WriteAllText((Join-Path $root 'NodePilot.Api.exe'), 'restored binary')
+        $restored = Join-Path $root 'NodePilot.Api.exe'
+        if (-not (& $grantsTo $restored $identityA) -or (& $grantsTo $restored $identityB)) {
+            throw 'Deployment template check failed: a restored binary must be executable by the previous identity only.'
+        }
+        if ($null -ne (Get-NodePilotDirectoryAccessSnapshot -Path (Join-Path $root 'absent'))) {
+            throw 'Deployment template check failed: an absent install root has no access snapshot.'
+        }
+    }
+    finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-Host '  OK  a failed identity change gives the previous identity its install root access back' -ForegroundColor DarkGray
+}
 Assert-TextMatches -Name 'the rollback hands the secrets back to the previous identity too' `
     -Text $rollbackBlock -Pattern '(?s)Set-NodePilotServiceOwnedFileAcl[\s\S]{0,200}\$previousAclIdentity'
 # Guarded, so a failure before the ACL was ever touched does not rewrite a directory this run had
@@ -1203,17 +1251,105 @@ if ($purgeBlockStart -lt 0) {
 }
 $purgeBlock = $uninstallScript.Substring($purgeBlockStart)
 Assert-TextMatches -Name 'purging takes ownership before deleting owner-only files' `
-    -Text $purgeBlock -Pattern 'takeown\.exe'
-# "BUILTIN\Administrators" does not resolve on a non-English Windows.
+    -Text $purgeBlock -Pattern '(?s)Grant-NodePilotPurgeAccess -Path \$DataPath.*?Remove-Item -LiteralPath \$DataPath'
+$purgeAccessStart = $uninstallScript.IndexOf('function Grant-NodePilotPurgeAccess')
+if ($purgeAccessStart -lt 0) {
+    throw 'Deployment template check failed: could not locate the purge ownership helper in the uninstaller.'
+}
+$purgeAccess = $uninstallScript.Substring($purgeAccessStart,
+    $uninstallScript.IndexOf("`nWrite-Step", $purgeAccessStart) - $purgeAccessStart)
+# "BUILTIN\Administrators" does not resolve on a non-English Windows, and takeown /D expects a
+# localized answer (Y on English, J on German Windows). /A names the group without either.
+Assert-TextMatches -Name 'ownership goes to Administrators without a localized name' `
+    -Text $purgeAccess -Pattern 'takeown\.exe /F \$ItemPath /A'
+Assert-TextDoesNotMatch -Name 'takeown is never given a localized confirmation answer' `
+    -Text $uninstallScript -Pattern 'takeown[^\r\n]*/D\b'
 Assert-TextMatches -Name 'the ownership grant uses the well-known SID, not a localised group name' `
-    -Text $purgeBlock -Pattern 'S-1-5-32-544'
+    -Text $purgeAccess -Pattern 'S-1-5-32-544'
 Assert-TextDoesNotMatch -Name 'the ownership grant must not use a localised group name' `
-    -Text $purgeBlock -Pattern 'BUILTIN\\Administrators'
+    -Text $purgeAccess -Pattern 'BUILTIN\\Administrators'
 # (OI) and (CI) are CONTAINER inheritance flags. Applied to a leaf file, icacls drops them, reports
 # "Successfully processed 1 files" and adds no ACE whatsoever - so the grant looks like it worked
 # and the file stays undeletable. Measured on the lab host against jwt-secret.key.
 Assert-TextDoesNotMatch -Name 'the grant must not carry container inheritance flags' `
-    -Text $purgeBlock -Pattern 'icacls[^\r\n]*\(OI\)'
+    -Text $purgeAccess -Pattern 'icacls[^\r\n]*\(OI\)'
+
+# A failed native step leaves the data in place and fails the uninstall instead of deleting part
+# of a tree it could not open.
+Assert-TextMatches -Name 'ownership failures stop the purge before anything is deleted' `
+    -Text $purgeBlock -Pattern '(?s)if \(\$ownershipFailures\.Count -gt 0\) \{.*?\$dataPathRemaining = \$true.*?\}\s*else \{\s*try \{\s*Remove-Item -LiteralPath \$DataPath'
+
+# The helper against a real tree with a folder this account cannot list until its "ownership" is
+# taken, which is what an owner-only directory looks like to an administrator.
+& {
+    $uninstallErrors = $null
+    $uninstallAst = [System.Management.Automation.Language.Parser]::ParseFile(
+        $UninstallScriptPath, [ref]$null, [ref]$uninstallErrors)
+    if ($uninstallErrors.Count) { throw 'Uninstaller contains PowerShell syntax errors.' }
+    $helper = $uninstallAst.Find({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Grant-NodePilotPurgeAccess'
+    }, $false)
+    . ([scriptblock]::Create($helper.Extent.Text))
+    $fixture = Join-Path ([IO.Path]::GetTempPath()) ('nodepilot-purge-' + [Guid]::NewGuid().ToString('N'))
+    $locked = Join-Path $fixture 'keys'
+    New-Item -ItemType Directory -Path (Join-Path $locked 'inner') -Force | Out-Null
+    foreach ($file in @('jwt-secret.key', 'keys\key-1.xml', 'keys\inner\key-2.xml')) {
+        [IO.File]::WriteAllText((Join-Path $fixture $file), 'fixture')
+    }
+    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    $deny = New-Object System.Security.AccessControl.FileSystemAccessRule($me, 'ListDirectory', 'Deny')
+    $lockedAcl = Get-Acl -LiteralPath $locked
+    $lockedAcl.AddAccessRule($deny)
+    Set-Acl -LiteralPath $locked -AclObject $lockedAcl
+    $calls = New-Object 'System.Collections.Generic.List[string]'
+    $unlock = {
+        param($ItemPath)
+        $calls.Add("own:$ItemPath")
+        if ($ItemPath -eq $locked) {
+            $acl = Get-Acl -LiteralPath $locked
+            [void]$acl.RemoveAccessRule($deny)
+            Set-Acl -LiteralPath $locked -AclObject $acl
+        }
+        0
+    }
+    try {
+        $failures = @(Grant-NodePilotPurgeAccess -Path $fixture -TakeOwnership $unlock `
+            -GrantAdministrators { param($ItemPath) $calls.Add("grant:$ItemPath"); 0 })
+        $expected = @($fixture, (Join-Path $fixture 'jwt-secret.key'), $locked, (Join-Path $locked 'inner'),
+            (Join-Path $locked 'key-1.xml'), (Join-Path $locked 'inner\key-2.xml'))
+        $missing = @($expected | Where-Object {
+            $calls.IndexOf("own:$_") -lt 0 -or $calls.IndexOf("grant:$_") -lt $calls.IndexOf("own:$_") })
+        if ($failures.Count -ne 0 -or $missing.Count -ne 0) {
+            throw "Deployment template check failed: purge ownership must reach every item behind an unlistable folder (missing: $($missing -join ', '))."
+        }
+
+        $calls.Clear()
+        $failures = @(Grant-NodePilotPurgeAccess -Path $fixture `
+            -TakeOwnership { param($ItemPath) $calls.Add("own:$ItemPath"); if ($ItemPath -like '*jwt-secret.key') { 1 } else { 0 } } `
+            -GrantAdministrators { param($ItemPath) $calls.Add("grant:$ItemPath"); 0 })
+        if ($failures.Count -ne 1 -or $failures[0] -notmatch 'takeown exited with 1' -or
+            $calls.Contains("grant:$(Join-Path $fixture 'jwt-secret.key')")) {
+            throw 'Deployment template check failed: a failed takeown must be reported and must skip the grant.'
+        }
+    }
+    finally {
+        $acl = Get-Acl -LiteralPath $locked
+        [void]$acl.RemoveAccessRule($deny)
+        Set-Acl -LiteralPath $locked -AclObject $acl
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host '  OK  purge ownership is taken item by item without a localized answer and reports native failures' -ForegroundColor DarkGray
+}
+
+# A failed cleanup must stay repeatable: the marker and deploy\ are removed only after everything
+# else is gone, and both setup uninstallers abort before Inno removes anything.
+Assert-TextMatches -Name 'the uninstaller keeps the marker and its scripts while anything is left' `
+    -Text $uninstallScript -Pattern '(?s)if \(\$installPathRemaining -or \$backupsRemaining -or \$dataPathRemaining\) \{.*?exit 1\s*\}.*?Remove-Item -LiteralPath \$recoveryHelperPath.*?Remove-Item -LiteralPath \$markerPath'
+Assert-TextMatches -Name 'the uninstaller defers deploy\ while it empties the install directory' `
+    -Text $uninstallScript -Pattern "\`$entry\.Name -eq \`$recoveryHelperName\) \{ continue \}"
+Assert-TextMatches -Name 'a failed service deletion stops the uninstall before files are removed' `
+    -Text $uninstallScript -Pattern '(?s)\$deleteExit -ne 0 -and \$deleteExit -ne 1072\) \{\s*throw'
 
 # --- server setup wizard contracts -------------------------------------------------------------
 # The Pascal side has no unit-test story at all, so what CAN be pinned statically is pinned here
@@ -1225,6 +1361,16 @@ Assert-TextDoesNotMatch -Name 'the server setup must not use a [Run] section' `
     -Text $serverIss -Pattern '(?mi)^\s*\[Run\]'
 Assert-TextMatches -Name 'every Exec result is inspected' `
     -Text $serverIss -Pattern '(?m)ResultCode\s*<>\s*0'
+# Abort in usUninstall is the one place Inno stops an uninstall before it removes files and the
+# Apps & Features entry, with a non-zero exit code for /SILENT callers.
+$serverUninstallStep = [regex]::Match($serverIss,
+    '(?s)procedure CurUninstallStepChanged\(CurUninstallStep: TUninstallStep\);.*?\r?\nend;').Value
+Assert-TextMatches -Name 'a failed server cleanup aborts the uninstall' `
+    -Text $serverUninstallStep -Pattern '(?s)else if ResultCode <> 0 then\s*begin.*?Abort;\s*end;'
+Assert-TextMatches -Name 'a server cleanup that cannot start aborts the uninstall' `
+    -Text $serverUninstallStep -Pattern "(?s)if not Exec\('powershell\.exe', Arguments.*?then\s*begin.*?Abort;\s*end"
+Assert-TextMatches -Name 'a missing server cleanup script aborts while the installation marker exists' `
+    -Text $serverUninstallStep -Pattern "(?s)if not FileExists\(ScriptPath\) then\s*begin\s*//[^\r\n]*\r?\n\s*//[^\r\n]*\r?\n\s*if not RegKeyExists\(HKLM64, 'SOFTWARE\\NodePilot\\Server'\) then Exit;.*?Abort;"
 
 # Windows Server 2022 is build 20348. Copying the desktop installer's 22000 would make the SERVER
 # setup refuse to run on the only operating system it targets.

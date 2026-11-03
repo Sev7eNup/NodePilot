@@ -676,6 +676,10 @@ After an installation through the GUI setup, the same is possible through "Apps 
 & 'C:\Program Files\NodePilot\unins000.exe' /VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1
 ```
 
+If something cannot be removed, the uninstall stops with a non-zero exit code and keeps the
+installation marker, the deploy scripts and the "Apps & features" entry. Fix the cause it reports
+and run the same uninstall again.
+
 **The database is never removed, and there is no option for it.** NodePilot does not create it — it
 was provisioned separately in chapter 2, often has its own backup and replication regime, and in an
 active/passive cluster both nodes share it. For the same reason, the gMSA's "Log on as a service"

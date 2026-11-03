@@ -84,6 +84,18 @@ Planned version: **1.5.4**.
   - The MCP server rejects broken nodes and edges before it merges a workflow change (#726).
   - All MCP requests, including dependency queries, wait until the server connection is ready
     (#727).
+- **Setup and uninstall**
+  - A server uninstall whose cleanup fails stops before the "Apps & features" entry is removed,
+    keeps the installation marker and the deploy scripts and exits with a non-zero code, so the
+    same uninstall can be run again. A failed service deletion stops it before any file is removed
+    (#714).
+  - Deleting the data on uninstall (`-PurgeData`, `/PURGEDATA=1`) also works on German Windows. If
+    ownership of an item cannot be taken, nothing under the data directory is deleted (#731).
+  - When a reinstall that changes the service account fails, the rollback gives the previous
+    account its access to the install directory back, so the restored service starts (#735).
+  - The gMSA repair command suggested by the setup check adds this host to the existing principals
+    instead of replacing them. The deploy README no longer suggests delegation on every target
+    (#713).
 - **Monitoring**
   - The observability summary queries the counter names the exporter actually publishes, so
     executions per minute, success rate and failures show values again. The Grafana CPU panels use
@@ -121,6 +133,9 @@ Planned version: **1.5.4**.
 - The CLI, the MCP server and the Python admin scripts under `scripts/` no longer follow redirects
   with the login token, so the token is never sent to another host (#711).
 - Logging out with the CLI also ends the MCP server's session right away (#712).
+- The server setup accepts only the configured certificate, by thumbprint, for its health probe and
+  the first login, does not follow redirects there and no longer turns off certificate validation
+  for the whole process.
 - MCP alerting output shows webhook targets only as scheme, host and port, because the rest of the
   URL can contain tokens (#730).
 - GitHub tokens in step output are masked except for their prefix such as `ghp_`; before, the whole

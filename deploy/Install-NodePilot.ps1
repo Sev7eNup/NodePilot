@@ -220,6 +220,7 @@ if (-not (Test-Path -LiteralPath $ArtifactSecurityScript -PathType Leaf)) {
 }
 . $ArtifactSecurityScript
 . (Join-Path $PSScriptRoot 'DeploymentProgress.ps1')
+. (Join-Path $PSScriptRoot 'LocalServerHttp.ps1')
 
 # Readiness checks live in their own file because the setup wizard runs the same set behind a
 # re-check button. Because of that shared use, nothing in Preflight.ps1 may mutate anything.
@@ -250,6 +251,8 @@ $postgresRootCertificatePreviouslyExisted = $false
 $postgresRootCertificateTouched = $false
 $installMutationStarted = $false
 $dataAclApplied = $false
+$previousInstallRootAccess = $null
+$installRootAclApplied = $false
 try {
     if (-not (Test-Path -LiteralPath $ArtifactPath -PathType Leaf)) { throw "Artifact not found: $ArtifactPath" }
     $ArtifactPath = (Resolve-Path -LiteralPath $ArtifactPath).Path
@@ -585,47 +588,19 @@ function Enable-SqlReadCommittedSnapshot {
 function Invoke-HealthProbe {
     param(
         [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$CertificateThumbprint,
         [int]$TimeoutSeconds = 60
     )
-    # Trust any cert on localhost - the installer may run before a public hostname resolves,
-    # and the only caller is the installer itself.
-    if ($PSVersionTable.PSVersion.Major -ge 6) {
-        $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-        while ((Get-Date) -lt $deadline) {
-            try {
-                $r = Invoke-WebRequest -Uri $Url -UseBasicParsing -SkipCertificateCheck -TimeoutSec 5
-                if ($r.StatusCode -eq 200) { return $true }
-            } catch { Start-Sleep -Seconds 2 }
-        }
-        return $false
-    } else {
-        if (-not ('TrustAllCerts' -as [type])) {
-            Add-Type @"
-using System.Net; using System.Security.Cryptography.X509Certificates;
-public class TrustAllCerts : ICertificatePolicy {
-  public bool CheckValidationResult(ServicePoint s, X509Certificate c, WebRequest r, int p) { return true; }
-}
-"@
-        }
-        $previousCertificatePolicy = [System.Net.ServicePointManager]::CertificatePolicy
-        $previousSecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
         try {
-            [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCerts
-            [System.Net.ServicePointManager]::SecurityProtocol = 'Tls12, Tls13'
-            $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-            while ((Get-Date) -lt $deadline) {
-                try {
-                    $r = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5
-                    if ($r.StatusCode -eq 200) { return $true }
-                } catch { Start-Sleep -Seconds 2 }
-            }
-            return $false
+            $response = Invoke-NodePilotLocalHttps -Uri $Url -CertificateThumbprint $CertificateThumbprint -TimeoutSeconds 5
+            if ($response.StatusCode -eq 200) { return $true }
         }
-        finally {
-            [System.Net.ServicePointManager]::CertificatePolicy = $previousCertificatePolicy
-            [System.Net.ServicePointManager]::SecurityProtocol = $previousSecurityProtocol
-        }
+        catch { }
+        Start-Sleep -Seconds 2
     }
+    return $false
 }
 
 function Grant-LogOnAsServiceRight {
@@ -1008,6 +983,10 @@ if (Test-Path -LiteralPath $previousSettingsPath -PathType Leaf) {
     $previousSettingsBytes = [IO.File]::ReadAllBytes($previousSettingsPath)
 }
 
+# The install root grants the service identity execute access. A failed identity change must give
+# the previous identity that access back before its restored binaries start.
+$previousInstallRootAccess = Get-NodePilotDirectoryAccessSnapshot -Path $InstallPath
+
 if ((Test-Path -LiteralPath $InstallPath -PathType Container) -and
     @(Get-ChildItem -LiteralPath $InstallPath -Force).Count -gt 0) {
     Write-Step 'Backing up the existing installation'
@@ -1073,6 +1052,7 @@ New-Item -ItemType Directory -Path (Join-Path $DataPath 'logs') -Force | Out-Nul
 # The binaries are read-only for the service: it executes them, it never rewrites them.
 # Inheritance is dropped here too, so a permissive parent (a custom root on D:\ inherits
 # BUILTIN\Users:(M) from the volume) cannot reach the files the service starts from.
+$installRootAclApplied = $true
 Set-DirectoryAclForService -Path $InstallPath -ServiceAccount $AclIdentity `
     -ReadOnlyForService -SkipServiceRule:$isLocalSystem
 Set-DirectoryAclForService -Path $DataPath -ServiceAccount $AclIdentity -SkipServiceRule:$isLocalSystem
@@ -1438,7 +1418,7 @@ try {
 # spamming "false-positive failed" reports for installs that ARE actually succeeding.
 $probeUrl = "https://localhost:$HttpsPort/healthz/ready"
 Write-Info "  Probing $probeUrl (up to 180s)..."
-if (-not (Invoke-HealthProbe -Url $probeUrl -TimeoutSeconds 180)) {
+if (-not (Invoke-HealthProbe -Url $probeUrl -CertificateThumbprint $NormalizedThumbprint -TimeoutSeconds 180)) {
     Show-NodePilotServiceStartDiagnostics -DataPath $DataPath
     throw "Service did not report /healthz/ready within 180s. Check the NodePilot and Windows Application logs for the startup error."
 }
@@ -1669,6 +1649,12 @@ catch {
                 Write-Host "[install] Undoing this installation - nothing was here before..." -ForegroundColor Yellow
                 Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath `
                     -FoundMessage "Removing the service '$ServiceName' that this run registered."
+            }
+            # Before the binaries are copied back: restored files inherit this DACL, and the
+            # previous service identity has to be able to execute them.
+            if ($installRootAclApplied -and $previousInstallRootAccess -and
+                (Test-Path -LiteralPath $InstallPath -PathType Container)) {
+                Restore-NodePilotDirectoryAccessSnapshot -Snapshot $previousInstallRootAccess
             }
             if ($installRollback) {
                 # Refuses a backup whose DACL or files changed since this run made it, before the
