@@ -1,7 +1,8 @@
 #requires -Version 5.1
 # Runs the scripts of the shipped example workflows against synthetic evidence: the temp
 # cleanup keeps every run's archive, the host health check alerts on faults and missing
-# evidence, and the Windows Update check applies freshnessDays.
+# evidence, and the Windows Update check applies freshnessDays. The scripts of the browser
+# demo fixtures are parsed only, never run.
 [CmdletBinding()]
 param()
 Set-StrictMode -Version 3.0
@@ -158,6 +159,22 @@ try {
         $script:hotfixMode = $(if ($case.ContainsKey('Mode')) { $case.Mode } else { '' })
         $fresh = (Invoke-StepScript -Script $tailScript -Capture 'updateFresh').updateFresh
         Assert-Example ($fresh -eq $case.Fresh) "Hotfix ages '$($case.Ages -join ',')' ($($script:hotfixMode)) gave updateFresh '$fresh' instead of '$($case.Fresh)'."
+    }
+
+    # --- browser demo fixtures: every runScript parses (they are exportable) --------------
+    $fixtures = Join-Path $PSScriptRoot '..\src\nodepilot-ui\demo\seed\fixtures'
+    foreach ($file in Get-ChildItem -LiteralPath $fixtures -Filter '*.workflow.json') {
+        $definition = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+        $scripts = @($definition.nodes | Where-Object {
+                $_.PSObject.Properties['data'] -and $_.data.PSObject.Properties['activityType'] -and $_.data.activityType -eq 'runScript' })
+        Assert-Example ($scripts.Count -gt 0) "$($file.Name) has no runScript step to parse."
+        foreach ($node in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseInput([string]$node.data.config.script, [ref]$tokens, [ref]$parseErrors)
+            $detail = $(if ($parseErrors.Count -gt 0) { $parseErrors[0].Message } else { '' })
+            Assert-Example ($parseErrors.Count -eq 0) "$($file.Name) step '$($node.id)' does not parse: $detail"
+        }
     }
 } finally {
     Remove-Item -LiteralPath $sandbox -Recurse -Force

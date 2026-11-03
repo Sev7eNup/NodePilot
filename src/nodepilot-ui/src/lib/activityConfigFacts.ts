@@ -126,6 +126,12 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
     smartDefaults: inheritExecutionContext,
   },
   [ACTIVITY_TYPES.SCHEDULED_TASK]: {
+    requiredConfig: (config) => {
+      if (config.action !== 'register' || !config.runAsUser || isTemplate(config.runAsUser)) return null;
+      const account = String(config.runAsUser).trim();
+      return /^(?:NT AUTHORITY\\)?(?:SYSTEM|LOCAL SERVICE|NETWORK SERVICE)$/i.test(account) || account.endsWith('$')
+        ? null : i18n.t('activities:validation.scheduledTaskServiceAccount');
+    },
     smartDefaults: inheritExecutionContext,
   },
   [ACTIVITY_TYPES.REGISTRY_OPERATION]: {
@@ -201,6 +207,18 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
     smartDefaults: inheritExecutionContext,
   },
   [ACTIVITY_TYPES.WAIT_FOR_CONDITION]: {
+    requiredConfig: (config) => {
+      const mode = config.conditionType || 'script';
+      const required = mode === 'pathExists' ? ['path', 'pathRequired']
+        : mode === 'serviceRunning' ? ['serviceName', 'serviceNameRequired']
+        : mode === 'httpOk' ? ['url', 'urlRequired']
+        : mode === 'portOpen' ? ['host', 'hostRequired'] : ['script', 'scriptRequired'];
+      if (!hasValueOrTemplate(config[required[0]])) return i18n.t(`activities:validation.${required[1]}`);
+      if (mode === 'portOpen' && !(typeof config.port === 'number' && Number.isInteger(config.port) && config.port >= 1 && config.port <= 65535)) {
+        return i18n.t('activities:validation.portRequired');
+      }
+      return null;
+    },
     smartDefaults: inheritExecutionContext,
   },
   [ACTIVITY_TYPES.REST_API]: {

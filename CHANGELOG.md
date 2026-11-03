@@ -42,6 +42,15 @@ Planned version: **1.5.4**.
   - Undo right after typing in a property field restores the value from before the edit (#595).
   - A save, lock change, publish or run that finishes after you switched to another workflow no
     longer acts on the workflow you opened in the meantime (#692).
+  - Undo and a restored draft also update open property panels: an edge switches back to its
+    expression, an agent's host list shows the restored values (#695).
+  - Text-file delete can switch to line-range and pattern mode again (#601).
+  - `waitForCondition` in `portOpen` mode saves the default port 443 it shows, and a probe without
+    host or valid port is flagged (#702).
+  - `scheduledTask` registration accepts only built-in or managed service accounts and no longer
+    suggests ordinary domain users with delegation (#705).
+  - The step details of a past run label the workflow's current configuration as such and show the
+    target machine the run actually used (#603).
 - **Management pages and settings**
   - Saving credentials, machines, users, global variables, maintenance windows, custom activities,
     alerting rules and policies or a settings section locks the form until the server answers. A
@@ -71,7 +80,8 @@ Planned version: **1.5.4**.
   - The Windows Update health example applies `freshnessDays` (#734). The temp-file cleanup
     example writes a new archive per run and keeps the earlier ones (#723). The README showcase
     reports a failed probe instead of success (#724). The tech demo uses one name for its child
-    workflow (#722).
+    workflow (#722). The SCCM/AD example of the browser demo is valid PowerShell again, and CI
+    parses every demo fixture script (#698).
   - The `powerManagement` test moves to the invasive set and needs a disposable host, because
     `abort` cancels a pending host restart (#720). Acknowledgement files accept only GUID
     correlation IDs (#721). Verification checks every run in the window and fails when required

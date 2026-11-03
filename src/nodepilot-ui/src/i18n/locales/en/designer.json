@@ -48,6 +48,9 @@
       "fromRunStart": "+{{offset}} from run start",
       "duration": "Duration: {{duration}}",
       "input": "Input",
+      "currentConfiguration": "Current workflow configuration",
+      "currentConfigurationHint": "This is the current draft, not a snapshot of the inputs used by this execution.",
+      "recordedTarget": "Recorded execution target",
       "targetMachine": "Target machine",
       "credential": "Credential",
       "outputVar": "Output var"

@@ -257,7 +257,7 @@
       "force": "Force (overwrites task with same name)",
       "forceOn": "Existing task will be replaced.",
       "forceOff": "Fails if the task already exists.",
-      "runAsHint": "Note: domain users work without a password only if resource-based constrained delegation is set up. Built-ins (<0>SYSTEM</0>, <1>NETWORK SERVICE</1>, <2>LOCAL SERVICE</2>) need no password.",
+      "runAsHint": "Registration uses the ServiceAccount logon type. Use <0>SYSTEM</0>, <1>NETWORK SERVICE</1>, <2>LOCAL SERVICE</2> or a managed service account configured on the target. Ordinary domain-user accounts are not supported; delegation does not change this limitation.",
       "getOutputHint": "Output: <0 />, <1 /> (0 = success), <2 />.",
       "weekdayShort": [
         "Mo",

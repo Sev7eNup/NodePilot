@@ -55,6 +55,8 @@ it('step input resolves machine names using options without operational statisti
   );
 
   expect(await screen.findByText('Target Machine')).toBeInTheDocument();
+  expect(screen.getByText('Current workflow configuration')).toBeInTheDocument();
+  expect(screen.getByText(/not a snapshot of the inputs/)).toBeInTheDocument();
   expect(options).toHaveBeenCalledTimes(1);
   expect(statistics).not.toHaveBeenCalled();
 });
@@ -639,6 +641,7 @@ describe('ExecutionPanel', () => {
           stepId: 'free-step',
           stepName: 'Free Disk Space',
           stepType: 'custom:disk_free_check',
+          targetMachine: 'recorded-server.example.test',
           status: 'Succeeded',
           output: null,
           errorOutput: null,
@@ -671,6 +674,8 @@ describe('ExecutionPanel', () => {
     await waitFor(() => expect(screen.getByText('Output parameters')).toBeInTheDocument());
     expect(screen.getByText(/"freeGb": "42"/)).toBeInTheDocument();
     expect(screen.getByText(/"status": "ok"/)).toBeInTheDocument();
+    expect(screen.getByText('recorded-server.example.test')).toBeInTheDocument();
+    expect(screen.getByText(/Recorded execution target/)).toBeInTheDocument();
   });
 });
 

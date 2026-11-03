@@ -174,7 +174,7 @@ For shutdown and restart, `force` defaults to `true`. With `force=false`, `delay
 
 **Remote.** Usually requires admin rights on the target.
 
-- **Config:** `action` (get/start/stop/enable/disable/unregister/register, default `get`), `taskName`, `taskPath` (default `\`). Register only: `program`, `arguments`, `workingDirectory`, `triggerType` (once/daily/weekly/atLogon/atStartup), `startTime`, `daysOfWeek[]`, `weeksInterval`, `daysInterval`, `runAsUser` (default SYSTEM), `runLevel` (limited/highest), `description`, `force`
+- **Config:** `action` (get/start/stop/enable/disable/unregister/register, default `get`), `taskName`, `taskPath` (default `\`). Register only: `program`, `arguments`, `workingDirectory`, `triggerType` (once/daily/weekly/atLogon/atStartup), `startTime`, `daysOfWeek[]`, `weeksInterval`, `daysInterval`, `runAsUser` (default SYSTEM; a built-in account or a managed service account such as `DOMAIN\gmsa$`, not an ordinary domain user), `runLevel` (limited/highest), `description`, `force`
 - **Outputs:** `param.taskName`, `param.state`, `param.lastRunTime`, `param.lastTaskResult`, `param.nextRunTime`
 - **Provider fallback:** actions on existing tasks use the PowerShell cmdlets first. Only if the ScheduledTasks CIM provider fails with `0x80041318` does the activity fall back to the Task Scheduler automation API within the same local/WinRM PowerShell session. `register` stays cmdlet-based exclusively.
 

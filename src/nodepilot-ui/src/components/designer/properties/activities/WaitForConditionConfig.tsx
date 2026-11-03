@@ -21,7 +21,9 @@ export function WaitForConditionConfig({ config, onUpdate, upstreamVars = [] }: 
       <Field label={t('config.waitForCondition.conditionType')}>
         <select
           value={conditionType}
-          onChange={(e) => onUpdate({ conditionType: e.target.value as ConditionType })}
+          onChange={(e) => onUpdate({ conditionType: e.target.value as ConditionType,
+            ...(e.target.value === 'portOpen' ? { port: config.port ?? 443 } : {}),
+          })}
           className="input-field"
         >
           <option value="script">{t('config.waitForCondition.modeScript')}</option>

@@ -179,7 +179,7 @@ Bei Shutdown und Restart ist `force` standardmäßig `true`. Mit `force=false` m
 
 **Remote.** Erfordert meist Admin auf dem Ziel.
 
-- **Config:** `action` (get/start/stop/enable/disable/unregister/register, default `get`), `taskName`, `taskPath` (default `\`). Register-only: `program`, `arguments`, `workingDirectory`, `triggerType` (once/daily/weekly/atLogon/atStartup), `startTime`, `daysOfWeek[]`, `weeksInterval`, `daysInterval`, `runAsUser` (default SYSTEM), `runLevel` (limited/highest), `description`, `force`
+- **Config:** `action` (get/start/stop/enable/disable/unregister/register, default `get`), `taskName`, `taskPath` (default `\`). Register-only: `program`, `arguments`, `workingDirectory`, `triggerType` (once/daily/weekly/atLogon/atStartup), `startTime`, `daysOfWeek[]`, `weeksInterval`, `daysInterval`, `runAsUser` (Default SYSTEM; ein eingebautes Konto oder ein Managed Service Account wie `DOMAIN\gmsa$`, kein normaler Domänenbenutzer), `runLevel` (limited/highest), `description`, `force`
 - **Outputs:** `param.taskName`, `param.state`, `param.lastRunTime`, `param.lastTaskResult`, `param.nextRunTime`
 - **Provider-Fallback:** Aktionen auf vorhandenen Tasks verwenden zuerst die PowerShell-Cmdlets. Nur wenn der ScheduledTasks-CIM-Provider mit `0x80041318` fehlschlägt, greift die Activity innerhalb derselben lokalen/WinRM-PowerShell-Session auf die Task-Scheduler-Automation-API zurück. `register` bleibt ausschließlich Cmdlet-basiert.
 

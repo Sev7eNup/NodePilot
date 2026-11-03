@@ -44,6 +44,18 @@ beforeEach(() => {
   useDesignStore.setState({ designerMode: 'expert' });
 });
 
+it('reconciles condition mode when undo restores an expression on the same edge', () => {
+  const onUpdate = vi.fn();
+  const props = { allNodes: [], allEdges: [], onUpdate, onDelete: vi.fn(), onClose: vi.fn() };
+  const edge = makeEdge('same', 'a', 'b', { condition: '' });
+  const { rerender } = render(<EdgePropertiesPanel {...props} edge={edge} />);
+  const expression = { type: 'comparison', op: '==', left: { kind: 'literal', value: 'prod' }, right: { kind: 'literal', value: 'test' } };
+  rerender(<EdgePropertiesPanel {...props} edge={{ ...edge, data: { conditionExpression: expression } }} />);
+  expect(screen.getByTestId('condition-builder')).toHaveTextContent('prod');
+  fireEvent.click(screen.getByRole('button', { name: /simple/i }));
+  expect(onUpdate).toHaveBeenLastCalledWith('same', expect.objectContaining({ data: expect.objectContaining({ conditionExpression: undefined }) }));
+});
+
 it('shows the selected edge condition when switching between simple and expression edges', () => {
   const expression = { type: 'comparison', op: '==', left: { kind: 'literal', value: 'production' }, right: { kind: 'literal', value: 'test' } };
   const simple = makeEdge('simple', 'a', 'b', { condition: 'a.success' });

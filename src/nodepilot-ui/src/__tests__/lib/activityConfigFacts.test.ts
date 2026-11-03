@@ -223,6 +223,19 @@ describe('summarizeActivityConfig', () => {
     });
   });
 
+  describe('scheduledTask', () => {
+    it.each(['SYSTEM', 'NT AUTHORITY\\NETWORK SERVICE', 'local service', 'CONTOSO\\svc-tasks$', '{{globals.TaskAccount}}'])(
+      'registerAs_%s_isSupported', (runAsUser) => {
+        expect(checkRequiredActivityConfig('scheduledTask', { action: 'register', runAsUser })).toBeNull();
+      });
+
+    it('registerAsOrdinaryDomainUser_isRejected', () => {
+      expect(checkRequiredActivityConfig('scheduledTask', { action: 'register', runAsUser: 'CONTOSO\\alice' }))
+        .toBe(i18n.t('activities:validation.scheduledTaskServiceAccount'));
+      expect(checkRequiredActivityConfig('scheduledTask', { action: 'start', runAsUser: 'CONTOSO\\alice' })).toBeNull();
+    });
+  });
+
   describe('triggers', () => {
     it('manualTrigger_usesTitleOrFallback', () => {
       expect(summarizeActivityConfig('manualTrigger', { title: 'Run nightly' })).toBe('Run nightly');
