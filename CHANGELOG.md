@@ -87,8 +87,12 @@ Planned version: **1.5.4**.
 - **Setup and uninstall**
   - A server uninstall whose cleanup fails stops before the "Apps & features" entry is removed,
     keeps the installation marker and the deploy scripts and exits with a non-zero code, so the
-    same uninstall can be run again. A failed service deletion stops it before any file is removed
-    (#714).
+    same uninstall can be run again. A failed service deletion stops it before any file is removed.
+    The desktop uninstaller stops the same way and keeps NodePilot installed (#714).
+  - A desktop update keeps a custom data path and custom service names (#709).
+  - When a desktop update fails after its services were removed, the rollback registers both
+    services again with their previous settings and folder permissions, so the old version starts
+    again (#710).
   - Deleting the data on uninstall (`-PurgeData`, `/PURGEDATA=1`) also works on German Windows. If
     ownership of an item cannot be taken, nothing under the data directory is deleted (#731).
   - When a reinstall that changes the service account fails, the rollback gives the previous
@@ -136,6 +140,9 @@ Planned version: **1.5.4**.
 - The server setup accepts only the configured certificate, by thumbprint, for its health probe and
   the first login, does not follow redirects there and no longer turns off certificate validation
   for the whole process.
+- The desktop setup hands the first-login token to the account that started setup, also under
+  Remote Desktop or a switched user. If that account cannot be determined, provisioning stops
+  instead of handing the token to another profile (#732).
 - MCP alerting output shows webhook targets only as scheme, host and port, because the rest of the
   URL can contain tokens (#730).
 - GitHub tokens in step output are masked except for their prefix such as `ghp_`; before, the whole

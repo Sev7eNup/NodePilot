@@ -38,13 +38,14 @@ It appears because the installer leaves a one-shot token at
 **Before 1.2.11 this could land in the wrong profile.** The installer runs elevated; if a standard
 user started it and entered a *different* administrator's credentials at the UAC prompt, the token
 went to the administrator's profile while the app ran as the standard user, which never found it.
-The installer now resolves the interactive user explicitly, so a fresh install of 1.2.11 or later
-does not hit this.
+From 1.2.11 the installer resolved the interactive console user, which is still a different account
+under RDP or a switched user. Setup now passes the SID of the account that started it to the
+provisioner and fails explicitly when that account has no profile, instead of picking another one.
 
 If you are on an affected installation, recover it in one of two ways.
 
 **Option A — reinstall (simplest).** The setup token only exists while no user account exists, so
-re-running the installer of 1.2.11 or later puts the handoff in the right place. Nothing is lost:
+re-running a current installer puts the handoff in the right place. Nothing is lost:
 the database is preserved across a reinstall.
 
 **Option B — read the token by hand.** In an **elevated** PowerShell:

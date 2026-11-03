@@ -41,9 +41,10 @@ param(
     [int]    $PgPortRangeEnd      = 47149,
     [string] $DbName = 'nodepilot',
     [string] $DbRole = 'nodepilot',
-    # Where the first-run handoff is written. Normally resolved from the interactive (console)
-    # user, because Inno launches the Electron shell as that user ([Run] runasoriginaluser) and
-    # the shell reads their %LOCALAPPDATA%. Override only for a dev loop or a test.
+    # SID of the account that started setup before elevation. Inno launches the Electron shell as
+    # that account ([Run] runasoriginaluser), so the first-run handoff goes to its %LOCALAPPDATA%.
+    [string] $HandoffUserSid,
+    # Overrides the handoff directory for a dev loop or a test.
     [string] $HandoffUserProfile
 )
 
@@ -100,47 +101,47 @@ function New-RandomSecret([int] $bytes = 32) {
     return ([Convert]::ToBase64String($buf)) -replace '[+/=]', ''
 }
 
-# The interactive (console) user, as SID + %LOCALAPPDATA%, or $null when there is none.
+# Where the first-run handoff goes and which SID may read it.
 #
-# Inno runs the installer elevated but launches the shell with `runasoriginaluser`, so the account
-# running this script is not necessarily the account the shell runs as. The handoff must land in
-# the console user's profile, otherwise the shell never finds it. Win32_ComputerSystem.UserName
-# names that user; the profile path comes from the ProfileList registry rather than a string built
-# from the user name, so redirected or renamed profiles still resolve.
-function Get-InteractiveUserProfile {
-    try {
-        $userName = (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).UserName
-    } catch {
-        return $null
+# Inno launches the shell with `runasoriginaluser`, as the account that started setup before UAC
+# elevation. That account is identified by setup and passed as -HandoffUserSid; neither this
+# process (possibly another administrator) nor the console user (wrong for RDP and switched
+# users) is a substitute. The profile comes from the ProfileList registry, so redirected or
+# renamed profiles still resolve. -HandoffUserProfile is the dev-loop override. Throws when the
+# account is unknown or has no profile.
+function Resolve-DesktopHandoffTarget {
+    param([string] $HandoffUserProfile, [string] $HandoffUserSid)
+    if (-not [string]::IsNullOrWhiteSpace($HandoffUserProfile)) {
+        return [pscustomobject]@{
+            LocalAppData = $HandoffUserProfile
+            Sid          = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User
+            Source       = '-HandoffUserProfile'
+        }
     }
-    if ([string]::IsNullOrWhiteSpace($userName)) { return $null }
-
-    try {
-        $sid = (New-Object System.Security.Principal.NTAccount($userName)).Translate(
-            [System.Security.Principal.SecurityIdentifier])
-    } catch {
-        Write-Warning "Could not resolve the SID of interactive user '$userName': $($_.Exception.Message)"
-        return $null
+    if ([string]::IsNullOrWhiteSpace($HandoffUserSid)) {
+        throw ('The account that started setup is unknown, so the first-run setup token was not handed ' +
+               'over. Run setup again, or pass -HandoffUserSid. See docs/desktop-troubleshooting.md.')
     }
-
+    try {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier($HandoffUserSid)
+    } catch {
+        throw "-HandoffUserSid '$HandoffUserSid' is not a SID."
+    }
     $profileKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($sid.Value)"
     try {
         $profilePath = (Get-ItemProperty -Path $profileKey -Name 'ProfileImagePath' -ErrorAction Stop).ProfileImagePath
     } catch {
-        Write-Warning "No profile directory registered for interactive user '$userName' ($($sid.Value))."
-        return $null
+        throw "No profile directory is registered for $($sid.Value), the account that started setup."
     }
     # ProfileImagePath is commonly a REG_EXPAND_SZ holding %SystemDrive%\Users\<name>.
     $profilePath = [Environment]::ExpandEnvironmentVariables($profilePath)
     if ([string]::IsNullOrWhiteSpace($profilePath) -or -not (Test-Path -LiteralPath $profilePath)) {
-        Write-Warning "Profile directory '$profilePath' for '$userName' does not exist."
-        return $null
+        throw "Profile directory '$profilePath' of $($sid.Value), the account that started setup, does not exist."
     }
-
     return [pscustomobject]@{
-        UserName     = $userName
-        Sid          = $sid
         LocalAppData = (Join-Path $profilePath 'AppData\Local')
+        Sid          = $sid
+        Source       = "setup user $($sid.Value)"
     }
 }
 
@@ -661,29 +662,10 @@ if (Test-Path -LiteralPath $tokenPath) {
     & takeown.exe /f $tokenPath /a | Out-Null
     & icacls.exe $tokenPath /grant '*S-1-5-32-544:(R)' | Out-Null
 
-    # Resolve which profile the handoff belongs in and which SID may read it: the explicit
-    # parameter wins, then the interactive user, then this process - the last being correct only
-    # when the installing user elevated their own session.
-    $handoffOwnerSid = $null
-    if (-not [string]::IsNullOrWhiteSpace($HandoffUserProfile)) {
-        $handoffBase = $HandoffUserProfile
-        Write-Host "    Handoff target from -HandoffUserProfile: $handoffBase"
-    } else {
-        $interactive = Get-InteractiveUserProfile
-        if ($interactive) {
-            $handoffBase     = $interactive.LocalAppData
-            $handoffOwnerSid = $interactive.Sid
-            Write-Host "    Handoff target: interactive user $($interactive.UserName)"
-        } else {
-            $handoffBase = $env:LOCALAPPDATA
-            Write-Warning ("No interactive user could be determined; falling back to this process's " +
-                           "profile. If the installer was elevated with a different account, the " +
-                           "first-run setup page will not appear - see docs/desktop-troubleshooting.md.")
-        }
-    }
-    if ($null -eq $handoffOwnerSid) {
-        $handoffOwnerSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User
-    }
+    $handoffTarget = Resolve-DesktopHandoffTarget -HandoffUserProfile $HandoffUserProfile -HandoffUserSid $HandoffUserSid
+    $handoffBase     = $handoffTarget.LocalAppData
+    $handoffOwnerSid = $handoffTarget.Sid
+    Write-Host "    Handoff target: $($handoffTarget.Source)"
 
     $handoffDir = Join-Path $handoffBase 'NodePilot'
     New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null

@@ -3021,14 +3021,68 @@ Assert-TextMatches -Name 'the desktop shell launch is gated on provisioning succ
 #    the token, and the only remaining copy was SYSTEM-owned and unreadable. Pin that the profile is
 #    resolved rather than assumed - asserting merely that the function is *called* would not catch a
 #    regression that passes it the wrong value, which is how the 1.2.8 PATH defect slipped through.
-Assert-TextMatches -Name 'the handoff profile is resolved from the interactive user' `
-    -Text $desktopProvision -Pattern '(?s)function Get-InteractiveUserProfile.*?Win32_ComputerSystem'
-Assert-TextMatches -Name 'the handoff target comes from the resolved profile, not the current process' `
-    -Text $desktopProvision -Pattern '(?s)\$handoffBase\s*=\s*\$interactive\.LocalAppData'
+#    The console user is no substitute either: under RDP or a switched user it is someone else.
+#    Setup identifies the account that started it and passes its SID.
+Assert-TextMatches -Name 'the handoff target comes from the resolved profile' `
+    -Text $desktopProvision -Pattern '(?s)\$handoffBase\s*=\s*\$handoffTarget\.LocalAppData'
 Assert-TextMatches -Name 'the handoff ACL is granted to the resolved user' `
-    -Text $desktopProvision -Pattern '(?s)\$handoffOwnerSid\s*=\s*\$interactive\.Sid'
+    -Text $desktopProvision -Pattern '(?s)\$handoffOwnerSid\s*=\s*\$handoffTarget\.Sid'
 Assert-TextMatches -Name 'the handoff directory is built from the resolved base' `
     -Text $desktopProvision -Pattern "\`$handoffDir = Join-Path \`$handoffBase 'NodePilot'"
+Assert-TextDoesNotMatch -Name 'the handoff never falls back to the console user or this process profile' `
+    -Text $desktopProvision -Pattern 'Win32_ComputerSystem|\$handoffBase\s*=\s*\$env:LOCALAPPDATA'
+Assert-TextMatches -Name 'setup identifies the account that started it as that account' `
+    -Text $desktopIss -Pattern '(?s)function OriginalUserSid\(\).*?ExecAsOriginalUser\(.*?WindowsIdentity\]::GetCurrent\(\)\.User\.Value'
+Assert-TextMatches -Name 'setup passes that account to the provisioner' `
+    -Text $desktopIss -Pattern "(?s)procedure ProvisionRuntime\(\).*?SetupUserSid := OriginalUserSid\(\);.*?-HandoffUserSid"
+& {
+    $tokens = $null; $parseErrors = $null
+    $provisionAst = [Management.Automation.Language.Parser]::ParseInput($desktopProvision, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Desktop provisioner did not parse.' }
+    $resolver = $provisionAst.Find({ param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Resolve-DesktopHandoffTarget'
+    }, $false)
+    if (-not $resolver) { throw 'Resolve-DesktopHandoffTarget was not found in the desktop provisioner.' }
+    . ([scriptblock]::Create($resolver.Extent.Text))
+    $fixtureProfile = Join-Path ([IO.Path]::GetTempPath()) ('nodepilot-handoff-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $fixtureProfile | Out-Null
+    $setupUserSid = 'S-1-5-21-1111111111-2222222222-3333333333-1001'
+    function Get-ItemProperty {
+        param($Path, $Name, $ErrorAction)
+        if ($Path -notlike "*\ProfileList\$setupUserSid") { throw "fixture: no profile at $Path" }
+        [pscustomobject]@{ ProfileImagePath = $fixtureProfile }
+    }
+    # A console user that differs from the setup user, as under RDP or a switched user.
+    function Get-CimInstance { [pscustomobject]@{ UserName = 'CONTOSO\console-user' } }
+    try {
+        $target = Resolve-DesktopHandoffTarget -HandoffUserSid $setupUserSid
+        if ($target.Sid.Value -ne $setupUserSid -or $target.LocalAppData -ne (Join-Path $fixtureProfile 'AppData\Local')) {
+            throw 'Deployment template check failed: the handoff must go to the account that started setup.'
+        }
+        foreach ($case in @(
+                @{ Name = 'no setup account'; Sid = '' },
+                @{ Name = 'an account without a profile'; Sid = 'S-1-5-21-1111111111-2222222222-3333333333-1002' },
+                @{ Name = 'a value that is not a SID'; Sid = 'CONTOSO\someone' })) {
+            $refused = $false
+            try { [void](Resolve-DesktopHandoffTarget -HandoffUserSid $case.Sid) } catch { $refused = $true }
+            if (-not $refused) {
+                throw "Deployment template check failed: the handoff must fail explicitly for $($case.Name)."
+            }
+        }
+    }
+    finally { Remove-Item -LiteralPath $fixtureProfile -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-Host '  OK  the first-run handoff goes to the setup account and fails explicitly when it is unknown' -ForegroundColor DarkGray
+}
+
+# Same contract as the server uninstaller: a failed cleanup keeps the installation retryable.
+$desktopUninstallStep = [regex]::Match($desktopIss,
+    '(?s)procedure CurUninstallStepChanged\(CurUninstallStep: TUninstallStep\);.*?\r?\nend;').Value
+Assert-TextMatches -Name 'a failed desktop cleanup aborts the uninstall' `
+    -Text $desktopUninstallStep -Pattern '(?s)else if ResultCode <> 0 then\s*begin.*?Abort;\s*end;'
+Assert-TextMatches -Name 'a desktop cleanup that cannot start aborts the uninstall' `
+    -Text $desktopUninstallStep -Pattern "(?s)if not Exec\('powershell\.exe', Params.*?then\s*begin.*?Abort;\s*end"
+Assert-TextMatches -Name 'a missing desktop cleanup script aborts while a service is registered' `
+    -Text $desktopUninstallStep -Pattern '(?s)if not FileExists\(ScriptPath\) then.*?RegKeyExists\(HKLM64, ''SYSTEM\\CurrentControlSet\\Services\\NodePilot''\).*?Abort;'
 
 # 2b. Install over an installation, uninstall, install again. Each defect below left a machine that
 #     looked installed or uninstalled and was neither.
@@ -3037,6 +3091,32 @@ $desktopUninstall = Get-Content -LiteralPath (Join-Path $desktopDirectory 'Unins
 $desktopPrepare   = Get-Content -LiteralPath (Join-Path $desktopDirectory 'Prepare-DesktopSetup.ps1') -Raw
 $desktopRuntime   = Get-Content -LiteralPath (Join-Path $desktopDirectory 'DesktopRuntime.ps1') -Raw
 $desktopUpdate    = Get-Content -LiteralPath (Join-Path $desktopDirectory 'Update-Desktop.ps1') -Raw
+& {
+    $tokens = $null; $parseErrors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseInput($desktopUpdate, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Desktop updater did not parse.' }
+    $command = $ast.Find({ param($node)
+        $node -is [Management.Automation.Language.CommandAst] -and
+        $node.GetCommandName() -eq 'powershell.exe' -and $node.Extent.Text.Contains('Provision-LocalDb.ps1')
+    }, $true)
+    if (-not $command) { throw 'Desktop reprovisioning invocation missing.' }
+    function powershell.exe {
+        param([switch]$NoProfile, $ExecutionPolicy, $File, $InstallPath, $DataPath, $ApiServiceName, $DbServiceName, $HandoffUserSid)
+        [pscustomobject]@{ Install = $InstallPath; Data = $DataPath; Api = $ApiServiceName; Db = $DbServiceName; Sid = $HandoffUserSid }
+    }
+    $InstallPath = Join-Path $env:TEMP 'custom app'
+    $DataPath = Join-Path $env:TEMP 'custom data'
+    $ApiServiceName = 'CustomApi'; $DbServiceName = 'CustomDb'
+    $HandoffUserSid = 'S-1-5-21-1-2-3-1001'
+    $actual = & ([scriptblock]::Create($command.Extent.Text))
+    if ($actual.Install -ne $InstallPath -or $actual.Data -ne $DataPath -or
+        $actual.Api -ne $ApiServiceName -or $actual.Db -ne $DbServiceName) {
+        throw 'Desktop reprovisioning lost custom paths or service identities.'
+    }
+    if ($actual.Sid -ne $HandoffUserSid) {
+        throw 'Desktop reprovisioning must name the account that receives the first-run handoff.'
+    }
+}
 
 # A failed provisioning ended an unattended install with exit code 0, or - worse - left it waiting
 # forever on a message box that /SUPPRESSMSGBOXES does not suppress.

@@ -84,6 +84,102 @@ function Remove-DesktopService {
     }
 }
 
+function Get-DesktopServiceSnapshot {
+    # Reads everything the provisioner registers for a desktop service from its service key, so a
+    # failed update can register it again unchanged. The environment holds the database password
+    # and stays in memory only. Throws when the service is not registered.
+    param(
+        [Parameter(Mandatory)] [string] $Name,
+        [string] $ServicesRoot = 'HKLM:\SYSTEM\CurrentControlSet\Services'
+    )
+    $keyPath = Join-Path $ServicesRoot $Name
+    if (-not (Test-Path -LiteralPath $keyPath)) {
+        throw "Service '$Name' is not registered. Repair the installation with setup before updating."
+    }
+    $key = Get-Item -LiteralPath $keyPath
+    $read = {
+        param([string] $ValueName)
+        $key.GetValue($ValueName, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    }
+    $objectName = [string](& $read 'ObjectName')
+    if (@('LocalSystem', 'NT AUTHORITY\NetworkService') -notcontains $objectName) {
+        throw "Service '$Name' runs as '$objectName'. Only LocalSystem and NetworkService registrations can be restored."
+    }
+    $imagePath = [string](& $read 'ImagePath')
+    if ([string]::IsNullOrWhiteSpace($imagePath)) { throw "Service '$Name' has no ImagePath." }
+    return [pscustomobject]@{
+        Name             = $Name
+        ImagePath        = $imagePath
+        DisplayName      = [string](& $read 'DisplayName')
+        ObjectName       = $objectName
+        Start            = [int](& $read 'Start')
+        ErrorControl     = [int](& $read 'ErrorControl')
+        DependOnService  = @(& $read 'DependOnService' | Where-Object { $_ })
+        Description      = & $read 'Description'
+        DelayedAutostart = & $read 'DelayedAutostart'
+        FailureActions   = & $read 'FailureActions'
+        Environment      = & $read 'Environment'
+        # -Path: Windows PowerShell's Get-Acl -LiteralPath does not find registry keys.
+        KeyAccess        = (Get-Acl -Path $keyPath).GetSecurityDescriptorSddlForm(
+            [System.Security.AccessControl.AccessControlSections]::Access)
+    }
+}
+
+function Restore-DesktopServiceSnapshots {
+    # Registers the services from Get-DesktopServiceSnapshot again, replacing any registration of
+    # the same name. Snapshots are given in dependency order (database first). Throws unless every
+    # service is registered afterwards.
+    param(
+        [Parameter(Mandatory)] [object[]] $Snapshots,
+        [string] $ServicesRoot = 'HKLM:\SYSTEM\CurrentControlSet\Services'
+    )
+    for ($i = $Snapshots.Count - 1; $i -ge 0; $i--) { Remove-DesktopService -Name $Snapshots[$i].Name }
+    foreach ($snapshot in $Snapshots) {
+        $startMode = switch ($snapshot.Start) {
+            2 { 'Automatic' } 3 { 'Manual' } 4 { 'Disabled' }
+            default { throw "Service '$($snapshot.Name)' has unsupported start type $($snapshot.Start)." }
+        }
+        $createArgs = @{
+            Name            = $snapshot.Name
+            DisplayName     = $snapshot.DisplayName
+            PathName        = $snapshot.ImagePath
+            ServiceType     = [byte]16
+            ErrorControl    = [byte]$snapshot.ErrorControl
+            StartMode       = $startMode
+            DesktopInteract = $false
+            StartName       = $snapshot.ObjectName
+        }
+        if ($snapshot.ObjectName -ne 'LocalSystem') { $createArgs['StartPassword'] = '' }
+        if ($snapshot.DependOnService.Count -gt 0) { $createArgs['ServiceDependencies'] = [string[]]$snapshot.DependOnService }
+        $created = Invoke-CimMethod -ClassName Win32_Service -MethodName Create -Arguments $createArgs
+        if ($created.ReturnValue -ne 0) {
+            throw "Service '$($snapshot.Name)' could not be registered again (Win32_Service.Create=$($created.ReturnValue))."
+        }
+
+        $keyPath = Join-Path $ServicesRoot $snapshot.Name
+        # The key ACL comes back before the environment, which holds the database password.
+        $keyAcl = Get-Acl -Path $keyPath
+        $keyAcl.SetSecurityDescriptorSddlForm($snapshot.KeyAccess,
+            [System.Security.AccessControl.AccessControlSections]::Access)
+        Set-Acl -Path $keyPath -AclObject $keyAcl
+        # The SCM reads these values from the key itself.
+        $values = @(
+            @{ Name = 'Description';      Value = $snapshot.Description;      Type = 'String' },
+            @{ Name = 'DelayedAutostart'; Value = $snapshot.DelayedAutostart; Type = 'DWord' },
+            @{ Name = 'FailureActions';   Value = $snapshot.FailureActions;   Type = 'Binary' },
+            @{ Name = 'Environment';      Value = $snapshot.Environment;      Type = 'MultiString' })
+        foreach ($value in $values) {
+            if ($null -eq $value.Value) { continue }
+            New-ItemProperty -Path $keyPath -Name $value.Name -PropertyType $value.Type `
+                -Value $value.Value -Force | Out-Null
+        }
+        if (-not (Test-DesktopServiceExists -Name $snapshot.Name)) {
+            throw "Service '$($snapshot.Name)' is not registered after restoring it."
+        }
+        Write-Host "    Restored service '$($snapshot.Name)'"
+    }
+}
+
 function Stop-DesktopRuntime {
     # Ends everything that holds a file under InstallPath or the database cluster: the Electron
     # shell and the CLI/MCP clients, both services, and any PostgreSQL process that outlived its

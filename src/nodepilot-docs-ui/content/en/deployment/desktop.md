@@ -162,11 +162,13 @@ The installer:
 - creates `desktop.json`,
 - hands the one-time setup token to the Electron shell in a protected way.
 
-The setup token goes to the profile of the **interactive** user — that is, the user the shell then
-runs as. That is not necessarily the user who runs the installer: the installer runs elevated, and if
-a standard user enters the credentials of a *different* administrator account at the UAC prompt,
-those are two different profiles. The installer therefore resolves the interactive user explicitly
-instead of assuming its own profile.
+The setup token goes to the profile of the user who **started** the installer — the user the shell
+then runs as. That is not necessarily the account the installer runs under: the installer runs
+elevated, and if a standard user enters the credentials of a *different* administrator account at
+the UAC prompt, those are two different profiles. The console user is no substitute either, since
+under Remote Desktop or a switched user it is someone else. The installer therefore identifies the
+account that started it and hands the token to exactly that account. If that account cannot be
+determined, provisioning fails with a message instead of handing the token to another profile.
 
 If the provisioning fails, the installer reports it with a pointer to its log at
 `%TEMP%\nodepilot-provision.log` and does not start the shell — rather than reporting a successful
