@@ -106,7 +106,8 @@ Afterwards the same server setup is installed as an update on the lab's long-run
 ```powershell
 .\scripts\test-suite\Install-TestSuite.ps1 -BaseUrl https://<lab instance>:8443 -Password <admin> `
   -Profiles continuous, integration -ProbeUrl http://<another lab host>/
-.\scripts\test-suite\Verify-TestSuite.ps1 -BaseUrl https://<lab instance>:8443 -Password <admin> -Once
+.\scripts\test-suite\Verify-TestSuite.ps1 -BaseUrl https://<lab instance>:8443 -Password <admin> -Once `
+  -Profiles continuous, integration
 ```
 
 The probe URL points at another host, since an instance cannot probe itself by its own name. **The suite has to finish with `fail=0`.** Right after the update the database trigger skips its first round by design. Should the trigger driver fail on that alone, the verifier is run once more.
