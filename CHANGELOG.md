@@ -27,6 +27,10 @@ Planned version: **1.5.4**.
 - Two active nodes can no longer share an output variable, regardless of case: saving, importing
   or an MCP change with such a pair is rejected. A disabled node is ignored, so a disabled copy can
   no longer take over the alias of the active one (#703).
+- `GET /api/executions/{id}/paused-steps`, `np exec paused-steps` and the MCP tool
+  `list_paused_steps` return one snapshot per paused step (step id, label, pause time, reason and
+  redacted variables) instead of a list of step ids. The MCP result field is now `pausedSteps`
+  (#606).
 
 ### Fixed
 
@@ -51,6 +55,12 @@ Planned version: **1.5.4**.
     suggests ordinary domain users with delegation (#705).
   - The step details of a past run label the workflow's current configuration as such and show the
     target machine the run actually used (#603).
+  - After a reconnect or a reload, the designer shows a paused debug step with its variables again
+    and catches up on steps that changed during the disconnect (#606).
+  - Variable edits at a breakpoint belong to that one pause and are dropped when another step
+    pauses. Global variables and engine keys are read-only in the inspector, and the API rejects
+    such overrides with 400 while the step stays paused, instead of failing the run after the
+    resume (#696, #697).
 - **Management pages and settings**
   - Saving credentials, machines, users, global variables, maintenance windows, custom activities,
     alerting rules and policies or a settings section locks the form until the server answers. A
@@ -79,6 +89,8 @@ Planned version: **1.5.4**.
     executions per minute, success rate and failures show values again. The Grafana CPU panels use
     `dotnet_process_cpu_count` (#736).
   - The Grafana reliability ranking also lists workflows that never succeeded (#737).
+  - The dashboard, Live-Ops and the execution pages update live again instead of waiting for their
+    polling interval, and catch up after a reconnect (#706).
 - **Examples, test suite and tooling**
   - The Windows Update health example applies `freshnessDays` (#734). The temp-file cleanup
     example writes a new archive per run and keeps the earlier ones (#723). The README showcase

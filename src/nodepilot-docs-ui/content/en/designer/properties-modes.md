@@ -94,6 +94,8 @@ At a breakpoint, the debug run pauses before the step concerned. The following a
 - **Step over:** execute exactly one step and pause again
 - **Stop:** end the execution
 
+Before continuing, the variable inspector can change step results and run inputs (`manual.*`); global variables and engine keys stay read-only. Changes apply only to the current pause. After a page reload the paused step and its variables are shown again.
+
 ## Saving, publishing and exporting
 
 Changes are saved automatically as a draft after a short editing pause. `Ctrl+S` saves the draft immediately. If the workflow was saved elsewhere in the meantime, the save is rejected: the draft stays on the canvas, autosave stops and a reload shows the current version.

@@ -86,17 +86,22 @@ public sealed class ExecutionControlToolsTests
     }
 
     [Fact]
-    public async Task ListPausedSteps_ReturnsStepIds()
+    public async Task ListPausedSteps_ReturnsSnapshots()
     {
         var exec = Guid.NewGuid();
         using var api = new TestApi();
         api.Server
             .Given(Request.Create().WithPath($"/api/executions/{exec}/paused-steps").UsingGet())
-            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[] { "step-7", "step-9" }));
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[] {
+                new { stepId = "step-7", stepLabel = "First branch", pausedAt = DateTime.UtcNow, reason = "breakpoint", variables = new Dictionary<string, string> { ["value"] = "snapshot" } },
+                new { stepId = "step-9", stepLabel = "Second branch", pausedAt = DateTime.UtcNow, reason = "stepOver", variables = new Dictionary<string, string>() },
+            }));
 
         var tools = new ExecutionTools(api.Client());
         var json = JsonSerializer.Serialize(await tools.ListPausedSteps(exec.ToString()));
         json.Should().Contain("step-7");
         json.Should().Contain("step-9");
+        json.Should().Contain("pausedSteps").And.Contain("First branch").And.Contain("breakpoint").And.Contain("snapshot");
+        json.Should().NotContain("pausedStepIds");
     }
 }

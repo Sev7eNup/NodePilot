@@ -1409,13 +1409,10 @@ public class WorkflowEngine : IWorkflowEngine
         return debug.Resume(stepId, new ResumeRequest(engineCmd, overrides));
     }
 
-    /// <summary>Returns the IDs of all steps of an execution that are currently paused.
-    /// Used by the REST controller to release every pending step at once for a
-    /// "Resume all" action.</summary>
-    public IReadOnlyCollection<string> GetPausedSteps(Guid executionId)
-        => _debugHandles.TryGetValue(executionId, out var debug)
-            ? debug.PendingSteps.ToList()
-            : Array.Empty<string>();
+    /// <summary>Returns redacted snapshots of all steps currently waiting at a breakpoint.</summary>
+    public IReadOnlyCollection<DebugPausedStepSnapshot> GetPausedSnapshots(Guid executionId)
+        => _debugHandles.TryGetValue(executionId, out var debug) ? debug.PausedSnapshots : [];
+
     /// <summary>
     /// Restricts the run's shared result map to the graph ancestors of <paramref name="nodeId"/>.
     /// A node missing from the index (should not happen — the index covers every compiled node)

@@ -1082,6 +1082,6 @@ public class WorkflowSchedulerTests
             IReadOnlyDictionary<string, string>? overrides = null)
             => false;
 
-        public IReadOnlyCollection<string> GetPausedSteps(Guid executionId) => [];
+        public IReadOnlyCollection<DebugPausedStepSnapshot> GetPausedSnapshots(Guid executionId) => [];
     }
 }

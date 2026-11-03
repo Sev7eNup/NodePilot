@@ -75,6 +75,10 @@ public sealed record ExecuteWorkflowRequest(
     int? TimeoutSeconds = null,
     bool Debug = false);
 
+public sealed record DebugPausedStepSnapshot(
+    string StepId, string? StepLabel, DateTime PausedAt, string Reason,
+    IReadOnlyDictionary<string, string> Variables);
+
 public sealed record ExecutionResponse(
     Guid Id, Guid WorkflowId, string Status, DateTime StartedAt,
     DateTime? CompletedAt, string? TriggeredBy, string? ErrorMessage,

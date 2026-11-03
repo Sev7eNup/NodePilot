@@ -507,6 +507,7 @@ function PausedStepInspector({ executionId, step }: Readonly<{
   });
   return (
     <PausedVariablesInspector
+      key={executionId}
       stepName={step.stepName || step.stepId}
       stepId={step.stepId}
       pausedAt={step.pausedAt!}

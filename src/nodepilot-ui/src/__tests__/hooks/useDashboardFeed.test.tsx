@@ -59,7 +59,8 @@ import { useLiveOpsFeed } from '../../hooks/useLiveOpsFeed';
 import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 const statusBatch = {
-  events: [{ type: 'ExecutionStatusChanged', evt: { executionId: 'e1', workflowId: 'w1', status: 'Succeeded' } }],
+  // JsonHubProtocol serializes the C# Event record property as "event".
+  events: [{ type: 'ExecutionStatusChanged', event: { executionId: 'e1', workflowId: 'w1', status: 'Succeeded' } }],
 };
 
 describe('useDashboardFeed', () => {
@@ -169,7 +170,7 @@ describe('useDashboardFeed', () => {
 
     await act(async () => {
       __currentConnection?.emit('LiveEventsBatch', {
-        events: [{ type: 'ExecutionStatusChanged', evt: { executionId: 'e1', workflowId: 'w1', status: 'Succeeded' } }],
+        events: [{ type: 'ExecutionStatusChanged', event: { executionId: 'e1', workflowId: 'w1', status: 'Succeeded' } }],
       });
     });
 

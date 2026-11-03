@@ -2,29 +2,28 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createExecutionHubConnection } from '../lib/hubConnection';
 import { connectPersistently } from '../lib/signalrConnect';
+import { normalizeBatchItem } from './signalrReducer';
+import type { LiveEventsBatch, LiveEventBatchItem } from './signalrTypes';
 import {
   captureAuthBoundaryGeneration, isAuthBoundaryGenerationCurrent,
 } from '../security/authBoundary';
 
-// A LiveEventsBatch item is { Type|type, Event|evt }. Only ExecutionStatusChanged is handled.
+// Payload casing compatibility is confined to this boundary; envelope decoding is shared.
 interface StatusEvt {
   executionId?: string; ExecutionId?: string;
   workflowId?: string; WorkflowId?: string;
   status?: string; Status?: string;
 }
 
-function pickItems(batch: unknown): unknown[] {
+function pickItems(batch: LiveEventsBatch): LiveEventBatchItem[] {
   if (Array.isArray(batch)) return batch;
-  const b = batch as { events?: unknown[]; Events?: unknown[] } | null;
-  return b?.events ?? b?.Events ?? [];
+  return batch?.events ?? batch?.Events ?? [];
 }
 
-function asStatus(item: unknown): { executionId: string; workflowId: string; status: string } | null {
-  const it = item as { Type?: string; type?: string; Event?: StatusEvt; evt?: StatusEvt };
-  const type = it.Type ?? it.type;
-  if (type !== 'ExecutionStatusChanged') return null;
-  const e = it.Event ?? it.evt;
-  if (!e) return null;
+function asStatus(item: LiveEventBatchItem): { executionId: string; workflowId: string; status: string } | null {
+  const event = normalizeBatchItem(item);
+  if (event?.type !== 'ExecutionStatusChanged') return null;
+  const e: StatusEvt = event.evt;
   const executionId = e.executionId ?? e.ExecutionId;
   const workflowId = e.workflowId ?? e.WorkflowId;
   const status = e.status ?? e.Status;
@@ -52,6 +51,7 @@ export function useLiveOpsFeed({
 
   useEffect(() => {
     let disposed = false;
+    let hasConnected = false;
     const generation = captureAuthBoundaryGeneration();
     const current = () => !disposed && isAuthBoundaryGenerationCurrent(generation);
     const connection = createExecutionHubConnection();
@@ -66,7 +66,7 @@ export function useLiveOpsFeed({
       }, debounceMs);
     };
 
-    connection.on('LiveEventsBatch', (batch: unknown) => {
+    connection.on('LiveEventsBatch', (batch: LiveEventsBatch) => {
       if (!current()) return;
       let sawStatus = false;
       for (const item of pickItems(batch)) {
@@ -83,7 +83,14 @@ export function useLiveOpsFeed({
     };
     // connectPersistently retries forever with capped backoff, so neither a long outage nor a
     // failed first start leaves the feed permanently degraded to snapshot polling.
-    const persistent = connectPersistently(connection, () => { if (!disposed) join(); });
+    const persistent = connectPersistently(connection, () => {
+      if (!current()) return;
+      join();
+      // History pages intentionally have no polling fallback. Reconcile changes missed
+      // during the disconnect even when no subsequent batch arrives.
+      if (hasConnected) scheduleInvalidate();
+      hasConnected = true;
+    });
 
     return () => {
       disposed = true;

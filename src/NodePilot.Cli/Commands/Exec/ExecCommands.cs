@@ -162,7 +162,9 @@ public sealed class ExecPausedStepsCommand : BaseCommand<ExecIdSettings>
         writer.WriteData(rows, (console, list) =>
         {
             if (list.Count == 0) { console.MarkupLine("[grey]No paused steps.[/]"); return; }
-            foreach (var s in list) console.MarkupLine($"  • {Markup.Escape(s)}");
+            foreach (var step in list)
+                console.MarkupLine($"  • {Markup.Escape(step.StepId)} — {Markup.Escape(step.StepLabel ?? step.StepId)} " +
+                    $"[silver]({Markup.Escape(step.Reason)}, {step.PausedAt:u})[/]");
         });
         return ExitCodes.Success;
     }

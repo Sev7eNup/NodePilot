@@ -94,6 +94,8 @@ Bei einem Breakpoint pausiert der Debug-Lauf vor dem betroffenen Schritt. Danach
 - **Step Over:** genau einen Schritt ausführen und erneut pausieren
 - **Stop:** Ausführung beenden
 
+Vor dem Fortsetzen kann der Variablen-Inspektor Schrittergebnisse und Lauf-Eingaben (`manual.*`) ändern; globale Variablen und Engine-Schlüssel bleiben schreibgeschützt. Änderungen gelten nur für die aktuelle Pause. Nach einem Neuladen der Seite erscheinen der pausierte Schritt und seine Variablen wieder.
+
 ## Speichern, veröffentlichen und exportieren
 
 Änderungen werden nach einer kurzen Bearbeitungspause automatisch als Entwurf gespeichert. `Ctrl+S` speichert den Entwurf sofort. Wurde der Workflow inzwischen an anderer Stelle gespeichert, wird das Speichern abgelehnt: Der Entwurf bleibt auf dem Canvas, das automatische Speichern stoppt, und erst ein Neuladen zeigt den aktuellen Stand.

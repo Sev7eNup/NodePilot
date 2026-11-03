@@ -90,6 +90,9 @@ export const executionRoutes: Route[] = [
     return execution ? json(stepsOf(execution.id)) : notFound('Execution');
   }),
 
+  // Simulated runs do not attach the real step debugger, so there are no paused snapshots.
+  route('GET', '/executions/:id/paused-steps', (ctx) => findExecution(ctx.params.id) ? json([]) : notFound('Execution')),
+
   route('POST', '/executions/:id/cancel', (ctx) => {
     const execution = findExecution(ctx.params.id);
     if (!execution) return notFound('Execution');

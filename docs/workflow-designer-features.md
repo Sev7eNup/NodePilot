@@ -80,7 +80,9 @@ from the designer is pinned to the canvas so its progress remains visible.
 
 Expert mode provides debug runs with optional conditional breakpoints. At a breakpoint,
 the variable inspector supports overrides before continuing, skipping the paused step
-or stopping the execution. A step test executes a single activity using empty context,
+or stopping the execution. Overrides cover step results and `manual.*`; globals and engine
+keys stay read-only, and the API rejects them with 400. Edits belong to one pause, and a
+reload restores paused steps with their redacted variables from `GET /executions/{id}/paused-steps`. A step test executes a single activity using empty context,
 previous results or manually supplied values. Simulation checks the control-flow path
 without executing activities.
 
