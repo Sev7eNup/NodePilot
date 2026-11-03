@@ -37,6 +37,26 @@ public sealed class ScorchApiClientTests
     }
 
     [Theory]
+    [InlineData("http://scorch.example.test:81", false)]
+    [InlineData("http://10.0.0.5", false)]
+    [InlineData("ftp://scorch.example.test", false)]
+    [InlineData("http://localhost:81", true)]
+    [InlineData("http://127.0.0.1:81", true)]
+    [InlineData("https://scorch.example.test", true)]
+    public void Constructor_EnforcesTransportForWindowsCredentials(string apiBaseUrl, bool accepted)
+    {
+        var handler = new PagesHandler("{}");
+
+        var action = () => new ScorchApiClient(new ScorchWorkloadConfiguration(@"C:\lists\scorch.txt", apiBaseUrl), handler).Dispose();
+
+        if (accepted)
+            action.Should().NotThrow();
+        else
+            action.Should().Throw<InvalidOperationException>().WithMessage("SCOrch*");
+        handler.Requests.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("api/runbooks?page=2")]
     [InlineData("/api/runbooks?page=2")]
     [InlineData("https://scorch.example.test/api/runbooks?page=2")]

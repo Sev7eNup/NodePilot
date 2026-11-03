@@ -53,10 +53,10 @@ internal sealed class WorkloadReconciler : IWorkloadReconciler
         CancellationToken cancellationToken)
     {
         var configuration = _configurationLoader.Load();
+        // Both directions call SCOrch: as the source whose jobs are stopped, or as the destination.
+        SwitcherConfigurationValidator.ValidateScorch(configuration.SystemCenterOrchestrator);
         if (target == SwitchTarget.NodePilot)
             SwitcherConfigurationValidator.ValidateNodePilot(configuration.NodePilot);
-        else
-            SwitcherConfigurationValidator.ValidateScorch(configuration.SystemCenterOrchestrator);
         var path = target == SwitchTarget.NodePilot
             ? configuration.NodePilot.WorkflowAllowListPath
             : configuration.SystemCenterOrchestrator.RunbookAllowListPath;
