@@ -228,7 +228,7 @@ export function AuthenticationSection() {
   const scim = form.scim;
 
   return (
-    <div className="space-y-4">
+    <fieldset disabled={editor.isPending} className="space-y-4 min-w-0 border-0 p-0">
       <CompactCard icon={Locked} title="LDAP">
         <ToggleRow
           label={t('adminSettings:enabled')}
@@ -540,7 +540,7 @@ export function AuthenticationSection() {
         onClose={() => setShowLdapTest(false)}
         runProbe={() => adminSettings.testLdap({ Settings: buildPayload().Ldap })}
       />
-    </div>
+    </fieldset>
   );
 }
 

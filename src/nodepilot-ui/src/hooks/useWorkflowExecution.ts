@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useAsyncIdentity } from './useAsyncIdentity';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { Node, Edge } from '@xyflow/react';
@@ -50,6 +51,8 @@ export function useWorkflowExecution({
   const { t } = useTranslation(['editor']);
   const [showRunDialog, setShowRunDialog] = useState(false);
   const [pendingRunIsDebug, setPendingRunIsDebug] = useState(false);
+  const captureOwner = useAsyncIdentity(workflowId);
+  useEffect(() => { setShowRunDialog(false); setPendingRunIsDebug(false); }, [workflowId]);
 
   // Most recent execution, fetched only when the run dialog is about to open, to pre-fill the
   // parameter form with the values used last time. Genuinely bounded to one row: the endpoint
@@ -66,20 +69,21 @@ export function useWorkflowExecution({
   const lastExecutionList = lastExecutionPage?.items;
 
   const executeMutation = useMutation({
-    mutationFn: (args?: { params?: Record<string, string>; debug?: boolean }) =>
+    mutationFn: (args: { workflowId: string; current: () => boolean; params?: Record<string, string>; debug?: boolean }) =>
       withSpan(
         'designer.execute',
-        () => api.post<WorkflowExecution>(`/workflows/${workflowId}/execute`, {
+        () => api.post<WorkflowExecution>(`/workflows/${args.workflowId}/execute`, {
           parameters: args?.params,
           debug: args?.debug ?? false,
         }),
         {
-          'nodepilot.workflow.id': workflowId ?? 'unknown',
+          'nodepilot.workflow.id': args.workflowId,
           'nodepilot.designer.has_parameters': !!args?.params,
           'nodepilot.designer.debug': args?.debug ?? false,
         },
       ),
-    onSuccess: (execution) => {
+    onSuccess: (execution, request) => {
+      if (!request.current()) return;
       pinCanvasExecution(execution.id);
       clearReplay();
     },
@@ -91,7 +95,8 @@ export function useWorkflowExecution({
   // breakpoints. Memoized so the keyboard handlers that close over `run` keep a stable
   // reference instead of re-creating every render or capturing stale props.
   const run = useCallback(async (debug = false) => {
-    if (!workflow) return;
+    if (!workflow || !workflowId) return;
+    const current = captureOwner();
     const authBoundaryGeneration = captureAuthBoundaryGeneration();
     if (workflow && !workflow.isEnabled) {
       toast.info(t('editor:workflowDisabledRunHint'));
@@ -107,7 +112,7 @@ export function useWorkflowExecution({
         void err;
         return;
       }
-      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
+      if (!current() || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
     }
 
     // Route to the parameter dialog when the workflow has a manual trigger with parameters.
@@ -120,20 +125,21 @@ export function useWorkflowExecution({
       setPendingRunIsDebug(debug);
     } else {
       if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
-      executeMutation.mutate({ debug }, {
+      executeMutation.mutate({ debug, workflowId, current }, {
         onError: (err) => toast.error(t('editor:executionStartFailed', { message: (err as Error).message })),
       });
     }
-  }, [workflow, t, canWrite, isDirty, saveAsync, nodes, edges, executeMutation]);
+  }, [workflow, workflowId, captureOwner, t, canWrite, isDirty, saveAsync, nodes, edges, executeMutation]);
 
   /** Submits the parameter dialog: starts the run with the collected params and debug flag. */
   const confirmRunWithParams = useCallback((params: Record<string, string>) => {
-    executeMutation.mutate({ params, debug: pendingRunIsDebug }, {
+    if (!workflowId) return;
+    executeMutation.mutate({ params, debug: pendingRunIsDebug, workflowId, current: captureOwner() }, {
       onError: (err) => toast.error(t('editor:executionStartFailed', { message: (err as Error).message })),
     });
     setShowRunDialog(false);
     setPendingRunIsDebug(false);
-  }, [executeMutation, pendingRunIsDebug, t]);
+  }, [executeMutation, pendingRunIsDebug, workflowId, captureOwner, t]);
   const closeRunDialog = useCallback(() => { setShowRunDialog(false); }, []);
 
   // No onError of its own: the global mutation toast reports a failed cancel with the API message.

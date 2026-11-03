@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../../api/client';
 import { sharedFoldersApi } from '../../api/sharedFolders';
 import { ModalShell } from '../common/ModalShell';
+import { useAsyncIdentity } from '../../hooks/useAsyncIdentity';
 import { AlertRouteFields, routeSecretForSave, type AlertRouteBase } from './AlertRouteFields';
 import { ConditionBuilder, type ExprNode } from '../designer/ConditionBuilder';
 import { NOTIFICATION_CHANNELS, type NotificationChannel } from '../../lib/eventFields';
@@ -90,6 +91,7 @@ export function SystemPolicyEditor({
   const { t } = useTranslation(['alerts', 'common']);
   const qc = useQueryClient();
   const [form, setForm] = useState<FormState>(() => fromPolicy(source, policy));
+  const captureSession = useAsyncIdentity(policy);
   const [testResult, setTestResult] = useState<TestFireResponse | null>(null);
   const [previewResult, setPreviewResult] = useState<SystemAlertPreviewResponse | null>(null);
 
@@ -158,12 +160,13 @@ export function SystemPolicyEditor({
   };
 
   const saveMutation = useMutation({
-    mutationFn: async (f: FormState) => {
+    mutationFn: async ({ form: f }: { form: FormState; current: () => boolean }) => {
       const body = buildBody(f);
       if (policy) await systemAlertingApi.update(policy.id, body);
       else await systemAlertingApi.create(body);
     },
-    onSuccess: () => { invalidate(); onClose(); },
+    // A closed editor must not close the one opened after it.
+    onSuccess: (_result, request) => { invalidate(); if (request.current()) onClose(); },
     onError: (err: Error) => toast.error(t('alerts:system.editor.saveFailed', { message: err.message })),
   });
 
@@ -205,6 +208,8 @@ export function SystemPolicyEditor({
         {policy ? t('alerts:system.editPolicy') : t('alerts:system.newPolicy')}
       </h3>
       <p className="text-xs text-on-surface-variant mb-4">{label}</p>
+      {/* Locked while saving, so the response never discards edits made after the submit. */}
+      <fieldset disabled={saveMutation.isPending} className="min-w-0 border-0 p-0">
       <div className="space-y-4 max-h-[72vh] overflow-y-auto pr-1">
         <div>
           <label className="block text-xs font-medium text-on-surface-variant mb-1">{t('alerts:system.editor.name')}</label>
@@ -373,6 +378,7 @@ export function SystemPolicyEditor({
           </div>
         )}
       </div>
+      </fieldset>
       <div className="flex justify-between items-center gap-2 mt-5">
         <div className="flex gap-2">
           <button onClick={() => previewMutation.mutate(form)} disabled={previewMutation.isPending}
@@ -390,7 +396,7 @@ export function SystemPolicyEditor({
           <button onClick={onClose} className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container rounded-md">
             {t('common:cancel')}
           </button>
-          <button onClick={() => saveMutation.mutate(form)} disabled={!formValid || saveMutation.isPending}
+          <button onClick={() => saveMutation.mutate({ form, current: captureSession() })} disabled={!formValid || saveMutation.isPending}
             className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50">
             {saveMutation.isPending ? t('alerts:system.editor.saving') : t('alerts:system.editor.save')}
           </button>

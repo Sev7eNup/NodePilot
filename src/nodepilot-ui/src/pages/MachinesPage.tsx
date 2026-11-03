@@ -7,6 +7,7 @@ import {
   WifiController, WifiOff,
 } from '@carbon/icons-react';
 import { useColumnResize } from '../hooks/useColumnResize';
+import { useAsyncIdentity } from '../hooks/useAsyncIdentity';
 import { api } from '../api/client';
 import { DependencyLink } from '../components/dependencies/DependencyLink';
 import { ModalShell } from '../components/common/ModalShell';
@@ -606,10 +607,7 @@ export function MachinesPage() {
         <MachineDialog
           credentials={credentials ?? []}
           onCancel={() => setDialog(null)}
-          onSaved={() => {
-            queryClient.invalidateQueries({ queryKey: ['machines'] });
-            setDialog(null);
-          }}
+          onSaved={() => setDialog(null)}
         />
       )}
       {dialog?.kind === 'edit' && (
@@ -617,10 +615,7 @@ export function MachinesPage() {
           machine={dialog.machine}
           credentials={credentials ?? []}
           onCancel={() => setDialog(null)}
-          onSaved={() => {
-            queryClient.invalidateQueries({ queryKey: ['machines'] });
-            setDialog(null);
-          }}
+          onSaved={() => setDialog(null)}
         />
       )}
     </div>
@@ -764,7 +759,9 @@ function MachineDialog({
   onSaved: () => void;
 }>) {
   const { t } = useTranslation(['machines', 'common']);
+  const queryClient = useQueryClient();
   const isEdit = !!machine;
+  const captureSession = useAsyncIdentity(machine?.id);
 
   const [name, setName] = useState(machine?.name ?? '');
   const [hostname, setHostname] = useState(machine?.hostname ?? '');
@@ -794,6 +791,7 @@ function MachineDialog({
     }
     setError(null);
     setPending(true);
+    const current = captureSession();
     try {
       const body = {
         name: name.trim(),
@@ -808,8 +806,11 @@ function MachineDialog({
       } else {
         await api.post('/machines', body);
       }
-      onSaved();
+      queryClient.invalidateQueries({ queryKey: ['machines'] });
+      // A closed dialog must not close the one opened after it.
+      if (current()) onSaved();
     } catch (err) {
+      if (!current()) return;
       setError((err as Error).message);
       setPending(false);
     }
@@ -831,7 +832,8 @@ function MachineDialog({
           </button>
         </div>
 
-        <div className="space-y-3">
+        {/* Locked while saving, so the response never discards edits made after the submit. */}
+        <fieldset disabled={pending} className="space-y-3 min-w-0 border-0 p-0">
           <div>
             <label className="block text-xs font-medium text-on-surface-variant mb-1">
               {t('machines:fields.name')}
@@ -924,7 +926,7 @@ function MachineDialog({
             />
             <p className="text-[11px] text-outline mt-0.5">{t('machines:tagsHint')}</p>
           </div>
-        </div>
+        </fieldset>
 
         {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
 

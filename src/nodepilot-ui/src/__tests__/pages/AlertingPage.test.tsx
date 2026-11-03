@@ -237,3 +237,35 @@ describe('AlertingPage failure reporting', () => {
     expect(useToastStore.getState().toasts.every((toast) => toast.kind === 'error')).toBe(true);
   });
 });
+
+describe('AlertingPage editing sessions', () => {
+  it('locks the draft while saving and keeps a rule opened later when the old save completes', async () => {
+    const second = rule({ id: 'r2', name: 'Second-Rule', routes: [{ id: 'rt2', channel: 'Email', target: 'b@x', secret: null, order: 0 }] });
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let listCalls = 0;
+    server.use(
+      http.get(`${BASE}/api/alerting/rules`, () => { listCalls++; return HttpResponse.json([...RULES, second]); }),
+      http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json([])),
+      http.put(`${BASE}/api/alerting/rules/r1`, async () => { await gate; return new HttpResponse(null, { status: 204 }); }),
+    );
+    renderPage('Admin');
+
+    const editButton = async (name: string) =>
+      (await screen.findByText(name)).closest('tr')!.querySelector<HTMLButtonElement>('button[title="Edit"]')!;
+    fireEvent.click(await editButton('Prod-Failures'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Update' }));
+    await waitFor(() => expect(screen.getByDisplayValue('Prod-Failures')).toBeDisabled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(await editButton('Second-Rule'));
+    expect(await screen.findByDisplayValue('Second-Rule')).toBeEnabled();
+    const callsBeforeRelease = listCalls;
+    release();
+
+    await waitFor(() => expect(listCalls).toBeGreaterThan(callsBeforeRelease));
+    expect(screen.getByText(/Edit alerting rule/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Second-Rule')).toBeEnabled();
+  });
+});
