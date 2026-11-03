@@ -169,6 +169,8 @@ the UAC prompt, those are two different profiles. The console user is no substit
 under Remote Desktop or a switched user it is someone else. The installer therefore identifies the
 account that started it and hands the token to exactly that account. If that account cannot be
 determined, provisioning fails with a message instead of handing the token to another profile.
+When software distribution runs the installer as SYSTEM, no shell runs as that account; the token
+then goes to the user signed in at the console, or stays with SYSTEM when nobody is signed in.
 
 If the provisioning fails, the installer reports it with a pointer to its log at
 `%TEMP%\nodepilot-provision.log` and does not start the shell — rather than reporting a successful

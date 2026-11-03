@@ -101,14 +101,29 @@ function New-RandomSecret([int] $bytes = 32) {
     return ([Convert]::ToBase64String($buf)) -replace '[+/=]', ''
 }
 
+# SID of the user signed in at the console, or $null when there is none.
+function Get-DesktopConsoleUserSid {
+    try {
+        $userName = (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).UserName
+        if ([string]::IsNullOrWhiteSpace($userName)) { return $null }
+        return (New-Object System.Security.Principal.NTAccount($userName)).Translate(
+            [System.Security.Principal.SecurityIdentifier]).Value
+    } catch {
+        Write-Warning "Could not resolve the console user: $($_.Exception.Message)"
+        return $null
+    }
+}
+
 # Where the first-run handoff goes and which SID may read it.
 #
 # Inno launches the shell with `runasoriginaluser`, as the account that started setup before UAC
 # elevation. That account is identified by setup and passed as -HandoffUserSid; neither this
 # process (possibly another administrator) nor the console user (wrong for RDP and switched
-# users) is a substitute. The profile comes from the ProfileList registry, so redirected or
-# renamed profiles still resolve. -HandoffUserProfile is the dev-loop override. Throws when the
-# account is unknown or has no profile.
+# users) is a substitute. The exception is setup run as SYSTEM or another service account by
+# software distribution: no shell runs as that account, so the console user gets the handoff,
+# or this process's profile when nobody is signed in. The profile comes from the ProfileList
+# registry, so redirected or renamed profiles still resolve. -HandoffUserProfile is the dev-loop
+# override. Throws when the account is unknown or has no profile.
 function Resolve-DesktopHandoffTarget {
     param([string] $HandoffUserProfile, [string] $HandoffUserSid)
     if (-not [string]::IsNullOrWhiteSpace($HandoffUserProfile)) {
@@ -127,6 +142,19 @@ function Resolve-DesktopHandoffTarget {
     } catch {
         throw "-HandoffUserSid '$HandoffUserSid' is not a SID."
     }
+    if (@('S-1-5-18', 'S-1-5-19', 'S-1-5-20') -contains $sid.Value) {
+        $consoleSid = Get-DesktopConsoleUserSid
+        if (-not $consoleSid) {
+            Write-Warning ('Setup ran as a service account and nobody is signed in, so the first-run setup ' +
+                           'token stays with this account. See docs/desktop-troubleshooting.md.')
+            return [pscustomobject]@{
+                LocalAppData = $env:LOCALAPPDATA
+                Sid          = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User
+                Source       = 'this process (setup ran as a service account, nobody signed in)'
+            }
+        }
+        $sid = New-Object System.Security.Principal.SecurityIdentifier($consoleSid)
+    }
     $profileKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($sid.Value)"
     try {
         $profilePath = (Get-ItemProperty -Path $profileKey -Name 'ProfileImagePath' -ErrorAction Stop).ProfileImagePath
@@ -141,7 +169,7 @@ function Resolve-DesktopHandoffTarget {
     return [pscustomobject]@{
         LocalAppData = (Join-Path $profilePath 'AppData\Local')
         Sid          = $sid
-        Source       = "setup user $($sid.Value)"
+        Source       = if ($sid.Value -eq $HandoffUserSid) { "setup user $($sid.Value)" } else { "console user $($sid.Value), setup ran as $HandoffUserSid" }
     }
 }
 

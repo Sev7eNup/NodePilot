@@ -41,6 +41,8 @@ went to the administrator's profile while the app ran as the standard user, whic
 From 1.2.11 the installer resolved the interactive console user, which is still a different account
 under RDP or a switched user. Setup now passes the SID of the account that started it to the
 provisioner and fails explicitly when that account has no profile, instead of picking another one.
+Setup run as SYSTEM by software distribution hands the token to the user signed in at the console;
+with nobody signed in it stays with SYSTEM, and Option B below recovers it.
 
 If you are on an affected installation, recover it in one of two ways.
 

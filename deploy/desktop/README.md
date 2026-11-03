@@ -112,7 +112,9 @@ service-environment value.
    passes that SID as `-HandoffUserSid`. `Resolve-DesktopHandoffTarget` reads the profile directory
    for exactly that SID; Inno's `{localappdata}` would be no better, it expands in the elevated
    context. When the account is unknown or has no profile, provisioning fails explicitly instead of
-   picking another profile. `Update-Desktop.ps1` passes the account running the update unless
+   picking another profile. Setup run as SYSTEM or another service account by software distribution
+   is the exception: no shell runs as that account, so the user signed in at the console gets the
+   handoff, or the service account itself when nobody is signed in. `Update-Desktop.ps1` passes the account running the update unless
    `-HandoffUserSid` names another; `-HandoffUserProfile` overrides the directory for the dev loop
    and for tests. Getting this wrong strands the user on a login form
    for an account that does not exist yet, with the only remaining token copy SYSTEM-owned —

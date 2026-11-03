@@ -3029,8 +3029,8 @@ Assert-TextMatches -Name 'the handoff ACL is granted to the resolved user' `
     -Text $desktopProvision -Pattern '(?s)\$handoffOwnerSid\s*=\s*\$handoffTarget\.Sid'
 Assert-TextMatches -Name 'the handoff directory is built from the resolved base' `
     -Text $desktopProvision -Pattern "\`$handoffDir = Join-Path \`$handoffBase 'NodePilot'"
-Assert-TextDoesNotMatch -Name 'the handoff never falls back to the console user or this process profile' `
-    -Text $desktopProvision -Pattern 'Win32_ComputerSystem|\$handoffBase\s*=\s*\$env:LOCALAPPDATA'
+Assert-TextDoesNotMatch -Name 'the handoff base never defaults to this process profile' `
+    -Text $desktopProvision -Pattern '\$handoffBase\s*=\s*\$env:LOCALAPPDATA'
 Assert-TextMatches -Name 'setup identifies the account that started it as that account' `
     -Text $desktopIss -Pattern '(?s)function OriginalUserSid\(\).*?ExecAsOriginalUser\(.*?WindowsIdentity\]::GetCurrent\(\)\.User\.Value'
 Assert-TextMatches -Name 'setup passes that account to the provisioner' `
@@ -3047,17 +3047,35 @@ Assert-TextMatches -Name 'setup passes that account to the provisioner' `
     $fixtureProfile = Join-Path ([IO.Path]::GetTempPath()) ('nodepilot-handoff-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $fixtureProfile | Out-Null
     $setupUserSid = 'S-1-5-21-1111111111-2222222222-3333333333-1001'
+    $consoleUserSid = 'S-1-5-21-1111111111-2222222222-3333333333-1003'
+    $consoleProfile = Join-Path $fixtureProfile 'console'
+    New-Item -ItemType Directory -Path $consoleProfile | Out-Null
     function Get-ItemProperty {
         param($Path, $Name, $ErrorAction)
-        if ($Path -notlike "*\ProfileList\$setupUserSid") { throw "fixture: no profile at $Path" }
-        [pscustomobject]@{ ProfileImagePath = $fixtureProfile }
+        if ($Path -like "*\ProfileList\$setupUserSid") { return [pscustomobject]@{ ProfileImagePath = $fixtureProfile } }
+        if ($Path -like "*\ProfileList\$consoleUserSid") { return [pscustomobject]@{ ProfileImagePath = $consoleProfile } }
+        throw "fixture: no profile at $Path"
     }
     # A console user that differs from the setup user, as under RDP or a switched user.
-    function Get-CimInstance { [pscustomobject]@{ UserName = 'CONTOSO\console-user' } }
+    $script:consoleSid = $consoleUserSid
+    $script:consoleQueries = 0
+    function Get-DesktopConsoleUserSid { $script:consoleQueries++; $script:consoleSid }
     try {
         $target = Resolve-DesktopHandoffTarget -HandoffUserSid $setupUserSid
-        if ($target.Sid.Value -ne $setupUserSid -or $target.LocalAppData -ne (Join-Path $fixtureProfile 'AppData\Local')) {
+        if ($target.Sid.Value -ne $setupUserSid -or $target.LocalAppData -ne (Join-Path $fixtureProfile 'AppData\Local') -or
+            $script:consoleQueries -ne 0) {
             throw 'Deployment template check failed: the handoff must go to the account that started setup.'
+        }
+        # Software distribution runs setup as SYSTEM, which never runs the shell.
+        $target = Resolve-DesktopHandoffTarget -HandoffUserSid 'S-1-5-18'
+        if ($target.Sid.Value -ne $consoleUserSid -or $target.LocalAppData -ne (Join-Path $consoleProfile 'AppData\Local')) {
+            throw 'Deployment template check failed: setup run as SYSTEM must hand over to the console user.'
+        }
+        $script:consoleSid = $null
+        $target = Resolve-DesktopHandoffTarget -HandoffUserSid 'S-1-5-18' 3>$null
+        if ($target.LocalAppData -ne $env:LOCALAPPDATA -or
+            $target.Sid.Value -ne ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value) {
+            throw 'Deployment template check failed: setup run as SYSTEM with nobody signed in must keep the handoff with that account.'
         }
         foreach ($case in @(
                 @{ Name = 'no setup account'; Sid = '' },
@@ -3071,7 +3089,7 @@ Assert-TextMatches -Name 'setup passes that account to the provisioner' `
         }
     }
     finally { Remove-Item -LiteralPath $fixtureProfile -Recurse -Force -ErrorAction SilentlyContinue }
-    Write-Host '  OK  the first-run handoff goes to the setup account and fails explicitly when it is unknown' -ForegroundColor DarkGray
+    Write-Host '  OK  the first-run handoff goes to the setup account, to the console user when setup ran as a service account, and fails explicitly when it is unknown' -ForegroundColor DarkGray
 }
 
 # Same contract as the server uninstaller: a failed cleanup keeps the installation retryable.

@@ -141,7 +141,8 @@ Planned version: **1.5.4**.
   the first login, does not follow redirects there and no longer turns off certificate validation
   for the whole process.
 - The desktop setup hands the first-login token to the account that started setup, also under
-  Remote Desktop or a switched user. If that account cannot be determined, provisioning stops
+  Remote Desktop or a switched user, and to the user signed in at the console when software
+  distribution runs setup as SYSTEM. If the starting account cannot be determined, provisioning stops
   instead of handing the token to another profile (#732).
 - MCP alerting output shows webhook targets only as scheme, host and port, because the rest of the
   URL can contain tokens (#730).
