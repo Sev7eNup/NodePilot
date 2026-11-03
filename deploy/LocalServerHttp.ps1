@@ -42,6 +42,14 @@ namespace NodePilot.Deployment
 '@
 }
 
+function Get-NodePilotLocalHttpsProtocol {
+    # Windows PowerShell without the system-default switch offers only SSL 3 and TLS 1.0, which
+    # Kestrel refuses. 0 is SystemDefault: the OS already negotiates TLS 1.2 or later.
+    param([Parameter(Mandatory)][Net.SecurityProtocolType]$Current)
+    if ([int]$Current -eq 0) { return $Current }
+    return $Current -bor [Net.SecurityProtocolType]::Tls12
+}
+
 function Invoke-NodePilotLocalHttps {
     [CmdletBinding()]
     param(
@@ -56,18 +64,24 @@ function Invoke-NodePilotLocalHttps {
     $request = [NodePilot.Deployment.LocalServerHttp]::CreateRequest($Uri, $CertificateThumbprint, $TimeoutSeconds * 1000)
     $request.Method = $Method
     foreach ($key in $Headers.Keys) { $request.Headers.Add([string]$key, [string]$Headers[$key]) }
-    if ($Method -eq 'POST') {
-        $request.ContentType = 'application/json'
-        $bytes = [Text.Encoding]::UTF8.GetBytes($Body)
-        try {
-            $request.ContentLength = $bytes.Length
-            $stream = $request.GetRequestStream()
-            try { $stream.Write($bytes, 0, $bytes.Length) }
-            finally { $stream.Dispose() }
+    # The protocol setting is process-wide, so it only applies for this request.
+    $previousProtocol = [Net.ServicePointManager]::SecurityProtocol
+    [Net.ServicePointManager]::SecurityProtocol = Get-NodePilotLocalHttpsProtocol -Current $previousProtocol
+    try {
+        if ($Method -eq 'POST') {
+            $request.ContentType = 'application/json'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($Body)
+            try {
+                $request.ContentLength = $bytes.Length
+                $stream = $request.GetRequestStream()
+                try { $stream.Write($bytes, 0, $bytes.Length) }
+                finally { $stream.Dispose() }
+            }
+            finally { [Array]::Clear($bytes, 0, $bytes.Length) }
         }
-        finally { [Array]::Clear($bytes, 0, $bytes.Length) }
+        $response = $request.GetResponse()
     }
-    $response = $request.GetResponse()
+    finally { [Net.ServicePointManager]::SecurityProtocol = $previousProtocol }
     try { return [pscustomobject]@{ StatusCode = [int]$response.StatusCode } }
     finally { $response.Dispose() }
 }

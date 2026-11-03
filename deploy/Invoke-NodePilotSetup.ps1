@@ -156,10 +156,12 @@ function Invoke-NodePilotFirstLogin {
     }
     catch {
         # Report the server's own message: a password-policy rejection or a username mismatch is
-        # actionable, a generic failure is not.
-        $detail = $_.Exception.Message
+        # actionable, a generic failure is not. The .NET call wraps the WebException that carries it.
+        $webError = $_.Exception
+        while ($webError -and -not ($webError -is [Net.WebException])) { $webError = $webError.InnerException }
+        $detail = if ($webError) { $webError.Message } else { $_.Exception.Message }
         try {
-            $errorResponse = $_.Exception.Response
+            $errorResponse = if ($webError) { $webError.Response } else { $null }
             if ($errorResponse) {
                 $reader = New-Object IO.StreamReader($errorResponse.GetResponseStream())
                 $payload = $reader.ReadToEnd()
