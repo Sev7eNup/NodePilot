@@ -434,6 +434,7 @@ function ScriptDoubleClickEditor({
         onRun={workflowId ? runStepTest : undefined}
         onAiGenerate={aiScript?.generate}
         aiTargetHost={aiScript?.targetHost}
+        aiRecipientKey={aiScript?.recipientKey}
       />
     </Suspense>
   );

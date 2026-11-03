@@ -386,6 +386,7 @@ public class AiKnowledgeControllerTests
         caps.SourceCode.Should().BeTrue();
         caps.Db.Should().BeTrue();
         caps.ScriptContextTargetHost.Should().Be("localhost");
+        caps.ScriptContextRecipientKey.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -431,6 +432,7 @@ public class AiKnowledgeControllerTests
         caps.SourceCode.Should().BeFalse(); // source-code is Admin/Operator only
         caps.Db.Should().BeFalse();        // DB (raw SQL) is global-Admin only
         caps.ScriptContextTargetHost.Should().BeNull(); // script generation is Admin/Operator only
+        caps.ScriptContextRecipientKey.Should().BeNull();
     }
 
     [Fact]

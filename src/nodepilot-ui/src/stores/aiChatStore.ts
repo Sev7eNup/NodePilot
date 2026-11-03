@@ -4,6 +4,7 @@ import type { WorkflowChatProposal, ChatDoneMeta } from '../api/ai';
 import type { WorkflowDefinition } from '../lib/workflowDiff';
 import { randomUuid } from '../lib/uuid';
 import { AI_CHAT_STORAGE_KEY } from '../security/sensitiveBrowserState';
+import { chatSessionStorage, useChatPersistenceStatus } from './chatPersistenceStatus';
 
 /** One message in the workflow-assistant chat. */
 export interface ChatMessage {
@@ -41,6 +42,8 @@ export interface ChatThreadMeta {
 
 /** Cap on persisted messages per thread (older ones are dropped when saving). */
 const MAX_PERSISTED_MESSAGES = 200;
+// UTF-16 storage counts differ between browsers. Reserve ample origin space for other data.
+const MAX_PERSISTED_CHARACTERS = 1_000_000;
 
 /**
  * Holds chat history per user, workflow, and thread. Persisted in sessionStorage, so it survives
@@ -202,21 +205,45 @@ export const useAiChatStore = create<AiChatStore>()(
       name: AI_CHAT_STORAGE_KEY,
       version: 2,
       migrate: (persistedState) => migratePersistedState(persistedState) as AiChatStore,
-      storage: createJSONStorage(() => globalThis.sessionStorage),
+      storage: createJSONStorage(() => chatSessionStorage),
       // Only persist saved workflows; strip sensitive/heavy fields.
       partialize: (state) => {
         const threadsByScope: Record<string, ChatThreadMeta[]> = {};
         const activeThreadByScope: Record<string, string> = {};
+        let remaining = MAX_PERSISTED_CHARACTERS;
+        let trimmed = false;
+        const updated = new Map<string, number>();
         for (const [scope, threads] of Object.entries(state.threadsByScope)) {
           if (!isPersistableScope(scope)) continue;
-          threadsByScope[scope] = threads;
-          if (state.activeThreadByScope[scope]) activeThreadByScope[scope] = state.activeThreadByScope[scope];
+          const kept: ChatThreadMeta[] = [];
+          for (const thread of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
+            const cost = JSON.stringify(thread).length + scope.length + 100;
+            if (cost > remaining) { trimmed = true; continue; }
+            remaining -= cost;
+            kept.unshift(thread);
+            updated.set(aiChatFullKey(scope, thread.id), thread.updatedAt);
+          }
+          threadsByScope[scope] = kept;
+          if (kept.some((thread) => thread.id === state.activeThreadByScope[scope])) {
+            activeThreadByScope[scope] = state.activeThreadByScope[scope];
+          }
         }
         const messagesByThread: Record<string, ChatMessage[]> = {};
-        for (const [key, messages] of Object.entries(state.messagesByThread)) {
+        const entries = Object.entries(state.messagesByThread).sort(([a], [b]) => (updated.get(b) ?? 0) - (updated.get(a) ?? 0));
+        for (const [key, messages] of entries) {
           if (!isPersistableScope(key)) continue; // The key starts with the scope.
-          messagesByThread[key] = stripForPersist(messages);
+          const kept: ChatMessage[] = [];
+          const stripped = stripForPersist(messages);
+          for (const message of stripped.toReversed()) {
+            const cost = JSON.stringify(message).length + key.length + 16;
+            if (cost > remaining) { trimmed = true; break; }
+            remaining -= cost;
+            kept.unshift(message);
+          }
+          if (messages.length > stripped.length) trimmed = true;
+          if (kept.length > 0) messagesByThread[key] = kept;
         }
+        useChatPersistenceStatus.setState({ trimmed });
         return { messagesByThread, threadsByScope, activeThreadByScope };
       },
     },

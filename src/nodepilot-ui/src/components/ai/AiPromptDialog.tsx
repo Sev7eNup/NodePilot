@@ -16,11 +16,12 @@ interface Props {
   showScriptContextConsent?: boolean;
   /** Sanitized host of the configured LLM target. Null falls back to a generic warning. */
   scriptContextTargetHost?: string | null;
+  scriptContextRecipientKey?: string | null;
   /**
    * Called with the trimmed prompt, replace toggle, and one-shot script-context consent.
    * If the callback throws, its message is shown as an error and the dialog stays open.
    */
-  onSubmit: (prompt: string, replaceAll: boolean, includeCurrentScript: boolean) => Promise<void>;
+  onSubmit: (prompt: string, replaceAll: boolean, includeCurrentScript: boolean, expectedRecipientKey: string | null) => Promise<void>;
   onClose: () => void;
 }
 
@@ -38,6 +39,7 @@ export function AiPromptDialog({
   defaultReplaceAll = false,
   showScriptContextConsent = false,
   scriptContextTargetHost,
+  scriptContextRecipientKey,
   onSubmit,
   onClose,
 }: Readonly<Props>) {
@@ -47,7 +49,9 @@ export function AiPromptDialog({
   const [replaceAll, setReplaceAll] = useState(defaultReplaceAll);
   // Deliberately component-local and default false: closing/reopening the dialog requires a new
   // decision and no browser storage ever remembers this data-egress consent.
-  const [includeCurrentScript, setIncludeCurrentScript] = useState(false);
+  const [consentedRecipient, setConsentedRecipient] = useState<string | null>(null);
+  const includeCurrentScript = !!scriptContextRecipientKey && consentedRecipient === scriptContextRecipientKey;
+  useEffect(() => { setConsentedRecipient(null); }, [scriptContextRecipientKey]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -61,7 +65,7 @@ export function AiPromptDialog({
     setError(null);
     setSubmitting(true);
     try {
-      await onSubmit(trimmed, replaceAll, includeCurrentScript);
+      await onSubmit(trimmed, replaceAll, includeCurrentScript, includeCurrentScript ? consentedRecipient : null);
       // Closing does NOT happen automatically here — the caller closes the dialog
       // after inserting the result. That gives it a chance to sync editor state
       // before the dialog disappears.
@@ -71,7 +75,7 @@ export function AiPromptDialog({
     } finally {
       setSubmitting(false);
     }
-  }, [prompt, replaceAll, includeCurrentScript, submitting, onSubmit]);
+  }, [prompt, replaceAll, includeCurrentScript, consentedRecipient, submitting, onSubmit]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -147,8 +151,8 @@ export function AiPromptDialog({
               <input
                 type="checkbox"
                 checked={includeCurrentScript}
-                onChange={(e) => setIncludeCurrentScript(e.target.checked)}
-                disabled={submitting}
+                onChange={(e) => setConsentedRecipient(e.target.checked ? scriptContextRecipientKey ?? null : null)}
+                disabled={submitting || !scriptContextRecipientKey}
                 className="w-4 h-4 mt-0.5 rounded border-outline-variant accent-primary shrink-0"
               />
               <span className="leading-snug">

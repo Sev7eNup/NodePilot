@@ -71,6 +71,23 @@ describe('QueryPane', () => {
     useAuthStore.setState({ userId: null, username: null, role: null, isAuthenticated: false });
   });
 
+  it('cannot bypass typed confirmation by invoking Run again while the dialog is open', async () => {
+    vi.mocked(dbAdminApi.getInfo).mockResolvedValue(INFO_WRITE);
+    wrap(<QueryPane />);
+    await screen.findByText('postgres');
+    fireEvent.change(screen.getByTestId('sql-editor'), { target: { value: 'DELETE FROM Example' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Write$/ }));
+    const run = screen.getByRole('button', { name: /^Run$/ });
+    fireEvent.click(run);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(run);
+    expect(dbAdminApi.query).not.toHaveBeenCalled();
+    const user = userEvent.setup();
+    for (let i = 0; i < 8; i++) await user.tab({ shift: true });
+    expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
+    expect(dbAdminApi.query).not.toHaveBeenCalled();
+  });
+
   it('rendersProviderBadge_fromInfoEndpoint', async () => {
     wrap(<QueryPane />);
     await waitFor(() => expect(screen.getByText('postgres')).toBeInTheDocument());

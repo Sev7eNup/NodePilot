@@ -79,13 +79,15 @@ themselves require a service restart. A proxy does not replace a missing network
 The workflow assistant masks named secrets before the model call. With
 `ShareScriptsWithAssistant` enabled, however, the provider receives scripts, SQL, and arguments
 to the extent that secret detection does not mask them. This detection is heuristic.
-Changing the profile, endpoint, or sharing switch excludes the previous
-chat history from the next call. The global knowledge chat applies the same rule and also
-treats a model change as a new context; the answer then notes that the earlier conversation
-was not sent.
+Changing the profile, its endpoint or model, or the sharing switch excludes the previous
+chat history from the next call. The global knowledge chat applies the same rule; the answer
+then notes that the earlier conversation was not sent.
 
 Script generation sends the current script only with the separate approval
-`IncludeCurrentScript=true`. It receives upstream variables as a schema without their values.
+`IncludeCurrentScript=true`, and only to the profile the approval was given for: if the active
+profile, its endpoint or model changed in between, the request fails with
+`409 LLM_RECIPIENT_CHANGED` and the editor asks again. It receives upstream variables as a
+schema without their values.
 Generated scripts are shown in the editor before they are run. Proposals of the
 workflow assistant keep existing secrets and layouts when merged.
 Changes to masked conditions may have to be made manually.

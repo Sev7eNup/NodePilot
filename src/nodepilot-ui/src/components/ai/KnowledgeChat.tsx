@@ -13,6 +13,7 @@ import { Markdown } from '../common/Markdown';
 import { CopyButton } from '../common/CopyButton';
 import { UsageFooter } from './UsageFooter';
 import { ChatThreadMenu } from './ChatThreadMenu';
+import { ChatPersistenceNotice } from './ChatPersistenceNotice';
 import {
   useAiChatStore, aiChatScopeKey, aiChatFullKey,
   type ChatMessage, type ChatThreadMeta,
@@ -311,6 +312,7 @@ export function KnowledgeChat({ compact = false }: Readonly<{ compact?: boolean 
       </div>
 
       {/* Error + Retry */}
+      <ChatPersistenceNotice />
       {error && (
         <div role="alert" className="mt-2 flex items-start justify-between gap-2 whitespace-pre-wrap rounded-lg border border-error/30 bg-error-container/20 px-2.5 py-2 text-xs text-on-error-container">
           <span className="min-w-0 flex-1">{t('ai:chat.errorPrefix', { message: error })}</span>

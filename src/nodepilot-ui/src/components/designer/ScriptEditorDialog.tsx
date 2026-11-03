@@ -29,6 +29,7 @@ import { monaco, MONO_FONT_STACK } from '../../lib/monacoSetup';
 import { isMinimalSkin, useThemeStore } from '../../stores/themeStore';
 import { confirmDialog } from '../../stores/confirmStore';
 import { AiPromptDialog } from '../ai/AiPromptDialog';
+import { ApiError } from '../../api/client';
 import type { StepTestResult } from '../../types/api';
 
 interface AvailableVar {
@@ -59,9 +60,10 @@ interface Props {
    * closes right after submit and the code types into the editor; errors show as a banner
    * there. Insert mode defaults to "insert at cursor" and can be switched to replace-all.
    */
-  onAiGenerate?: (prompt: string, currentScript: string | null, onToken: (text: string) => void, signal: AbortSignal) => Promise<void>;
+  onAiGenerate?: (prompt: string, currentScript: string | null, onToken: (text: string) => void, signal: AbortSignal, expectedRecipientKey: string | null) => Promise<void>;
   /** Sanitized active LLM host shown beside the one-shot script-context consent. */
   aiTargetHost?: string | null;
+  aiRecipientKey?: string | null;
 }
 
 const FONT_SIZE_KEY = 'nodepilot.scriptEditor.fontSize';
@@ -239,7 +241,7 @@ function parseExposedVars(code: string): string[] {
 
 export function ScriptEditorDialog({
   value, onChange, onClose, onRun, availableVars = [], upstreamRefs = [], outputVariableName,
-  title = 'PowerShell Script Editor', onAiGenerate, aiTargetHost,
+  title = 'PowerShell Script Editor', onAiGenerate, aiTargetHost, aiRecipientKey,
 }: Readonly<Props>) {
   const { t } = useTranslation(['ai', 'editor']);
   const aiDialogTitle = t('ai:scriptDialog.title');
@@ -406,7 +408,7 @@ export function ScriptEditorDialog({
    * In replace-all mode the editor is cleared on the first token, so an error before any token
    * leaves the old content intact. `signal` cancels the stream.
    */
-  const handleAiSubmit = useCallback(async (prompt: string, replaceAll: boolean, includeCurrentScript: boolean) => {
+  const handleAiSubmit = useCallback(async (prompt: string, replaceAll: boolean, includeCurrentScript: boolean, expectedRecipientKey: string | null) => {
     if (!onAiGenerate) return;
     if (aiAbortRef.current) return; // a generation is already running, so no second stream
     const editor = editorRef.current;
@@ -506,7 +508,7 @@ export function ScriptEditorDialog({
 
     try {
       // Editor contents leave the browser only after the dialog's one-shot consent.
-      await onAiGenerate(prompt, includeCurrentScript ? original : null, onToken, ac.signal);
+      await onAiGenerate(prompt, includeCurrentScript ? original : null, onToken, ac.signal, expectedRecipientKey);
       cleanup();
     } catch (err: unknown) {
       const aborted = (err instanceof DOMException || err instanceof Error) && err.name === 'AbortError';
@@ -519,6 +521,7 @@ export function ScriptEditorDialog({
       }
       cleanup();
       if (!aborted) {
+        if (err instanceof ApiError && err.code === 'LLM_RECIPIENT_CHANGED') setAiDialogOpen(true);
         const message = err instanceof Error ? err.message : String(err);
         setAiError(restored ? `${message} ${t('ai:scriptDialog.originalRestored')}` : message);
       }
@@ -957,6 +960,7 @@ export function ScriptEditorDialog({
           defaultReplaceAll={false}
           showScriptContextConsent={code.trim().length > 0}
           scriptContextTargetHost={aiTargetHost}
+          scriptContextRecipientKey={aiRecipientKey}
           onSubmit={handleAiSubmit}
           onClose={() => setAiDialogOpen(false)}
         />

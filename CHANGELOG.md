@@ -55,6 +55,9 @@ Planned version: **1.5.4**.
   - Saving credentials, machines, users, global variables, maintenance windows, custom activities,
     alerting rules and policies or a settings section locks the form until the server answers. A
     late answer no longer closes or resets a record opened in the meantime (#690).
+- **AI**
+  - The AI chats keep working when browser storage is full or blocked. A note says what survives a
+    reload; once the storage budget is reached, only the newest history is kept (#701).
 - **Running workflows**
   - A breakpoint condition can use the run's inputs (`{{manual.*}}`) (#685).
   - Input values that look like `{{…}}` stay plain text and no longer fail the step as unresolved
@@ -97,6 +100,12 @@ Planned version: **1.5.4**.
 
 - Copying nodes to the clipboard also masks recognised secrets in edge conditions and in lists, not
   only in node fields (#574).
+- Script generation sends the current script only to the AI profile the approval was given for. If
+  the profile, its endpoint or model changed in between, the request fails with
+  `409 LLM_RECIPIENT_CHANGED` and the dialog asks again. The workflow assistant also treats a model
+  change as a new recipient for its chat history (#688).
+- A write query in the database viewer runs only after the confirmation phrase is typed; pressing
+  Run again while the confirmation is open no longer starts it (#691).
 - The CLI, the MCP server and the Python admin scripts under `scripts/` no longer follow redirects
   with the login token, so the token is never sent to another host (#711).
 - Logging out with the CLI also ends the MCP server's session right away (#712).
