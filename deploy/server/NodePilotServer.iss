@@ -2292,7 +2292,8 @@ begin
       SuppressibleMsgBox('The NodePilot uninstall could not finish (exit code ' +
         IntToStr(ResultCode) + ').' + #13#10#13#10 +
         'The uninstall was stopped and NodePilot Server stays registered. Fix the problem ' +
-        'reported by Uninstall-NodePilot.ps1, then uninstall again.',
+        'named in the log, then uninstall again. The log is at:' + #13#10 +
+        GetEnv('TEMP') + '\nodepilot-server-uninstall.log',
         mbError, MB_OK, IDOK);
       Abort;
     end;

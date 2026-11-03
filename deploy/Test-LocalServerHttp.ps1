@@ -58,7 +58,8 @@ try {
     # Windows PowerShell without the system-default switch would offer only TLS 1.0 to Kestrel.
     $legacy = [Net.SecurityProtocolType]::Tls
     $offered = Get-NodePilotLocalHttpsProtocol -Current $legacy
-    Assert-LocalHttps (($offered -band [Net.SecurityProtocolType]::Tls12) -and ($offered -band $legacy)) 'TLS 1.2 must be added to a legacy protocol setting.'
+    Assert-LocalHttps (($offered -band [Net.SecurityProtocolType]::Tls12) -and ($offered -band [Net.SecurityProtocolType]::Tls13) -and
+        ($offered -band $legacy)) 'TLS 1.2 and 1.3 must be added to a legacy protocol setting.'
     Assert-LocalHttps ([int](Get-NodePilotLocalHttpsProtocol -Current ([Net.SecurityProtocolType]0)) -eq 0) 'The system default must be left to the OS.'
     $previousProtocol = [Net.ServicePointManager]::SecurityProtocol
     $closedProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)

@@ -44,6 +44,10 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
 
+# The setup uninstaller runs this hidden and names this file when it stops; a clean run deletes it.
+$TranscriptPath = Join-Path $env:TEMP 'nodepilot-server-uninstall.log'
+try { Start-Transcript -Path $TranscriptPath -Force | Out-Null } catch { }
+
 function Write-Step { param([string]$Text) Write-Host "[uninstall] $Text" -ForegroundColor Cyan }
 function Write-Info { param([string]$Text) Write-Host "[uninstall] $Text" -ForegroundColor Gray }
 function Write-Ok   { param([string]$Text) Write-Host "[uninstall] $Text" -ForegroundColor Green }
@@ -484,3 +488,5 @@ if ((Test-Path -LiteralPath $markerParent) -and
     Remove-Item -LiteralPath $markerParent -Force -ErrorAction SilentlyContinue
 }
 Write-Ok "Uninstall complete."
+try { Stop-Transcript | Out-Null } catch { }
+Remove-Item -LiteralPath $TranscriptPath -Force -ErrorAction SilentlyContinue

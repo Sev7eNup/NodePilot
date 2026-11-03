@@ -1350,6 +1350,9 @@ Assert-TextMatches -Name 'the uninstaller defers deploy\ while it empties the in
     -Text $uninstallScript -Pattern "\`$entry\.Name -eq \`$recoveryHelperName\) \{ continue \}"
 Assert-TextMatches -Name 'a failed service deletion stops the uninstall before files are removed' `
     -Text $uninstallScript -Pattern '(?s)\$deleteExit -ne 0 -and \$deleteExit -ne 1072\) \{\s*throw'
+# The setup runs the script hidden, so a stopped uninstall is diagnosable only from its transcript.
+Assert-TextMatches -Name 'the uninstaller keeps a transcript until a clean run deletes it' `
+    -Text $uninstallScript -Pattern '(?s)\$TranscriptPath = Join-Path \$env:TEMP ''nodepilot-server-uninstall\.log''\s*\r?\ntry \{ Start-Transcript -Path \$TranscriptPath.*?Write-Ok "Uninstall complete\."\s*\r?\ntry \{ Stop-Transcript \| Out-Null \} catch \{ \}\s*\r?\nRemove-Item -LiteralPath \$TranscriptPath'
 
 # --- server setup wizard contracts -------------------------------------------------------------
 # The Pascal side has no unit-test story at all, so what CAN be pinned statically is pinned here
@@ -1367,6 +1370,8 @@ $serverUninstallStep = [regex]::Match($serverIss,
     '(?s)procedure CurUninstallStepChanged\(CurUninstallStep: TUninstallStep\);.*?\r?\nend;').Value
 Assert-TextMatches -Name 'a failed server cleanup aborts the uninstall' `
     -Text $serverUninstallStep -Pattern '(?s)else if ResultCode <> 0 then\s*begin.*?Abort;\s*end;'
+Assert-TextMatches -Name 'a failed server cleanup names the uninstall transcript' `
+    -Text $serverUninstallStep -Pattern "(?s)else if ResultCode <> 0 then\s*begin.*?GetEnv\('TEMP'\) \+ '\\nodepilot-server-uninstall\.log'.*?Abort;"
 Assert-TextMatches -Name 'a server cleanup that cannot start aborts the uninstall' `
     -Text $serverUninstallStep -Pattern "(?s)if not Exec\('powershell\.exe', Arguments.*?then\s*begin.*?Abort;\s*end"
 Assert-TextMatches -Name 'a missing server cleanup script aborts while the installation marker exists' `

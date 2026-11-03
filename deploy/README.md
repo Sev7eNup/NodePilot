@@ -564,7 +564,8 @@ the leftovers together with the holding process, and exits with code 1.
 **A failed uninstall can be repeated.** The installation marker and `<InstallPath>\deploy\` (which holds
 this script) are removed only after everything else is gone. Any non-zero exit makes the GUI and
 `/SILENT` uninstaller abort before Inno removes a file or the "Apps & features" entry, and the
-uninstaller itself exits non-zero; fix the reported cause and uninstall again.
+uninstaller itself exits non-zero; fix the cause named in `%TEMP%\nodepilot-server-uninstall.log`
+(the script's transcript, deleted after a clean run) and uninstall again.
 
 Two things are **deliberately** left in place, because both can be shared with something else on the
 host and blindly revoking them would break exactly that: the gMSA's "Log on as a service" right and the

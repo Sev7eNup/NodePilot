@@ -677,8 +677,8 @@ After an installation through the GUI setup, the same is possible through "Apps 
 ```
 
 If something cannot be removed, the uninstall stops with a non-zero exit code and keeps the
-installation marker, the deploy scripts and the "Apps & features" entry. Fix the cause it reports
-and run the same uninstall again.
+installation marker, the deploy scripts and the "Apps & features" entry. The cause is in
+`%TEMP%\nodepilot-server-uninstall.log`; fix it and run the same uninstall again.
 
 **The database is never removed, and there is no option for it.** NodePilot does not create it — it
 was provisioned separately in chapter 2, often has its own backup and replication regime, and in an

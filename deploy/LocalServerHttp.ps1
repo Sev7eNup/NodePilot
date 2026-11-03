@@ -44,10 +44,11 @@ namespace NodePilot.Deployment
 
 function Get-NodePilotLocalHttpsProtocol {
     # Windows PowerShell without the system-default switch offers only SSL 3 and TLS 1.0, which
-    # Kestrel refuses. 0 is SystemDefault: the OS already negotiates TLS 1.2 or later.
+    # Kestrel refuses; TLS 1.3 covers hosts with TLS 1.2 disabled. 0 is SystemDefault: the OS
+    # already negotiates TLS 1.2 or later.
     param([Parameter(Mandatory)][Net.SecurityProtocolType]$Current)
     if ([int]$Current -eq 0) { return $Current }
-    return $Current -bor [Net.SecurityProtocolType]::Tls12
+    return $Current -bor [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
 }
 
 function Invoke-NodePilotLocalHttps {

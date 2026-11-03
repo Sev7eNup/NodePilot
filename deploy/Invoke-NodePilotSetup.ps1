@@ -88,7 +88,6 @@ if ([string]::IsNullOrWhiteSpace($PayloadRoot)) {
 
 . (Join-Path $scriptDirectory 'SetupContract.ps1')
 . (Join-Path $scriptDirectory 'DeploymentProgress.ps1')
-. (Join-Path $scriptDirectory 'LocalServerHttp.ps1')
 . (Join-Path $scriptDirectory 'SetupProvisioning.ps1')
 
 $result = New-NodePilotResultBuffer
@@ -675,6 +674,9 @@ function Invoke-SetupInstall {
     $answers = Read-NodePilotAnswerFile -Path $AnswerFile
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'mode' -Value 'install'
     . (Join-Path $scriptDirectory 'ArtifactSecurity.ps1')
+    # Only the install mode talks to the local server; loading it compiles C#, so the wizard's
+    # other modes skip it.
+    . (Join-Path $scriptDirectory 'LocalServerHttp.ps1')
 
     $splat = ConvertTo-NodePilotInstallParameters -Answers $answers
 
