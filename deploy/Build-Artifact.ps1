@@ -611,6 +611,7 @@ $deployScriptFiles = @(
     'Uninstall-NodePilot.ps1'            # entry point
     'ArtifactSecurity.ps1'               # dot-sourced by install + update
     'DeploymentProgress.ps1'
+    'LocalServerHttp.ps1'
     'Preflight.ps1'                      # dot-sourced by install
     'ServiceControl.ps1'                 # dot-sourced by install + update
     'MachinePath.ps1'                    # dot-sourced by install + update + uninstall

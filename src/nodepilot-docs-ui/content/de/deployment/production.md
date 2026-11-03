@@ -678,6 +678,11 @@ Nach einer Installation über das GUI-Setup geht dasselbe über „Apps & Featur
 & 'C:\Program Files\NodePilot\unins000.exe' /VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1
 ```
 
+Lässt sich etwas nicht entfernen, bricht die Deinstallation mit einem Exit-Code ungleich 0 ab und
+behält den Installations-Marker, die Deploy-Skripte und den Eintrag unter „Apps & Features". Die
+Ursache steht in `%TEMP%\nodepilot-server-uninstall.log`; sie beheben und dieselbe Deinstallation
+erneut ausführen.
+
 **Die Datenbank wird nie entfernt, und es gibt dafür keine Option.** NodePilot legt sie nicht an —
 sie wurde in Kapitel 2 separat bereitgestellt, hat oft ein eigenes Backup- und
 Replikationsregime, und in einem Active/Passive-Cluster teilen sich beide Knoten dieselbe. Aus

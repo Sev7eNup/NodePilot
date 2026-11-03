@@ -135,6 +135,7 @@ function Invoke-NodePilotFirstLogin {
         Justification = 'Sent as a JSON body and written to the credential file; plaintext throughout by design.')]
     param(
         [Parameter(Mandatory)][int]$HttpsPort,
+        [Parameter(Mandatory)][string]$CertificateThumbprint,
         [Parameter(Mandatory)][string]$Username,
         [Parameter(Mandatory)][string]$Password,
         [Parameter(Mandatory)][string]$Token
@@ -144,40 +145,22 @@ function Invoke-NodePilotFirstLogin {
     $body = @{ username = $Username; password = $Password } | ConvertTo-Json -Compress
     $headers = @{ 'X-Setup-Token' = $Token }
 
-    # The certificate on a loopback call names the public hostname, not localhost, so validation
-    # is relaxed for this request. The previous policy is restored in the finally block so nothing
-    # else in this process inherits it.
-    $previousPolicy = $null
-    $policyChanged = $false
     try {
-        if ($PSVersionTable.PSVersion.Major -lt 6) {
-            if (-not ('TrustAllCertsBootstrap' -as [type])) {
-                Add-Type @"
-using System.Net; using System.Security.Cryptography.X509Certificates;
-public class TrustAllCertsBootstrap : ICertificatePolicy {
-  public bool CheckValidationResult(ServicePoint s, X509Certificate c, WebRequest r, int p) { return true; }
-}
-"@
-            }
-            $previousPolicy = [System.Net.ServicePointManager]::CertificatePolicy
-            [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsBootstrap
-            [System.Net.ServicePointManager]::SecurityProtocol = 'Tls12, Tls13'
-            $policyChanged = $true
-            $response = Invoke-WebRequest -Uri $uri -Method POST -Body $body -Headers $headers `
-                -ContentType 'application/json' -UseBasicParsing -TimeoutSec 30
-        }
-        else {
-            $response = Invoke-WebRequest -Uri $uri -Method POST -Body $body -Headers $headers `
-                -ContentType 'application/json' -UseBasicParsing -TimeoutSec 30 -SkipCertificateCheck
+        $response = Invoke-NodePilotLocalHttps -Uri $uri -CertificateThumbprint $CertificateThumbprint `
+            -Method POST -Body $body -Headers $headers -TimeoutSeconds 30
+        if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
+            throw "Bootstrap login returned HTTP $($response.StatusCode); redirects are not accepted."
         }
         return [pscustomobject]@{ Status = 'Created'; Detail = "HTTP $($response.StatusCode)" }
     }
     catch {
         # Report the server's own message: a password-policy rejection or a username mismatch is
-        # actionable, a generic failure is not.
-        $detail = $_.Exception.Message
+        # actionable, a generic failure is not. The .NET call wraps the WebException that carries it.
+        $webError = $_.Exception
+        while ($webError -and -not ($webError -is [Net.WebException])) { $webError = $webError.InnerException }
+        $detail = if ($webError) { $webError.Message } else { $_.Exception.Message }
         try {
-            $errorResponse = $_.Exception.Response
+            $errorResponse = if ($webError) { $webError.Response } else { $null }
             if ($errorResponse) {
                 $reader = New-Object IO.StreamReader($errorResponse.GetResponseStream())
                 $payload = $reader.ReadToEnd()
@@ -185,9 +168,6 @@ public class TrustAllCertsBootstrap : ICertificatePolicy {
             }
         } catch { }
         return [pscustomobject]@{ Status = 'Failed'; Detail = $detail }
-    }
-    finally {
-        if ($policyChanged) { [System.Net.ServicePointManager]::CertificatePolicy = $previousPolicy }
     }
 }
 
@@ -694,6 +674,9 @@ function Invoke-SetupInstall {
     $answers = Read-NodePilotAnswerFile -Path $AnswerFile
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'mode' -Value 'install'
     . (Join-Path $scriptDirectory 'ArtifactSecurity.ps1')
+    # Only the install mode talks to the local server; loading it compiles C#, so the wizard's
+    # other modes skip it.
+    . (Join-Path $scriptDirectory 'LocalServerHttp.ps1')
 
     $splat = ConvertTo-NodePilotInstallParameters -Answers $answers
 
@@ -783,6 +766,7 @@ function Invoke-SetupInstall {
         $bootstrapUser = [string]$answers['bootstrap.adminUsername']
         $bootstrapPassword = New-NodePilotBootstrapPassword
         $outcome = Invoke-NodePilotFirstLogin -HttpsPort ([int]$answers['network.httpsPort']) `
+            -CertificateThumbprint $splat['CertThumbprint'] `
             -Username $bootstrapUser -Password $bootstrapPassword -Token $token
 
         Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'status' -Value $outcome.Status

@@ -697,6 +697,35 @@ function Resolve-SidLabel {
     }
 }
 
+function Get-NodePilotDirectoryAccessSnapshot {
+    <#
+      The DACL of an existing directory, including its protection flag, so a rollback can give a
+      previous service identity back exactly the access it had. $null when the directory is absent.
+    #>
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $null }
+    $access = (Get-Acl -LiteralPath $Path).GetSecurityDescriptorSddlForm(
+        [System.Security.AccessControl.AccessControlSections]::Access)
+    return [pscustomobject]@{ Path = $Path; Access = $access }
+}
+
+function Restore-NodePilotDirectoryAccessSnapshot {
+    <#
+      Writes a DACL captured by Get-NodePilotDirectoryAccessSnapshot back and verifies it. Inheriting
+      children pick it up, so it runs before restored binaries are copied in and started.
+    #>
+    param([Parameter(Mandatory)][object]$Snapshot)
+    $acl = Get-Acl -LiteralPath $Snapshot.Path
+    $acl.SetSecurityDescriptorSddlForm($Snapshot.Access,
+        [System.Security.AccessControl.AccessControlSections]::Access)
+    Set-Acl -LiteralPath $Snapshot.Path -AclObject $acl
+    $restored = (Get-Acl -LiteralPath $Snapshot.Path).GetSecurityDescriptorSddlForm(
+        [System.Security.AccessControl.AccessControlSections]::Access)
+    if ($restored -ne $Snapshot.Access) {
+        throw "The previous access rules on '$($Snapshot.Path)' could not be restored."
+    }
+}
+
 function Assert-ServiceDirectoryAclUsable {
     <#
       Verify, repair once, verify again, then fail instead of handing the service a directory it

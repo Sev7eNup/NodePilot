@@ -144,6 +144,7 @@ Write-Step 'Staging the deployment scripts'
 $deployScripts = @(
     'ArtifactSecurity.ps1'
     'DeploymentProgress.ps1'
+    'LocalServerHttp.ps1'
     'MachinePath.ps1'
     'SwitcherConfig.ps1'
     'Preflight.ps1'
