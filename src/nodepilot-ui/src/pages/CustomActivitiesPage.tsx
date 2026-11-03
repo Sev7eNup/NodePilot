@@ -13,7 +13,7 @@ import {
   Upload,
 } from '@carbon/icons-react';
 import { ACTIVITY_ICON_COMPONENTS, FALLBACK_ACTIVITY_ICON, CUSTOM_ACTIVITY_ICON_CHOICES } from '../lib/activityIcons';
-import { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { DependencyLink } from '../components/dependencies/DependencyLink';
@@ -128,6 +128,10 @@ export function CustomActivitiesPage() {
   const [search, setSearch] = useState('');
   const [versionsForId, setVersionsForId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef(form);
+  useLayoutEffect(() => { formRef.current = form; }, [form]);
+  const dialogGeneration = useRef(0);
+  const closeDialog = () => { dialogGeneration.current++; setShowDialog(false); };
 
   const { data: list, isLoading } = useQuery({
     queryKey: ['custom-activities', 'list'],
@@ -140,7 +144,7 @@ export function CustomActivitiesPage() {
   };
 
   const saveMutation = useMutation({
-    mutationFn: async (f: FormState) => {
+    mutationFn: async ({ form: f }: { form: FormState; generation: number }) => {
       const body = {
         name: f.name.trim(), description: f.description.trim() || null, icon: f.icon.trim() || 'extension',
         color: f.color.trim() || null, scriptTemplate: f.scriptTemplate, engine: f.engine,
@@ -158,10 +162,11 @@ export function CustomActivitiesPage() {
       return api.post<{ definition: FullDef; warnings: { rule: string; message: string }[] }>(
         '/custom-activities', { ...body, key: f.key.trim() });
     },
-    onSuccess: (res) => {
+    onSuccess: (res, submitted) => {
       invalidate();
+      if (submitted.generation !== dialogGeneration.current) return;
       setWarnings(res.warnings ?? []);
-      if (!res.warnings || res.warnings.length === 0) { setShowDialog(false); setForm(EMPTY); }
+      if (formRef.current === submitted.form && (!res.warnings || res.warnings.length === 0)) { closeDialog(); setForm(EMPTY); }
       else setForm((current) => ({ ...current, id: res.definition.id, key: res.definition.key,
         concurrencyToken: res.definition.concurrencyToken, isEnabled: res.definition.isEnabled }));
     },
@@ -180,9 +185,11 @@ export function CustomActivitiesPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const openCreate = () => { setForm(EMPTY); setWarnings([]); setShowDialog(true); };
+  const openCreate = () => { dialogGeneration.current++; setForm(EMPTY); setWarnings([]); setShowDialog(true); };
   const openEdit = async (id: string) => {
+    const generation = ++dialogGeneration.current;
     const d = await api.get<FullDef>(`/custom-activities/${id}`);
+    if (generation !== dialogGeneration.current) return;
     setForm({
       id: d.id, key: d.key, name: d.name, description: d.description ?? '', icon: d.icon, color: d.color ?? '',
       scriptTemplate: d.scriptTemplate, engine: d.engine, runsRemote: d.runsRemote, isolated: d.isolated,
@@ -403,7 +410,7 @@ export function CustomActivitiesPage() {
         </div></div>
       )}
       {showDialog && (
-        <ModalShell onClose={() => setShowDialog(false)} maxWidth="max-w-3xl">
+        <ModalShell onClose={closeDialog} maxWidth="max-w-3xl">
           <h3 className="text-lg font-semibold mb-4 text-on-surface">{form.id ? t('customActivities:editTitle') : t('customActivities:create')}</h3>
           <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-3">
@@ -489,8 +496,8 @@ export function CustomActivitiesPage() {
           </div>
 
           <div className="flex justify-end gap-2 mt-5">
-            <button onClick={() => { setShowDialog(false); setForm(EMPTY); }} className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container rounded-md">{t('common:cancel')}</button>
-            <button onClick={() => saveMutation.mutate(form)} disabled={!form.name.trim() || (!form.id && !form.key.trim()) || !form.scriptTemplate.trim() || saveMutation.isPending}
+            <button onClick={() => { closeDialog(); setForm(EMPTY); }} className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container rounded-md">{t('common:cancel')}</button>
+            <button onClick={() => saveMutation.mutate({ form, generation: dialogGeneration.current })} disabled={!form.name.trim() || (!form.id && !form.key.trim()) || !form.scriptTemplate.trim() || saveMutation.isPending}
               className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50">
               {saveMutation.isPending ? t('common:saving') : (form.id ? t('common:update') : t('common:create'))}
             </button>

@@ -365,3 +365,32 @@ describe('MachinesPage', () => {
     expect(within(db01Row!).queryByText(/running/i)).not.toBeInTheDocument();
   });
 });
+
+describe('MachinesPage editing sessions', () => {
+  it('locks the draft while saving and keeps a machine opened later when the old save completes', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let listCalls = 0;
+    server.use(
+      http.get(`${BASE}/api/machines`, () => { listCalls++; return HttpResponse.json(MACHINES); }),
+      http.get(`${BASE}/api/credentials`, () => HttpResponse.json(CREDS)),
+      http.put(`${BASE}/api/machines/m1`, async () => { await gate; return new HttpResponse(null, { status: 204 }); }),
+    );
+    renderPage('Admin');
+
+    const editButton = async (name: string) =>
+      within((await screen.findByText(name)).closest('tr')!).getByTitle('Edit');
+    fireEvent.click(await editButton('Web-01'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByDisplayValue('Web-01')).toBeDisabled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(await editButton('DB-01'));
+    expect(await screen.findByDisplayValue('DB-01')).toBeEnabled();
+    const callsBeforeRelease = listCalls;
+    release();
+
+    await waitFor(() => expect(listCalls).toBeGreaterThan(callsBeforeRelease));
+    expect(screen.getByDisplayValue('DB-01')).toBeEnabled();
+  });
+});

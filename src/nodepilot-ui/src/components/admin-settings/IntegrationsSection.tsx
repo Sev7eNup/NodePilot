@@ -160,6 +160,7 @@ function SmtpCard() {
 
   return (
     <>
+      <fieldset disabled={editor.isPending} className="min-w-0 border-0 p-0">
       <CompactCard headingMargin="mb-4" icon={Email} title="SMTP">
         <HotReloadHint isHotReloadable={data.isHotReloadable} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -227,6 +228,7 @@ function SmtpCard() {
           errors={error}
         />
       </CompactCard>
+      </fieldset>
       {editor.dialog(buildPayload())}
       <TestProbeModal
         title={t('adminSettings:testProbeTitle')}
@@ -365,6 +367,7 @@ function LlmCard() {
 
   return (
     <>
+      <fieldset disabled={editor.isPending} className="min-w-0 border-0 p-0">
       <CompactCard headingMargin="mb-4" icon={Bot} title={t('integrations.llmTitle')}>
         <HotReloadHint isHotReloadable={data.isHotReloadable} />
         <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -471,7 +474,7 @@ function LlmCard() {
             : error}
         />
       </CompactCard>
-
+      </fieldset>
       {editor.dialog(buildPayload())}
 
       <TestProbeModal

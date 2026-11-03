@@ -41,6 +41,7 @@ export function useSectionEditor<T>(section: string) {
   if (!data && query.data) setData(query.data);
   const [conflict, setConflict] = useState<SettingsSectionResponse<T> | null>(null);
   const [errors, setErrors] = useState<string[] | null>(null);
+  const [resetRevision, setResetRevision] = useState(0);
   const pendingPayloadRef = useRef<unknown>(null);
   const savingRef = useRef(false);
 
@@ -73,12 +74,13 @@ export function useSectionEditor<T>(section: string) {
     onSettled: () => { savingRef.current = false; },
   });
   const submit = (payload: unknown, etag: string) => {
-    if (savingRef.current) return;
+    if (savingRef.current) return false;
     savingRef.current = true;
     pendingPayloadRef.current = payload;
     setErrors(null);
     setConflict(null);
     saveMutation.mutate({ payload, etag });
+    return true;
   };
   const dialog = (draft: unknown) => <EtagConflictDialog
     open={!!conflict} serverSnapshot={conflict} localDraft={draft}
@@ -86,6 +88,7 @@ export function useSectionEditor<T>(section: string) {
     onTakeTheirs={() => {
       if (!conflict) return;
       accept(conflict);
+      setResetRevision((revision) => revision + 1);
       pendingPayloadRef.current = null;
       setConflict(null);
       setErrors(null);
@@ -93,8 +96,8 @@ export function useSectionEditor<T>(section: string) {
     onCancel={() => { pendingPayloadRef.current = null; setConflict(null); }}
   />;
   return {
-    data, isLoading: !data, errors, isPending: saveMutation.isPending,
-    save: (payload: unknown) => { if (data) submit(payload, data.etag); }, dialog,
+    data, isLoading: !data, errors, isPending: saveMutation.isPending, resetRevision,
+    save: (payload: unknown) => data ? submit(payload, data.etag) : false, dialog,
   };
 }
 
@@ -102,12 +105,23 @@ export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { l
   const editor = useSectionEditor<T>(section);
   const { data } = editor;
   const [form, setForm] = useState<T>(fallback);
-  useEffect(() => { if (data) setForm(data.payload); }, [data]);
+  const revision = useRef(0);
+  const submittedRevision = useRef(0);
+  const resetRevision = useRef(editor.resetRevision);
+  useEffect(() => {
+    if (!data) return;
+    if (resetRevision.current !== editor.resetRevision || revision.current === submittedRevision.current) {
+      setForm(data.payload);
+      submittedRevision.current = revision.current;
+    }
+    resetRevision.current = editor.resetRevision;
+  }, [data, editor.resetRevision]);
   if (!data) return { loading: true };
   return {
-    loading: false, data, form, set: setForm,
+    loading: false, data, form, set: (next) => { revision.current++; setForm(next); },
     isEnvLocked: (key: string) => data.effectiveSource[key] === 'env' || data.effectiveSource[key] === 'cli',
-    save: editor.save, errors: editor.errors, dialog: editor.dialog(form),
+    save: (payload) => { if (editor.save(payload)) submittedRevision.current = revision.current; },
+    errors: editor.errors, dialog: editor.dialog(form),
   };
 }
 

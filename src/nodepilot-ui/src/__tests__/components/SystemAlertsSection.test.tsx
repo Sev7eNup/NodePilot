@@ -159,3 +159,37 @@ describe('SystemAlertsSection', () => {
     expect(screen.queryByText(/Add policy/i)).not.toBeInTheDocument();
   });
 });
+
+describe('SystemPolicyEditor editing sessions', () => {
+  it('locks the draft while saving and keeps a policy opened later when the old save completes', async () => {
+    const second = { ...POLICIES[0], id: 'p2', name: 'Backlog warning' };
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let listCalls = 0;
+    useAuthStore.setState({ isAuthenticated: true, username: 'u', role: 'Admin' });
+    patchFetch();
+    server.use(
+      http.get(`${BASE}/api/alerting/system/catalog`, () => HttpResponse.json(CATALOG)),
+      http.get(`${BASE}/api/alerting/system/policies`, () => { listCalls++; return HttpResponse.json([...POLICIES, second]); }),
+      http.put(`${BASE}/api/alerting/system/policies/p1`, async () => { await gate; return new HttpResponse(null, { status: 204 }); }),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><SystemAlertsSection /></QueryClientProvider>);
+
+    const editButton = async (name: string) =>
+      (await screen.findByText(name)).closest('li')!.querySelector<HTMLButtonElement>('button[title="Edit"]')!;
+    fireEvent.click(await editButton('Backlog critical'));
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
+    await waitFor(() => expect(screen.getByDisplayValue('Backlog critical')).toBeDisabled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(await editButton('Backlog warning'));
+    expect(await screen.findByDisplayValue('Backlog warning')).toBeEnabled();
+    const callsBeforeRelease = listCalls;
+    release();
+
+    await waitFor(() => expect(listCalls).toBeGreaterThan(callsBeforeRelease));
+    expect(screen.getByText('Edit policy')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Backlog warning')).toBeEnabled();
+  });
+});

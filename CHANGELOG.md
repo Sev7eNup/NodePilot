@@ -40,6 +40,12 @@ Planned version: **1.5.4**.
   - Deleting an edge from the command palette marks the workflow as changed and can be undone
     (#694).
   - Undo right after typing in a property field restores the value from before the edit (#595).
+  - A save, lock change, publish or run that finishes after you switched to another workflow no
+    longer acts on the workflow you opened in the meantime (#692).
+- **Management pages and settings**
+  - Saving credentials, machines, users, global variables, maintenance windows, custom activities,
+    alerting rules and policies or a settings section locks the form until the server answers. A
+    late answer no longer closes or resets a record opened in the meantime (#690).
 - **Running workflows**
   - A breakpoint condition can use the run's inputs (`{{manual.*}}`) (#685).
   - Input values that look like `{{…}}` stay plain text and no longer fail the step as unresolved
