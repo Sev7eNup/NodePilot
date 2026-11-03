@@ -106,6 +106,30 @@ function Invoke-Api([string]$Method, [string]$Path, [string]$Body) {
     if ($r.Body) { try { return ($r.Body | ConvertFrom-Json) } catch { return $r } }
 }
 
+function Wait-Ready([int]$Seconds) {
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    do {
+        $status = try { (Invoke-Http GET '/healthz/ready' $null).Status } catch { 0 }
+        if ($status -eq 200) { return $status }
+        Start-Sleep 3
+    } while ((Get-Date) -lt $deadline)
+    return $status
+}
+
+function Get-AppsEntryCount {
+    @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+        Where-Object { $_.PSObject.Properties['DisplayName'] -and $_.DisplayName -like 'NodePilot*' }).Count
+}
+
+function Invoke-Uninstaller([string]$LogName) {
+    $uninsArgs = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=$work\$($scenario.id)-$LogName.log"
+    if ($scenario.uninstall -eq 'purge') { $uninsArgs += ' /PURGEDATA=1' }
+    Start-Process -FilePath "$installDir\unins000.exe" -ArgumentList $uninsArgs -Wait
+    # unins000 relaunches itself from %TEMP% and returns at once.
+    $deadline = (Get-Date).AddMinutes(10)
+    while ((Get-Date) -lt $deadline -and @(Get-Process | Where-Object { $_.ProcessName -like '_iu*' -or $_.ProcessName -like 'unins0*' }).Count -gt 0) { Start-Sleep 2 }
+}
+
 function Test-DatabaseExists {
     if ($scenario.database -eq 'sqlserver') {
         $name = if ($scenario.sqlDatabase) { $scenario.sqlDatabase } else { $lab.sqlDatabase }
@@ -218,6 +242,13 @@ if ($scenario.check -eq 'allSigned' -and $result.machinePolicy -ne 'AllSigned') 
 
 # --- a second installation over the first one with another identity ---------------------------
 if ($scenario.secondIdentity) {
+    if ($scenario.secondFails) {
+        # The second account may not connect to SQL Server, so its service never becomes ready and
+        # the setup has to roll back to the first account.
+        $secondLiteral = $scenario.secondIdentity.Replace("'", "''")
+        Invoke-LocalSql "IF SUSER_ID(N'$secondLiteral') IS NULL CREATE LOGIN [$($scenario.secondIdentity)] FROM WINDOWS; DENY CONNECT SQL TO [$($scenario.secondIdentity)];" | Out-Null
+        $rootAccessBefore = (Get-Acl $installDir).GetSecurityDescriptorSddlForm('Access')
+    }
     $mark2 = Get-LogMark
     $t2 = Get-Date
     $result.secondExit = Invoke-Exe (Join-Path $work 'server-setup.exe') `
@@ -226,18 +257,35 @@ if ($scenario.secondIdentity) {
     $svc2 = Get-CimInstance Win32_Service -Filter "Name='NodePilot'"
     $result.secondService = if ($svc2) { "$($svc2.State) as $($svc2.StartName)" } else { 'missing' }
     $script:cookies = @{}
-    $result.secondHealthz = (Invoke-Http GET '/healthz/ready' $null).Status
+    # After a rollback the restored service may still be starting.
+    $result.secondHealthz = if ($scenario.secondFails) { Wait-Ready 180 } else { (Invoke-Http GET '/healthz/ready' $null).Status }
     if ($admin) {
         $result.secondLogin = (Invoke-Http POST '/api/auth/login' (@{ username = $admin.username; password = $admin.password } | ConvertTo-Json -Compress)).Status
     }
     # The signing key moves to the new identity; the old owner would lock the new service out.
     $result.secondKeyOwner = (Get-Acl "$dataDir\jwt-secret.key").Owner
-    $wait = [int]$scenario.soakSeconds - [int]((Get-Date) - $t2).TotalSeconds
-    if ($wait -gt 0) { Start-Sleep $wait }
-    $result.secondErrors = @(Get-LogLinesSince $mark2 | Where-Object { $_ -match 'type="3"' }).Count
-    $expected = $scenario.secondIdentity
-    if ($result.secondExit -ne 0 -or $result.secondHealthz -ne 200 -or $result.secondLogin -ne 200 -or $result.secondErrors -ne 0 -or
-        $svc2.StartName -ne $expected -or $result.secondKeyOwner -ne $expected) { $ok = $false }
+    if ($scenario.secondFails) {
+        # The first account must get its install directory access back, with no grant for the
+        # second one left on the directory or the restored binary.
+        $secondSid = (New-Object Security.Principal.NTAccount($scenario.secondIdentity)).Translate([Security.Principal.SecurityIdentifier]).Value
+        $result.rootAccessRestored = (Get-Acl $installDir).GetSecurityDescriptorSddlForm('Access') -eq $rootAccessBefore
+        $result.secondSidLeft = @($installDir, "$installDir\NodePilot.Api.exe" | Where-Object {
+            (Get-Acl $_).GetSecurityDescriptorSddlForm('Access') -match [regex]::Escape($secondSid) }).Count -gt 0
+        $result.rollbackFailed = @("$work\$($scenario.id)-inno-second.log", "$work\$($scenario.id)-second-adapter.log" |
+            Where-Object { (Test-Path $_) -and (Get-Content $_ -Raw) -match 'ROLLBACK ALSO FAILED' }).Count -gt 0
+        $expected = $scenario.identityAccount
+        if ($result.secondExit -eq 0 -or $svc2.State -ne 'Running' -or $result.secondHealthz -ne 200 -or $result.secondLogin -ne 200 -or
+            $svc2.StartName -ne $expected -or $result.secondKeyOwner -ne $expected -or
+            -not $result.rootAccessRestored -or $result.secondSidLeft -or $result.rollbackFailed) { $ok = $false }
+    }
+    else {
+        $wait = [int]$scenario.soakSeconds - [int]((Get-Date) - $t2).TotalSeconds
+        if ($wait -gt 0) { Start-Sleep $wait }
+        $result.secondErrors = @(Get-LogLinesSince $mark2 | Where-Object { $_ -match 'type="3"' }).Count
+        $expected = $scenario.secondIdentity
+        if ($result.secondExit -ne 0 -or $result.secondHealthz -ne 200 -or $result.secondLogin -ne 200 -or $result.secondErrors -ne 0 -or
+            $svc2.StartName -ne $expected -or $result.secondKeyOwner -ne $expected) { $ok = $false }
+    }
 }
 
 # The reboot check reads this to count only what the service logs after the restart.
@@ -248,19 +296,27 @@ if ($scenario.uninstall) {
     $checks = [ordered]@{}
     $unins = "$installDir\unins000.exe"
     $checks.uninstallerPresent = Test-Path $unins
-    if ($checks.uninstallerPresent) {
-        $uninsArgs = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=$work\$($scenario.id)-uninstall.log"
-        if ($scenario.uninstall -eq 'purge') { $uninsArgs += ' /PURGEDATA=1' }
-        Start-Process -FilePath $unins -ArgumentList $uninsArgs -Wait
-        # unins000 relaunches itself from %TEMP% and returns at once.
-        $deadline = (Get-Date).AddMinutes(10)
-        while ((Get-Date) -lt $deadline -and @(Get-Process | Where-Object { $_.ProcessName -like '_iu*' -or $_.ProcessName -like 'unins0*' }).Count -gt 0) { Start-Sleep 2 }
+    if ($checks.uninstallerPresent -and $scenario.blockServiceDelete) {
+        # A service that cannot be deleted must stop the uninstall and leave it repeatable.
+        $sddl = "$(& sc.exe sdshow NodePilot)".Trim()
+        & sc.exe sdset NodePilot ($sddl -replace 'D:([A-Z]*)\(', 'D:$1(D;;SD;;;BA)(') | Out-Null
+        $blocked = [ordered]@{ denyApplied = "$(& sc.exe sdshow NodePilot)" -match [regex]::Escape('(D;;SD;;;BA)') }
+        Invoke-Uninstaller 'uninstall-blocked'
+        $blocked.serviceKept = [bool](Get-Service NodePilot -ErrorAction SilentlyContinue)
+        $blocked.scriptsKept = Test-Path "$installDir\deploy\Uninstall-NodePilot.ps1"
+        $blocked.markerKept = Test-Path 'HKLM:\SOFTWARE\NodePilot\Server'
+        $blocked.appsEntryKept = (Get-AppsEntryCount) -gt 0
+        $blocked.dataKept = Test-Path "$dataDir\jwt-secret.key"
+        $blocked.abortLogged = [bool]((Get-Content "$work\$($scenario.id)-uninstall-blocked.log" -Raw -ErrorAction SilentlyContinue) -match 'could not finish')
+        & sc.exe sdset NodePilot $sddl | Out-Null
+        $result.blockedUninstallFailed = @($blocked.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object Key) -join ','
+        if ($result.blockedUninstallFailed) { $ok = $false }
     }
+    if ($checks.uninstallerPresent) { Invoke-Uninstaller 'uninstall' }
     $checks.serviceGone = -not (Get-Service NodePilot -ErrorAction SilentlyContinue)
     $checks.programDirGone = -not (Test-Path $installDir)
     $checks.markerGone = -not (Test-Path 'HKLM:\SOFTWARE\NodePilot\Server')
-    $checks.appsEntryGone = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
-        Where-Object { $_.PSObject.Properties['DisplayName'] -and $_.DisplayName -like 'NodePilot*' }).Count -eq 0
+    $checks.appsEntryGone = (Get-AppsEntryCount) -eq 0
     $checks.firewallRulesGone = @(Get-NetFirewallRule -ErrorAction SilentlyContinue |
         Where-Object { $_.DisplayName -like '*NodePilot*' -and $_.DisplayName -notlike '*NodePilot Lab*' }).Count -eq 0
     $checks.dataDir = if ($scenario.uninstall -eq 'purge') { -not (Test-Path $dataDir) } else { Test-Path "$dataDir\jwt-secret.key" }

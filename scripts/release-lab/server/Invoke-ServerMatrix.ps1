@@ -45,6 +45,8 @@ $scenarios = @(
     @{ id = 'U3'; identity = 'gmsa';        database = 'postgres';  upgrade = $true;  uninstall = 'purge' },
     @{ id = 'U4'; identity = 'localSystem'; database = 'postgres';  upgrade = $true;  uninstall = 'keep' },
     @{ id = 'I1'; identity = 'localSystem'; database = 'sqlserver'; upgrade = $false; secondIdentity = 'gmsa' },
+    @{ id = 'I2'; identity = 'gmsa';        database = 'sqlserver'; upgrade = $false; secondIdentity = 'gmsaB'; secondFails = $true },
+    @{ id = 'X1'; identity = 'gmsa';        database = 'sqlserver'; upgrade = $false; uninstall = 'purge'; blockServiceDelete = $true },
     @{ id = 'S1'; identity = 'localSystem'; database = 'sqlserver'; upgrade = $false; remoteSql = $true; uninstall = 'purge' },
     @{ id = 'R1'; identity = 'gmsa';        database = 'sqlserver'; upgrade = $false; check = 'reboot' },
     @{ id = 'A';  identity = 'gmsa';        database = 'sqlserver'; upgrade = $false; check = 'dbOutage' },
@@ -66,13 +68,25 @@ $scenarios = @(foreach ($scenario in $scenarios) {
     }
     else { $scenario }
 })
+if (@($scenarios | Where-Object { $_.secondIdentity -eq 'gmsaB' }).Count -and -not $srv.PSObject.Properties['secondGmsaAccount']) {
+    throw 'Scenario I2 needs server.secondGmsaAccount in the lab config (see README, lab prerequisites).'
+}
 
 function Write-Json([string]$Path, $Object) {
     [IO.File]::WriteAllText($Path, ($Object | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding $false))
 }
 
+function Get-IdentityAccount([string]$Identity) {
+    switch ($Identity) {
+        'gmsa'        { return $srv.gmsaAccount }
+        'gmsaB'       { return $srv.secondGmsaAccount }
+        'localSystem' { return 'LocalSystem' }
+        default       { return '' }
+    }
+}
+
 function New-Answers([hashtable]$S, [bool]$ForPrevious, [string]$Identity = $S.identity) {
-    $identityBlock = if ($Identity -eq 'gmsa') { [ordered]@{ type = 'gmsa'; account = $srv.gmsaAccount } } else { [ordered]@{ type = 'localSystem' } }
+    $identityBlock = if ($Identity -eq 'localSystem') { [ordered]@{ type = 'localSystem' } } else { [ordered]@{ type = 'gmsa'; account = (Get-IdentityAccount $Identity) } }
     $provisioning = [ordered]@{ createDatabaseAndLogin = $true }
     if ($S.database -eq 'sqlserver') {
         $sqlHost = if ($S.remoteSql) { $config.remoteSql.fqdn } else { $srv.fqdn }
@@ -170,7 +184,9 @@ foreach ($s in $scenarios) {
         Write-Json (Join-Path $stage 'scenario.json') ([ordered]@{ id = $s.id; identity = $s.identity; database = $s.database; upgrade = $s.upgrade
             uninstall = if ($s.uninstall) { $s.uninstall } else { '' }; reinstallAfter = [bool]$s.reinstallAfter; soakSeconds = $soak
             check = if ($s.check) { $s.check } else { '' }
-            secondIdentity = if ($s.secondIdentity) { $srv.gmsaAccount } else { '' }
+            identityAccount = Get-IdentityAccount $s.identity
+            secondIdentity = Get-IdentityAccount $s.secondIdentity; secondFails = [bool]$s.secondFails
+            blockServiceDelete = [bool]$s.blockServiceDelete
             sqlServer = if ($s.remoteSql) { $config.remoteSql.fqdn } else { '' }
             sqlDatabase = if ($s.remoteSql) { $config.remoteSql.database } else { '' } })
         Write-Json (Join-Path $stage 'answers.json') (New-Answers $s $false)
@@ -274,7 +290,7 @@ Restore-VMCheckpoint -VMSnapshot (Get-VMCheckpoint -VMName $vm -Name $srv.checkp
 $summary = @("# Server setup $Version - release lab", '', '| Scenario | Source | Target | Verdict | Details |', '|---|---|---|---|---|')
 if ($Only) { $summary = @('**Partial diagnostic run; not release evidence.**', '') + $summary }
 foreach ($r in $results) {
-    $detail = @($r.PSObject.Properties | Where-Object { $_.Name -in 'setupExit', 'healthz', 'execution', 'failedSteps', 'errors', 'uninstallFailed', 'reinstallLogin', 'note', 'error' -and "$($_.Value)" -ne '' } |
+    $detail = @($r.PSObject.Properties | Where-Object { $_.Name -in 'setupExit', 'healthz', 'execution', 'failedSteps', 'errors', 'secondExit', 'rollbackFailed', 'blockedUninstallFailed', 'uninstallFailed', 'reinstallLogin', 'note', 'error' -and "$($_.Value)" -ne '' } |
         ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
     $summary += "| $($r.id) | $($r.sourceVersion) | $Version | $($r.verdict) | $detail |"
 }

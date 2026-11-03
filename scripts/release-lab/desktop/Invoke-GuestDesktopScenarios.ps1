@@ -88,6 +88,31 @@ Start-Sleep -Seconds 60
 Check-NoNewErrors 'T2' $mark
 Save-CertKeyName
 
+Log '=== T2b staged update that fails after re-provisioning removed the services rolls back'
+$payload = 'C:\np-lab\update-payload'
+if (Test-Path $payload) { Remove-Item $payload -Recurse -Force }
+New-Item -ItemType Directory -Path $payload | Out-Null
+foreach ($component in 'app', 'desktop', 'pgsql', 'deploy', 'tools') {
+    Copy-Item -LiteralPath (Join-Path $InstallDir $component) -Destination (Join-Path $payload $component) -Recurse -Force
+}
+# Without postgres.exe the provisioner fails after it has deleted both services.
+Remove-Item -LiteralPath (Join-Path $payload 'pgsql\bin\postgres.exe') -Force
+$registrations = @('NodePilotDb', 'NodePilot' | ForEach-Object { Get-ServiceRegistration $_ })
+# Started from the payload: the update moves the installed deploy\ away while it runs.
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$payload\deploy\Update-Desktop.ps1" `
+    -InstallPath $InstallDir -NewArtifactPath $payload *> C:\np-lab\t2b-staged-update.log
+$c = $LASTEXITCODE
+$updateOutput = Get-Content C:\np-lab\t2b-staged-update.log -Raw
+Check 'T2b failed update exits non-zero' ($c -ne 0) "exit=$c"
+Check 'T2b rollback completed' ($updateOutput -match 'Update rolled back to the previous version' -and $updateOutput -notmatch 'rollback failed')
+$restored = @('NodePilotDb', 'NodePilot' | ForEach-Object { Get-ServiceRegistration $_ })
+Check 'T2b both services registered as before' (($restored -join "`n") -ceq ($registrations -join "`n")) ($restored -join ' / ')
+Assert-Installed 'T2b'
+Check 'T2b administrator signs in after the rollback' ((Invoke-Login 'npadmin' 'FirstPassw0rd!') -eq '200')
+$run = Invoke-SmokeWorkflow 'npadmin' 'FirstPassw0rd!'
+Check 'T2b smoke workflow runs after the rollback' ($run -eq 'Succeeded') $run
+Remove-Item $payload -Recurse -Force
+
 Log '=== T3 uninstall, keep data (the silent default)'
 Invoke-Uninstall '' 't3-uninstall-keep.log'
 Assert-ProgramRemoved 'T3'
@@ -139,6 +164,17 @@ Check 'T7 setup handoff written (fresh database)' (Test-Path (Get-Handoff))
 Check 'T7 previous administrator is gone' ((Invoke-Login 'second' 'SecondPassw0rd!') -ne '200')
 Check 'T7 new administrator created' ((Invoke-Login 'third' 'ThirdPassw0rd!' -UseSetupToken) -eq '200')
 Check-NoNewErrors 'T7' $mark
+
+Log '=== T8a uninstall with a service that cannot be deleted stops and stays repeatable'
+$sddl = "$(& sc.exe sdshow NodePilot)".Trim()
+& sc.exe sdset NodePilot ($sddl -replace 'D:([A-Z]*)\(', 'D:$1(D;;SD;;;BA)(') | Out-Null
+Check 'T8a service deletion denied for the test' ("$(& sc.exe sdshow NodePilot)" -match [regex]::Escape('(D;;SD;;;BA)'))
+Invoke-Uninstall '/PURGEDATA=1' 't8a-uninstall-blocked.log'
+Check 'T8a API service still registered' ((Get-ServiceState 'NodePilot') -ne 'absent')
+Check 'T8a program files and uninstall script kept' (Test-Path "$InstallDir\deploy\Uninstall-Desktop.ps1")
+Check 'T8a Apps & Features entry kept' ((Get-AppsEntryCount) -gt 0)
+Check 'T8a abort reported in the setup log' ([bool]((Get-Content C:\np-lab\t8a-uninstall-blocked.log -Raw -ErrorAction SilentlyContinue) -match 'could not be removed completely'))
+& sc.exe sdset NodePilot $sddl | Out-Null
 
 Log '=== T8 final uninstall, delete everything'
 Invoke-Uninstall '/PURGEDATA=1' 't8-uninstall-purge.log'

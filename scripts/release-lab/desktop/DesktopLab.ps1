@@ -30,6 +30,19 @@ function Get-ServiceState([string] $name) {
     if ($svc) { return $svc.State } else { return 'absent' }
 }
 
+function Get-ServiceRegistration([string] $name) {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='$name'" -ErrorAction SilentlyContinue
+    if (-not $svc) { return 'absent' }
+    $dependencies = @(Get-CimAssociatedInstance -InputObject $svc -Association Win32_DependentService -ResultClassName Win32_Service -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne $name } | ForEach-Object Name | Sort-Object) -join ','
+    return '{0}|{1}|{2}|{3}|{4}' -f $svc.PathName, $svc.StartName, $svc.StartMode, $svc.DelayedAutoStart, $dependencies
+}
+
+function Get-AppsEntryCount {
+    @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+        Where-Object { $_.PSObject.Properties['DisplayName'] -and $_.DisplayName -like 'NodePilot*' }).Count
+}
+
 function Invoke-Setup([string] $exe, [string] $extraArgs, [string] $logName) {
     $log = "C:\np-lab\$logName"
     $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -205,8 +218,7 @@ function Assert-ProgramRemoved([string] $label) {
     Check 'certificate private key gone' (Test-CertKeyGone)
     $left = if (Test-Path $InstallDir) { (@(Get-ChildItem $InstallDir -Recurse -Force) | ForEach-Object FullName) -join '; ' } else { '' }
     Check 'Program Files\NodePilot gone' (-not (Test-Path $InstallDir)) $left
-    $arp = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.PSObject.Properties['DisplayName'] -and $_.DisplayName -like 'NodePilot*' })
-    Check 'Apps & Features entry gone' ($arp.Count -eq 0)
+    Check 'Apps & Features entry gone' ((Get-AppsEntryCount) -eq 0)
     $procs = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath -like "$InstallDir\*" })
     Check 'no NodePilot process left' ($procs.Count -eq 0) (($procs | ForEach-Object Name) -join ',')
     Check 'no setup handoff left' (-not (Test-Path (Get-Handoff)))
