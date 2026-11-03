@@ -219,7 +219,7 @@ np exec watch 7e3f... --no-signalr                    # Polling-Fallback erzwing
 np exec paused-steps 7e3f...
 ```
 
-`resume` (debug-paused): `--step <ID>` (required), `--mode <continue|stepOver|stop>` (Default `continue`), `--override <k=v>` (wiederholbar).
+`resume` (debug-paused): `--step <ID>` (required), `--mode <continue|stepOver|stop>` (Default `continue`), `--override <k=v>` (wiederholbar; `globals.*`- und `__*`-Schlüssel werden abgelehnt). `paused-steps` listet jeden wartenden Breakpoint mit Label, Grund, Pausenzeit und redigierten Variablen.
 
 ```bash
 np exec resume 7e3f... --step runHealth --mode continue

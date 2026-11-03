@@ -183,4 +183,6 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/executio
         "overrides": { "vars.targetHost":"srv02" } }' -i                        # 204
 ```
 
-`resume` returns 409 `{"message":"No paused step with this id ..."}` if the pause is already over, and 403 if the caller is not the debug session's owner (and not an admin).
+`resume` returns 409 `{"message":"No paused step with this id ..."}` if the pause is already over, and 403 if the caller is not the debug session's owner (and not an admin). An override of a `globals.*` or reserved `__*` key returns 400 and the step stays paused.
+
+`GET /api/executions/{id}/paused-steps` lists every waiting breakpoint with `stepId`, `stepLabel`, `pausedAt`, `reason` (`breakpoint`/`stepOver`) and its redacted `variables`.

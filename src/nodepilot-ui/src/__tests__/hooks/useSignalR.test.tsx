@@ -2,6 +2,11 @@ import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook as rtlRenderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { api } from '../../api/client';
+import type { PausedStepSnapshot } from '../../hooks/signalrTypes';
+
+const realGet = api.get;
+let pausedSnapshots: PausedStepSnapshot[] = [];
 
 /**
  * Test wrapper: useWorkflowSignalR calls useQueryClient(), which requires a
@@ -110,8 +115,14 @@ describe('useWorkflowSignalR', () => {
     __currentConnection = null;
     resetDbHealth();
     installDefaultFetchMock();
+    pausedSnapshots = [];
+    // Existing event/list scenarios have no debug pauses. The reconnect test below supplies
+    // the server's snapshot contract explicitly; all other HTTP calls retain their fetch fixtures.
+    vi.spyOn(api, 'get').mockImplementation(<T,>(path: string, policy?: Parameters<typeof realGet>[1]) =>
+      path.endsWith('/paused-steps') ? Promise.resolve(pausedSnapshots as T) : realGet<T>(path, policy));
   });
   afterEach(() => {
+    vi.mocked(api.get).mockRestore();
     vi.clearAllMocks();
     // Keep late cleanup and hydration continuations away from the real network as well.
     installDefaultFetchMock();
@@ -120,6 +131,29 @@ describe('useWorkflowSignalR', () => {
   it('does not open a connection when workflowId is undefined', () => {
     renderHook(() => useWorkflowSignalR(undefined));
     expect(__currentConnection).toBeNull();
+  });
+
+  it('rehydrates a known execution and its paused variables after reconnect', async () => {
+    let stepStatus = 'Running';
+    const stepRequests = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const steps = String(input).endsWith('/steps');
+      if (steps) stepRequests();
+      return new Response(JSON.stringify(steps
+        ? [{ stepId: 'step-a', stepType: 'runScript', status: stepStatus }]
+        : [{ id: 'exec-gap', workflowId: 'wf-1', status: 'Running', startedAt: new Date().toISOString() }]),
+      { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+    const { result } = renderHook(() => useWorkflowSignalR('wf-1'));
+    await waitFor(() => expect(result.current.liveExecution?.steps[0]?.status).toBe('Running'));
+    act(() => { __currentConnection!.transition('reconnecting'); });
+    stepStatus = 'Running'; // Persisted step remains running while the in-memory debugger pauses.
+    pausedSnapshots = [{ stepId: 'step-a', stepLabel: 'Paused script', pausedAt: '2026-10-28T10:00:00Z', reason: 'breakpoint', variables: { 'manual.destination': 'safe' } }];
+    act(() => { __currentConnection!.transition('reconnected'); });
+    await waitFor(() => expect(result.current.liveExecution?.steps[0]).toMatchObject({
+      status: 'Paused', pausedVariables: { 'manual.destination': 'safe' }, pausedAt: '2026-10-28T10:00:00Z',
+    }));
+    expect(stepRequests).toHaveBeenCalledTimes(2);
   });
 
   it('opens a connection and joins the workflow group when workflowId is provided', async () => {

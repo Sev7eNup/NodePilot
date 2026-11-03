@@ -97,13 +97,10 @@ export function fakeHubConnectionCount(): number {
 }
 
 /**
- * One batch item. The payload key is `evt`, not `event`: the operations feed reads
- * `item.Event ?? item.evt` and would drop a lowercase `event` on the floor, leaving the
- * dashboard and Live-Ops on their polling interval instead of updating live. The designer's
- * reducer accepts all three spellings, which is why only the feed was affected.
+ * Match the server's JsonHubProtocol serialization of the Event record property.
  */
 function batchItem(type: string, evt: unknown) {
-  return { events: [{ type, evt }] };
+  return { events: [{ type, event: evt }] };
 }
 
 /**

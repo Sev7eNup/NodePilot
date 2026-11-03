@@ -342,10 +342,10 @@ public sealed partial class NodePilotApiClient
         await EnsureSuccessAsync(res, ct);
     }
 
-    public async Task<List<string>> GetPausedStepsAsync(Guid id, CancellationToken ct)
+    public async Task<List<DebugPausedStepSnapshot>> GetPausedStepsAsync(Guid id, CancellationToken ct)
     {
         using var res = await _http.GetAsync($"api/executions/{id}/paused-steps", ct);
-        return await ParseAsync<List<string>>(res, ct);
+        return await ParseAsync<List<DebugPausedStepSnapshot>>(res, ct);
     }
 
     // ---- Machines -----------------------------------------------------------

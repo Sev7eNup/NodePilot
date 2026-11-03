@@ -219,7 +219,7 @@ np exec watch 7e3f... --no-signalr                    # force the polling fallba
 np exec paused-steps 7e3f...
 ```
 
-`resume` (debug-paused): `--step <ID>` (required), `--mode <continue|stepOver|stop>` (default `continue`), `--override <k=v>` (repeatable).
+`resume` (debug-paused): `--step <ID>` (required), `--mode <continue|stepOver|stop>` (default `continue`), `--override <k=v>` (repeatable; `globals.*` and `__*` keys are rejected). `paused-steps` lists each waiting breakpoint with label, reason, pause time and redacted variables.
 
 ```bash
 np exec resume 7e3f... --step runHealth --mode continue

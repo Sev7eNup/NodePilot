@@ -22,6 +22,10 @@ export interface PausedVariablesInspectorProps {
 }
 
 export function PausedVariablesInspector(props: Readonly<PausedVariablesInspectorProps>) {
+  return <PauseEditor key={`${props.stepId}:${props.pausedAt}`} {...props} />;
+}
+
+function PauseEditor(props: Readonly<PausedVariablesInspectorProps>) {
   const { t } = useTranslation('designer');
   const { stepName, stepId, pausedAt, reason, variables, onResume } = props;
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -136,6 +140,8 @@ export function PausedVariablesInspector(props: Readonly<PausedVariablesInspecto
             </h3>
             <div className="space-y-0.5">
               {entries.map(([key, originalValue]) => {
+                const editable = !key.startsWith('__') && !key.toLowerCase().startsWith('globals.') &&
+                  (key.startsWith('manual.') || /\.(?:output|error|success|param\..+)$/.test(key));
                 const isDirty = key in edits;
                 const current = effectiveValue(key);
                 return (
@@ -150,6 +156,9 @@ export function PausedVariablesInspector(props: Readonly<PausedVariablesInspecto
                     </code>
                     <input
                       type="text"
+                      readOnly={!editable}
+                      disabled={!!submitting}
+                      aria-label={key}
                       value={current}
                       onChange={(e) => {
                         const next = e.target.value;
@@ -174,9 +183,9 @@ export function PausedVariablesInspector(props: Readonly<PausedVariablesInspecto
                       >
                         <Reset size={11} />
                       </button>
-                    ) : (
+                    ) : editable ? (
                       <Edit size={11} className="text-outline-variant/60" />
-                    )}
+                    ) : null}
                   </div>
                 );
               })}
