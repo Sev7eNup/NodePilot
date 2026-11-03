@@ -3,6 +3,8 @@ using System.Security.Principal;
 using System.Text.Json;
 using FluentAssertions;
 using NodePilot.Switcher.Configuration;
+using NodePilot.Switcher.Models;
+using NodePilot.Switcher.Services;
 using Xunit;
 
 namespace NodePilot.Switcher.Tests;
@@ -46,6 +48,53 @@ public sealed class SwitcherConfigurationLoaderTests : IDisposable
         var action = () => SwitcherConfigurationValidator.ValidateScorch(loaded.SystemCenterOrchestrator);
 
         action.Should().Throw<InvalidOperationException>().WithMessage("*must use HTTPS*");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Preflight_RejectsRemoteHttpScorchSourceOrDestination(bool toNodePilot)
+    {
+        var target = toNodePilot ? SwitchTarget.NodePilot : SwitchTarget.SystemCenterOrchestrator;
+        File.WriteAllText(Path.Combine(_directory, "np.exe"), string.Empty);
+        var config = Path.Combine(_directory, "custom.json");
+        WriteValidConfiguration(config, "np.exe", "http://scorch.example.test:81");
+        var logger = new RecordingLogger();
+        var scorchClients = new CountingScorchFactory();
+        var reconciler = new WorkloadReconciler(
+            new SwitcherConfigurationLoader(["switcher.exe", "--config", config], _directory, _directory),
+            new AllowListReader(),
+            new NodePilotWorkflowReconciler(new UnusedCommandRunner(), logger),
+            new ScorchRunbookReconciler(scorchClients, logger),
+            logger);
+
+        var action = () => reconciler.PreflightAsync(target, TestContext.Current.CancellationToken);
+
+        await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("*must use HTTPS*");
+        scorchClients.Created.Should().Be(0);
+    }
+
+    private sealed class CountingScorchFactory : IScorchApiClientFactory
+    {
+        public int Created { get; private set; }
+
+        public IScorchApiClient Create(ScorchWorkloadConfiguration configuration)
+        {
+            Created++;
+            throw new InvalidOperationException("Preflight must not create a SCOrch client.");
+        }
+    }
+
+    private sealed class UnusedCommandRunner : ICommandRunner
+    {
+        public Task<CommandResult> RunAsync(
+            string executable,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken cancellationToken,
+            string? standardInput = null,
+            IReadOnlyDictionary<string, string>? environment = null) =>
+            throw new InvalidOperationException("Preflight must not run the NodePilot CLI.");
     }
 
     [Fact]

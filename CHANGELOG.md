@@ -143,6 +143,8 @@ Planned version: **1.5.4**.
 - The desktop setup hands the first-login token to the account that started setup, also under
   Remote Desktop or a switched user. If that account cannot be determined, provisioning stops
   instead of handing the token to another profile (#732).
+- The Switcher checks the SCOrch connection in both switch directions and rejects plain HTTP to a
+  remote SCOrch, because it signs in there with Windows credentials (#728).
 - MCP alerting output shows webhook targets only as scheme, host and port, because the rest of the
   URL can contain tokens (#730).
 - GitHub tokens in step output are masked except for their prefix such as `ghp_`; before, the whole
