@@ -31,15 +31,26 @@ export function useWorkflowHistory(
 ) {
   const [historyPast, setHistoryPast] = useState<HistorySnapshot[]>([]);
   const [historyFuture, setHistoryFuture] = useState<HistorySnapshot[]>([]);
+  const propertyBurst = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const endPropertyBurst = useCallback(() => {
+    if (propertyBurst.current !== null) clearTimeout(propertyBurst.current);
+    propertyBurst.current = null;
+  }, []);
 
   // Held in a ref so commitHistory keeps one identity: it is a dependency of most graph
   // callbacks, and a drag replaces the node array on every frame.
   const sourceRef = useRef(source);
   useEffect(() => { sourceRef.current = source; });
 
-  useEffect(() => { setHistoryPast([]); setHistoryFuture([]); }, [workflowId]);
+  useEffect(() => {
+    endPropertyBurst();
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    return endPropertyBurst;
+  }, [workflowId, endPropertyBurst]);
 
   const commitHistory = useCallback((label?: string) => {
+    endPropertyBurst();
     const { nodes, edges } = sourceRef.current;
     setHistoryPast((p) => {
       const next = [...p, { nodes, edges, label }];
@@ -47,11 +58,20 @@ export function useWorkflowHistory(
       return next;
     });
     setHistoryFuture([]);
-  }, []);
+  }, [endPropertyBurst]);
+
+  // Capture before the first mutation. Only the end of the typing burst is delayed;
+  // the snapshot must already exist if the author immediately presses Undo.
+  const commitPropertyEdit = useCallback(() => {
+    if (propertyBurst.current === null) commitHistory('Edit property');
+    else clearTimeout(propertyBurst.current);
+    propertyBurst.current = setTimeout(() => { propertyBurst.current = null; }, 800);
+  }, [commitHistory]);
 
   // Undo and redo replace the graph wholesale through the setters, which does not emit
   // onNodesChange. Without markDirty the restored graph would never reach save or autosave.
   const undo = useCallback(() => {
+    endPropertyBurst();
     if (historyPast.length === 0) return;
     const last = historyPast[historyPast.length - 1];
     const { nodes, edges, setNodes, setEdges } = sourceRef.current;
@@ -60,9 +80,10 @@ export function useWorkflowHistory(
     markDirty();
     setNodes(last.nodes);
     setEdges(last.edges);
-  }, [historyPast, markDirty]);
+  }, [historyPast, markDirty, endPropertyBurst]);
 
   const redo = useCallback(() => {
+    endPropertyBurst();
     if (historyFuture.length === 0) return;
     const next = historyFuture[historyFuture.length - 1];
     const { nodes, edges, setNodes, setEdges } = sourceRef.current;
@@ -71,7 +92,7 @@ export function useWorkflowHistory(
     markDirty();
     setNodes(next.nodes);
     setEdges(next.edges);
-  }, [historyFuture, markDirty]);
+  }, [historyFuture, markDirty, endPropertyBurst]);
 
-  return { historyPast, historyFuture, commitHistory, undo, redo };
+  return { historyPast, historyFuture, commitHistory, commitPropertyEdit, undo, redo };
 }

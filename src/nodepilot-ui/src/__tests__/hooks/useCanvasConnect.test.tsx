@@ -212,7 +212,7 @@ describe('useCanvasConnect', () => {
       expect(harness.result.current.insertAt).toEqual({ edgeId: 'e1', x: 250, y: 175 });
     });
 
-    it('insertOnEdge splits A->B into A->NEW->B; first hop is unconditional, second hop inherits the original label/condition', () => {
+    it('insertOnEdge retains the original branch guard before the inserted activity', () => {
       const original = makeEdge('e-orig', 'step-a', 'step-b', 'On Success');
       const harness = setup({ initialEdges: [original] });
 
@@ -242,9 +242,8 @@ describe('useCanvasConnect', () => {
       expect(second.sourceHandle).toBe('right');
       expect(second.targetHandle).toBe('left');
       expect(first.type).toBe('labeled');
-      expect(first.data).toMatchObject({ label: '', condition: '', disabled: false });
-      // Second hop inherits the original label + condition.
-      expect(second.data).toMatchObject({ label: 'On Success', condition: 'step-a.success' });
+      expect(first.data).toMatchObject({ label: 'On Success', condition: 'step-a.success' });
+      expect(second.data).toMatchObject({ label: '', condition: '', disabled: false });
 
       // Picker closes after the insert.
       expect(harness.result.current.insertAt).toBeNull();

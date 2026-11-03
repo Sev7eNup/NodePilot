@@ -24,9 +24,22 @@ Planned version: **1.5.4**.
   own session file, so profiles such as `prod.a` and `prod_a` no longer share one login (#620).
 - A `matches` condition with an invalid pattern, a regex timeout or an input longer than 1,048,576
   characters fails the run and names the edge, instead of counting as "no match" (#680).
+- Two active nodes can no longer share an output variable, regardless of case: saving, importing
+  or an MCP change with such a pair is rejected. A disabled node is ignored, so a disabled copy can
+  no longer take over the alias of the active one (#703).
 
 ### Fixed
 
+- **Designer**
+  - Renaming an output variable updates every reference to it: templates in any field, a dynamic
+    target machine or credential, breakpoint conditions, decision cases and edge conditions (#689).
+  - Copying, pasting and duplicating give each copy its own output variable (`name_2`) and rewrite
+    the references inside the copy, so it no longer takes over the original's bindings (#703).
+  - Inserting an activity on a conditional edge keeps the condition in front of the new activity,
+    so the branch still runs only when the condition holds (#693).
+  - Deleting an edge from the command palette marks the workflow as changed and can be undone
+    (#694).
+  - Undo right after typing in a property field restores the value from before the edit (#595).
 - **Running workflows**
   - A breakpoint condition can use the run's inputs (`{{manual.*}}`) (#685).
   - Input values that look like `{{…}}` stay plain text and no longer fail the step as unresolved
@@ -66,6 +79,8 @@ Planned version: **1.5.4**.
 
 ### Security
 
+- Copying nodes to the clipboard also masks recognised secrets in edge conditions and in lists, not
+  only in node fields (#574).
 - The CLI, the MCP server and the Python admin scripts under `scripts/` no longer follow redirects
   with the login token, so the token is never sent to another host (#711).
 - Logging out with the CLI also ends the MCP server's session right away (#712).

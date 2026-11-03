@@ -233,6 +233,50 @@ async function waitForCanvasReady() {
   await waitFor(() => expect(document.querySelector('.react-flow__node')).not.toBeNull());
 }
 
+it('undo restores the property value from before a debounced edit burst', async () => {
+  const view = renderPage();
+  try {
+    await waitForCanvasReady();
+    fireEvent.click(document.querySelector('.react-flow__node[data-id="step-b"]')!);
+    const input = await screen.findByDisplayValue('Get-PSDrive C');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    fireEvent.change(input, { target: { value: 'Write-Output "changed property"' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(900); });
+    const undo = screen.getByTitle(/Undo/i);
+    expect(undo).toBeEnabled();
+    fireEvent.click(undo);
+    expect(screen.getByDisplayValue('Get-PSDrive C')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Write-Output "changed property"')).not.toBeInTheDocument();
+  } finally { vi.useRealTimers(); view.unmount(); }
+});
+
+it('command-palette edge deletion is saved and Undo restores the connection', async () => {
+  const definition = JSON.parse(MOCK_WORKFLOW.definitionJson);
+  definition.edges[0].selected = true;
+  const writes: Array<{ definitionJson: string }> = [];
+  server.use(
+    http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json({
+      ...MOCK_WORKFLOW, definitionJson: JSON.stringify(definition),
+    })),
+    http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+      writes.push(await request.json() as { definitionJson: string });
+      return HttpResponse.json(MOCK_WORKFLOW);
+    }),
+  );
+  renderPage();
+  await screen.findByText('Connection');
+  fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
+  fireEvent.change(await screen.findByPlaceholderText(/Type a command/), { target: { value: 'Delete selected' } });
+  fireEvent.click(screen.getByText('Delete selected'));
+  fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(JSON.parse(writes[0].definitionJson).edges).toHaveLength(0);
+  fireEvent.click(screen.getByTitle(/Undo/i));
+  fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(JSON.parse(writes[1].definitionJson).edges.map((edge: { id: string }) => edge.id)).toEqual(['e1']);
+});
+
 // The expert-mode inspect/layout/export actions (Find&Replace, Diff, Dry-Run, Keyboard
 // shortcuts, Tidy/Restore, Export JSON/PNG) live inside the "Werkzeuge" (Tools) popover.
 // Open it before querying those rows. The menu stays open across stateful clicks
