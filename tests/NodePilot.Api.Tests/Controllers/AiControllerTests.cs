@@ -36,7 +36,7 @@ public class AiControllerTests
         var prompts = new PromptCatalog();
         var llm = new FakeLlmClient();
         var factory = new FakeLlmClientFactory(llm);
-        var scriptGen = new ScriptGenerationService(factory, prompts);
+        var scriptGen = new ScriptGenerationService(factory, prompts, options);
         var workflowGen = new WorkflowGenerationService(factory, prompts);
         var audit = new CapturingAuditWriter();
         var controller = new AiController(options, scriptGen, workflowGen, audit, NullLogger<AiController>.Instance);
@@ -48,6 +48,23 @@ public class AiControllerTests
         ctx.Response.Body = body;
         controller.ControllerContext = new ControllerContext { HttpContext = ctx };
         return (controller, audit, llm, body);
+    }
+
+    [Fact]
+    public async Task GenerateScript_StaleRecipientConsent_Returns409BeforeStreaming()
+    {
+        var (controller, audit, _, body) = NewController();
+        var request = ScriptReq(currentScript: "Write-Output 'private context'") with
+        {
+            IncludeCurrentScript = true, ExpectedRecipientKey = "older-recipient",
+        };
+
+        var result = await controller.GenerateScript(request, TestContext.Current.CancellationToken);
+
+        result.Should().BeOfType<ConflictObjectResult>().Which.Value.Should().BeEquivalentTo(
+            new { code = "LLM_RECIPIENT_CHANGED", message = "The LLM recipient or sharing policy changed. Confirm the current recipient before sharing the script." });
+        body.Length.Should().Be(0);
+        audit.Calls.Should().BeEmpty();
     }
 
     private static GenerateScriptRequest ScriptReq(string prompt = "echo hello",
@@ -226,7 +243,7 @@ public class AiControllerTests
         var prompts = new PromptCatalog();
         var llm = new FakeLlmClient();
         var factory = new FakeLlmClientFactory(llm);
-        var scriptGen = new ScriptGenerationService(factory, prompts);
+        var scriptGen = new ScriptGenerationService(factory, prompts, monitor);
         var workflowGen = new WorkflowGenerationService(factory, prompts);
         var audit = new CapturingAuditWriter();
         var controller = new AiController(monitor, scriptGen, workflowGen, audit, NullLogger<AiController>.Instance);

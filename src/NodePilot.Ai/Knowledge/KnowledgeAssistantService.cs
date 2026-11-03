@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Options;
 using NodePilot.Core.Interfaces;
 
@@ -62,8 +60,7 @@ public sealed class KnowledgeAssistantService(
         var options = llmOptions.CurrentValue;
         if (!options.TryResolveActiveProfile(out var profile))
             throw LlmClientFactory.NoActiveProfile();
-        var recipientKey = WorkflowAssistantService.HistoryContextKey(options.ActiveProfileId.Trim(), profile);
-        var contextKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{recipientKey}\n{profile.Model}")), 0, 8).ToLowerInvariant();
+        var contextKey = LlmHistoryContext.Key(options.ActiveProfileId, profile);
         var historyDropped = request.History is { Count: > 0 }
             && !string.Equals(request.HistoryContextKey, contextKey, StringComparison.Ordinal);
         var turn = historyDropped ? request with { History = Array.Empty<AiChatTurnDto>() } : request;

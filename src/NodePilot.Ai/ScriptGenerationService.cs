@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 
 namespace NodePilot.Ai;
 
@@ -20,19 +21,30 @@ public sealed class ScriptGenerationService
     private static readonly JsonSerializerOptions IndentedOptions = new() { WriteIndented = true };
     private readonly ILlmClientFactory _llmFactory;
     private readonly PromptCatalog _prompts;
+    private readonly IOptionsMonitor<LlmOptions> _options;
 
     // The factory, not a pre-built client: Create() resolves the active LLM profile and throws
     // when none is configured, so it has to run inside the call, after the controller's gate.
-    public ScriptGenerationService(ILlmClientFactory llmFactory, PromptCatalog prompts)
+    public ScriptGenerationService(ILlmClientFactory llmFactory, PromptCatalog prompts,
+        IOptionsMonitor<LlmOptions> options)
     {
         _llmFactory = llmFactory;
         _prompts = prompts;
+        _options = options;
     }
 
     public async IAsyncEnumerable<ScriptStreamEvent> StreamAsync(
         GenerateScriptRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
+        var options = _options.CurrentValue;
+        if (!options.TryResolveActiveProfile(out var profile))
+            throw LlmClientFactory.NoActiveProfile();
+        if (request.IncludeCurrentScript && !string.IsNullOrWhiteSpace(request.CurrentScript)
+            && !string.Equals(request.ExpectedRecipientKey,
+                LlmHistoryContext.Key(options.ActiveProfileId, profile), StringComparison.Ordinal))
+            throw new LlmException(LlmErrorKind.RecipientChanged,
+                "The LLM recipient or sharing policy changed. Confirm the current recipient before sharing the script.");
 
         // Server-side hard cap, in case the frontend sends more variables than expected.
         var capped = request.UpstreamVariables;
@@ -55,7 +67,7 @@ public sealed class ScriptGenerationService
         int? promptTokens = null, completionTokens = null;
         string? finishReason = null;
 
-        var llm = _llmFactory.Create();
+        var llm = _llmFactory.Create(profile);
         await foreach (var evt in llm.StreamAsync(
             new LlmRequest(_prompts.ScriptSystemPrompt, userPrompt), ct))
         {

@@ -91,7 +91,7 @@ public sealed class WorkflowAssistantService
         // Earlier turns may quote content the current provider must not see (scripts shared with
         // another profile, or before sharing was switched off). Only history from the same context
         // goes out again.
-        var contextKey = HistoryContextKey(options.ActiveProfileId.Trim(), profile);
+        var contextKey = LlmHistoryContext.Key(options.ActiveProfileId, profile);
         var historyDropped = request.History.Count > 0
             && !string.Equals(request.HistoryContextKey, contextKey, StringComparison.Ordinal);
         var turn = historyDropped ? request with { History = Array.Empty<AiChatTurnDto>() } : request;
@@ -238,18 +238,6 @@ public sealed class WorkflowAssistantService
             HistoryDropped = historyDropped,
             ScriptsShared = scriptsShared,
         };
-    }
-
-    /// <summary>
-    /// Identifies what a chat history may have been shown: the profile id, its endpoint (an
-    /// operator can repoint a profile from a local model to a cloud one) and whether scripts were
-    /// shared. History is only sent again under the same key.
-    /// </summary>
-    internal static string HistoryContextKey(string profileId, LlmProfileOptions profile)
-    {
-        var material = $"{profileId}\n{profile.BaseUrl}\n{profile.ShareScriptsWithAssistant}";
-        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(material));
-        return Convert.ToHexString(hash, 0, 8).ToLowerInvariant();
     }
 
     /// <summary>
@@ -566,8 +554,8 @@ public abstract record ChatStreamEvent
     /// <paramref name="CompletionTokens"/> by this, not by <paramref name="DurationMs"/>, for a
     /// throughput that matches what the LLM server reports.
     /// </param>
-    /// <param name="HistoryContextKey">The key the client sends back so
-    /// the next turn's history is accepted (see <c>WorkflowAssistantService.HistoryContextKey</c>).</param>
+    /// <param name="HistoryContextKey">The key the client sends back so the next turn's history
+    /// is accepted only for the same provider and sharing policy.</param>
     /// <param name="HistoryDropped">The request's history was left out
     /// because it came from another profile or sharing setting.</param>
     /// <param name="ScriptsShared">Workflow assistant only: scripts, SQL and arguments were sent

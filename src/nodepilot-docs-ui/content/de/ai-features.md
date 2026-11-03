@@ -23,7 +23,7 @@ Die AI-Funktionen sind standardmäßig deaktiviert. Die zugehörigen Schaltfläc
 - Fehlerkorrektur oder Vereinfachung
 - Anpassung an verfügbare Workflow-Variablen
 
-Ein vorhandenes Script und verfügbare Variablen werden als Kontext berücksichtigt. Das Ergebnis kann am Cursor eingefügt oder als vollständiger Ersatz übernommen werden.
+Ein vorhandenes Script geht nur mit, wenn es im Dialog für das dort angezeigte KI-Ziel bestätigt wurde; ändert sich das KI-Profil vor dem Senden, fragt der Dialog erneut. Verfügbare Variablen werden ohne ihre Werte als Kontext berücksichtigt. Das Ergebnis kann am Cursor eingefügt oder als vollständiger Ersatz übernommen werden.
 
 Die Übernahme ändert nur den Inhalt im Editor. Vor dem Speichern und Ausführen ist eine Prüfung auf Befehle, Pfade, Berechtigungen und verwendete Variablen erforderlich.
 
@@ -148,7 +148,7 @@ Weitere Felder und Ausgaben enthält die [`llmQuery`-Referenz](activities-refere
 - Quellcodewissen im globalen Chat ist auf Admin und Operator beschränkt; Datenbankwissen mit Raw-SQL steht ausschließlich globalen Admins zur Verfügung. Folder-Rechte erhöhen einen Operator nicht in diese Capability. Workflow-Definitionen und statische Workflow-Analysen bleiben Admin und Operator mit Folder-RBAC vorbehalten; ein Viewer erhält aus der Betriebsquelle nur die geplanten Ausführungszeitpunkte.
 - Folder-RBAC begrenzt den Zugriff auf Workflow-Daten.
 - Secrets werden vor Modellanfragen redigiert. Auch Literalwerte in Decision-Cases und Condition-Gruppen werden redigiert, deshalb kann der Assistent eine Case-Liste oder Condition-Gruppe mit einem solchen Wert nicht ändern: der Vorschlag behält das Original, und ein Hinweis nennt den Node oder die Kante zum manuellen Anpassen.
-- Der Workflow-Assistent liest Skripte, SQL-Queries und Programm-Argumente im Klartext, der eingestellte KI-Anbieter sieht sie also. Ein Wert mit erkanntem Secret-Muster (etwa `PASSWORD = '…'` oder `ConvertTo-SecureString '…'`) geht vollständig maskiert raus. Die Erkennung ist eine Heuristik und findet nicht jedes eingebettete Passwort. Ein Administrator kann das pro LLM-Profil unter Einstellungen → Integrationen → LLM abschalten („Skripte, SQL und Argumente an den KI-Chat geben"). Ändert sich das Profil, sein Endpunkt oder diese Einstellung, sendet der Chat den bisherigen Verlauf nicht mehr mit. Der globale Chat folgt derselben Regel, auch bei einem Modellwechsel, und vermerkt unter der Antwort, dass der bisherige Verlauf nicht mitgesendet wurde.
+- Der Workflow-Assistent liest Skripte, SQL-Queries und Programm-Argumente im Klartext, der eingestellte KI-Anbieter sieht sie also. Ein Wert mit erkanntem Secret-Muster (etwa `PASSWORD = '…'` oder `ConvertTo-SecureString '…'`) geht vollständig maskiert raus. Die Erkennung ist eine Heuristik und findet nicht jedes eingebettete Passwort. Ein Administrator kann das pro LLM-Profil unter Einstellungen → Integrationen → LLM abschalten („Skripte, SQL und Argumente an den KI-Chat geben"). Ändert sich das Profil, sein Endpunkt, sein Modell oder diese Einstellung, sendet der Chat den bisherigen Verlauf nicht mehr mit. Der globale Chat folgt derselben Regel und vermerkt unter der Antwort, dass der bisherige Verlauf nicht mitgesendet wurde.
 - Generierte Scripts und Workflow-Änderungen erfordern immer eine fachliche Prüfung.
 - AI-Aktionen und übernommene Vorschläge werden im Audit-Log erfasst.
 

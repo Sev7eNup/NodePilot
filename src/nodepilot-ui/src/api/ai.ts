@@ -28,6 +28,7 @@ export interface GenerateScriptRequest {
   currentScript?: string | null;
   /** Explicit, default-false consent. The backend ignores currentScript without it. */
   includeCurrentScript?: boolean;
+  expectedRecipientKey?: string | null;
 }
 
 export interface GenerateWorkflowRequest {
@@ -265,6 +266,7 @@ export interface KnowledgeCapabilities {
   db: boolean;
   /** Host of the active profile, shown only to Admin/Operator as the script-context target. */
   scriptContextTargetHost?: string | null;
+  scriptContextRecipientKey?: string | null;
 }
 
 /** Read-only knowledge stream handlers without canvas proposal events. */

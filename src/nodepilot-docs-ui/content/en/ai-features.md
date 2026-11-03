@@ -23,7 +23,7 @@ The AI features are disabled by default. The corresponding buttons (script edito
 - Fixing errors or simplifying
 - Adapting to the available workflow variables
 
-An existing script and the available variables are taken into account as context. The result can be inserted at the cursor or accepted as a complete replacement.
+An existing script is sent only after it is confirmed in the dialog for the AI target shown there; if the AI profile changes before sending, the dialog asks again. Available variables are taken into account as context, without their values. The result can be inserted at the cursor or accepted as a complete replacement.
 
 Accepting it only changes the content in the editor. Before saving and running, a review of the commands, paths, permissions and variables used is required.
 
@@ -148,7 +148,7 @@ Further fields and outputs are in the [`llmQuery` reference](activities-referenc
 - Source-code knowledge in the global chat is limited to Admin and Operator; database knowledge with raw SQL is available to global admins only. Folder permissions do not elevate an operator into that capability. Workflow definitions and static workflow analyses remain reserved for Admin and Operator with folder RBAC; a viewer receives only the scheduled execution times from the operational source.
 - Folder RBAC limits access to workflow data.
 - Secrets are redacted before model requests. Literal values in decision cases and condition groups are redacted too, so the assistant cannot change a case list or condition group that contains one: the proposal keeps the original and a note names the node or edge to adjust by hand.
-- The workflow assistant reads scripts, SQL queries and program arguments in clear, so the configured AI provider sees them. A value with a recognised secret pattern (for example `PASSWORD = '…'` or `ConvertTo-SecureString '…'`) is sent fully masked. Recognition is a heuristic and does not catch every embedded password. An administrator can switch this off per LLM profile under Settings → Integrations → LLM ("Share scripts, SQL and arguments with the AI chat"). If the profile, its endpoint or this setting changes, the chat no longer sends the earlier conversation. The global chat applies the same rule, also on a model change, and notes under the answer that the earlier conversation was not sent.
+- The workflow assistant reads scripts, SQL queries and program arguments in clear, so the configured AI provider sees them. A value with a recognised secret pattern (for example `PASSWORD = '…'` or `ConvertTo-SecureString '…'`) is sent fully masked. Recognition is a heuristic and does not catch every embedded password. An administrator can switch this off per LLM profile under Settings → Integrations → LLM ("Share scripts, SQL and arguments with the AI chat"). If the profile, its endpoint, its model or this setting changes, the chat no longer sends the earlier conversation. The global chat applies the same rule and notes under the answer that the earlier conversation was not sent.
 - Generated scripts and workflow changes always require a domain review.
 - AI actions and applied proposals are recorded in the audit log.
 
