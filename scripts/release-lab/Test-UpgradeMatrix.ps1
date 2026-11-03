@@ -83,9 +83,11 @@ try {
     $upgradeReleases = @(Get-UpgradeReleases -Config $config -Version '1.5.1' -SetupKind server)
     $Only = @()
     . $serverPlan
-    Assert-True ($scenarios.Count -eq 30) 'Full server matrix must contain 30 scenarios.'
-    Assert-True (@($scenarios | Where-Object { -not $_.upgrade }).Count -eq 10) 'Fresh/non-upgrade scenarios must run only once.'
-    Assert-True (@($scenarios.id | Select-Object -Unique).Count -eq 30) 'Server evidence IDs must be unique.'
+    Assert-True ($scenarios.Count -eq 32) 'Full server matrix must contain 32 scenarios.'
+    Assert-True (@($scenarios | Where-Object { -not $_.upgrade }).Count -eq 12) 'Fresh/non-upgrade scenarios must run only once.'
+    Assert-True (@($scenarios.id | Select-Object -Unique).Count -eq 32) 'Server evidence IDs must be unique.'
+    Assert-True (@($scenarios | Where-Object { $_.id -eq 'I2' -and $_.secondFails -and $_.secondIdentity -eq 'gmsaB' }).Count -eq 1) 'A failed service-account change must be in the matrix.'
+    Assert-True (@($scenarios | Where-Object { $_.id -eq 'X1' -and $_.blockServiceDelete -and $_.uninstall }).Count -eq 1) 'A blocked uninstall must be in the matrix.'
     foreach ($release in $upgradeReleases) {
         $paths = @($scenarios | Where-Object { $_.upgrade -and $_.previousRelease.version -eq $release.version })
         Assert-True ($paths.Count -eq 4) "Missing source coverage for $($release.version)."
@@ -156,7 +158,7 @@ try {
 
     $Only = @(); . $serverPlan
     $results = @($scenarios | ForEach-Object { [pscustomobject]@{ id = $_.id; verdict = 'PASS' } })
-    Assert-True (-not (& $serverGate)) 'Thirty passing server cases should pass.'
+    Assert-True (-not (& $serverGate)) 'All 32 passing server cases should pass.'
     ($results | Where-Object id -eq 'S1').verdict = 'N/A'
     Assert-True (-not (& $serverGate)) 'Optional remote SQL may remain N/A.'
     $upgradeResult = $results | Where-Object id -like 'U1-*' | Select-Object -First 1
@@ -165,7 +167,7 @@ try {
         Assert-True ([bool](& $serverGate)) "Required server upgrade with $verdict must block the release."
     }
     $upgradeResult.verdict = 'PASS'
-    $results = $results[0..28]
+    $results = $results[0..30]
     Assert-True ([bool](& $serverGate)) 'A missing server result must block the release.'
 
     Write-Host 'Upgrade matrix checks passed: five sources, 20 server and five desktop upgrades, distinct evidence, incomplete runs rejected.'

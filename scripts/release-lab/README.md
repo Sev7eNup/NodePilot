@@ -24,7 +24,7 @@ block the release. N/A is not accepted for an upgrade case.
 ### Server setup (`server/Invoke-ServerMatrix.ps1`, lab server VM)
 
 Each scenario starts from the clean checkpoint. U1-U4 run once per source version: **20 upgrade
-cases**, with IDs such as `U1-from-1.4.5`. All other scenarios run once (30 server scenarios total).
+cases**, with IDs such as `U1-from-1.4.5`. All other scenarios run once (32 server scenarios total).
 
 | Id | Identity | Database | Path | Then |
 |---|---|---|---|---|
@@ -37,6 +37,8 @@ cases**, with IDs such as `U1-from-1.4.5`. All other scenarios run once (30 serv
 | U3 | gMSA | PostgreSQL | each of the five source releases, then direct update | uninstall with `/PURGEDATA=1` |
 | U4 | LocalSystem | PostgreSQL | each of the five source releases, then direct update | uninstall keeping data |
 | I1 | LocalSystem, then gMSA | SQL Server | fresh install | a second installation as the gMSA over it |
+| I2 | gMSA, then a second gMSA | SQL Server | fresh install | a second installation as the second gMSA, which may not connect to SQL Server, must roll back |
+| X1 | gMSA | SQL Server | fresh install | uninstall with `/PURGEDATA=1` while the service cannot be deleted, then the same uninstall again |
 | S1 | LocalSystem | SQL Server on another host | fresh install | uninstall with `/PURGEDATA=1` |
 | R1 | gMSA | SQL Server | fresh install | the VM restarts |
 | A | gMSA | SQL Server | fresh install | database stopped, service started, database back |
@@ -56,7 +58,17 @@ with `/PURGEDATA=1`. The reinstall in F1 must accept the kept data: no new admin
 in, the imported workflow is still there.
 
 **I1** passes when the second installation runs as the gMSA, the signing key's owner moved to the
-gMSA, the existing admin still signs in and no error entry appears. **S1** covers the
+gMSA, the existing admin still signs in and no error entry appears. **I2** creates a SQL login for
+the second gMSA and denies it `CONNECT SQL`, so its service never becomes ready and the setup has to
+roll back. It passes when the second installation exits non-zero and the first gMSA is back: the
+service runs as it and becomes ready, the existing admin signs in, the signing key belongs to it,
+the install directory has the same access rules as before, the second gMSA's SID is on neither the
+directory nor `NodePilot.Api.exe`, and no log reports `ROLLBACK ALSO FAILED`. **X1** denies
+Administrators the right to delete the service before it uninstalls. It passes when that attempt
+leaves the service, `deploy\Uninstall-NodePilot.ps1`, the installation marker, the Apps & Features
+entry and the data directory in place and the setup log reports that the uninstall could not
+finish, and when the same uninstall, with the right restored, meets the uninstall criteria above.
+**S1** covers the
 computer-account path (`DOMAIN\HOST$`), which only a SQL Server on another host sees; it needs the
 optional `remoteSql` block in the config and reports N/A without it. That server is not restored by a
 checkpoint, so the scenario refuses an existing database of the configured name and afterwards drops
@@ -82,12 +94,14 @@ the run *Succeeded* and no error entry. A failed run lists its failed steps in `
 | T1 | fresh install | services, `/healthz/ready`, certificate, first admin via the setup token, a workflow runs, no error entry for two minutes |
 | T1b | the VM restarts | services come up on their own, ready within five minutes, admin signs in, no error entry |
 | T2 | same setup again with the shell open | services, admin still signs in, pre-update backup, no file-in-use errors, no error entry |
+| T2b | staged update with `Update-Desktop.ps1` from a payload without `postgres.exe`, which fails after both services were removed | non-zero exit, rollback reported complete, both service registrations as before, services and `/healthz/ready`, admin signs in, a workflow runs |
 | T3 | uninstall, keep data | services, certificate and private key, program files, Apps & Features entry gone; database kept |
 | T4 | install again | old admin signs in, no setup page, a workflow runs, no error entry |
 | T5 | uninstall, `/PURGEDATA=1` | additionally the data directory and every per-user NodePilot folder gone |
 | T6 | install after the purge | setup token again, the old admin is gone |
 | T7 | uninstall keeping data, install with `/DISCARDDATA=1` | fresh database, the previous admin is gone |
-| T8 | uninstall, `/PURGEDATA=1` | nothing left |
+| T8a | uninstall, `/PURGEDATA=1`, while Administrators may not delete the API service | API service, program files with `deploy\Uninstall-Desktop.ps1` and the Apps & Features entry kept; the setup log reports the abort |
+| T8 | the right restored, the same uninstall again | nothing left |
 | U1 (five runs) | restore the clean checkpoint for each source release, install it, create an admin and a workflow, then install the candidate directly over it | the admin signs in, pre-update backup, a workflow runs, no error entry; uninstall with `/PURGEDATA=1` |
 
 The five upgrade cases have IDs such as `U1-from-1.4.5`, with separate logs and source/target
@@ -133,7 +147,7 @@ Copy-Item scripts\release-lab\release-lab.example.json C:\lab-cred\release-lab.j
 ```
 
 Both need an elevated session on the Hyper-V host (checkpoint restore) and run independently, so
-they can run at the same time. Plan for 30 server scenarios and the desktop lifecycle plus five
+they can run at the same time. Plan for 32 server scenarios and the desktop lifecycle plus five
 independent upgrade runs, including the two-minute observation windows. Results, logs and a
 `summary.md` with source version, target version and verdict land in
 `%TEMP%\nodepilot-release-lab\<version>\`. Either script exits nonzero if anything required failed.
@@ -150,6 +164,10 @@ Subset summaries are marked diagnostic; the release itself needs the full run.
 - **PostgreSQL TLS**: the server certificate needs a CRL the service can check (the service verifies
   revocation). In the lab the CA's CRL is imported into the server VM's `LocalMachine\CA` store;
   scenario B removes it to prove the pre-flight notices.
+- **Second gMSA** (for I2): another gMSA the server VM may retrieve, named in
+  `server.secondGmsaAccount`. The server matrix refuses to start without it. Create it once on a
+  domain controller and keep it, for example
+  `New-ADServiceAccount -Name np-lab-gmsa-b -DNSHostName np-lab-gmsa-b.corp.contoso.com -PrincipalsAllowedToRetrieveManagedPassword (Get-ADComputer GW1)`.
 - **Client VM**: Windows 11, no .NET, no PostgreSQL, clean checkpoint.
 - **Remote SQL Server** (optional, for S1): another lab host with SQL Server 2022 CU1+ on which the
   account running the matrix is sysadmin. If its TLS certificate is self-signed, export the public

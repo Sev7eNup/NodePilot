@@ -123,6 +123,10 @@ Planned version: **1.5.4**.
     (#717, #645).
   - CI classifies changed files through `scripts/classify-changes.sh`, also for long file lists
     (#729).
+  - The release lab also runs the failure paths: a reinstall with another service account that
+    must roll back, an uninstall that must stop and stay repeatable on server and desktop, and a
+    failed staged desktop update. The account change needs a second lab gMSA in
+    `server.secondGmsaAccount`.
 
 ### Security
 

@@ -4,8 +4,9 @@
 
 .DESCRIPTION
   From the clean checkpoint: T1 fresh install, a restart (T1b), then T2-T8 (over-install with the
-  shell open, uninstall keeping data, reinstall, uninstall deleting everything, reinstall,
-  /DISCARDDATA=1, final uninstall). Then U1 from each of the five previous releases directly to
+  shell open, a failed staged update that rolls back, uninstall keeping data, reinstall, uninstall
+  deleting everything, reinstall, /DISCARDDATA=1, a blocked uninstall, the final uninstall). Then
+  U1 from each of the five previous releases directly to
   this one, restoring the clean checkpoint before each upgrade. See ..\README.md.
 
 .EXAMPLE
