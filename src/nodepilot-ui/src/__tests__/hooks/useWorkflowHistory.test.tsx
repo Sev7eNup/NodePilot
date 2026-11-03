@@ -9,6 +9,26 @@ function makeNode(id: string, parentId?: string): Node {
   return { id, position: { x: 0, y: 0 }, data: { label: id }, ...(parentId ? { parentId } : {}) };
 }
 
+it('captures the pre-edit graph once per typing burst and supports immediate undo and redo', () => {
+  vi.useFakeTimers();
+  try {
+    const { result, unmount } = setup([makeNode('original')]);
+    act(() => { result.current.history.commitPropertyEdit(); result.current.setNodes([makeNode('first edit')]); });
+    act(() => { result.current.history.commitPropertyEdit(); result.current.setNodes([makeNode('last edit')]); });
+    act(() => { vi.advanceTimersByTime(900); });
+    expect(result.current.history.historyPast).toHaveLength(1);
+    act(() => result.current.history.undo());
+    expect(result.current.nodes[0].id).toBe('original');
+    act(() => result.current.history.redo());
+    expect(result.current.nodes[0].id).toBe('last edit');
+    act(() => { result.current.history.commitPropertyEdit(); result.current.setNodes([makeNode('immediate')]); });
+    act(() => result.current.history.undo());
+    expect(result.current.nodes[0].id).toBe('last edit');
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
+
 /**
  * Drives the hook from real React state, the way the editor does. The hook must never read
  * the graph from React Flow's store, so no store is provided here.

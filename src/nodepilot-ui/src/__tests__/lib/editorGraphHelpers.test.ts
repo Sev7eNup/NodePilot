@@ -119,12 +119,10 @@ describe('renameVariableInNodeData', () => {
     expect((result.config as { script: string }).script).toBe('{{new.output}}');
   });
 
-  it('returns the original data object when the rewrite breaks JSON round-trip', () => {
-    // A newAlias containing a double quote produces invalid JSON after the raw string replace,
-    // so JSON.parse throws and the catch returns the untouched original.
+  it('rewrites string leaves without corrupting JSON escaping', () => {
     const data = { config: { script: '{{old.output}}' } };
     const result = renameVariableInNodeData(data, 'old', 'x"y');
-    expect(result).toBe(data);
+    expect(result.config).toEqual({ script: '{{x"y.output}}' });
   });
 });
 
@@ -142,26 +140,28 @@ describe('renameVariableInEdge', () => {
     expect((result.data as { condition: string }).condition).toBe('new.failed');
   });
 
-  it('recursively replaces matching {variable} operands in conditionExpression', () => {
+  it('rewrites actual builder step operands without changing literal/global/manual operands', () => {
     const edge = {
       id: 'e1', source: 'a', target: 'b',
       data: {
         conditionExpression: {
           type: 'group',
-          operator: 'AND',
-          conditions: [
-            { type: 'comparison', left: { variable: 'old' }, right: { literal: '1' } },
-            { type: 'comparison', left: { variable: 'other' }, right: { literal: '2' } },
+          op: 'AND',
+          children: [
+            { type: 'comparison', op: '==', left: { kind: 'variable', stepId: 'old', field: 'output' }, right: { kind: 'literal', value: '{{old.output}}' } },
+            { type: 'comparison', op: '==', left: { kind: 'variable', source: 'global', name: 'old' }, right: { kind: 'variable', source: 'manual', name: 'old' } },
           ],
         },
       },
-    } as unknown as Edge;
+    } satisfies Edge;
     const result = renameVariableInEdge(edge, 'old', 'new');
     const expr = (result.data as Record<string, unknown>).conditionExpression as {
-      conditions: Array<{ left: { variable: string } }>;
+      children: Array<{ left: Record<string, string>; right: Record<string, string> }>;
     };
-    expect(expr.conditions[0].left.variable).toBe('new');
-    expect(expr.conditions[1].left.variable).toBe('other'); // untouched
+    expect(expr.children[0].left.stepId).toBe('new');
+    expect(expr.children[0].right.value).toBe('{{old.output}}');
+    expect(expr.children[1].left.name).toBe('old');
+    expect(expr.children[1].right.name).toBe('old');
     expect(result).not.toBe(edge);
   });
 
