@@ -48,6 +48,9 @@
       "fromRunStart": "+{{offset}} ab Lauf-Start",
       "duration": "Dauer: {{duration}}",
       "input": "Eingabe",
+      "currentConfiguration": "Aktuelle Workflow-Konfiguration",
+      "currentConfigurationHint": "Dies ist der aktuelle Entwurf, keine Momentaufnahme der bei dieser Ausführung verwendeten Eingaben.",
+      "recordedTarget": "Aufgezeichnetes Ausführungsziel",
       "targetMachine": "Zielmaschine",
       "credential": "Credential",
       "outputVar": "Ausgabe-Variable"

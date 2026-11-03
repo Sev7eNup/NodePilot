@@ -26,6 +26,9 @@ import { RegistryConfig } from '../../../components/designer/properties/activiti
 import { WmiQueryConfig } from '../../../components/designer/properties/activities/WmiQueryConfig';
 import { PowerManagementConfig } from '../../../components/designer/properties/activities/PowerManagementConfig';
 import { RestApiConfig } from '../../../components/designer/properties/activities/RestApiConfig';
+import { TextFileEditConfig } from '../../../components/designer/properties/activities/TextFileEditConfig';
+import { AiAgentConfig } from '../../../components/designer/properties/activities/AiAgentConfig';
+import { checkRequiredActivityConfig } from '../../../lib/activityConfigFacts';
 
 /**
  * Companion to propertyConfigs.test.tsx, covering the activity configs it does not test.
@@ -39,6 +42,39 @@ beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }),
   );
+});
+
+it('keeps selected text-file delete modes editable and represented in the graph', () => {
+  function Editor() {
+    const [config, setConfig] = useState<Record<string, unknown>>({ operation: 'delete', path: 'example.txt' });
+    return <><TextFileEditConfig config={config} onUpdate={(patch) => setConfig((prev) => ({ ...prev, ...patch }))} /><output>{JSON.stringify(config)}</output></>;
+  }
+  wrap(<Editor />);
+  fireEvent.click(screen.getByRole('button', { name: 'Line range' }));
+  expect(screen.getByText(/"lineRange":\[1,1\]/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Pattern match' }));
+  expect(screen.getByText(/"matchPattern":""/)).toBeInTheDocument();
+  expect(screen.queryByText(/"lineRange"/)).not.toBeInTheDocument();
+});
+
+it('shows restored agent allowlist values after an external graph update', () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const config = (host: string) => ({ agent: { id: 'agent', role: 'Assistant', instructions: '', skillIds: [], tools: [{ name: 'http_request', allowedHosts: [host] }] } });
+  const view = (host: string) => <QueryClientProvider client={client}><AiAgentConfig config={config(host)} onUpdate={vi.fn()} /></QueryClientProvider>;
+  const { rerender } = render(view('edited.example'));
+  expect(screen.getByDisplayValue('edited.example')).toBeInTheDocument();
+  rerender(view('restored.example'));
+  expect(screen.getByDisplayValue('restored.example')).toBeInTheDocument();
+  expect(screen.queryByDisplayValue('edited.example')).not.toBeInTheDocument();
+});
+
+it('serializes the accepted default port and rejects imported missing ports', () => {
+  const onUpdate = vi.fn();
+  wrap(<WaitForConditionConfig config={{ host: 'example.test' }} onUpdate={onUpdate} />);
+  fireEvent.change(screen.getByDisplayValue('Free-form PowerShell expression (no templates)'), { target: { value: 'portOpen' } });
+  expect(onUpdate).toHaveBeenCalledWith({ conditionType: 'portOpen', port: 443 });
+  expect(checkRequiredActivityConfig('waitForCondition', { conditionType: 'portOpen', host: 'example.test' })).not.toBeNull();
+  expect(checkRequiredActivityConfig('waitForCondition', { conditionType: 'portOpen', host: 'example.test', port: 443 })).toBeNull();
 });
 
 function wrap(ui: React.ReactElement) {
