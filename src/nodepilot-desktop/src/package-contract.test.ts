@@ -46,11 +46,11 @@ describe('desktop runtime dependency contract', () => {
     const lock = readJson<PackageLock>('../package-lock.json');
 
     expect(manifest.devDependencies['@electron/packager']).toBe('20.3.0');
-    expect(manifest.devDependencies['@electron-internal/extract-zip']).toBe('1.0.5');
+    expect(manifest.devDependencies['@electron-internal/extract-zip']).toBe('1.0.8');
     expect(manifest.devDependencies['@electron-forge/cli']).toBeUndefined();
     expect(manifest.devDependencies['@electron-forge/maker-zip']).toBeUndefined();
     expect(lock.packages['node_modules/@electron/packager'].version).toBe('20.3.0');
-    expect(lock.packages['node_modules/@electron-internal/extract-zip'].version).toBe('1.0.5');
+    expect(lock.packages['node_modules/@electron-internal/extract-zip'].version).toBe('1.0.8');
     expect(lock.packages['node_modules/@electron-forge/cli']).toBeUndefined();
     expect(lock.packages['node_modules/extract-zip']).toBeUndefined();
   });

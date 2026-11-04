@@ -181,6 +181,7 @@ jobs:
           .\deploy\Test-PostgresProvisioning.ps1
           .\deploy\Test-SitePublish.ps1
           .\deploy\Test-DesktopUpdatePayload.ps1
+          .\deploy\Test-DesktopRuntimePayload.ps1
           .\deploy\Test-FailoverFixtures.ps1
           .\deploy\Test-ServerRuntimeStaging.ps1
           .\scripts\release-lab\server\Test-RemoteSqlCleanup.ps1
@@ -208,6 +209,7 @@ jobs:
           .\deploy\Test-PostgresProvisioning.ps1
           .\deploy\Test-SitePublish.ps1
           .\deploy\Test-DesktopUpdatePayload.ps1
+          .\deploy\Test-DesktopRuntimePayload.ps1
           .\deploy\Test-FailoverFixtures.ps1
           .\deploy\Test-ServerRuntimeStaging.ps1
           .\scripts\release-lab\server\Test-RemoteSqlCleanup.ps1

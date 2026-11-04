@@ -248,6 +248,14 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
   restore succeeds. A failed restore stops recovery with an explicit error and the backup path
   for manual recovery. The offline `deploy/Test-DesktopUpdate.ps1` checks this ordering and the
   failure paths without touching real services; it does not replace the release-lab rollback test.
+- **Runtime security updates come with the package.** API, `np` and `nodepilot-mcp` are
+  self-contained and carry their own copy of .NET; a machine-wide .NET or Windows update does not
+  replace it. Only installing a rebuilt desktop package moves an existing installation to a patched
+  runtime (10.0.14 since 1.5.4, which closes the Kestrel advisories CVE-2026-88092 and
+  CVE-2026-70188 that affect 10.0.12 and earlier). The build publishes all three at
+  `$DesktopRuntimeVersion` and refuses a stage whose framework declarations or runtime binaries
+  (host, CoreLib, WebSockets, Kestrel) are older; `deploy/Test-DesktopRuntimePayload.ps1` covers
+  that check.
 - **Uninstall:** asks whether to keep the data (*Keep data* / *Delete everything* / *Cancel*; unattended
   keeps it, `/PURGEDATA=1` deletes it) and runs `Uninstall-Desktop.ps1` from `CurUninstallStepChanged`,
   not `[UninstallRun]`, whose parameters Inno freezes at install time. The script ends the shell and

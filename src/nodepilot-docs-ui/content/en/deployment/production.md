@@ -549,8 +549,9 @@ The updater:
 - backs up the existing binaries,
 - waits up to 30 seconds after stopping the service for processes from the installation directory to exit and then terminates any that remain; only if that does not help does the updater abort with the process name and PID **before the first file deletion** (a stopped service is not enough: orphaned workers keep their DLLs mapped),
 - preserves the database, the service account, the production configuration and the complete Switcher configuration (server URL, SCOrch endpoints, allowlists, profiles; the file is carried across byte for byte and its content never aborts the update — when it is not strict JSON for Windows PowerShell, the server URL is left unchecked and the updater prints a warning),
+- keeps the server setup's uninstaller and its `deploy\` scripts in the installation directory, so "Apps & features" can still uninstall an installation that was updated by hand,
 - restarts the service,
-- checks the health endpoint on the port from the installed configuration (`-HttpsPort` is only needed to override it),
+- checks the health endpoint on the port from the installed configuration (`-HttpsPort` is only needed to override it); the request goes to `localhost` and accepts only the certificate whose thumbprint `Kestrel:Https:CertificateThumbprint` names, so nothing has to be passed for it; if the configuration cannot be read, the update warns and checks without that pin,
 - restores the previous binaries on a failed health check and leaves the service in the state it was in before the update,
 - probes the health endpoint again after a rollback and warns when the restored service does not answer.
 

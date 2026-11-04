@@ -62,13 +62,15 @@ function Get-LeaderHealth([string]$baseUrl) {
         $resp = Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 5
         $body = $null
         try { $body = $resp.Content | ConvertFrom-Json } catch {}
+        # Optional fields: the leader's 200 body carries no reason, and StrictMode throws on a
+        # missing property, which the catch below would misreport as a transport error.
         return [PSCustomObject]@{
             Url = $u
             StatusCode = [int]$resp.StatusCode
             IsLeader = ([int]$resp.StatusCode -eq 200)
-            NodeId = if ($body) { $body.nodeId } else { $null }
-            LeaseEpoch = if ($body) { $body.leaseEpoch } else { $null }
-            Reason = if ($body) { $body.reason } else { $null }
+            NodeId = if ($body -and $body.PSObject.Properties['nodeId']) { $body.nodeId } else { $null }
+            LeaseEpoch = if ($body -and $body.PSObject.Properties['leaseEpoch']) { $body.leaseEpoch } else { $null }
+            Reason = if ($body -and $body.PSObject.Properties['reason']) { $body.reason } else { $null }
         }
     } catch {
         # A follower answers 503, which throws here; read the status code off the response.

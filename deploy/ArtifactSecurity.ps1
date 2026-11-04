@@ -955,6 +955,49 @@ function Restore-NodePilotBinaryBackup {
     Assert-NodePilotDirectoryFileHashes -RootPath $InstallPath -Expected $Backup.Files
 }
 
+function Restore-NodePilotSetupFiles {
+    <#
+      Copies the GUI setup's own files from a backup made by New-NodePilotBinaryBackup back into
+      the install directory: its uninstaller (unins*) and the deploy\ scripts that uninstaller
+      runs. The artifact carries neither, so an update that replaces the directory would otherwise
+      leave Apps & Features pointing at a missing uninstaller.
+
+      Call it after Assert-NodePilotExtractedFiles, which requires the directory to hold exactly the
+      artifact. Every restored file is checked against the hashes recorded with the backup.
+      Returns the names of the restored entries.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Backup,
+        [Parameter(Mandatory)][string]$InstallPath
+    )
+
+    $entries = @(Get-ChildItem -LiteralPath $Backup.Path -Force | Where-Object {
+        ($_.PSIsContainer -and $_.Name -eq 'deploy') -or (-not $_.PSIsContainer -and $_.Name -like 'unins*')
+    })
+    foreach ($entry in $entries) {
+        Copy-Item -LiteralPath $entry.FullName -Destination $InstallPath -Recurse -Force -ErrorAction Stop
+    }
+
+    $names = @($entries | ForEach-Object { $_.Name })
+    $root = (Resolve-Path -LiteralPath $InstallPath).Path.TrimEnd('\', '/')
+    $expected = @($Backup.Files.Keys | Where-Object { $names -contains ($_ -split '\\', 2)[0] })
+    $restored = @(foreach ($name in $names) {
+        Get-ChildItem -LiteralPath (Join-Path $root $name) -File -Recurse -Force
+    })
+    if ($restored.Count -ne $expected.Count) {
+        throw "Restored $($restored.Count) setup files into '$root', but the backup recorded $($expected.Count)."
+    }
+    foreach ($file in $restored) {
+        $relative = $file.FullName.Substring($root.Length + 1)
+        $actual = '{0}:{1}' -f $file.Length, (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+        if (-not $Backup.Files.ContainsKey($relative) -or $Backup.Files[$relative] -ne $actual) {
+            throw "Restored setup file '$relative' does not match the backup taken by this run."
+        }
+    }
+    return $names
+}
+
 function Assert-NodePilotCodeSigningCertificate {
     <#
       Checks both what the certificate is for and what its key may do. The EKU must include code
