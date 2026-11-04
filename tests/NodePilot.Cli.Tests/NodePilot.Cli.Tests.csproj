@@ -25,6 +25,8 @@
     <PackageReference Include="Microsoft.OpenApi" />
     <PackageReference Include="Spectre.Console.Testing" />
     <PackageReference Include="Spectre.Console.Cli.Testing" />
+    <!-- Parses the CLI's YAML output in the round-trip tests; the CLI itself does not use it. -->
+    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 
   <ItemGroup>

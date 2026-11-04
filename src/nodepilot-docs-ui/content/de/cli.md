@@ -229,7 +229,7 @@ np exec resume 7e3f... --step runHealth --mode stop
 
 ## machine
 
-Maschinen-Body via Flags (nicht `--file`). `create`/`update`-Flags: `--name`, `--hostname`, `--port` (Default 5985), `--ssl`, `--credential <GUID>`, `--tags <CSV>`. `update` ist Client-seitig Patch (fetch + merge, Server will Full-Body).
+Maschinen-Body via Flags (nicht `--file`). `create`/`update`-Flags: `--name`, `--hostname`, `--port` (Default bei `create`: 5985, mit `--ssl` 5986), `--ssl`, `--credential <GUID>`, `--tags <CSV>`. `update` ist Client-seitig Patch (fetch + merge, Server will Full-Body).
 
 ```bash
 np machine create --name srv01 --hostname srv01.internal --credential 4c2a... --tags prod,web

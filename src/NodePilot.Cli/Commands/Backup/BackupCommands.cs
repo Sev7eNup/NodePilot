@@ -54,10 +54,13 @@ public sealed class BackupManifestCommand : BaseCommand<GlobalSettings>
         var api = ClientFactory.Create(session);
         var manifest = await api.GetBackupManifestAsync(ct);
 
-        var table = new Table().AddColumn("Section").AddColumn(new TableColumn("Count").RightAligned());
-        foreach (var s in manifest.Sections)
-            table.AddRow(Markup.Escape(s.Section), s.Count.ToString());
-        AnsiConsole.Write(table);
+        writer.WriteData(manifest, (console, value) =>
+        {
+            var table = new Table().AddColumn("Section").AddColumn(new TableColumn("Count").RightAligned());
+            foreach (var s in value.Sections)
+                table.AddRow(Markup.Escape(s.Section), s.Count.ToString());
+            console.Write(table);
+        });
         return ExitCodes.Success;
     }
 }
@@ -153,10 +156,13 @@ public sealed class BackupPreviewCommand : BaseCommand<BackupPreviewSettings>
         var result = await api.PreviewBackupAsync(content, passphrase, ct);
 
         writer.Info($"Backup app version: {result.AppVersion ?? "?"} — integrity [green]verified[/]");
-        var table = new Table().AddColumn("Section").AddColumn("In backup").AddColumn("New").AddColumn("Conflicts");
-        foreach (var s in result.Sections)
-            table.AddRow(Markup.Escape(s.Section), s.InBackup.ToString(), s.New.ToString(), s.Conflicts.ToString());
-        AnsiConsole.Write(table);
+        writer.WriteData(result, (console, value) =>
+        {
+            var table = new Table().AddColumn("Section").AddColumn("In backup").AddColumn("New").AddColumn("Conflicts");
+            foreach (var s in value.Sections)
+                table.AddRow(Markup.Escape(s.Section), s.InBackup.ToString(), s.New.ToString(), s.Conflicts.ToString());
+            console.Write(table);
+        });
         foreach (var w in result.Warnings) writer.Warning($"  ! {w}");
         return ExitCodes.Success;
     }
@@ -212,10 +218,13 @@ public sealed class BackupRestoreCommand : BaseCommand<BackupRestoreSettings>
         var content = await File.ReadAllBytesAsync(settings.File, ct);
         var result = await api.RestoreBackupAsync(content, passphrase, settings.Policy, ct);
 
-        var table = new Table().AddColumn("Section").AddColumn("Created").AddColumn("Overwritten").AddColumn("Skipped").AddColumn("Renamed");
-        foreach (var s in result.Sections)
-            table.AddRow(Markup.Escape(s.Section), s.Created.ToString(), s.Overwritten.ToString(), s.Skipped.ToString(), s.Renamed.ToString());
-        AnsiConsole.Write(table);
+        writer.WriteData(result, (console, value) =>
+        {
+            var table = new Table().AddColumn("Section").AddColumn("Created").AddColumn("Overwritten").AddColumn("Skipped").AddColumn("Renamed");
+            foreach (var s in value.Sections)
+                table.AddRow(Markup.Escape(s.Section), s.Created.ToString(), s.Overwritten.ToString(), s.Skipped.ToString(), s.Renamed.ToString());
+            console.Write(table);
+        });
         if (result.Settings is not null)
             writer.Info($"Settings: {(result.Settings.Applied ? "[green]applied[/]" : "[yellow]not applied[/]")} — {Markup.Escape(result.Settings.Message ?? "")}");
         foreach (var w in result.Warnings) writer.Warning($"  ! {w}");

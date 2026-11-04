@@ -274,10 +274,23 @@ public class WmiQueryActivity : BaseRemoteActivity
         var qClass = PowerShellQuoter.Literal(className);
         var qMethod = PowerShellQuoter.Literal(methodName);
         var filter = config.GetStringOrNull("filter");
+        var hasFilter = !string.IsNullOrWhiteSpace(filter);
         var argsLiteral = BuildArgumentsHashtable(config);
 
         var sb = new StringBuilder();
-        if (!string.IsNullOrWhiteSpace(filter))
+        // Invoke-CimMethod converts arguments to the declared CIM types only when it has the class
+        // declaration. With -ClassName it sends the PowerShell types, and a UInt32 parameter
+        // rejects the Int64 that PowerShell uses for values above Int32.MaxValue.
+        if (!hasFilter || argsLiteral is not null)
+            sb.Append("$__npClass = Get-CimClass -ClassName ").Append(qClass)
+              .Append(" -Namespace ").Append(qNs).Append('\n');
+        if (argsLiteral is not null)
+        {
+            sb.Append("$__npArgs = ").Append(argsLiteral).Append('\n');
+            AppendIntegerArgumentRangeCheck(sb, qMethod);
+        }
+
+        if (hasFilter)
         {
             // Instance method: locate target instances first, then pipe into Invoke-CimMethod.
             // Without -Filter the cmdlet would target the class itself (static-method semantics),
@@ -291,15 +304,37 @@ public class WmiQueryActivity : BaseRemoteActivity
         else
         {
             // Static method on the class.
-            sb.Append("Invoke-CimMethod -ClassName ").Append(qClass)
-              .Append(" -Namespace ").Append(qNs)
-              .Append(" -MethodName ").Append(qMethod);
+            sb.Append("Invoke-CimMethod -CimClass $__npClass -MethodName ").Append(qMethod);
         }
 
         if (argsLiteral is not null)
-            sb.Append(" -Arguments ").Append(argsLiteral);
+            sb.Append(" -Arguments $__npArgs");
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Rejects an argument whose value does not fit the integer CIM type its parameter declares,
+    /// naming the argument and the allowed range. The CIM conversion itself only reports an
+    /// overflow without saying which argument caused it.
+    /// </summary>
+    private static void AppendIntegerArgumentRangeCheck(StringBuilder sb, string qMethod)
+    {
+        sb.Append("$__npMethod = $__npClass.CimClassMethods[").Append(qMethod).Append("]\n");
+        sb.Append("if ($null -ne $__npMethod) {\n");
+        sb.Append("    $__npIntTypes = @{ UInt8 = [byte]; SInt8 = [sbyte]; UInt16 = [uint16]; SInt16 = [int16]; UInt32 = [uint32]; SInt32 = [int32]; UInt64 = [uint64]; SInt64 = [int64] }\n");
+        sb.Append("    foreach ($__npName in @($__npArgs.Keys)) {\n");
+        sb.Append("        $__npParam = $__npMethod.Parameters[$__npName]\n");
+        sb.Append("        $__npValue = $__npArgs[$__npName]\n");
+        sb.Append("        if ($null -eq $__npParam -or $null -eq $__npValue) { continue }\n");
+        sb.Append("        $__npType = $__npIntTypes[[string]$__npParam.CimType]\n");
+        sb.Append("        if ($null -eq $__npType) { continue }\n");
+        sb.Append("        $__npNumber = [decimal]0\n");
+        sb.Append("        if (-not [decimal]::TryParse([string]$__npValue, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$__npNumber) -or $__npNumber -ne [decimal]::Truncate($__npNumber) -or $__npNumber -lt $__npType::MinValue -or $__npNumber -gt $__npType::MaxValue) {\n");
+        sb.Append("            throw \"WMI Query: argument '$__npName' value '$__npValue' does not fit the declared CIM type $($__npParam.CimType) (a whole number from $($__npType::MinValue) to $($__npType::MaxValue)).\"\n");
+        sb.Append("        }\n");
+        sb.Append("    }\n");
+        sb.Append("}\n");
     }
 
     /// <summary>

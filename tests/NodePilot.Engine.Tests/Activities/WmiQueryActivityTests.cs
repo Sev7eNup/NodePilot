@@ -254,10 +254,63 @@ public sealed class WmiQueryActivityTests : IDisposable
         await CreateActivity().ExecuteAsync(Ctx(),
             Cfg("{\"mode\": \"invokeMethod\", \"className\": \"Win32_Process\", \"methodName\": \"Create\", \"arguments\": {\"CommandLine\": \"notepad.exe\", \"Priority\": 32, \"ShowWindow\": true}}"),
             CancellationToken.None);
-        _capturedScript.Should().Contain("-Arguments @{");
+        _capturedScript.Should().Contain("$__npArgs = @{");
+        _capturedScript.Should().Contain("-Arguments $__npArgs");
         _capturedScript.Should().Contain("CommandLine = 'notepad.exe'");
         _capturedScript.Should().Contain("Priority = 32");
         _capturedScript.Should().Contain("ShowWindow = $true");
+    }
+
+    [Fact]
+    public async Task InvokeMethod_StaticMethod_PassesClassDeclarationForArgumentTyping()
+    {
+        _capturedScript = null;
+        await CreateActivity().ExecuteAsync(Ctx(),
+            Cfg("{\"mode\": \"invokeMethod\", \"className\": \"StdRegProv\", \"namespace\": \"root\\\\default\", \"methodName\": \"EnumKey\", \"arguments\": {\"hDefKey\": 2147483649, \"sSubKeyName\": \"Software\"}}"),
+            CancellationToken.None);
+        _capturedScript.Should().Contain("$__npClass = Get-CimClass -ClassName 'StdRegProv' -Namespace 'root\\default'");
+        _capturedScript.Should().Contain("Invoke-CimMethod -CimClass $__npClass -MethodName 'EnumKey' -Arguments $__npArgs");
+        _capturedScript.Should().NotContain("Invoke-CimMethod -ClassName",
+            "without the class declaration the cmdlet sends Int64 and a UInt32 parameter rejects it");
+    }
+
+    // Read-only CIM call on the local machine: StdRegProv.EnumKey lists the subkeys of HKCU\Software.
+    private const string HkcuEnumKeyConfig =
+        "{\"mode\": \"invokeMethod\", \"className\": \"StdRegProv\", \"namespace\": \"root\\\\default\", \"methodName\": \"EnumKey\", " +
+        "\"arguments\": {\"hDefKey\": HDEFKEY, \"sSubKeyName\": \"Software\"}, \"captureProperties\": [\"ReturnValue\"]}";
+
+    [WindowsFact]
+    public async Task InvokeMethod_UInt32ArgumentAboveInt32Max_LocalCallSucceeds()
+    {
+        var result = await CreateActivity().ExecuteAsync(LocalCtx(),
+            Cfg(HkcuEnumKeyConfig.Replace("HDEFKEY", "2147483649")),
+            CancellationToken.None);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        result.OutputParameters.Should().ContainKey("ReturnValue").WhoseValue.Should().Be("0");
+    }
+
+    [WindowsFact]
+    public async Task InvokeMethod_ArgumentOutsideDeclaredRange_FailsNamingArgumentAndType()
+    {
+        var result = await CreateActivity().ExecuteAsync(LocalCtx(),
+            Cfg(HkcuEnumKeyConfig.Replace("HDEFKEY", "4294967296")),
+            CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("argument 'hDefKey' value '4294967296' does not fit the declared CIM type UInt32");
+    }
+
+    private StepExecutionContext LocalCtx()
+    {
+        var machineId = Guid.NewGuid();
+        _db.ManagedMachines.Add(new ManagedMachine
+        {
+            Id = machineId, Name = "Local " + machineId.ToString("N"), Hostname = "localhost",
+            WinRmPort = 5985, IsReachable = true,
+        });
+        _db.SaveChanges();
+        return new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "local-wmi", TargetMachineId = machineId };
     }
 
     [Fact]

@@ -61,6 +61,7 @@ Planned version: **1.5.4**.
     (`DOMAIN\gmsa$`) now runs under it; before, it was registered but never started (#705, #790).
   - The step details of a past run label the workflow's current configuration as such and show the
     target machine the run actually used (#603).
+  - A `forEach` parallelism of 0 is saved as 0 (parallel up to the engine limit) instead of 1 (#602).
   - After a reconnect or a reload, the designer shows a paused debug step with its variables again
     and catches up on steps that changed during the disconnect (#606).
   - Variable edits at a breakpoint belong to that one pause and are dropped when another step
@@ -79,6 +80,9 @@ Planned version: **1.5.4**.
   - Input values that look like `{{…}}` stay plain text and no longer fail the step as unresolved
     references (#686).
   - Editing a text file keeps its permissions (#683).
+  - `wmiQuery` method calls pass their arguments in the types the CIM method declares, so a UInt32
+    above 2147483647 such as `hDefKey` 2147483649 (HKCU) works. A value outside the declared range
+    fails the step with a message that names the argument (#616).
 - **Notifications**
   - A run that finishes while the database is briefly unavailable still triggers its notification
     rules once the commit arrives, even when other runs finished later (#678).
@@ -90,6 +94,13 @@ Planned version: **1.5.4**.
   - The MCP server rejects broken nodes and edges before it merges a workflow change (#726).
   - All MCP requests, including dependency queries, wait until the server connection is ready
     (#727).
+  - `np auth login --password-stdin` sends the password as read, including leading and trailing
+    spaces, so the CLI and the Engine Switcher sign in with such passwords again (#617).
+  - `np backup manifest`, `preview` and `restore` honour `-o json` and `-o yaml` (#618).
+  - `np machine create --ssl` without `--port` and the MCP tool `create_machine` with `useSsl` and no
+    port use the HTTPS port 5986 (#619).
+  - `-o yaml` keeps multiline strings, empty lists and objects, and strings such as `null`, `yes`
+    or a date as they are when the output is parsed again (#621).
 - **Setup and uninstall**
   - A server uninstall whose cleanup fails stops before the "Apps & features" entry is removed,
     keeps the installation marker and the deploy scripts and exits with a non-zero code, so the

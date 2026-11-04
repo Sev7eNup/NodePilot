@@ -94,7 +94,8 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
         var username = settings.Username ?? await AnsiConsole.AskAsync<string>("Username:");
         string password;
         if (settings.PasswordStdin)
-            password = ((await Console.In.ReadLineAsync()) ?? "").Trim();
+            // ReadLine already drops the line ending; spaces belong to the password.
+            password = (await Console.In.ReadLineAsync()) ?? "";
         else if (!string.IsNullOrEmpty(settings.Password))
             password = settings.Password;
         else

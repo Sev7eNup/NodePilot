@@ -1,0 +1,96 @@
+{
+  "//": [
+    "Sharing contract for the clipboard copy (lib/workflowFragment.ts serializeFragment) and the",
+    "server export (WorkflowSecretRedactor.Redact). Both test suites read this file. Paths are JSON",
+    "pointers into the definition. maskedByBoth: recognised secrets, '***' on both surfaces.",
+    "maskedByExportOnly: free-form values the export masks whole and the clipboard keeps, so a copy",
+    "pasted back into NodePilot still works. keptByBoth: unchanged on both surfaces."
+  ],
+  "cases": [
+    {
+      "name": "script with a password",
+      "definition": {
+        "nodes": [
+          { "id": "run", "type": "activity", "position": { "x": 0, "y": 0 },
+            "data": { "label": "Rotate", "activityType": "runScript",
+              "config": { "script": "$password = \"literal-secret\"\nSet-Secret -Value $password" } } }
+        ],
+        "edges": []
+      },
+      "maskedByBoth": ["/nodes/0/data/config/script"],
+      "maskedByExportOnly": [],
+      "keptByBoth": ["/nodes/0/data/label", "/nodes/0/data/activityType"]
+    },
+    {
+      "name": "script without a secret",
+      "definition": {
+        "nodes": [
+          { "id": "run", "type": "activity", "position": { "x": 0, "y": 0 },
+            "data": { "label": "Spooler", "activityType": "runScript",
+              "config": { "script": "Get-Service -Name Spooler" } } }
+        ],
+        "edges": []
+      },
+      "maskedByBoth": [],
+      "maskedByExportOnly": ["/nodes/0/data/config/script"],
+      "keptByBoth": ["/nodes/0/data/label"]
+    },
+    {
+      "name": "secret config key",
+      "definition": {
+        "nodes": [
+          { "id": "call", "type": "activity", "position": { "x": 0, "y": 0 },
+            "data": { "label": "Call", "activityType": "restApi",
+              "config": { "method": "GET", "apiKey": "literal-api-key" } } }
+        ],
+        "edges": []
+      },
+      "maskedByBoth": ["/nodes/0/data/config/apiKey"],
+      "maskedByExportOnly": [],
+      "keptByBoth": ["/nodes/0/data/config/method"]
+    },
+    {
+      "name": "literal condition operands",
+      "definition": {
+        "nodes": [
+          { "id": "a", "type": "activity", "position": { "x": 0, "y": 0 },
+            "data": { "label": "Check", "activityType": "log", "config": {} } },
+          { "id": "b", "type": "activity", "position": { "x": 200, "y": 0 },
+            "data": { "label": "Act", "activityType": "log", "config": {} } }
+        ],
+        "edges": [
+          { "id": "ab", "source": "a", "target": "b", "type": "labeled",
+            "data": { "label": "On match", "conditionExpression": { "type": "group", "op": "OR", "children": [
+              { "type": "comparison", "op": "==",
+                "left": { "kind": "variable", "stepId": "a", "field": "output" },
+                "right": { "kind": "literal", "value": "Authorization: Bearer literal-token" } },
+              { "type": "comparison", "op": "==",
+                "left": { "kind": "variable", "stepId": "a", "field": "output" },
+                "right": { "kind": "literal", "value": "Running" } }
+            ] } } }
+        ]
+      },
+      "maskedByBoth": ["/edges/0/data/conditionExpression/children/0/right/value"],
+      "maskedByExportOnly": ["/edges/0/data/conditionExpression/children/1/right/value"],
+      "keptByBoth": [
+        "/edges/0/data/label",
+        "/edges/0/data/conditionExpression/children/0/left/stepId",
+        "/nodes/1/data/label"
+      ]
+    },
+    {
+      "name": "secret in a string array",
+      "definition": {
+        "nodes": [
+          { "id": "mail", "type": "activity", "position": { "x": 0, "y": 0 },
+            "data": { "label": "Notify", "activityType": "emailNotification",
+              "config": { "to": ["ops@example.test", "Authorization: Bearer literal-token"] } } }
+        ],
+        "edges": []
+      },
+      "maskedByBoth": ["/nodes/0/data/config/to/1"],
+      "maskedByExportOnly": [],
+      "keptByBoth": ["/nodes/0/data/config/to/0"]
+    }
+  ]
+}

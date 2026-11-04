@@ -54,7 +54,7 @@ public class MachineWriteSettings : GlobalSettings
     public string? Hostname { get; set; }
 
     [CommandOption("--port <PORT>")]
-    [Description("WinRM port (default 5985 on create).")]
+    [Description("WinRM port (default on create: 5985, or 5986 with --ssl).")]
     public int? Port { get; set; }
 
     [CommandOption("--ssl")]
@@ -83,9 +83,10 @@ public sealed class MachineCreateCommand : BaseCommand<MachineWriteSettings>
         }
 
         var api = ClientFactory.Create(session);
+        var useSsl = settings.UseSsl ?? false;
         var req = new CreateMachineRequest(
             settings.Name, settings.Hostname,
-            settings.Port ?? 5985, settings.UseSsl ?? false,
+            settings.Port ?? (useSsl ? 5986 : 5985), useSsl,
             settings.CredentialId, settings.Tags);
         var created = await api.CreateMachineAsync(req, ct);
         writer.Success($"Machine created: [bold]{Markup.Escape(created.Name)}[/] ({created.Id}).");

@@ -45,13 +45,14 @@ public sealed class SupportingDataTools
     public async Task<object> CreateMachine(
         [Description("Display name.")] string name,
         [Description("Hostname or IP for WinRM.")] string hostname,
-        [Description("WinRM port (default 5985).")] int winRmPort = 5985,
+        [Description("WinRM port (default 5986 with SSL, otherwise 5985).")] int? winRmPort = null,
         [Description("Use HTTPS/SSL WinRM (default false).")] bool useSsl = false,
         [Description("Optional default credential GUID.")] string? defaultCredentialId = null,
         [Description("Optional comma-separated tags.")] string? tags = null,
         CancellationToken cancellationToken = default)
     {
-        var req = new CreateMachineRequest(name, hostname, winRmPort, useSsl, OptGuid(defaultCredentialId, "defaultCredentialId"), tags);
+        var port = winRmPort ?? (useSsl ? 5986 : 5985);
+        var req = new CreateMachineRequest(name, hostname, port, useSsl, OptGuid(defaultCredentialId, "defaultCredentialId"), tags);
         var m = await ApiErrorMapper.Guard(() => _api.CreateMachineAsync(req, cancellationToken));
         return new { created = true, machineId = m.Id, name = m.Name };
     }
