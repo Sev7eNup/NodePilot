@@ -31,7 +31,9 @@ not execute. Expert mode adds bulk editing and configuration copying between act
 of the same type.
 
 Copy/paste transfers workflow JSON, including connections between selected nodes.
-Pasting assigns new IDs and updates their references. Named secret fields are masked
+Pasting assigns new IDs and updates their references. Pasting and duplicating also give each copy
+its own output variable (`name_2`) and rewrite the references inside the copy. Renaming an output
+variable updates every reference to it in the workflow. Named secret fields are masked
 and need to be supplied again, while scripts and other free text are copied as shown.
 Copying remains available in read-only mode.
 

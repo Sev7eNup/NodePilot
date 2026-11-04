@@ -7,7 +7,7 @@ The properties panel contains the settings of the selected node or the selected 
 After selecting a node, the panel shows the fields available for that activity type. Frequently used settings are:
 
 - **Label:** the visible name of the step
-- **Output variable:** the name used to access the result in subsequent steps
+- **Output variable:** the name used to access the result in subsequent steps; renaming it updates every reference to it in the workflow
 - **Description:** an optional explanation of the step
 - **Target machine and credentials:** the execution target for remote activities
 - **Timeout:** the maximum runtime of the step
