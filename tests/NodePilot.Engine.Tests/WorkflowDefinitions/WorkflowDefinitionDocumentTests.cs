@@ -34,6 +34,29 @@ public class WorkflowDefinitionDocumentTests
     }
 
     [Fact]
+    public void TryParse_StoredDuplicateActiveAlias_LoadsWithTriggersAndLastNodeKeepsAlias()
+    {
+        var parsed = WorkflowDefinitionDocument.TryParse("""
+        {
+          "nodes": [
+            { "id": "schedule", "type": "activity", "data": { "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ?" } } },
+            { "id": "first", "type": "activity", "data": { "activityType": "log", "outputVariable": "Value", "config": {} } },
+            { "id": "second", "type": "activity", "data": { "activityType": "log", "outputVariable": "value", "config": {} } },
+            { "id": "note", "type": "stickyNote", "data": { "outputVariable": "value" } }
+          ],
+          "edges": [
+            { "id": "e1", "source": "schedule", "target": "first", "data": {} },
+            { "id": "e2", "source": "schedule", "target": "second", "data": {} }
+          ]
+        }
+        """, out var definition);
+
+        parsed.Should().BeTrue();
+        definition!.TriggerDescriptors.Should().ContainSingle(d => d.ActivityType == "scheduleTrigger");
+        definition.OutputVariableToStepId.Should().ContainKey("VALUE").WhoseValue.Should().Be("second");
+    }
+
+    [Fact]
     public void Parse_TriggerlessGraph_HasNoRootNodes()
     {
         // Roots are trigger-ONLY: a graph of plain activities (no trigger node) has NO root,

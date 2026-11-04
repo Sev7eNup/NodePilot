@@ -192,12 +192,11 @@ public sealed record WorkflowDefinitionDocument(
         var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var node in allNodes)
         {
-            if (node.Data.Disabled) continue;
+            if (node.Data.Disabled || WorkflowDefinitionStructuralValidator.IsAnnotationNodeType(node.Type)) continue;
+            // Save and import reject duplicate aliases. A definition stored before that check still
+            // loads, and the last node keeps the alias, as it did when it was saved.
             if (node.Data.OutputVariable is { Length: > 0 } variable)
-            {
-                if (!dict.TryAdd(variable, node.Id))
-                    throw new InvalidOperationException($"Duplicate active output variable '{variable}'.");
-            }
+                dict[variable] = node.Id;
         }
 
         return dict;

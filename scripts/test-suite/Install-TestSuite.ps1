@@ -314,6 +314,26 @@ if (Test-Path -LiteralPath $customPath) {
   }
 }
 
+# --- webhook endpoint --------------------------------------------------------------
+# Addressed by workflow id rather than name: the route accepts either, and a name like
+# "[TestSuite] trigger: webhook" would have to survive URL encoding on every hop. Both webhook
+# workflows require this global, so a first install creates the webhook workflow as an empty,
+# unlocked draft before the loop judges prerequisites; the loop then publishes it.
+$hookWorkflow = $existing | Where-Object { $_.name -eq '[TestSuite] trigger: webhook' } | Select-Object -First 1
+if ($null -eq $hookWorkflow) {
+  $hookWorkflow = Invoke-NodePilotJson -Method POST -Path '/api/workflows' -Body @{
+    name           = '[TestSuite] trigger: webhook'
+    description    = ''
+    definitionJson = '{"nodes":[],"edges":[]}'
+    folderId       = $folderId
+  }
+  $null = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($hookWorkflow.id)/unlock"
+  $existing += $hookWorkflow
+}
+Set-Global -Name 'NP_TESTSUITE_WEBHOOK_URL' `
+  -Value "$BaseUrl/api/webhooks/$($hookWorkflow.id)/suite" `
+  -Description 'TestSuite: endpoint the trigger driver posts to.'
+
 # --- install -------------------------------------------------------------------------
 # Manifest order is generation order, and the child workflow is number 0, so parents are
 # never published before the child they resolve by name.
@@ -404,16 +424,6 @@ foreach ($oldName in @('[TestSuite] powerManagement')) {
     $null = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($old.id)/disable"
     Write-Host "disabled superseded : $oldName"
   }
-}
-
-# --- webhook endpoint --------------------------------------------------------------
-# Addressed by workflow id rather than name: the route accepts either, and a name like
-# "[TestSuite] trigger: webhook" would have to survive URL encoding on every hop.
-$hookWorkflow = $existing | Where-Object { $_.name -eq '[TestSuite] trigger: webhook' } | Select-Object -First 1
-if ($null -ne $hookWorkflow) {
-  Set-Global -Name 'NP_TESTSUITE_WEBHOOK_URL' `
-    -Value "$BaseUrl/api/webhooks/$($hookWorkflow.id)/suite" `
-    -Description 'TestSuite: endpoint the trigger driver posts to.'
 }
 
 # --- legacy removal (never automatic) ------------------------------------------------

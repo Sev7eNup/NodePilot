@@ -140,7 +140,7 @@ describe('renameVariableInEdge', () => {
     expect((result.data as { condition: string }).condition).toBe('new.failed');
   });
 
-  it('rewrites actual builder step operands without changing literal/global/manual operands', () => {
+  it('rewrites step operands and templates in literals without changing global/manual operands', () => {
     const edge = {
       id: 'e1', source: 'a', target: 'b',
       data: {
@@ -159,7 +159,7 @@ describe('renameVariableInEdge', () => {
       children: Array<{ left: Record<string, string>; right: Record<string, string> }>;
     };
     expect(expr.children[0].left.stepId).toBe('new');
-    expect(expr.children[0].right.value).toBe('{{old.output}}');
+    expect(expr.children[0].right.value).toBe('{{new.output}}');
     expect(expr.children[1].left.name).toBe('old');
     expect(expr.children[1].right.name).toBe('old');
     expect(result).not.toBe(edge);

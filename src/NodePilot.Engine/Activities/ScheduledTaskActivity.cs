@@ -43,9 +43,9 @@ namespace NodePilot.Engine.Activities;
 /// Notes:
 ///   - Most actions require admin rights on the target. The activity does not enforce this;
 ///     the cmdlet will return the appropriate error.
-///   - Register's principal/runAsUser path uses NT AUTHORITY built-ins ("SYSTEM",
-///     "NETWORK SERVICE", "LOCAL SERVICE") implicitly. Domain users would also need a
-///     password, which this activity does not support; the UI should note the limitation.
+///   - Register's runAsUser is an NT AUTHORITY built-in ("SYSTEM", "NETWORK SERVICE",
+///     "LOCAL SERVICE") or a managed service account ("DOMAIN\gmsa$"). Ordinary domain users
+///     would need a password, which this activity does not support.
 /// </summary>
 public class ScheduledTaskActivity : BaseRemoteActivity
 {
@@ -231,14 +231,15 @@ public class ScheduledTaskActivity : BaseRemoteActivity
         // Trigger object — switch by triggerType. startTime is validated to exist where required.
         sb.Append("$__npTrigger = ").Append(BuildTriggerExpression(config, triggerType!)).Append("; ");
 
-        // Principal (user + run level). NT AUTHORITY built-ins accept -LogonType ServiceAccount
-        // without a password; other account names need one and are not checked here — the
-        // cmdlet reports the failure directly.
+        // Principal (user + run level). NT AUTHORITY built-ins use -LogonType ServiceAccount.
+        // A managed service account (name ends in '$') uses -LogonType Password without a
+        // password; Task Scheduler retrieves it from AD. Other names fail in the cmdlet.
         var qUser = PowerShellOperation.Literal(runAsUser);
         var psRunLevel = runLevel == "highest" ? "Highest" : "Limited";
+        var logonType = runAsUser.Trim().EndsWith('$') ? "Password" : "ServiceAccount";
         sb.Append("$__npPrincipal = New-ScheduledTaskPrincipal -UserId ").Append(qUser)
           .Append(" -RunLevel ").Append(psRunLevel)
-          .Append(" -LogonType ServiceAccount; ");
+          .Append(" -LogonType ").Append(logonType).Append("; ");
 
         sb.Append("$__npSettings = New-ScheduledTaskSettingsSet; ");
 

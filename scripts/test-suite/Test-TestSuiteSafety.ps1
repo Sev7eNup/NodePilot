@@ -166,4 +166,34 @@ foreach ($existing in @($null,
 }
 Assert-Safety (@($secrets | Sort-Object -Unique).Count -eq 3) 'A reinstall reused a webhook secret instead of rotating it.'
 
+# --- a first install already has the webhook URL when it judges prerequisites ----------
+. ([scriptblock]::Create((Import-InstallerFunction 'Test-GlobalPresent')))
+$hookStart = $installerAst.Find({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$hookWorkflow' }, $true)
+$hookEnd = $installerAst.Find({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.Extent.Text -like "Set-Global -Name 'NP_TESTSUITE_WEBHOOK_URL'*" }, $true)
+$hookBlock = $installerAst.Extent.Text.Substring($hookStart.Extent.StartOffset, $hookEnd.Extent.EndOffset - $hookStart.Extent.StartOffset)
+$hookConsumers = @(@($manifest.workflows) | Where-Object { @($_.requires) -contains 'globals:NP_TESTSUITE_WEBHOOK_URL' })
+Assert-Safety ($hookConsumers.Count -ge 1) 'No suite workflow requires NP_TESTSUITE_WEBHOOK_URL any more.'
+$BaseUrl = 'https://suite.test'
+$folderId = 'folder'
+function Invoke-NodePilotJson {
+  param($Method, $Path, $Body)
+  $script:calls += [pscustomobject]@{ Method = $Method; Path = $Path; Body = $Body }
+  if ($null -eq $Body) { return $null }
+  return [pscustomobject]@{ id = 'created'; name = $Body.name; value = $Body['value'] }
+}
+foreach ($installed in @($null, [pscustomobject]@{ id = 'hook'; name = '[TestSuite] trigger: webhook' })) {
+  $existing = @($installed | Where-Object { $null -ne $_ })
+  $globals = @([pscustomobject]@{ id = 'secret'; name = 'NP_TESTSUITE_WEBHOOK_SECRET'; value = '***'; isSecret = $true })
+  $script:calls = @()
+  . ([scriptblock]::Create($hookBlock))
+  $hookId = if ($null -eq $installed) { 'created' } else { 'hook' }
+  $created = @($script:calls | Where-Object { $_.Method -eq 'POST' -and $_.Path -eq '/api/workflows' })
+  Assert-Safety ($created.Count -eq [int]($null -eq $installed)) "The webhook workflow was created $($created.Count) time(s) with installed='$($null -ne $installed)'."
+  $urlWrite = @($script:calls | Where-Object { $_.Path -like '/api/global-variables*' -and $_.Body.name -eq 'NP_TESTSUITE_WEBHOOK_URL' })
+  Assert-Safety ($urlWrite.Count -eq 1 -and $urlWrite[0].Body.value -eq "$BaseUrl/api/webhooks/$hookId/suite") 'The webhook URL global does not address the webhook workflow by id.'
+  foreach ($consumer in $hookConsumers) {
+    Assert-Safety (Test-Prerequisites -Requires $consumer.requires) "'$($consumer.name)' would be installed disabled on this install."
+  }
+}
+
 Write-Host "TestSuite safety: $script:passed assertions passed." -ForegroundColor Green

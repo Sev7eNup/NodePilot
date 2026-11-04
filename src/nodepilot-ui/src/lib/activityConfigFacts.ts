@@ -31,6 +31,13 @@ const hasValue = (value: unknown): boolean =>
 
 const hasValueOrTemplate = (value: unknown): boolean => isTemplate(value) || hasValue(value);
 
+// The engine also accepts a numeric string, which is what a resolved template becomes.
+const isPortOrTemplate = (value: unknown): boolean => {
+  if (isTemplate(value)) return true;
+  const port = typeof value === 'string' && /^\s*\d+\s*$/.test(value) ? Number(value) : value;
+  return typeof port === 'number' && Number.isInteger(port) && port >= 1 && port <= 65535;
+};
+
 const inheritExecutionContext = ({ lastData }: SmartDefaultContext): SmartDefaults => ({
   targetMachineId: (lastData.targetMachineId as string | null) ?? null,
   credentialId: (lastData.credentialId as string | null) ?? null,
@@ -214,7 +221,7 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
         : mode === 'httpOk' ? ['url', 'urlRequired']
         : mode === 'portOpen' ? ['host', 'hostRequired'] : ['script', 'scriptRequired'];
       if (!hasValueOrTemplate(config[required[0]])) return i18n.t(`activities:validation.${required[1]}`);
-      if (mode === 'portOpen' && !(typeof config.port === 'number' && Number.isInteger(config.port) && config.port >= 1 && config.port <= 65535)) {
+      if (mode === 'portOpen' && !isPortOrTemplate(config.port)) {
         return i18n.t('activities:validation.portRequired');
       }
       return null;

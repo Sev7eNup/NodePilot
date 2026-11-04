@@ -26,7 +26,10 @@ Planned version: **1.5.4**.
   characters fails the run and names the edge, instead of counting as "no match" (#680).
 - Two active nodes can no longer share an output variable, regardless of case: saving, importing
   or an MCP change with such a pair is rejected. A disabled node is ignored, so a disabled copy can
-  no longer take over the alias of the active one (#703).
+  no longer take over the alias of the active one. A workflow saved earlier with such a pair keeps
+  running and triggering as before, with the last node holding the alias; the designer flags the
+  pair, and it must be resolved before the next save. An older export with such a pair is
+  rejected on import and names the alias (#703, #789).
 - `GET /api/executions/{id}/paused-steps`, `np exec paused-steps` and the MCP tool
   `list_paused_steps` return one snapshot per paused step (step id, label, pause time, reason and
   redacted variables) instead of a list of step ids. The MCP result field is now `pausedSteps`
@@ -36,7 +39,8 @@ Planned version: **1.5.4**.
 
 - **Designer**
   - Renaming an output variable updates every reference to it: templates in any field, a dynamic
-    target machine or credential, breakpoint conditions, decision cases and edge conditions (#689).
+    target machine or credential, breakpoint conditions, decision cases and edge conditions,
+    including templates in their fixed comparison values (#689, #789).
   - Copying, pasting and duplicating give each copy its own output variable (`name_2`) and rewrite
     the references inside the copy, so it no longer takes over the original's bindings (#703).
   - Inserting an activity on a conditional edge keeps the condition in front of the new activity,
@@ -50,9 +54,11 @@ Planned version: **1.5.4**.
     expression, an agent's host list shows the restored values (#695).
   - Text-file delete can switch to line-range and pattern mode again (#601).
   - `waitForCondition` in `portOpen` mode saves the default port 443 it shows, and a probe without
-    host or valid port is flagged (#702).
+    host or valid port is flagged. A port given as a template or as a number in quotes is accepted,
+    as the engine accepts it (#702, #790).
   - `scheduledTask` registration accepts only built-in or managed service accounts and no longer
-    suggests ordinary domain users with delegation (#705).
+    suggests ordinary domain users with delegation. A task registered for a managed service account
+    (`DOMAIN\gmsa$`) now runs under it; before, it was registered but never started (#705, #790).
   - The step details of a past run label the workflow's current configuration as such and show the
     target machine the run actually used (#603).
   - After a reconnect or a reload, the designer shows a paused debug step with its variables again
@@ -116,7 +122,8 @@ Planned version: **1.5.4**.
   - The `powerManagement` test moves to the invasive set and needs a disposable host, because
     `abort` cancels a pending host restart (#720). Acknowledgement files accept only GUID
     correlation IDs (#721). Verification checks every run in the window and fails when required
-    workflows are missing (#718, #719).
+    workflows are missing (#718, #719). A first install already enables the two webhook
+    workflows, and the release check verifies the integration workflows it installs (#776).
   - Nightly retention deletes only the run folders it created (#716). The failover drill restarts
     the original leader also after a failed takeover (#715).
   - The SSO lab drills check the requested run and use the configured account prefix throughout
