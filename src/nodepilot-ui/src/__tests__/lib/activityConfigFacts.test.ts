@@ -223,6 +223,17 @@ describe('summarizeActivityConfig', () => {
     });
   });
 
+  describe('waitForCondition', () => {
+    it.each([443, '8443', ' 5000 ', '{{disc.param.selfPort}}'])('portOpen_port_%s_isAccepted', (port) => {
+      expect(checkRequiredActivityConfig('waitForCondition', { conditionType: 'portOpen', host: 'example.test', port })).toBeNull();
+    });
+
+    it.each([0, 65536, '70000', 'https', '', 1.5])('portOpen_port_%s_isRejected', (port) => {
+      expect(checkRequiredActivityConfig('waitForCondition', { conditionType: 'portOpen', host: 'example.test', port }))
+        .toBe(i18n.t('activities:validation.portRequired'));
+    });
+  });
+
   describe('scheduledTask', () => {
     it.each(['SYSTEM', 'NT AUTHORITY\\NETWORK SERVICE', 'local service', 'CONTOSO\\svc-tasks$', '{{globals.TaskAccount}}'])(
       'registerAs_%s_isSupported', (runAsUser) => {

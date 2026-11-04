@@ -38,6 +38,32 @@ public sealed class WorkflowDefinitionCacheTests : IDisposable
     }
 
     [Fact]
+    public void GetOrCompile_StoredDuplicateActiveAlias_CompilesForTheRun()
+    {
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Version = 1,
+            UpdatedAt = DateTime.UtcNow,
+            DefinitionJson = """
+                {"nodes":[
+                  {"id":"manual","type":"activity","data":{"activityType":"manualTrigger","config":{}}},
+                  {"id":"first","type":"activity","data":{"activityType":"log","outputVariable":"shared","config":{}}},
+                  {"id":"second","type":"activity","data":{"activityType":"log","outputVariable":"shared","config":{}}}
+                ],"edges":[
+                  {"id":"e1","source":"manual","target":"first"},
+                  {"id":"e2","source":"manual","target":"second"}
+                ]}
+                """,
+        };
+
+        var compiled = WorkflowDefinitionCache.GetOrCompile(workflow);
+
+        compiled.RootNodes.Should().ContainSingle(n => n.Id == "manual");
+        compiled.OutputVariableToStepId["shared"].Should().Be("second");
+    }
+
+    [Fact]
     public void GetOrCompile_InvalidatesWhenWorkflowVersionChanges()
     {
         var workflow = new Workflow

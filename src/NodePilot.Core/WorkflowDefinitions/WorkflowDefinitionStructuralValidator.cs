@@ -12,6 +12,8 @@ public static class WorkflowDefinitionStructuralValidator
     private static readonly HashSet<string> _annotationNodeTypes =
         new(StringComparer.OrdinalIgnoreCase) { "stickyNote", "group" };
 
+    internal static bool IsAnnotationNodeType(string type) => _annotationNodeTypes.Contains(type);
+
     public static WorkflowDefinitionValidationResult Validate(JsonElement definition)
     {
         if (definition.ValueKind != JsonValueKind.Object)

@@ -316,7 +316,7 @@ describe('remapFragment', () => {
     expect(pasted.nodes[1].data.targetMachineId).toBe('{{result_3.output}}');
     expect(pasted.nodes[1].data.credentialId).toBe(`{{${pasted.nodes[0].id}.param.credential}}`);
     expect(pasted.nodes[1].data.config).toMatchObject({ cases: [{ condition: {
-      left: { stepId: 'result_3' }, right: { value: '{{result.output}}' },
+      left: { stepId: 'result_3' }, right: { value: '{{result_3.output}}' },
     } }] });
     expect(pasted.edges[0].data?.condition).toBe('result_3.success');
     expect(fragment.nodes[0].data.outputVariable).toBe('result');

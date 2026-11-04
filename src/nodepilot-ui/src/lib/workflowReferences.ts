@@ -1,5 +1,6 @@
 /** Reference rewriting shared by authoring operations. Values outside reference-bearing
- * fields, including literal condition operands, retain their meaning and identity. */
+ * fields retain their meaning and identity. Templates inside literal condition operands are
+ * rewritten, because the engine resolves them. */
 export function rewriteTemplates(value: unknown, names: ReadonlyMap<string, string>): unknown {
   if (isRecord(value) && (value.type === 'comparison' || value.type === 'group' || value.type === 'not')) {
     return rewriteCondition(value, names);
@@ -19,7 +20,11 @@ export function rewriteTemplates(value: unknown, names: ReadonlyMap<string, stri
 
 export function rewriteCondition(value: unknown, names: ReadonlyMap<string, string>): unknown {
   if (!isRecord(value)) return value;
-  if (value.kind === 'literal') return value;
+  if (value.kind === 'literal') {
+    if (typeof value.value !== 'string') return value;
+    const rewritten = rewriteTemplates(value.value, names);
+    return rewritten === value.value ? value : { ...value, value: rewritten };
+  }
   if (value.kind === 'variable') {
     if (value.source !== undefined && value.source !== 'step') return value;
     const mapped = typeof value.stepId === 'string' ? names.get(value.stepId) : undefined;

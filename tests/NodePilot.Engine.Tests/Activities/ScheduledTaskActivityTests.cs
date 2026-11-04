@@ -254,6 +254,25 @@ public sealed class ScheduledTaskActivityTests : IDisposable
         _capturedScript.Should().NotContain("Schedule.Service");
     }
 
+    [Theory]
+    [InlineData("SYSTEM", "ServiceAccount")]
+    [InlineData("NT AUTHORITY\\NETWORK SERVICE", "ServiceAccount")]
+    [InlineData("CONTOSO\\svc-tasks$", "Password")]
+    public async Task Register_PrincipalLogonType_MatchesAccountKind(string runAsUser, string logonType)
+    {
+        var act = CreateActivity();
+        var config = JsonSerializer.Serialize(new
+        {
+            action = "register",
+            taskName = "Nightly",
+            program = "C:\\Tools\\backup.exe",
+            triggerType = "atStartup",
+            runAsUser,
+        });
+        await act.ExecuteAsync(Ctx(), Cfg(config), CancellationToken.None);
+        _capturedScript.Should().Contain($"-RunLevel Limited -LogonType {logonType}; ");
+    }
+
     [Fact]
     public async Task RegisterWeekly_RequiresDaysOfWeek()
     {
