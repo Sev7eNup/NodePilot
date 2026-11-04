@@ -229,7 +229,7 @@ np exec resume 7e3f... --step runHealth --mode stop
 
 ## machine
 
-The machine body comes from flags, not `--file`. `create`/`update` flags: `--name`, `--hostname`, `--port` (default 5985), `--ssl`, `--credential <GUID>`, `--tags <CSV>`. `update` is a client-side patch (fetch + merge, because the server wants a full body).
+The machine body comes from flags, not `--file`. `create`/`update` flags: `--name`, `--hostname`, `--port` (default on `create`: 5985, or 5986 with `--ssl`), `--ssl`, `--credential <GUID>`, `--tags <CSV>`. `update` is a client-side patch (fetch + merge, because the server wants a full body).
 
 ```bash
 np machine create --name srv01 --hostname srv01.internal --credential 4c2a... --tags prod,web

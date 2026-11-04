@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using NodePilot.Cli.Tests.Infra;
 using Spectre.Console.Cli;
@@ -184,6 +185,33 @@ public class CommandIntegrationTests
 
         result.ExitCode.Should().Be(ExitCodes.AuthRequired);
         result.StdErr.Should().Contain("Login failed: the setup token was rejected.");
+    }
+
+    [Theory]
+    [InlineData("  padded secret  ")]
+    [InlineData("\tleading tab")]
+    [InlineData("pw12345678")]
+    public void AuthLogin_PasswordFromStdin_SendsPasswordUnchanged(string password)
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        StubLogin(h);
+
+        var originalIn = Console.In;
+        Console.SetIn(new StringReader(password + "\r\n"));
+        RunResult result;
+        try
+        {
+            result = h.Run("auth", "login", "--username", "admin", "--password-stdin");
+        }
+        finally
+        {
+            Console.SetIn(originalIn);
+        }
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        var login = h.Server.LogEntries.Single(e => e.RequestMessage!.AbsolutePath == "/api/auth/login");
+        using var body = JsonDocument.Parse(login.RequestMessage!.Body!);
+        body.RootElement.GetProperty("password").GetString().Should().Be(password);
     }
 
     private static void StubSetupTokenRequired(CommandTestHarness h)

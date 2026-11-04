@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using NodePilot.Core.WorkflowDefinitions;
 using Xunit;
@@ -482,5 +483,48 @@ public sealed class WorkflowSecretRedactorTests
     {
         var cfg = WorkflowSecretRedactor.Redact(SingleNode("runScript", """{ "script": "Get-Date" }"""))["nodes"]![0]!["data"]!["config"]!;
         cfg["script"]!.GetValue<string>().Should().Be("***");
+    }
+
+    // The same cases drive the clipboard copy in the frontend (workflowFragment.test.ts).
+    public static TheoryData<string> SharingContractCaseNames()
+    {
+        var names = new TheoryData<string>();
+        foreach (var contract in SharingContractCases())
+            names.Add(contract["name"]!.GetValue<string>());
+        return names;
+    }
+
+    [Theory]
+    [MemberData(nameof(SharingContractCaseNames))]
+    public void Redact_SharingContractCase_MasksSecretsAndFreeFormValues(string caseName)
+    {
+        var contract = SharingContractCases().Single(c => c["name"]!.GetValue<string>() == caseName);
+        var definition = contract["definition"]!;
+        var redacted = WorkflowSecretRedactor.Redact(Parse(definition.ToJsonString()));
+
+        foreach (var pointer in Pointers(contract, "maskedByBoth").Concat(Pointers(contract, "maskedByExportOnly")))
+            At(redacted, pointer)!.GetValue<string>().Should().Be("***", pointer);
+        foreach (var pointer in Pointers(contract, "keptByBoth"))
+            JsonNode.DeepEquals(At(redacted, pointer), At(definition, pointer)).Should().BeTrue(pointer);
+    }
+
+    private static IEnumerable<JsonNode> SharingContractCases()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "NodePilot.slnx")))
+            dir = dir.Parent;
+        if (dir is null) throw new InvalidOperationException($"NodePilot.slnx not found above {AppContext.BaseDirectory}");
+        var path = Path.Combine(dir.FullName, "src", "nodepilot-ui", "src", "__tests__", "fixtures", "workflow-sharing-redaction.json");
+        return JsonNode.Parse(File.ReadAllText(path))!["cases"]!.AsArray().Select(c => c!);
+    }
+
+    private static IEnumerable<string> Pointers(JsonNode contract, string group)
+        => contract[group]!.AsArray().Select(p => p!.GetValue<string>());
+
+    private static JsonNode? At(JsonNode? node, string pointer)
+    {
+        foreach (var segment in pointer.Split('/').Skip(1))
+            node = node is JsonArray array ? array[int.Parse(segment, System.Globalization.CultureInfo.InvariantCulture)] : node?[segment];
+        return node;
     }
 }

@@ -408,6 +408,28 @@ describe('ForEachConfig', () => {
     expect(onUpdate).toHaveBeenCalledWith({ maxParallelism: 8 });
   });
 
+  it('parallelismZero_isStoredAsZero', () => {
+    function Editor() {
+      const [config, setConfig] = useState<Record<string, unknown>>({ maxParallelism: 4 });
+      return <><ForEachConfig config={config} onUpdate={(patch) => setConfig((prev) => ({ ...prev, ...patch }))} upstreamVars={[]} /><output>{JSON.stringify(config)}</output></>;
+    }
+    wrap(<Editor />);
+
+    fireEvent.change(screen.getByDisplayValue('4'), { target: { value: '0' } });
+
+    expect(screen.getByText(/"maxParallelism":0/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('0')).toBeInTheDocument();
+  });
+
+  it('parallelismEmpty_fallsBackToOne', () => {
+    const onUpdate = vi.fn();
+    wrap(<ForEachConfig config={{ maxParallelism: 4 }} onUpdate={onUpdate} upstreamVars={[]} />);
+
+    fireEvent.change(screen.getByDisplayValue('4'), { target: { value: '' } });
+
+    expect(onUpdate).toHaveBeenCalledWith({ maxParallelism: 1 });
+  });
+
   it('continueOnError_togglesPatch', () => {
     const onUpdate = vi.fn();
     wrap(<ForEachConfig config={{ continueOnError: false }} onUpdate={onUpdate} upstreamVars={[]} />);

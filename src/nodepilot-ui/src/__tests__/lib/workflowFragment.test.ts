@@ -121,6 +121,27 @@ describe('serializeFragment', () => {
     expect(fragment.edges[0].data?.conditionExpression).toBe(condition);
   });
 
+  // Shared with WorkflowSecretRedactorTests on the server side.
+  const sharingContract = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)),
+    '../fixtures/workflow-sharing-redaction.json'), 'utf8')) as {
+    cases: Array<{ name: string; definition: WorkflowFragment; maskedByBoth: string[]; maskedByExportOnly: string[]; keptByBoth: string[] }>;
+  };
+  const at = (value: unknown, pointer: string): unknown => pointer.split('/').slice(1)
+    .reduce<unknown>((current, key) => (current as Record<string, unknown> | undefined)?.[key], value);
+
+  it.each(sharingContract.cases.map((c) => [c.name, c] as const))('sharingContract_%s', (_name, contract) => {
+    const copied: unknown = JSON.parse(serializeFragment(contract.definition));
+    for (const pointer of contract.maskedByBoth) expect(at(copied, pointer), pointer).toBe('***');
+    for (const pointer of [...contract.maskedByExportOnly, ...contract.keptByBoth]) {
+      expect(at(copied, pointer), pointer).toEqual(at(contract.definition, pointer));
+    }
+    // Duplicating inside the app does not pass the clipboard boundary and keeps every value.
+    const duplicated = remapFragment(contract.definition, { existingGroupIds: NO_GROUPS, dx: 0, dy: 0 });
+    for (const pointer of contract.maskedByBoth) {
+      expect(at(duplicated, pointer), pointer).toEqual(at(contract.definition, pointer));
+    }
+  });
+
   it('dropsCanvasStateAndRuntimeData', () => {
     const fragment: WorkflowFragment = {
       nodes: [node('a', {

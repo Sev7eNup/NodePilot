@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using NodePilot.Cli.Tests.Infra;
 using Spectre.Console;
@@ -226,6 +227,45 @@ public class CommandIntegrationCoverageTests
     }
 
     [Fact]
+    public void BackupManifest_JsonOutput_WritesParseableJson()
+    {
+        using var h = new CommandTestHarness();
+        StubBackupManifest(h);
+
+        var result = h.Run("backup", "manifest", "-o", "json");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        using var doc = JsonDocument.Parse(result.Output);
+        var sections = doc.RootElement.GetProperty("sections");
+        sections.GetArrayLength().Should().Be(2);
+        sections[0].GetProperty("section").GetString().Should().Be("workflows");
+        sections[0].GetProperty("count").GetInt32().Should().Be(12);
+    }
+
+    [Fact]
+    public void BackupManifest_TableOutput_RendersSectionTable()
+    {
+        using var h = new CommandTestHarness();
+        StubBackupManifest(h);
+
+        var result = h.Run("backup", "manifest", "-o", "table");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        result.Output.Should().Contain("Section").And.Contain("workflows").And.Contain("12");
+    }
+
+    private static void StubBackupManifest(CommandTestHarness h)
+        => h.Server.Given(Request.Create().WithPath("/api/backup/manifest").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                sections = new[]
+                {
+                    new { section = "workflows", count = 12 },
+                    new { section = "credentials", count = 3 },
+                },
+            }));
+
+    [Fact]
     public void BackupExport_NoOut_FailsBeforeHttp()
     {
         using var h = new CommandTestHarness();
@@ -322,6 +362,60 @@ public class CommandIntegrationCoverageTests
             output.Should().Contain("workflows");
         }
         finally { Del(file); Del(pwFile); }
+    }
+
+    [Fact]
+    public void BackupPreview_JsonOutput_WritesParseableJson()
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/backup/preview").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                integrityVerified = true, appVersion = "2026.6",
+                sections = new[] { new { section = "workflows", inBackup = 12, @new = 5, conflicts = 2 } },
+                warnings = new[] { "credential 'x' is bound to another host" },
+            }));
+
+        var file = WriteTempBytes(new byte[] { 9, 9, 9 });
+        var pwFile = WriteTemp("correct horse battery staple");
+        try
+        {
+            var result = h.Run("backup", "preview", file, "--passphrase-file", pwFile, "-o", "json");
+
+            result.ExitCode.Should().Be(ExitCodes.Success);
+            using var doc = JsonDocument.Parse(result.Output);
+            doc.RootElement.GetProperty("appVersion").GetString().Should().Be("2026.6");
+            doc.RootElement.GetProperty("sections")[0].GetProperty("conflicts").GetInt32().Should().Be(2);
+            doc.RootElement.GetProperty("warnings")[0].GetString().Should().Contain("another host");
+        }
+        finally { Del(file); Del(pwFile); }
+    }
+
+    [Fact]
+    public void BackupRestore_JsonOutput_WritesParseableJson()
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/backup/restore").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                sections = new[] { new { section = "workflows", created = 5, overwritten = 1, skipped = 2, renamed = 0 } },
+                settings = new { applied = true, message = "ok" },
+                warnings = Array.Empty<string>(),
+            }));
+
+        var pwFile = WriteTemp("hunter2");
+        var file = WriteTempBytes(new byte[] { 1, 2, 3 });
+        try
+        {
+            var result = h.Run("backup", "restore", file, "--passphrase-file", pwFile, "--yes", "-o", "json");
+
+            result.ExitCode.Should().Be(ExitCodes.Success);
+            using var doc = JsonDocument.Parse(result.Output);
+            doc.RootElement.GetProperty("sections")[0].GetProperty("created").GetInt32().Should().Be(5);
+            doc.RootElement.GetProperty("settings").GetProperty("applied").GetBoolean().Should().BeTrue();
+            result.StdErr.Should().Contain("Restore complete.");
+        }
+        finally { Del(pwFile); Del(file); }
     }
 
     [Fact]

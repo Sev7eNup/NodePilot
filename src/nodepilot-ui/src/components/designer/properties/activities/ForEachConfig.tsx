@@ -96,7 +96,11 @@ export function ForEachConfig({ config, onUpdate, upstreamVars = [], onOpenWorkf
           <input
             type="number"
             value={maxParallelism}
-            onChange={(e) => onUpdate({ maxParallelism: parseInt(e.target.value) || 1 })}
+            onChange={(e) => {
+              // 0 is a valid value (parallel up to the engine cap); only empty or invalid input falls back to 1.
+              const n = parseInt(e.target.value, 10);
+              onUpdate({ maxParallelism: Number.isNaN(n) ? 1 : n });
+            }}
             className="input-field"
             min={0}
             max={64}

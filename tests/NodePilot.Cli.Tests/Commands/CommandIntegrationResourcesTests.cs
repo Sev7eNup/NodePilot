@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using NodePilot.Cli.Tests.Infra;
 using WireMock.RequestBuilders;
@@ -63,6 +65,30 @@ public class CommandIntegrationResourcesTests
 
         var result = h.Run("workflow", "version", id.ToString(), "2");
         result.ExitCode.Should().Be(ExitCodes.Success);
+    }
+
+    [Fact]
+    public void WorkflowVersionGet_YamlOutput_ReadsBackUnchanged()
+    {
+        using var h = new CommandTestHarness();
+        var id = Guid.NewGuid();
+        var definition = "{\n  \"nodes\": [{ \"id\": \"s1\", \"data\": { \"config\": { \"script\": \"Get-Service\\nWrite-Output 'done'\" } } }],\n  \"edges\": []\n}";
+        h.Server.Given(Request.Create().WithPath($"/api/workflows/{id}").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody(Single(id, "Build")));
+        h.Server.Given(Request.Create().WithPath($"/api/workflows/{id}/versions/2").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                version = 2, name = "null", description = "",
+                definitionJson = definition, createdAt = "2026-11-04T10:00:00Z", createdBy = "admin",
+                changeNote = (string?)null, isCurrent = false,
+            }));
+
+        var result = h.Run("workflow", "version", id.ToString(), "2", "-o", "yaml");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        var json = h.Run("workflow", "version", id.ToString(), "2", "-o", "json");
+        YamlRoundTrip.ToJson(result.Output).Should().Be(YamlRoundTrip.Normalize(json.Output), result.Output);
+        JsonNode.Parse(YamlRoundTrip.ToJson(result.Output))!["definitionJson"]!.GetValue<string>().Should().Be(definition);
     }
 
     [Fact]
@@ -305,6 +331,25 @@ public class CommandIntegrationResourcesTests
 
         var result = h.Run("machine", "create", "--name", "win-01", "--hostname", "win-01.lab", "--ssl");
         result.ExitCode.Should().Be(ExitCodes.Success);
+    }
+
+    [Theory]
+    [InlineData(new string[0], 5985, false)]
+    [InlineData(new[] { "--ssl" }, 5986, true)]
+    [InlineData(new[] { "--ssl", "--port", "15986" }, 15986, true)]
+    public void MachineCreate_PortDefault_FollowsSsl(string[] extraArgs, int expectedPort, bool expectedSsl)
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/machines").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(201).WithBodyAsJson(Machine(Guid.NewGuid())));
+
+        var result = h.Run(["machine", "create", "--name", "win-01", "--hostname", "win-01.lab", .. extraArgs]);
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        var create = h.Server.LogEntries.Single(e => e.RequestMessage!.Method == "POST");
+        using var body = JsonDocument.Parse(create.RequestMessage!.Body!);
+        body.RootElement.GetProperty("winRmPort").GetInt32().Should().Be(expectedPort);
+        body.RootElement.GetProperty("useSsl").GetBoolean().Should().Be(expectedSsl);
     }
 
     [Fact]

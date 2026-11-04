@@ -66,6 +66,28 @@ public sealed class MoreToolsCoverageTests
         J(await tools.TestMachine(id.ToString())).Should().Contain("\"success\":true");
     }
 
+    [Theory]
+    [InlineData(false, null, 5985)]
+    [InlineData(true, null, 5986)]
+    [InlineData(true, 15986, 15986)]
+    public async Task CreateMachine_PortDefault_FollowsSsl(bool useSsl, int? port, int expectedPort)
+    {
+        using var api = new TestApi();
+        api.Server.Given(Request.Create().WithPath("/api/machines").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(201).WithBodyAsJson(new
+            {
+                id = Guid.NewGuid(), name = "WEB01", hostname = "web01", winRmPort = expectedPort, useSsl,
+                defaultCredentialId = (Guid?)null, tags = (string?)null, lastConnectivityCheck = (DateTime?)null,
+                isReachable = true, usedByWorkflowCount = 0, recentStepCount = 0, recentFailedStepCount = 0, activeRunCount = 0,
+            }));
+
+        await new SupportingDataTools(api.Client()).CreateMachine("WEB01", "web01", port, useSsl);
+
+        var body = E(api.Server.LogEntries.Single(e => e.RequestMessage.Method == "POST").RequestMessage.Body!);
+        body.GetProperty("winRmPort").GetInt32().Should().Be(expectedPort);
+        body.GetProperty("useSsl").GetBoolean().Should().Be(useSsl);
+    }
+
     [Fact]
     public async Task GetCredential_CreateGlobal_UpdateCredentialMergesDomain()
     {
