@@ -549,8 +549,9 @@ Der Updater:
 - sichert die vorhandenen Binaries,
 - wartet nach dem Dienststopp bis zu 30 Sekunden auf das Ende von Prozessen aus dem Installationsverzeichnis und beendet Verbliebene erzwungen; nur wenn das nicht greift, bricht der Updater mit Prozessname und PID **vor der ersten Dateilöschung** ab (ein gestoppter Dienst genügt nicht: verwaiste Worker halten ihre DLLs weiterhin gemappt),
 - erhält Datenbank, Dienstkonto, Produktionskonfiguration und die vollständige Switcher-Konfiguration (Server-URL, SCOrch-Endpunkte, Allowlisten, Profile; die Datei wird byte-genau übernommen, und ihr Inhalt bricht das Update nie ab — ist sie für Windows PowerShell kein striktes JSON, bleibt die Server-URL ungeprüft und der Updater gibt eine Warnung aus),
+- behält den Deinstaller des Server-Setups und dessen `deploy\`-Skripte im Installationsverzeichnis, damit „Apps & Features“ eine von Hand aktualisierte Installation weiterhin deinstallieren kann,
 - startet den Dienst neu,
-- prüft den Health-Endpunkt auf dem Port aus der installierten Konfiguration (`-HttpsPort` ist nur zum Überschreiben nötig),
+- prüft den Health-Endpunkt auf dem Port aus der installierten Konfiguration (`-HttpsPort` ist nur zum Überschreiben nötig); die Anfrage geht an `localhost` und akzeptiert nur das Zertifikat, dessen Fingerabdruck in `Kestrel:Https:CertificateThumbprint` steht, angegeben werden muss dafür nichts; lässt sich die Konfiguration nicht lesen, warnt das Update und prüft ohne diesen Abgleich,
 - stellt bei einem fehlgeschlagenen Health-Check die vorherigen Binaries wieder her und lässt den Dienst im Zustand vor dem Update,
 - prüft den Health-Endpunkt nach einem Rollback erneut und warnt, wenn der wiederhergestellte Dienst nicht antwortet.
 

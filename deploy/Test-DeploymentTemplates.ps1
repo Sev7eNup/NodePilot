@@ -687,6 +687,39 @@ if ($downgradeGuardIndex -lt 0 -or $firstInstallChangeIndex -lt 0 -or $downgrade
 }
 Write-Host '  OK  the updater refuses an older artifact without -AllowDowngrade, before it changes anything' -ForegroundColor DarkGray
 
+# The readiness probe pins the configured certificate through the installer's transport. Only when
+# the configuration names none does it skip the pin, for that one GET through the same transport;
+# a process-wide trust-all policy would also cover every other request of the process.
+Assert-TextMatches -Name 'the updater dot-sources the pinned loopback transport' `
+    -Text $updateScript -Pattern "Join-Path\s+\`$PSScriptRoot\s+'LocalServerHttp\.ps1'"
+Assert-TextMatches -Name 'the update probe uses the pinned transport' `
+    -Text $updateCode -Pattern 'Invoke-NodePilotLocalHttps\s+-Uri\s+\$probeUrl\s+-CertificateThumbprint\s+\$CertificateThumbprint'
+Assert-TextDoesNotMatch -Name 'the update probe never relaxes certificate validation process-wide' `
+    -Text $updateCode -Pattern 'ServerCertificateValidationCallback|CertificatePolicy|TrustAllCerts|Invoke-WebRequest[^\r\n]*-SkipCertificateCheck'
+$probeCalls = @([regex]::Matches($updateCode, 'Wait-NodePilotReady\s+-Port\s+\$HttpsPort[^\r\n]*'))
+if ($probeCalls.Count -ne 2 -or @($probeCalls | Where-Object { $_.Value -notmatch '-CertificateThumbprint \$probeThumbprint -SkipCertificateCheck:\$probeUnpinned\b' }).Count -ne 0) {
+    throw 'Deployment template check failed: both update probes (after the swap and after a rollback) must pin $probeThumbprint, or skip the pin only as $probeUnpinned says.'
+}
+# An unreadable configuration warns instead of stopping the update.
+Assert-TextMatches -Name 'an unreadable probe configuration falls back to an unpinned probe' `
+    -Text $updateCode -Pattern '\$probeUnpinned\s*=\s*\$true'
+# Read before the service is stopped: a configuration the probe cannot use must not cost downtime.
+$probeSettingsIndex = $updateCode.IndexOf('Get-NodePilotProbeSettings -SettingsBytes $settingsBytes')
+if ($probeSettingsIndex -lt 0 -or $probeSettingsIndex -gt $stopIndex) {
+    throw 'Deployment template check failed: the update must read the probe certificate before it stops the service.'
+}
+
+# The artifact carries neither the GUI setup's uninstaller nor deploy\. They come back only after
+# the directory has been verified to hold exactly the artifact, and before the service starts.
+$verifyInstallIndex = $updateCode.IndexOf('Assert-NodePilotExtractedFiles -RootPath $InstallPath')
+$setupFilesIndex = $updateCode.IndexOf('Restore-NodePilotSetupFiles -Backup $backup -InstallPath $InstallPath')
+$updateStartIndex = $updateCode.IndexOf('Start-Service -Name $ServiceName -ErrorAction Stop')
+if ($verifyInstallIndex -lt 0 -or $setupFilesIndex -lt $verifyInstallIndex -or
+    $updateStartIndex -lt 0 -or $setupFilesIndex -gt $updateStartIndex) {
+    throw 'Deployment template check failed: the update must restore the setup uninstaller after verifying the artifact and before starting the service.'
+}
+Write-Host '  OK  the update probe pins the configured certificate and the setup uninstaller survives the swap' -ForegroundColor DarkGray
+
 # --- pre-flight extraction contracts ----------------------------------------------------------
 # The readiness checks live in Preflight.ps1 so the setup wizard can run the same set behind a
 # "re-check" button. That shared use is the entire reason for the split, and it only holds while
@@ -2731,6 +2764,60 @@ try {
             throw 'An intact backup must replace the install directory contents exactly.'
         }
         Write-Host '  OK  a rollback refuses a backup that fails the hardening or hash check and restores an intact one exactly' -ForegroundColor DarkGray
+    }
+
+    # A manual update replaces the install directory with the artifact. The GUI setup's
+    # uninstaller and deploy\ come back from this run's backup, byte for byte, and nothing else does.
+    & {
+        . $ArtifactSecurityPath
+        $installRoot = Join-Path $backupFixtureRoot 'setup-install'
+        $backupRoot = Join-Path $backupFixtureRoot 'setup-backup'
+        New-Item -ItemType Directory -Path $installRoot, (Join-Path $backupRoot 'deploy\templates') -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'NodePilot.Api.exe'), 'previous-binary')
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'unins000.exe'), 'inno-uninstaller')
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'unins000.dat'), 'inno-log')
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'deploy\Uninstall-NodePilot.ps1'), 'uninstall-script')
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'deploy\templates\appsettings.Production.json.template'), '{}')
+        [IO.File]::WriteAllText((Join-Path $installRoot 'NodePilot.Api.exe'), 'new-binary')
+        $backup = [pscustomobject]@{ Path = $backupRoot; Files = (Get-NodePilotDirectoryFileHashes -RootPath $backupRoot) }
+
+        $restored = @(Restore-NodePilotSetupFiles -Backup $backup -InstallPath $installRoot)
+        if ((@($restored | Sort-Object) -join ',') -ne 'deploy,unins000.dat,unins000.exe') {
+            throw "The update must restore exactly the setup uninstaller and deploy\ (restored: $($restored -join ', '))."
+        }
+        if ([IO.File]::ReadAllText((Join-Path $installRoot 'unins000.exe')) -ne 'inno-uninstaller' -or
+            [IO.File]::ReadAllText((Join-Path $installRoot 'deploy\Uninstall-NodePilot.ps1')) -ne 'uninstall-script' -or
+            -not (Test-Path -LiteralPath (Join-Path $installRoot 'deploy\templates\appsettings.Production.json.template'))) {
+            throw 'The restored uninstaller or its deploy scripts differ from the backup.'
+        }
+        if ([IO.File]::ReadAllText((Join-Path $installRoot 'NodePilot.Api.exe')) -ne 'new-binary') {
+            throw 'Restoring the setup files must not bring back an old binary.'
+        }
+
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'deploy\Uninstall-NodePilot.ps1'), 'planted-script')
+        $failure = $null
+        try { [void](Restore-NodePilotSetupFiles -Backup $backup -InstallPath $installRoot) } catch { $failure = $_ }
+        if ($null -eq $failure -or $failure.Exception.Message -notmatch 'does not match') {
+            throw 'Restoring a setup script that changed after the backup was made must fail.'
+        }
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'deploy\Uninstall-NodePilot.ps1'), 'uninstall-script')
+
+        [IO.File]::WriteAllText((Join-Path $backupRoot 'deploy\planted.ps1'), 'planted-script')
+        $failure = $null
+        try { [void](Restore-NodePilotSetupFiles -Backup $backup -InstallPath $installRoot) } catch { $failure = $_ }
+        if ($null -eq $failure) { throw 'Restoring a deploy\ directory that gained a file after the backup must fail.' }
+
+        # A ZIP installation has neither, and gets nothing added.
+        $zipInstall = Join-Path $backupFixtureRoot 'zip-install'
+        $zipBackupRoot = Join-Path $backupFixtureRoot 'zip-backup'
+        New-Item -ItemType Directory -Path $zipInstall, $zipBackupRoot -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $zipBackupRoot 'NodePilot.Api.exe'), 'previous-binary')
+        $zipBackup = [pscustomobject]@{ Path = $zipBackupRoot; Files = (Get-NodePilotDirectoryFileHashes -RootPath $zipBackupRoot) }
+        if (@(Restore-NodePilotSetupFiles -Backup $zipBackup -InstallPath $zipInstall).Count -ne 0 -or
+            @(Get-ChildItem -LiteralPath $zipInstall -Force).Count -ne 0) {
+            throw 'An installation without setup files must not gain any from an update.'
+        }
+        Write-Host '  OK  an update keeps the GUI setup uninstaller and deploy\ byte for byte and refuses a changed backup' -ForegroundColor DarkGray
     }
 
     # The uninstaller's helper against real directories: every backup named the way the scripts

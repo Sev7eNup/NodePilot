@@ -19,22 +19,42 @@ namespace NodePilot.Deployment
     {
         public static HttpWebRequest CreateRequest(Uri uri, string certificateThumbprint, int timeoutMilliseconds)
         {
-            if (!uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeHttps || !uri.IsLoopback || uri.UserInfo.Length != 0)
-                throw new ArgumentException("Setup requests require a loopback HTTPS URL.", "uri");
+            RequireLoopbackHttps(uri);
             if (certificateThumbprint == null || !Regex.IsMatch(certificateThumbprint, "\\A[0-9a-fA-F]{40}\\z"))
                 throw new ArgumentException("The configured server certificate thumbprint is required.", "certificateThumbprint");
+            var request = CreateLoopbackRequest(uri, timeoutMilliseconds);
+            // Preflight validates the selected certificate. Loopback uses that exact identity,
+            // even when the certificate names the public hostname or is explicitly self-signed.
+            request.ServerCertificateValidationCallback = (sender, certificate, chain, errors) =>
+                certificate != null && String.Equals(certificate.GetCertHashString(), certificateThumbprint, StringComparison.OrdinalIgnoreCase);
+            return request;
+        }
+
+        // Accepts any certificate for this one request. Only for a probe that sends no credentials
+        // when no thumbprint is known.
+        public static HttpWebRequest CreateUnpinnedRequest(Uri uri, int timeoutMilliseconds)
+        {
+            RequireLoopbackHttps(uri);
+            var request = CreateLoopbackRequest(uri, timeoutMilliseconds);
+            request.ServerCertificateValidationCallback = (sender, certificate, chain, errors) => true;
+            return request;
+        }
+
+        private static void RequireLoopbackHttps(Uri uri)
+        {
+            if (!uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeHttps || !uri.IsLoopback || uri.UserInfo.Length != 0)
+                throw new ArgumentException("Setup requests require a loopback HTTPS URL.", "uri");
+        }
+
+        private static HttpWebRequest CreateLoopbackRequest(Uri uri, int timeoutMilliseconds)
+        {
             if (timeoutMilliseconds <= 0)
                 throw new ArgumentOutOfRangeException("timeoutMilliseconds");
-
             var request = (HttpWebRequest)WebRequest.Create(uri);
             request.AllowAutoRedirect = false;
             request.Proxy = null;
             request.Timeout = timeoutMilliseconds;
             request.ReadWriteTimeout = timeoutMilliseconds;
-            // Preflight validates the selected certificate. Loopback uses that exact identity,
-            // even when the certificate names the public hostname or is explicitly self-signed.
-            request.ServerCertificateValidationCallback = (sender, certificate, chain, errors) =>
-                certificate != null && String.Equals(certificate.GetCertHashString(), certificateThumbprint, StringComparison.OrdinalIgnoreCase);
             return request;
         }
     }
@@ -52,17 +72,26 @@ function Get-NodePilotLocalHttpsProtocol {
 }
 
 function Invoke-NodePilotLocalHttps {
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'Pinned')]
     param(
         [Parameter(Mandatory)][uri]$Uri,
-        [Parameter(Mandatory)][string]$CertificateThumbprint,
+        [Parameter(Mandatory, ParameterSetName = 'Pinned')][string]$CertificateThumbprint,
+        # Health probe without a known thumbprint. GET only, so no credentials go out unpinned.
+        [Parameter(Mandatory, ParameterSetName = 'Unpinned')][switch]$SkipCertificateCheck,
         [ValidateSet('GET', 'POST')][string]$Method = 'GET',
         [string]$Body,
         [hashtable]$Headers = @{},
         [ValidateRange(1, 300)][int]$TimeoutSeconds = 30
     )
 
-    $request = [NodePilot.Deployment.LocalServerHttp]::CreateRequest($Uri, $CertificateThumbprint, $TimeoutSeconds * 1000)
+    $request = if ($SkipCertificateCheck) {
+        if ($Method -ne 'GET' -or $Headers.Count -gt 0) {
+            throw 'A request without certificate pinning may only be a plain GET.'
+        }
+        [NodePilot.Deployment.LocalServerHttp]::CreateUnpinnedRequest($Uri, $TimeoutSeconds * 1000)
+    } else {
+        [NodePilot.Deployment.LocalServerHttp]::CreateRequest($Uri, $CertificateThumbprint, $TimeoutSeconds * 1000)
+    }
     $request.Method = $Method
     foreach ($key in $Headers.Keys) { $request.Headers.Add([string]$key, [string]$Headers[$key]) }
     # The protocol setting is process-wide, so it only applies for this request.

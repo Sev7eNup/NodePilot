@@ -37,7 +37,9 @@ $UiDir        = Join-Path $RepoRoot 'src\nodepilot-ui'
 $DocsUiDir    = Join-Path $RepoRoot 'src\nodepilot-docs-ui'
 $ApiCsproj    = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
 $PublishSettingsHygieneScript = Join-Path $RepoRoot 'deploy\Assert-PublishSettingsHygiene.ps1'
-$DesktopRuntimeVersion = '10.0.12'
+# Publishes and payload validation share this pin. Self-contained binaries are not replaced by a
+# machine-wide .NET update, so only a rebuilt package moves an installation to a patched runtime.
+$DesktopRuntimeVersion = '10.0.14'
 # The one place the bundled PostgreSQL major is written down. A cluster initialised by one major
 # cannot be opened by another, and this package upgrades in place over an existing pgdata.
 $DesktopPostgresMajorVersion = 16
@@ -152,6 +154,8 @@ foreach ($client in @(
     if (-not (Test-Path -LiteralPath (Join-Path $clientStage $client.Exe))) {
         throw "Expected $($client.Exe) in $clientStage, but it is missing."
     }
+    Assert-DesktopRuntimePayload -AppPath $clientStage -MinimumVersion ([version]$DesktopRuntimeVersion) `
+        -RuntimeConfigName ([IO.Path]::ChangeExtension($client.Exe, '.runtimeconfig.json')) -BaseRuntimeOnly
 }
 
 # --- 2. SPA + docs site -> wwwroot ------------------------------------------------------------

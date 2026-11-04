@@ -28,6 +28,18 @@ function Invoke-WebRequest {
 }
 $result = Get-LeaderHealth 'https://fixture'
 if ($result.IsLeader -or $result.StatusCode -ne 503 -or $result.Reason -ne 'not_leader') { throw 'PowerShell 7 HTTP response shape was lost.' }
+# The healthy 200 body has no reason property (ClusterSetup.ComputeLeaderHealth).
+function Invoke-WebRequest {
+  param($Uri, [switch]$UseBasicParsing, $TimeoutSec)
+  [pscustomobject]@{ StatusCode = 200; Content = '{"status":"leader","nodeId":"A","leaseExpiresAt":"2026-11-04T10:00:30Z","leaseEpoch":3,"lastRenewAt":"2026-11-04T10:00:00Z"}' }
+}
+$result = Get-LeaderHealth 'https://fixture'
+if (-not $result.IsLeader -or $result.StatusCode -ne 200 -or $result.NodeId -ne 'A' -or $result.LeaseEpoch -ne 3 -or $null -ne $result.Reason) {
+  throw "Healthy leader response was not recognised: status=$($result.StatusCode) leader=$($result.IsLeader) reason=$($result.Reason)"
+}
+function Invoke-WebRequest { param($Uri, [switch]$UseBasicParsing, $TimeoutSec) throw [Net.WebException]::new('Unable to connect to the remote server', [Net.WebExceptionStatus]::ConnectFailure) }
+$result = Get-LeaderHealth 'https://fixture'
+if ($result.IsLeader -or $result.StatusCode -ne 0 -or $result.Reason -notlike 'request-error: Unable to connect*') { throw 'A transport error was not reported as one.' }
 $script:actions = @()
 function Stop-Service { [CmdletBinding()] param($Name, [switch]$Force) $script:actions += "stop:$Name" }
 function Start-Service { [CmdletBinding()] param($Name) $script:actions += "start:$Name" }
@@ -39,4 +51,4 @@ foreach ($command in $commands) {
   . ([scriptblock]::Create($command.Extent.Text))
 }
 if (($script:actions -join ',') -ne 'stop:NodePilot-Fixture,start:NodePilot-Fixture') { throw "Service actions were not routed correctly: $($script:actions -join ',')" }
-Write-Host 'Failover fixture checks passed: follower body retained and start/stop remotely routed without live services.'
+Write-Host 'Failover fixture checks passed: healthy leader, follower body and transport error recognised; start/stop remotely routed without live services.'

@@ -24,9 +24,12 @@
 .PARAMETER DataPath
     Writable data directory. Its logs subdirectory is read for the start diagnostics.
 .PARAMETER HttpsPort
-    HTTPS port used for the health probe after restart. Defaults to the port in the installed
-    appsettings.Production.json (Kestrel:Https:HttpsPort), falling back to 443 only when that
-    cannot be read. Pass explicitly to override.
+    Port used for the health probe after restart. Defaults to the port in the installed
+    appsettings.Production.json (Kestrel:Https:HttpsPort), falling back to 443 when that key is
+    absent. Pass explicitly to override. The probe is HTTPS pinned to the certificate thumbprint
+    configured there (Kestrel:Https:CertificateThumbprint); with Kestrel:Https:Enabled off the
+    service terminates no TLS and the probe uses plain HTTP on this port. When the configuration
+    cannot be read or names no usable thumbprint, the update warns and probes HTTPS without the pin.
 .PARAMETER KeepBackupCount
     Number of binary-only backups to retain. Default: 3.
 .PARAMETER AllowDowngrade
@@ -73,6 +76,9 @@ if (-not (Test-Path -LiteralPath $PreflightScript -PathType Leaf)) {
     throw "Pre-flight helper not found: $PreflightScript"
 }
 . $PreflightScript
+
+# The readiness probe pins the configured certificate, the same transport the installer uses.
+. (Join-Path $PSScriptRoot 'LocalServerHttp.ps1')
 
 function Write-Step {
     param([string]$Text, [string]$Phase = 'configure')
@@ -150,42 +156,62 @@ function Stop-ServiceAndVerify {
     throw "Service '$Name' did not stop within ${TimeoutSeconds}s; installed files were not changed."
 }
 
-# The localhost probe is the only operation that bypasses certificate validation. On Windows
-# PowerShell 5.1 that is a process-global policy, restored by the finally block at the end.
-function Enable-LocalhostProbeTrust {
-    if ($PSVersionTable.PSVersion.Major -ge 6 -or $script:certificatePolicyChanged) { return }
-    if (-not ('TrustAllCertsUpdate' -as [type])) {
-        Add-Type @"
-using System.Net; using System.Security.Cryptography.X509Certificates;
-public class TrustAllCertsUpdate : ICertificatePolicy {
-  public bool CheckValidationResult(ServicePoint s, X509Certificate c, WebRequest r, int p) { return true; }
-}
-"@
+# Reads what the readiness probe needs from the installed configuration: Kestrel:Https:HttpsPort
+# (0 when absent) and the thumbprint of the certificate Kestrel serves, which the probe pins. The
+# thumbprint is empty when Kestrel:Https is off, because the service then terminates no TLS.
+function Get-NodePilotProbeSettings {
+    param([Parameter(Mandatory)][byte[]]$SettingsBytes)
+    # UTF-8 configuration written by Windows PowerShell 5.1 commonly has a BOM. The byte decoder
+    # preserves it, while ConvertFrom-Json rejects it as an invalid token.
+    $settings = [Text.Encoding]::UTF8.GetString($SettingsBytes).TrimStart([char]0xFEFF) | ConvertFrom-Json
+    $https = $null
+    if ($settings.PSObject.Properties['Kestrel'] -and $settings.Kestrel -and
+        $settings.Kestrel.PSObject.Properties['Https']) {
+        $https = $settings.Kestrel.Https
     }
-    $script:previousCertificatePolicy = [System.Net.ServicePointManager]::CertificatePolicy
-    $script:previousSecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol
-    [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsUpdate
-    [System.Net.ServicePointManager]::SecurityProtocol = 'Tls12, Tls13'
-    $script:certificatePolicyChanged = $true
+    $port = 0
+    $thumbprint = ''
+    if ($https) {
+        if ($https.PSObject.Properties['HttpsPort']) { $port = [int]$https.HttpsPort }
+        if ($https.PSObject.Properties['Enabled'] -and [string]$https.Enabled -eq 'true') {
+            $raw = if ($https.PSObject.Properties['CertificateThumbprint']) { [string]$https.CertificateThumbprint } else { '' }
+            # The service normalises the same way: a value copied from certmgr carries spaces and
+            # invisible direction marks.
+            $thumbprint = ($raw -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
+            if ($thumbprint -notmatch '^[0-9A-F]{40}$') {
+                throw "Kestrel:Https is enabled, but CertificateThumbprint '$raw' is not a certificate thumbprint."
+            }
+        }
+    }
+    return [pscustomobject]@{ HttpsPort = $port; CertificateThumbprint = $thumbprint }
 }
 
-# Polls /healthz/ready on localhost until it answers 200 or the budget is used up.
+# Polls /healthz/ready on loopback until it answers 200 or the budget is used up. With a thumbprint
+# the request is HTTPS pinned to that certificate; without one the service serves plain HTTP.
 function Wait-NodePilotReady {
-    param([Parameter(Mandatory)][int]$Port, [int]$TimeoutSeconds = 60)
-    Enable-LocalhostProbeTrust
-    $probeUrl = "https://localhost:$Port/healthz/ready"
+    param(
+        [Parameter(Mandatory)][int]$Port,
+        [AllowEmptyString()][string]$CertificateThumbprint = '',
+        [switch]$SkipCertificateCheck,
+        [int]$TimeoutSeconds = 60
+    )
+    $scheme = if ($CertificateThumbprint -or $SkipCertificateCheck) { 'https' } else { 'http' }
+    $probeUrl = "${scheme}://localhost:$Port/healthz/ready"
     Write-Info "Probing $probeUrl (up to ${TimeoutSeconds}s)..."
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         try {
-            $response = if ($PSVersionTable.PSVersion.Major -ge 6) {
-                Invoke-WebRequest -Uri $probeUrl -UseBasicParsing -SkipCertificateCheck -TimeoutSec 5
+            $response = if ($CertificateThumbprint) {
+                Invoke-NodePilotLocalHttps -Uri $probeUrl -CertificateThumbprint $CertificateThumbprint -TimeoutSeconds 5
+            } elseif ($SkipCertificateCheck) {
+                Invoke-NodePilotLocalHttps -Uri $probeUrl -SkipCertificateCheck -TimeoutSeconds 5
             } else {
-                Invoke-WebRequest -Uri $probeUrl -UseBasicParsing -TimeoutSec 5
+                Invoke-WebRequest -Uri $probeUrl -UseBasicParsing -MaximumRedirection 0 -TimeoutSec 5
             }
             if ($response.StatusCode -eq 200) { return $true }
         }
-        catch { Start-Sleep -Seconds 2 }
+        catch { }
+        Start-Sleep -Seconds 2
     }
     return $false
 }
@@ -195,9 +221,8 @@ $artifactStage = $null
 $settingsBytes = $null
 $backup = $null
 $installTouched = $false
-$previousCertificatePolicy = $null
-$previousSecurityProtocol = $null
-$certificatePolicyChanged = $false
+$probeThumbprint = ''
+$probeUnpinned = $false
 
 try {
     if (-not (Test-Path -LiteralPath $ArtifactPath -PathType Leaf)) {
@@ -266,35 +291,28 @@ try {
             -SkipServiceRule:($svcAccount -eq 'NT AUTHORITY\SYSTEM') -Label "The data directory '$DataPath'"
     }
 
-    # Health-probe port: the installed configuration is authoritative. Probing the 443 parameter
-    # default against an installation that listens elsewhere (any host where IIS owns 443, such
-    # as SCCM or WSUS) fails the post-restart probe and rolls back a healthy upgrade. An explicit
-    # -HttpsPort still wins.
-    if (-not $PSBoundParameters.ContainsKey('HttpsPort')) {
-        try {
-            # UTF-8 configuration written by Windows PowerShell 5.1 commonly has a BOM. The
-            # byte decoder preserves it, while ConvertFrom-Json rejects it as an invalid token.
-            $installedSettings = [Text.Encoding]::UTF8.GetString($settingsBytes).TrimStart([char]0xFEFF) |
-                ConvertFrom-Json
-            $httpsSection = $null
-            if ($installedSettings.PSObject.Properties.Name -contains 'Kestrel') {
-                $kestrelSection = $installedSettings.Kestrel
-                if ($kestrelSection -and $kestrelSection.PSObject.Properties.Name -contains 'Https') {
-                    $httpsSection = $kestrelSection.Https
-                }
-            }
-            if ($httpsSection -and $httpsSection.PSObject.Properties.Name -contains 'HttpsPort') {
-                $configuredPort = [int]$httpsSection.HttpsPort
-                if ($configuredPort -gt 0 -and $configuredPort -ne $HttpsPort) {
-                    Write-Info "Health probe follows the installed configuration: port $configuredPort."
-                    $HttpsPort = $configuredPort
-                }
-            }
-        } catch {
-            Write-Warn ("Could not read Kestrel:Https:HttpsPort from $settingsPath " +
-                        "($($_.Exception.Message)); probing the default $HttpsPort. " +
-                        'Pass -HttpsPort explicitly if the service listens elsewhere.')
-        }
+    # The health probe follows the installed configuration: its port (the 443 default fails on any
+    # host where IIS owns 443, such as SCCM or WSUS; an explicit -HttpsPort still wins) and the
+    # certificate thumbprint it pins. Read before anything is stopped.
+    try {
+        $probeSettings = Get-NodePilotProbeSettings -SettingsBytes $settingsBytes
+    } catch {
+        # Only the health verdict depends on the pin, and the probe sends no credentials, so an
+        # unreadable configuration does not block the update.
+        Write-Warn ("Could not read Kestrel:Https from $settingsPath ($($_.Exception.Message)); " +
+                    "the health probe checks HTTPS on port $HttpsPort without the certificate pin. " +
+                    'Pass -HttpsPort explicitly if the service listens elsewhere.')
+        $probeSettings = [pscustomobject]@{ HttpsPort = 0; CertificateThumbprint = '' }
+        $probeUnpinned = $true
+    }
+    if (-not $PSBoundParameters.ContainsKey('HttpsPort') -and
+        $probeSettings.HttpsPort -gt 0 -and $probeSettings.HttpsPort -ne $HttpsPort) {
+        Write-Info "Health probe follows the installed configuration: port $($probeSettings.HttpsPort)."
+        $HttpsPort = $probeSettings.HttpsPort
+    }
+    $probeThumbprint = $probeSettings.CertificateThumbprint
+    if (-not $probeThumbprint -and -not $probeUnpinned) {
+        Write-Info "Kestrel:Https is not enabled; the health probe uses plain HTTP on port $HttpsPort."
     }
 
     # Reject a malformed signed ZIP before stopping the service or touching the installation.
@@ -396,6 +414,12 @@ try {
         if ($null -ne $previousSwitcherConfigBytes) {
             [IO.File]::WriteAllBytes($switcherConfigPath, $previousSwitcherConfigBytes)
         }
+        # The GUI setup's uninstaller and its deploy\ scripts are not part of the artifact. Without
+        # them the Apps & Features entry points at a missing executable.
+        $setupFiles = @(Restore-NodePilotSetupFiles -Backup $backup -InstallPath $InstallPath)
+        if ($setupFiles.Count -gt 0) {
+            Write-Info "  Kept the setup's uninstaller and deploy scripts: $($setupFiles -join ', ')"
+        }
         # After the manifest check, never before it - see Remove-NodePilotSourceSnapshot.
         if (-not $keepSourceSnapshot) { [void](Remove-NodePilotSourceSnapshot -InstallPath $InstallPath) }
         Write-RestrictedSettings -Path $settingsPath -Content $settingsBytes -ServiceAccount $svcAccount
@@ -418,7 +442,7 @@ try {
             throw "Start-Service failed: $($_.Exception.Message)"
         }
 
-        if (-not (Wait-NodePilotReady -Port $HttpsPort -TimeoutSeconds 60)) {
+        if (-not (Wait-NodePilotReady -Port $HttpsPort -CertificateThumbprint $probeThumbprint -SkipCertificateCheck:$probeUnpinned -TimeoutSeconds 60)) {
             Show-NodePilotServiceStartDiagnostics -DataPath $DataPath
             throw 'Service did not become ready after upgrade. Check the NodePilot and Windows Application logs for the startup error.'
         }
@@ -562,7 +586,7 @@ try {
                 # A rollback swaps binaries only. If the new version already migrated the database,
                 # the restored binary can start and still fail against the changed schema, so the
                 # rollback is not reported as complete on the strength of a service start alone.
-                if (Wait-NodePilotReady -Port $HttpsPort -TimeoutSeconds 60) {
+                if (Wait-NodePilotReady -Port $HttpsPort -CertificateThumbprint $probeThumbprint -SkipCertificateCheck:$probeUnpinned -TimeoutSeconds 60) {
                     Write-Ok 'Rolled-back service answered /healthz/ready.'
                 } else {
                     Write-Warn ('The rolled-back service did not become ready within 60s. A binary rollback ' +
@@ -581,10 +605,6 @@ try {
     }
 }
 finally {
-    if ($certificatePolicyChanged) {
-        [System.Net.ServicePointManager]::CertificatePolicy = $previousCertificatePolicy
-        [System.Net.ServicePointManager]::SecurityProtocol = $previousSecurityProtocol
-    }
     if ($settingsBytes) { [Array]::Clear($settingsBytes, 0, $settingsBytes.Length) }
     if ($artifactStage -and (Test-Path -LiteralPath $artifactStage)) {
         Remove-Item -LiteralPath $artifactStage -Recurse -Force -ErrorAction SilentlyContinue

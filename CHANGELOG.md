@@ -100,6 +100,9 @@ Planned version: **1.5.4**.
   - The gMSA repair command suggested by the setup check adds this host to the existing principals
     instead of replacing them. The deploy README no longer suggests delegation on every target
     (#713).
+  - A manual update with `Update-NodePilot.ps1` keeps the server setup's uninstaller and its
+    `deploy\` scripts, so "Apps & features" can still uninstall an installation updated that way
+    (#622).
 - **Monitoring**
   - The observability summary queries the counter names the exporter actually publishes, so
     executions per minute, success rate and failures show values again. The Grafana CPU panels use
@@ -119,6 +122,8 @@ Planned version: **1.5.4**.
     workflows are missing (#718, #719).
   - Nightly retention deletes only the run folders it created (#716). The failover drill restarts
     the original leader also after a failed takeover (#715).
+  - The failover drill recognises a healthy leader again. Its HTTP 200 answer has no `reason`, and
+    reading that field stopped the drill before the takeover (#624).
   - The SSO lab drills check the requested run and use the configured account prefix throughout
     (#717, #645).
   - CI classifies changed files through `scripts/classify-changes.sh`, also for long file lists
@@ -144,6 +149,16 @@ Planned version: **1.5.4**.
 - The server setup accepts only the configured certificate, by thumbprint, for its health probe and
   the first login, does not follow redirects there and no longer turns off certificate validation
   for the whole process.
+- `Update-NodePilot.ps1` does the same for its health probe: it reads the thumbprint from the
+  installed `Kestrel:Https` configuration, so nothing new has to be passed, and no longer turns off
+  certificate validation for the whole process. If that configuration cannot be read, the update
+  warns and checks the one probe request without the thumbprint.
+- The desktop package bundles .NET 10.0.14 for the API, `np` and `nodepilot-mcp`; 10.0.12 and
+  earlier are affected by the Kestrel advisories CVE-2026-88092 and CVE-2026-70188. The build
+  refuses a stage whose framework declaration or runtime binaries are older. The runtime is part of
+  the package, so existing desktop installations get it only by installing the new package (#787).
+- The desktop build extracts Electron with `@electron-internal/extract-zip` 1.0.8, which carries the
+  fixes for RUSTSEC-2026-0367, -0368 and -0369 (#773).
 - The desktop setup hands the first-login token to the account that started setup, also under
   Remote Desktop or a switched user, and to the user signed in at the console when software
   distribution runs setup as SYSTEM. If the starting account cannot be determined, provisioning stops

@@ -235,6 +235,13 @@ names its log, `%TEMP%\nodepilot-setup-prepare.log`.
 
 `Update-Desktop.ps1` additionally offers a staged update with rollback for binaries, configuration and database.
 
+**Runtime security updates come with the desktop package.** The API, `np` and `nodepilot-mcp` carry
+their own .NET runtime. A machine-wide .NET or Windows update does not replace it, so an existing
+installation receives a patched runtime only by installing a new desktop package over it. Desktop
+packages from 1.5.4 on bundle .NET 10.0.14, which closes the Kestrel advisories CVE-2026-88092 and
+CVE-2026-70188 that affect 10.0.12 and earlier. Update every older desktop installation with such a
+package.
+
 PostgreSQL major upgrades and Electron auto-update are not part of the current desktop version.
 
 ## Uninstalling

@@ -224,6 +224,13 @@ Lässt sich die laufende Installation nicht stoppen, bricht das Setup ab, bevor 
 
 `Update-Desktop.ps1` bietet zusätzlich ein gestuftes Update mit Rollback für Binaries, Konfiguration und Datenbank.
 
+**Sicherheitsupdates der Laufzeit kommen mit dem Desktop-Paket.** API, `np` und `nodepilot-mcp`
+bringen ihre eigene .NET-Laufzeit mit. Ein systemweites .NET- oder Windows-Update ersetzt sie nicht;
+eine bestehende Installation erhält eine gepatchte Laufzeit nur, wenn ein neues Desktop-Paket darüber
+installiert wird. Desktop-Pakete ab 1.5.4 enthalten .NET 10.0.14, das die Kestrel-Sicherheitshinweise
+CVE-2026-88092 und CVE-2026-70188 für 10.0.12 und älter schließt. Ältere Desktop-Installationen mit
+einem solchen Paket aktualisieren.
+
 PostgreSQL-Major-Upgrades und Electron-Auto-Update sind nicht Bestandteil der aktuellen Desktop-Version.
 
 ## Deinstallation

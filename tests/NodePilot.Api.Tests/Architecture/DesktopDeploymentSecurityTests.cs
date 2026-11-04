@@ -123,10 +123,12 @@ public sealed class DesktopDeploymentSecurityTests
         var build = File.ReadAllText(Path.Combine(desktopDeploy, "Build-DesktopInstaller.ps1"));
         var gatePath = Path.Combine(desktopDeploy, "Assert-DesktopRuntimePayload.ps1");
 
-        build.Should().Contain("$DesktopRuntimeVersion = '10.0.12'");
+        build.Should().Contain("$DesktopRuntimeVersion = '10.0.14'");
         build.Should().Contain("\"-p:RuntimeFrameworkVersion=$DesktopRuntimeVersion\"");
         build.Should().Contain(". (Join-Path $PSScriptRoot 'Assert-DesktopRuntimePayload.ps1')");
         build.Should().Contain("Assert-DesktopRuntimePayload -AppPath $appStage -MinimumVersion ([version]$DesktopRuntimeVersion)");
+        build.Should().Contain("Assert-DesktopRuntimePayload -AppPath $clientStage -MinimumVersion ([version]$DesktopRuntimeVersion)",
+            "the self-contained np and nodepilot-mcp payloads carry their own runtime too");
         File.Exists(gatePath).Should().BeTrue("the build must verify the staged payload, not only request a version from dotnet publish");
     }
 

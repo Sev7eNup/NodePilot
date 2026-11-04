@@ -31,14 +31,31 @@ function Assert-DesktopRuntimePayload {
         Checks the publish manifest and the version resources of representative host, runtime,
         WebSocket and ASP.NET Core binaries, so a requested RuntimeFrameworkVersion still holds
         when a stale or mixed stage directory is packaged.
+
+        -BaseRuntimeOnly is for the operator clients (np, nodepilot-mcp): they name their own
+        runtimeconfig and carry Microsoft.NETCore.App without ASP.NET Core.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string] $AppPath,
-        [Parameter(Mandatory)] [version] $MinimumVersion
+        [Parameter(Mandatory)] [version] $MinimumVersion,
+        [string] $RuntimeConfigName = 'NodePilot.Api.runtimeconfig.json',
+        [switch] $BaseRuntimeOnly
     )
 
-    $runtimeConfigPath = Join-Path $AppPath 'NodePilot.Api.runtimeconfig.json'
+    $frameworkNames = @('Microsoft.NETCore.App')
+    $binaryPaths = @(
+        'hostfxr.dll',
+        'System.Private.CoreLib.dll',
+        'System.Net.WebSockets.dll',
+        'System.Net.WebSockets.Client.dll'
+    )
+    if (-not $BaseRuntimeOnly) {
+        $frameworkNames += 'Microsoft.AspNetCore.App'
+        $binaryPaths += 'Microsoft.AspNetCore.Server.Kestrel.Core.dll'
+    }
+
+    $runtimeConfigPath = Join-Path $AppPath $RuntimeConfigName
     if (-not (Test-Path -LiteralPath $runtimeConfigPath -PathType Leaf)) {
         throw "Desktop runtime configuration is missing: $runtimeConfigPath"
     }
@@ -50,7 +67,7 @@ function Assert-DesktopRuntimePayload {
         throw "Desktop runtime configuration is invalid: $($_.Exception.Message)"
     }
 
-    foreach ($frameworkName in @('Microsoft.NETCore.App', 'Microsoft.AspNetCore.App')) {
+    foreach ($frameworkName in $frameworkNames) {
         $framework = @($includedFrameworks | Where-Object { $_.name -ceq $frameworkName })
         if ($framework.Count -ne 1) {
             throw "Desktop self-contained payload must declare exactly one $frameworkName framework."
@@ -63,13 +80,7 @@ function Assert-DesktopRuntimePayload {
         }
     }
 
-    foreach ($relativePath in @(
-        'hostfxr.dll',
-        'System.Private.CoreLib.dll',
-        'System.Net.WebSockets.dll',
-        'System.Net.WebSockets.Client.dll',
-        'Microsoft.AspNetCore.Server.Kestrel.Core.dll'
-    )) {
+    foreach ($relativePath in $binaryPaths) {
         $payloadPath = Join-Path $AppPath $relativePath
         $actualVersion = Get-NodePilotDesktopPayloadFileVersion -Path $payloadPath
         if ($actualVersion -lt $MinimumVersion) {
