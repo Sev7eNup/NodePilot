@@ -1,5 +1,11 @@
 # Artikelplan für die lokale SEO-Vorschau
 
+## Publication update: 2026-11-02
+
+The user requested publication of only the gMSA scheduled-task article originally planned for 1 November. Both languages are now live with the actual publication date **2026-11-02**. The catalog contains nine published articles and twelve drafts. The gMSA troubleshooting article remains planned for **2026-11-08**; try/catch, AI workflows and Execution Policy remain drafts without a new publication date.
+
+The older worktree references and eight-article counts below describe the historical preparation. The four-article patch must not be applied unchanged after this partial publication. See the [publication record](testing/gmsa-publication-2026-11-02.md).
+
 ## Wiederaufnahme am 01.11. und 08.11.2026
 
 Am 25.10.2026 hat der Nutzer den vorbereiteten Stand bestätigt: „merke dir jetzt alles und wir machen das dann am 01. und 08.“ Beide Termine beziehen sich auf Europe/Berlin. Bis zur gemeinsamen Wiederaufnahme bleiben die Artikel Entwürfe; es ist keine automatische Veröffentlichung oder Erinnerung eingerichtet.

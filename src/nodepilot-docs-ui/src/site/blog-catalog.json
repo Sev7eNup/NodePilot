@@ -233,7 +233,7 @@
       "winrm-https"
     ],
     "publishedAt": "2026-10-18",
-    "modifiedAt": null,
+    "modifiedAt": "2026-11-02",
     "text": {
       "de": {
         "title": "gMSA: Dienstkonten ohne manuell verteilte Kennwörter",
@@ -262,7 +262,7 @@
   {
     "slug": "powershell-51-and-7",
     "status": "published",
-    "next": true,
+    "next": false,
     "source": "powershell-51-und-7",
     "solution": "powershell-automation",
     "docs": "activities-reference",
@@ -737,8 +737,8 @@
   },
   {
     "slug": "gmsa-scheduled-task",
-    "status": "draft",
-    "next": false,
+    "status": "published",
+    "next": true,
     "source": "gmsa-scheduled-task",
     "solution": "powershell-automation",
     "docs": "configuration/remote-execution",
@@ -754,7 +754,7 @@
       "powershell-try-catch",
       "powershell-execution-policy"
     ],
-    "publishedAt": null,
+    "publishedAt": "2026-11-02",
     "modifiedAt": null,
     "text": {
       "de": {
