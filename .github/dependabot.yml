@@ -80,6 +80,11 @@ updates:
     # render or end with a request in flight see state from the wrong moment. With vitest 5,
     # WorkflowEditorPage passes on msw 2 and fails two or three tests per run on msw 3.
     # Move it after the vitest family.
+    #
+    # The browser OpenTelemetry packages (src/telemetry/otel.ts) move as one family. api 1.10
+    # and the 0.300 instrumentations need the 3.x SDK, and sdk-trace-web has no 3.x release,
+    # so a partial bump fails npm ci with ERESOLVE. Patches still come through. Lift this
+    # when someone migrates otel.ts to the 3.x SDK.
     ignore:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
@@ -91,6 +96,8 @@ updates:
         versions: [">=5.0.0"]
       - dependency-name: "msw"
         versions: [">=3.0.0"]
+      - dependency-name: "@opentelemetry/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       npm-minor-patch:
         patterns:
