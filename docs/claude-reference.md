@@ -75,7 +75,16 @@ under NOT. Details: [ADR 0006](adr/0006-trigger-only-workflow-roots.md),
 
 ## Triggers and child workflows
 
-Trigger configuration is defined in Core and shared by Engine and Scheduler.
+Each trigger type has a node executor in Engine and a background source in Scheduler.
+Both read only the keys in the configuration catalog; `eventLogTrigger` and
+`databaseTrigger` also parse through a shared settings class in `Core/Triggers/`.
+The fileWatcher filter defaults are spelled `*.*` and `*`; both match every file.
+
+Trigger liveness: on every scan the orchestrator reads each source's in-memory `Health`.
+An unhealthy source is evicted and registered again; failed registrations retry with
+a backoff that doubles up to 5 minutes. The `trigger-unhealthy` system alert reports
+triggers stuck in that state.
+
 Event data appears under `manual.*` and as parameters of the trigger.
 `databaseTrigger` reacts to a change of the sentinel value. The trigger scan runs
 every 5 seconds. Downtime is not replayed as events afterwards.
@@ -112,6 +121,25 @@ runs. Loops and later branches can create further steps.
 `WorkflowExecution.ErrorMessage` is a masked, bounded summary for lists and
 notifications. Error analysis uses `StepExecution.ErrorOutput`.
 With multiple errors, the order by `StartedAt` and `Id` decides.
+
+## Database and background services
+
+`DatabaseTlsBootValidator` stops the boot unless the connection verifies the server:
+SQL Server needs `Encrypt=Strict` and `TrustServerCertificate=False`, PostgreSQL
+`SSL Mode=VerifyFull` and `Check Certificate Revocation=true`. The only escape is
+`Database:AllowInsecureTls=true`. It is accepted only when every database host
+(including a SQL Server failover partner) is loopback and the host runs in the
+Development environment or with `Deployment:Mode=Desktop`; the boot then logs a warning.
+Certificates: [Database certificates](../src/nodepilot-docs-ui/content/en/deployment/database-tls.md).
+
+Retention runs in seven services: the six `LeaderGatedRetentionService` subclasses
+(executions, audit log, notifications, support events, trigger receipts, workflow
+versions), which sweep only on the cluster leader and take their windows from
+`Retention:*`, and `IdempotencyKeyCleanupService`, which always runs and has no setting.
+
+All other hosted loops are `BackgroundService` subclasses in `NodePilot.Api` and
+`NodePilot.Scheduler`. Those that use the database wait in `WaitUntilServableAsync`
+during an outage ([ADR 0011](adr/0011-database-availability-breaker.md)).
 
 ## Step test
 
@@ -194,6 +222,8 @@ at 100 MB, keeping at most 7 files. Save it early when handling an incident.
 | Coverage | [coverage.runsettings](../coverage.runsettings), [CI](../.github/workflows/ci.yml) |
 
 When merging coverage, include the assemblies `np` and `nodepilot-mcp` and
-normalise the differing `src/` prefixes. Migrations and code marked with a
-justification are excluded through the runsettings. Scheduler, Remote and Telemetry tests
+normalise the differing `src/` prefixes. Migrations and generated code are excluded
+through the runsettings. Code that cannot run in-process (a live SignalR connection,
+real cluster leadership, process-global state) carries
+`[ExcludeFromCodeCoverage(Justification = "...")]` and is excluded the same way. Scheduler, Remote and Telemetry tests
 live in Engine.Tests and Api.Tests respectively.

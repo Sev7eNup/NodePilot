@@ -21,7 +21,7 @@ Von den Logs zu unterscheiden sind die Retention-**Archive** unter `C:\ProgramDa
 Diese Stellen sind bewusst leer und müssen im Störfall nicht durchsucht werden:
 
 - **Die Electron-Shell führt kein eigenes Log.** Meldet das Desktop-Fenster einen Fehler, liegt die Ursache im Anwendungslog oder im Provisionierungslog.
-- **`np` und `nodepilot-mcp` protokollieren in keine Datei.** Unter `%APPDATA%\NodePilot\` liegen ausschließlich `config.json` und `session-<Profil>.dat` als Zustand. Der MCP-Server gibt seine Diagnose auf stderr aus, weil stdout dem Protokoll gehört.
+- **`np` und `nodepilot-mcp` protokollieren in keine Datei.** Unter `%APPDATA%\NodePilot\` liegen ausschließlich `config.json` und `session-<Profil-Hash>.dat` als Zustand. Der MCP-Server gibt seine Diagnose auf stderr aus, weil stdout dem Protokoll gehört.
 - **Das mitgelieferte Desktop-PostgreSQL läuft ohne `logging_collector`** und legt daher keine eigene Logdatei an. Ein Ausfall von `NodePilotDb` wird über das Anwendungslog und `/healthz/database` sichtbar.
 - **Der Dienst leitet keine Standardausgabe um.** Der Konsolen-Sink läuft im Dienstkontext ins Leere; maßgeblich sind die Dateien.
 - **NodePilot schreibt keine eigenen Einträge in die Ereignisanzeige.** Was dort unter dem Dienstnamen erscheint, stammt vom Dienststeuerungs-Manager.

@@ -198,7 +198,7 @@ Every item carries its trigger condition. Nothing starts without a trigger.
 | **Workflow list beyond 500 entries** — `GET /api/workflows` deliberately ends at 500 without continuation (DoS guard, pinned by `GetAll_CapsResultSetAt500_EvenWhenMoreWorkflowsExist`); UI search and folder filter work locally, MCP reports `totalAvailable` | An installation with more than 500 accessible workflows, e.g. a correspondingly large SCOrch export. Then build it as a feature across SPA, CLI, and MCP — the model is the executions pagination. Until then only the longest-untouched workflows beyond that disappear from lists and pickers; deep links and `/export` remain. Small interim step without a trigger: in MCP, replace `totalAvailable` with a `truncated` flag. |
 | **F9 — GUID PK fragmentation** (SQL Server only) | Only on a SQL Server deployment with measured fragmentation > ~30 % despite regular rebuilds. Irrelevant on the default PostgreSQL. |
 | Four small backend perf items (`ExecuteDeleteAsync` in the execution retention, shared `JsonSerializerOptions`, `LoggerMessage.DefineScope` in the StepRunner, incremental `HubRevocationSweeper`) | All size S–M and clean, but without measured pain. A good filler block when capacity is left over. |
-| `manualChunks` in `vite.config.ts` · load locales separately (DE+EN ≈ 385 KB raw both sit in the eager path) | As soon as NodePilot is made reachable outside the LAN or initial load over VPN is reported. **The rest of this item is done**: route-level `React.lazy` covers 16 of 20 pages, Material Symbols no longer appear in the build at all, and ECharts was pulled out of the boot chunk on 2026-09-11 (eager path 591 → 386 KB gzip, see [`performance-improvements.md`](performance-improvements.md)). For the locale item, first assess the startup waterfall — an asynchronous i18n init must be awaited before the first render. |
+| `manualChunks` in `vite.config.ts` · load locales separately (DE+EN ≈ 385 KB raw both sit in the eager path) | As soon as NodePilot is made reachable outside the LAN or initial load over VPN is reported. **The rest of this item is done**: route-level `React.lazy` covers 16 of 20 pages, Material Symbols no longer appear in the build at all, and ECharts was pulled out of the boot chunk on 2026-09-11 (eager path 591 → 386 KB gzip, see [`archived/performance-measurements.md`](archived/performance-measurements.md)). For the locale item, first assess the startup waterfall — an asynchronous i18n init must be awaited before the first render. |
 | Enable React Compiler (`babel-plugin-react-compiler`) | When broad work on Designer render paths resumes. Today **only** the lint half runs: `eslint-plugin-react-hooks` v7 with `flat.recommended`, while `vite.config.ts` runs a bare `react()` and the Babel plugin is not installed — so there is **no** auto-memoization. The code is therefore largely compiler-clean (exception: `react-hooks/set-state-in-effect` is deliberately turned off), but every memo boundary is manual work. Needs the full frontend **and** E2E suite, and doesn't solve the algorithmic items anyway. |
 | SignalR batch coalescing (condense N step events per execution into one delta) | If the concurrency plateau is to be lifted beyond the current ~600 in-flight steps. The only remaining way there. |
 | Backend mini benchmark (`BenchmarkDotNet`) | When perf claims need to be substantiated. Not preventively. |
@@ -342,7 +342,7 @@ and get re-analyzed.
 ### Disproved by measurement (Performance)
 
 All of the following levers were measured in real 500-parallel stress tests and are
-**actively harmful**. Evidence, numbers, and reasoning: [`performance-improvements.md`](performance-improvements.md).
+**actively harmful**. Evidence, numbers, and reasoning: [`archived/performance-measurements.md`](archived/performance-measurements.md).
 
 | Idea | Measured result |
 |---|---|
@@ -417,7 +417,7 @@ Not our problem, but documented so it isn't tried again:
 |---|---|
 | [`db-schema-audit-followups.md`](db-schema-audit-followups.md) | Measurement queries, thresholds, and resumption conditions for F3/F7/F9. The format of this document is the template for all R2 items. |
 | [`ai-feature-ideas.md`](ai-feature-ideas.md) | User problem, functional description, and security boundaries per AI idea. Prioritization lives here in the roadmap. |
-| [`performance-improvements.md`](performance-improvements.md) | Implemented optimizations, tuning insights, and the measurement logs behind the blocklist above. |
+| [`performance-improvements.md`](performance-improvements.md) | Effective sizing and tuning. The measurement logs behind the blocklist above are in [`archived/performance-measurements.md`](archived/performance-measurements.md). |
 | [`security-findings.md`](security-findings.md) | Register of **fixed** findings with fix and test. Not a backlog. |
 | [`alerting-rule-templates-plan.md`](alerting-rule-templates-plan.md) | Detailed plan for item 20: catalog schema, batch contract, routeless drafts, PR cut. State of the decision, not of the code. |
 | [`alerting.md`](alerting.md) · [`custom-activities.md`](custom-activities.md) · [`enterprise-features.md`](enterprise-features.md) | Domain detail for the respective areas. |

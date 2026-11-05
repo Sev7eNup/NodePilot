@@ -24,40 +24,43 @@ $env:PATH += ';C:\Tools\NodePilot-Cli'   # dauerhaft über Systemeigenschaften �
 np auth login --server https://nodepilot.example.com
 ```
 
-> **Konventionen in den Beispielen:** `<ARG>` = erforderlich, `[ARG]` = optional. `<ID-OR-NAME>` nimmt eine Workflow-GUID **oder** den Workflow-Namen (exakte Schreibweise gewinnt, sonst case-insensitive; mehrdeutige Namen → Fehler mit GUID-Hinweis). Destruktive Befehle fragen interaktiv nach. `delete` und `force-unlock` kennen kein `--yes`; in CI/Pipes stdin umleiten, dann entfällt die Rückfrage. `db --write`, `secrets reencrypt` und `settings restart-service` nehmen `--yes` oder überspringen die Rückfrage bei umgeleitetem stdin. `backup restore` und die rekursiven Ordner-Löschungen (`--recursive`) verlangen bei umgeleitetem stdin `--yes` und brechen ohne ab. `--file -` liest überall von stdin.
+> **Konventionen in den Beispielen:** `<ARG>` = erforderlich, `[ARG]` = optional. `<ID-OR-NAME>` nimmt eine Workflow-GUID **oder** den Workflow-Namen (exakte Schreibweise gewinnt, sonst case-insensitive; mehrdeutige Namen → Fehler mit GUID-Hinweis). Destruktive Befehle fragen interaktiv nach. `delete` und `force-unlock` kennen kein `--yes`; in CI/Pipes stdin umleiten, dann entfällt die Rückfrage. `db --write`, `secrets reencrypt` und `settings restart-service` nehmen `--yes` oder überspringen die Rückfrage bei umgeleitetem stdin. `backup restore` und die rekursiven Ordner-Löschungen (`--recursive`) verlangen bei umgeleitetem stdin `--yes` und brechen ohne ab. `--file -` liest bei `workflow import`/`import-scorch`, `globals import` und `settings put`/`test` von stdin (bei `workflow step-test` entsprechend `--config-file -`).
 
 ## Command-Bereiche
 
 | Bereich | Subcommands |
 |---|---|
+| `agent` | runs/events, mcp list/tools/save/delete, skill list/import/enabled/delete |
 | `auth` | login / logout / whoami / **methods** (Local/LDAP/Windows; OIDC ist browserbasiert und über `/api/auth/methods` discoverbar) |
-| `workflow` | list/get/run/lock/unlock/publish/enable/disable/cancel-all/duplicate/delete/export/import/versions/rollback/force-unlock/import-scorch/stats/**contract**/**coverage**/**trigger**/**step-test**/**move-folder** |
+| `workflow` | list/get/run/lock/unlock/publish/enable/disable/cancel-all/concurrency-limit/duplicate/delete/export/import/versions/version/rollback/force-unlock/import-scorch/stats/**contract**/**coverage**/**trigger**/**step-test**/step-test-context/**move-folder** |
 | `exec` | list/get/steps/cancel/retry/watch/resume/paused-steps |
-| `machine` / `credential` / `globals` | list/create/update/delete (+ globals export/import) |
+| `machine` / `credential` / `globals` | list/create/update/delete (+ machine/credential get, machine test, globals export/import/move-folder/folder) |
 | `user` | CRUD |
 | `shared-folder` | org RBAC: list/create/rename/move/delete (`--recursive` samt Inhalt)/permissions/grant/revoke |
 | `maintenance` | Maintenance Windows: list/get/create/update/delete |
 | `audit` | `audit list` |
-| `alerting` | list/get/create/update/delete/test-fire/deliveries (Create/Edit/Delete/Test-Fire nur für Admins — siehe [Alerting](alerting)) |
+| `alerting` | catalog/list/get/create/update/delete/test-fire/deliveries (Create/Edit/Delete/Test-Fire nur für Admins — siehe [Alerting](alerting)) |
 | `system-alert` | catalog/list/get/create/update/enable/disable/delete/test-fire — System-Alert-Policies (ADR 0008); create/update lesen eine `SaveSystemAlertPolicyRequest`-JSON via `--file` |
 | `health` | Health-Check (live/ready/leader) |
 | `cron` | `cron next` |
 | `db` | info/query (Read-Default, `--write` opt-in) |
 | `dashboard` | Stats |
 | `failure-causes` | Letzte Fehlschläge, gruppiert nach normalisierter Meldung (`--window-hours 1..720`, Default 24) |
+| `dependencies` | list/show/evidence (gespeicherte Abhängigkeiten zwischen Workflows, Maschinen, Credentials, Variablen und Custom Activities) |
 | `operations` | graph (Live-Ops-Snapshot: Workflows, Call-Graph, laufende + kürzlich beendete Executions; RBAC-folder-scoped; `--window 30\|60`) |
 | `observability` | summary/**query**/**query-range** |
-| `settings` | status/system-info/effective-sizing/get/put/test smtp\|llm |
+| `settings` | status/restart-service/system-info/effective-sizing/get/put/test smtp\|llm |
 | `secrets` | **reencrypt** |
 | `backup` | manifest/export/preview/restore |
 | `config` | get/set |
 
 ## Globale Flags
 
-Auf jedem Befehl — Basis-Settings-Klasse `GlobalOptions`:
+Auf jedem Befehl — Basis-Settings-Klasse `GlobalSettings` (`Settings/GlobalOptions.cs`):
 
 ```
 --server <URL>        Server-URL für diesen Aufruf überschreiben
+--allow-insecure      HTTP nur für einen expliziten Loopback-Server erlauben (nur Entwicklung)
 --profile <NAME>      Benanntes Verbindungsprofil (Default: 'default')
 --tls-thumbprint <S>  Genau dieses Serverzertifikat akzeptieren (SHA-256-Fingerprint)
 --insecure-tls        Zertifikatsprüfung nur für diesen Aufruf überspringen (nie gespeichert)
@@ -373,10 +376,11 @@ np observability query-range --query "rate(nodepilot_workflows_total[5m])" \
 np alerting catalog                           # Event-Typen, Filter-Felder, Kanäle
 np alerting list
 np alerting get 9a2f...
-np alerting create --file ./rule.json
-np alerting update 9a2f... --file ./rule.json
+np alerting create --name "Prod-Fehler" --event-types ExecutionFailed \
+  --scope Workflows --workflow 21f1c0d4-... --email ops@internal   # Regel komplett per Flags
+np alerting update 9a2f... --cooldown-minutes 15 --disabled                 # nur übergebene Felder ändern
 np alerting test-fire 9a2f...
-np alerting deliveries 9a2f...                # Zustell-Ledger der Regel
+np alerting deliveries --rule 9a2f...         # Zustell-Ledger der Regel (--status Pending|Sent|Failed)
 np alerting deliveries --limit 50 -o json
 np alerting delete 9a2f...
 
@@ -388,7 +392,7 @@ np operations graph --window 60               # Rückblick für beendete Läufe:
 
 Einzeln aufgelistet werden die neuesten 4000 beendeten Läufe des Fensters. Gibt es mehr,
 liefert `density[]` zusätzlich gebucketete Zähler (`total`/`failed`/`cancelled` je Workflow und
-Zeitscheibe) über das **ganze** Fenster — „wie viel lief in den letzten vier Stunden?" bleibt
+Zeitscheibe) über das **ganze** Fenster — „wie viel lief in der letzten Stunde?" bleibt
 also beantwortbar, auch wenn nicht jeder Lauf einzeln aufgeführt ist. Die Tabellenausgabe nennt
 in dem Fall die Gesamtzahl; `meta.densityBucketSeconds` gibt die Scheibenbreite,
 `meta.densityCapped` sagt, dass selbst die Zähler nur eine Untergrenze sind.
@@ -504,7 +508,7 @@ Regeln, die dabei gelten:
 
 ## Token-Storage
 
-DPAPI-verschlüsselt (`CurrentUser`-Scope) unter `%APPDATA%\NodePilot\session-<profile>.dat`. Refresh transparent via `TokenRefreshHandler`. Plaintext-Config (Server-URL, Default-Profile, TLS-Pin) in `config.json`.
+DPAPI-verschlüsselt (`CurrentUser`-Scope) unter `%APPDATA%\NodePilot\session-<profile-hash>.dat` (eine Datei pro Profil; der Name ist ein SHA-256-Hash des Profilnamens ohne Beachtung der Groß-/Kleinschreibung). Refresh transparent via `TokenRefreshHandler`. Plaintext-Config (Server-URL, Default-Profile, TLS-Pin) in `config.json`.
 
 ## Architektur-Konvention
 

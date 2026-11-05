@@ -97,7 +97,8 @@ Deep links into the docs have the form `https://www.nodepilot.run/docs/<language
   relative to the root. The prerender raises it per depth and sets
   `<meta name="np-site-base">` to the same prefix; `main.ts` reads the meta to turn the address
   into a route, and `setBasePrefix()` passes it on to the docs links. **Whoever adds a new
-  route registers it in `ROUTE_PATHS` or `ARTICLE_SLUGS` and in `routePages()`** —
+  route registers it in `ROUTE_PATHS` or `SOLUTION_SLUGS` (articles: `src/site/blog-catalog.json`,
+  from which `ARTICLE_SLUGS` is derived) and in `routePages()`** —
   otherwise no file is created and the address ends up on the 404 page.
 
 - **Old docs and website links:** The docs used to live at the Pages root
@@ -108,8 +109,9 @@ Deep links into the docs have the form `https://www.nodepilot.run/docs/<language
   former German segments (`produkt` → `product`, `erleben` → `walkthrough`,
   `warum-nodepilot` → `why-nodepilot`). The same renames are in
   `src/site/public/.htaccess` as 301s, for requests without a hash. Website routes are
-  `SITE_ROUTE_SEGMENTS` from `src/site/router.ts` (`walkthrough`, `product`, `blog`, `impressum`,
-  `datenschutz`); the same list appears verbatim in the redirect script. A new route belongs in
+  `SITE_ROUTE_SEGMENTS` from `src/site/router.ts` (`walkthrough`, `product`, `tutorials`, `blog`,
+  `impressum`, `datenschutz`, `powershell-automation`, `scorch-alternative`,
+  `self-hosted-automation`); the same list appears verbatim in the redirect script. A new route belongs in
   both lists and must not collide with any docs path or any language.
 - **Light/dark:** The website has a toggle in the header next to the language switch. `:root` carries the
   light tokens (those of the app), `html.dark` the dark ones; `src/site/public/theme-init.js` sets the
@@ -202,7 +204,7 @@ Before the first run, install Chromium with `npx playwright install chromium`.
 Marketing media live in `pages-media/`. The normal build for server and desktop does not contain
 them. Only `scripts/assemble-site.mjs` copies them to
 `_site/media/` when assembling `_site/` (see [Project website](#project-website)). The video address
-`…/NodePilot/media/nodepilot-product-tour.mp4` and with it the README video link therefore stay
+`https://www.nodepilot.run/media/nodepilot-product-tour.mp4` and with it the README video link therefore stay
 stable. `.gitattributes` excludes `pages-media/` via `export-ignore` from the `git archive` snapshot
 for `knowledge/source`.
 
@@ -217,11 +219,11 @@ Icons: `@carbon/icons-react` — the same library as the main UI, and where a do
 
 The sidebar is a single `<aside>` for both layouts: from `lg` upward a sticky 292px rail, below that an off-canvas drawer. The mobile branch is deliberately written with `max-lg:` utilities (not with `lg:` overrides) — a `translate` that survives into the desktop layout would turn the element into the containing block for `position: fixed`.
 
-Content in Markdown, organised into `getting-started/`, `concepts/`, `designer/`, `api/`, `security/`, `enterprise/`, `configuration/`, `deployment/` plus top-level reference pages (`activities-reference`, `triggers`, `cli`, `ai-features`, `observability`, `import-export`).
+Content in Markdown, organised into `getting-started/`, `concepts/`, `designer/`, `api/`, `security/`, `enterprise/`, `configuration/`, `deployment/` plus top-level reference pages (`activities-reference`, `triggers`, `cli`, `ai-features`, `alerting`, `mcp-server`, `observability`, `import-export`).
 
 Content source: `CLAUDE.md` + `docs/` in the repo root.
 
-**Delivery in the product:** `deploy/Build-Artifact.ps1` and `deploy/desktop/Build-DesktopInstaller.ps1` build the docs along with everything else and place them in `wwwroot/docs`; the API serves them under `/docs` so that an installation without internet has the runbooks. That is why the Vite `base` stays relative. `-SkipFrontend` skips both npm builds, `-SkipNpmCi` applies to both.
+**Delivery in the product:** `deploy/Build-Artifact.ps1` and `deploy/desktop/Build-DesktopInstaller.ps1` build the docs along with everything else and place them in `wwwroot/docs`; the API serves them under `/docs` so that an installation without internet has the runbooks. That is why the Vite `base` stays relative. In `Build-Artifact.ps1`, `-SkipFrontend` skips both npm builds and `-SkipNpmCi` applies to both; in `Build-DesktopInstaller.ps1`, `-SkipSpaBuild` skips both.
 
 ## Writing style of the content
 

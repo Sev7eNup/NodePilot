@@ -121,11 +121,11 @@ cd src\nodepilot-docs-ui; npm run dev     # documentation website, port 5174 —
 
   Both steps are covered by `MigrationDriftTests` — run them instead of relying on memory.
 - Schema changes ALWAYS via EF migration. No DDL hot-patching.
-- Credentials encrypted with DPAPI (`Credentials:DpapiScope`). DB TLS is strict (`DatabaseTlsBootValidator`); escape conditions, retention services and all background services: `docs/claude-reference.md`.
+- Credentials encrypted with DPAPI (`Credentials:DpapiScope`). DB TLS is strict (`DatabaseTlsBootValidator`); escape conditions, retention services and all background services: `docs/claude-reference.md` § Database and background services.
 
 ### Database availability (runtime outage, ADR 0011)
 
-Process-wide in-memory breaker (`NodePilot.Data.Availability`): if the DB fails at runtime, `/api` answers `503 DATABASE_UNAVAILABLE` immediately instead of hanging. Invariants and health endpoints: `docs/adr/0011-database-availability-breaker.md` + `docs/claude-reference.md`. Two invariants stand here because with only this file you would otherwise "repair" them:
+Process-wide in-memory breaker (`NodePilot.Data.Availability`): if the DB fails at runtime, `/api` answers `503 DATABASE_UNAVAILABLE` immediately instead of hanging. Invariants and health endpoints: `docs/adr/0011-database-availability-breaker.md`. Two invariants stand here because with only this file you would otherwise "repair" them:
 
 - **Only the probe publishes `Available`** (`SELECT 1` on its own unpooled connection, never `CanConnectAsync`); EF interceptors only degrade, a command timeout only arms the probe. Background services park via `WaitUntilServableAsync`.
 - `Database:AuthReadTimeoutSeconds` and the other availability budgets are restart-required boot config and deliberately **not** a `SettingsSchema` entry — the connection string belongs on no HTTP surface.
@@ -147,7 +147,7 @@ Routes + role gating live on the controllers in `src/NodePilot.Api/Controllers/`
 | `POST /cancel-all` | Cancels all `Running` **and** `Pending` executions of the workflow. |
 | `PUT /concurrency-limit` | Sets `MaxConcurrentExecutions` (1..1000, `null` = unlimited). `maxConcurrentExecutions` is **required** (missing → 400, otherwise `{}` would silently clear the limit), `0` is rejected. No edit lock, no version bump, no history snapshot. |
 | `POST /executions/{id}/cancel\|retry\|resume` | A single run. Resume body: `{"stepId": "<node-id>", "mode": "continue"\|"stepOver"\|"stop", "overrides": {}}` — `stepId` is **required**. |
-| `POST /{id}/rollback` | Like `Update`, snapshots the previous definition into the version history. |
+| `POST /{id}/rollback/{version}` | Like `Update`, snapshots the previous definition into the version history. |
 
 **Disable+cancel-all = quarantine.**
 
@@ -164,7 +164,7 @@ Workflows have a per-user edit lock (`CheckedOutByUserId` + `CheckedOutAt`). Mut
 | `POST /publish` | Atomic: save + `IsEnabled=true` + unlock. Validates the **submitted** body first: weak webhook HMAC secret → `400 weak_webhook_hmac_secret`, cron expression invalid for Quartz → `400 invalid_cron_expression`, `waitNofM` above its inputs → `400 invalid_junction_required_count`. `enable` checks the same on the saved definition. |
 | `POST /force-unlock` | Admin-only. Breaks someone else's lock. |
 
-UX flow and button-state matrix: `docs/workflow-designer-features.md`. In short: `canWrite = role !== 'Viewer' && checkedOutByUserId === currentUserId`.
+UX flow: `docs/workflow-designer-features.md` § Editing and publishing. In short: `canWrite = role !== 'Viewer' && checkedOutByUserId === currentUserId`.
 
 ## Activity types
 
@@ -174,7 +174,7 @@ UX flow and button-state matrix: `docs/workflow-designer-features.md`. In short:
 - **Engine-local:** `restApi`, `sql`, `emailNotification`, `delay`, `log`, `generateText`, `llmQuery`, `aiAgent`, `aiAgentTeam` + controlFlow: `junction`, `forEach`, `decision`, `startWorkflow`, `returnData`
 - **Hybrid:** `runScript`, `waitForCondition`, `xmlQuery`, `jsonQuery`
 
-Config keys & output semantics per activity and process isolation (`config.isolated: true`, local only, no-op on the WinRM path): `docs/claude-reference.md`.
+Config keys & output semantics per activity: `activity-config-reference.json` + `src/nodepilot-docs-ui/content/en/activities-reference.md`; process isolation (`config.isolated: true`, local only, no-op on the WinRM path): `docs/claude-reference.md` § Activities and script execution.
 
 - **Retry per step:** `config.retry` (`maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`). Permanent remote errors (rejected WinRM logon, blocked HTTP session, undecryptable credential) are **not** retried — otherwise a step locks out an account.
 - **Execution timeout:** `timeoutSeconds` in the execute body + per-step `config.timeoutSeconds`.
@@ -220,7 +220,7 @@ Custom rules (`Kind=Custom`, execution events, filter AST = the same `ConditionE
 }
 ```
 
-`data.controlPoints` overrides auto-routing. If it is missing → the existing routing applies. Implementation details: `docs/workflow-designer-features.md`.
+`data.controlPoints` overrides auto-routing. If it is missing → the existing routing applies. Format details: `docs/workflow-styleguide.md` § 7.2.
 
 Layout style guide for workflow JSONs: read `docs/workflow-styleguide.md` **first**. Reference example: `scripts/test-master-all-activities.json`.
 
@@ -234,7 +234,7 @@ Layout style guide for workflow JSONs: read `docs/workflow-styleguide.md` **firs
 - `{{manual.NAME}}` — the run's trigger input (the same keys are also available as `param.*` of the trigger node). Declared `manualTrigger` parameters are seeded with their `default` at run start when the caller omits them. A declared parameter **without** a default stays absent, and the reference fails.
 - No `outputVariable` → the step ID is used: `{{step-123.output}}`
 
-**A published value has exactly one owner (SCOrch model).** `{{activity.param.name}}` is binding and resolves for **every** descendant; the resolver binds the unqualified short name (`$name` in `runScript`) only when there is **exactly one** publisher on the ancestor path; with two, **nothing** is bound. Linter code `dup-published-param`, reported only for self-chosen names (`WorkflowDataBusAnalyzer.AuthoredParameters` vs. `TypeDerivedParameters`). Details: `docs/workflow-designer-features.md`.
+**A published value has exactly one owner (SCOrch model).** `{{activity.param.name}}` is binding and resolves for **every** descendant; the resolver binds the unqualified short name (`$name` in `runScript`) only when there is **exactly one** publisher on the ancestor path; with two, **nothing** is bound. Linter code `dup-published-param`, reported only for self-chosen names (`WorkflowDataBusAnalyzer.AuthoredParameters` vs. `TypeDerivedParameters`, `src/NodePilot.Core/WorkflowDefinitions/`).
 
 **Contract guarantee:** three patterns in `VariableResolver` — `GlobalsPattern`, `ManualPattern` and `StepPattern` with exactly four tails (`output`, `error`, `success`, `param.X`). Other tails stay literal; unresolved → granular diagnostics per namespace (StepRunner T-7.1). The globals pattern also applies to `runScript`/custom activities, because a non-existent global is never legitimate script text. If **loading** the globals fails, a run that references globals ends as `Failed` before the first step. **A new namespace needs its own pattern** — a freely chosen tail can in principle never be matched by `StepPattern`.
 
@@ -272,9 +272,9 @@ Layout style guide for workflow JSONs: read `docs/workflow-styleguide.md` **firs
 | `webhookTrigger` | HTTP `/api/webhooks/{name}/{path}` |
 | `manualTrigger` | UI / API |
 
-`TriggerOrchestrator` scans every 5 s. Trigger data lands as `manual.*` variables in the run + as `param.*` of the trigger node — **no** `trigger.*` namespace. Key names, config contract, liveness and delivery: `docs/claude-reference.md` § Triggers and child workflows. Invariants:
+`TriggerOrchestrator` scans every 5 s. Trigger data lands as `manual.*` variables in the run + as `param.*` of the trigger node — **no** `trigger.*` namespace. Key names and config contract: `activity-config-reference.json`. Invariants:
 
-- **A trigger key lives once in `Core/Triggers/`** and is read by the node executor (`Engine/Triggers/`) and the background source (`Scheduler/Sources/`). New key = settings class + `activity-config-reference.json` + designer field, otherwise `TriggerContractParityTests` breaks. `databaseTrigger` fires on a **sentinel change**, not per row.
+- **Both trigger runtimes read only documented keys:** the node executor (`Engine/Triggers/`) and the background source (`Scheduler/Sources/`) read only keys from `activity-config-reference.json`; `eventLogTrigger` and `databaseTrigger` also parse through a shared settings class in `Core/Triggers/`. New key = reference entry + both runtimes (through the settings class where there is one) + designer field, otherwise `TriggerContractParityTests` breaks. `databaseTrigger` fires on a **sentinel change**, not per row.
 - **No catch-up after restart or failover:** the durable cursor deduplicates, it does not backfill — signals from a downtime window are discarded (`nodepilot.scheduler.triggers.fires_skipped`).
 - `ITriggerSource.Health` is a **pure in-memory read**; `unhealthy` → the source is evicted and rebuilt with backoff; a `FileSystemWatcher` cannot be re-armed in place. Buffer overflow is deliberately **not** a fault.
 - **webhookTrigger:** `signatureMode` = `header` (default) or `nodepilot-hmac-v2`; **legacy `hmac` (body-only) is rejected.** `fieldMappings` extracts body fields via JSONPath as `manual.*`.
@@ -391,7 +391,7 @@ Both are pure HTTP clients against the REST API — **no** backend path of their
 - **Security headers (non-dev):** HSTS, CSP, X-Frame-Options=DENY, nosniff, Referrer-Policy. **SignalR auth** via the httpOnly `np_auth` cookie on the WebSocket upgrade (only `/hubs/`); no `?access_token=` query string.
 - **REST API proxy:** `RestApi:Proxy:Enabled` (default `false`). Per-step override via `proxyMode`.
 
-**Hardening flags** — table with defaults and effect: `docs/threat-model.md`. Two subtleties: `Webhook:RequireSecret` is **default `true`** (a missing key reads as `true`), and `WaitForCondition:AllowedHosts` is a **separate** list for the `portOpen`/`httpOk` probes, deliberately apart from `RestApi:AllowedHosts` and the **sole** authority for both probe types.
+**Hardening flags** — table with defaults and effect: `src/nodepilot-docs-ui/content/en/security/hardening.md`. Two subtleties: `Webhook:RequireSecret` is **default `true`** (a missing key reads as `true`), and `WaitForCondition:AllowedHosts` is a **separate** list for the `portOpen`/`httpOk` probes, deliberately apart from `RestApi:AllowedHosts` and the **sole** authority for both probe types.
 
 ## Admin settings hot reload
 
@@ -429,6 +429,6 @@ Separate from workflow export: a portable, passphrase-encrypted configuration ba
 
 ## Production deployment
 
-Rollout via the `deploy/` scripts (approval rule under *Running the project*). Docs: `deploy/README.md`; architecture, config keys and pitfalls: `docs/deployment-guide.md`. **Desktop app** (Electron, `deploy/desktop/`, `Deployment:Mode=Desktop`): relaxes **only** loopback DB TLS + Kestrel `ListenLocalhost`, the rest stays production-hardened — `deploy/desktop/README.md`.
+Rollout via the `deploy/` scripts (approval rule under *Running the project*). Docs: `deploy/README.md`; verification, host requirements and troubleshooting: `docs/deployment-guide.md`. **Desktop app** (Electron, `deploy/desktop/`, `Deployment:Mode=Desktop`): relaxes **only** loopback DB TLS + Kestrel `ListenLocalhost`, the rest stays production-hardened — `deploy/desktop/README.md`.
 
 **Mandatory before every release:** the lab matrix `scripts/release-lab/` against the signed artifacts from `out\` — server setup in all identity/DB combinations, fresh and as an update, each with uninstall, plus the desktop setup on the lab client. Both setups test direct upgrades from each of the last five published stable versions to the candidate (20 server and five desktop upgrade cases; no skipped mandatory paths). Then the test suite `scripts/test-suite/` on the hardened lab instance with `fail=0`. No tag without a green run of all three (`RELEASING.md` step 6). The computer-use run `scripts/release-lab/computer-use/` is experimental and not a gate.

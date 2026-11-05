@@ -238,7 +238,7 @@ whose UNC share went away, a cron the scheduler rejects — exposing `unhealthyS
 trigger has none of, and `service-stale` only measures heartbeat age — the orchestrator keeps beating
 because its own sync pass succeeds even while every trigger it manages is broken. The shipped preset
 fires at `unhealthySeconds > 60`, past the point where a share restart or a brief network blip
-explains it. Runtime mechanics: see the trigger-liveness section in `docs/claude-reference.md`.
+explains it. Runtime mechanics: "Trigger liveness" in `docs/claude-reference.md` § Triggers and child workflows.
 
 > **Two caveats specific to this source.** It is the only one reading process memory instead of the
 > database, because trigger registrations are process-local: a persisted row would outlive the

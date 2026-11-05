@@ -72,7 +72,7 @@ Bei solchen Anpassungen entfällt vor allem das wiederholte Übertragen zwischen
 
 ## Die Dienstprüfung zum Workflow erweitern
 
-Über „KI generieren“ in der Workflow-Übersicht öffnet sich der Dialog für einen neuen Entwurf. Je deutlicher die Beschreibung den Auslöser und das erwartete Ergebnis benennt, desto genauer ist die Aufgabe eingegrenzt. Für die Dienstprüfung könnte sie folgendermaßen lauten:
+Über „Neuer KI-Workflow“ in der Workflow-Übersicht öffnet sich der Dialog für einen neuen Entwurf. Je deutlicher die Beschreibung den Auslöser und das erwartete Ergebnis benennt, desto genauer ist die Aufgabe eingegrenzt. Für die Dienstprüfung könnte sie folgendermaßen lauten:
 
 > Erstelle einen manuell gestarteten Workflow mit einer PowerShell-Dienstabfrage auf einer noch auszuwählenden Windows-Maschine. Verwende den oben beschriebenen JSON-Bericht. Erfolgreich gelesene, angehaltene Dienste sind Inventarbefunde. Fehlgeschlagene Abfragen müssen den Prüfschritt fehlschlagen lassen. Nimm keine Änderungen an Diensten vor und füge keine automatische Reparatur hinzu.
 
@@ -123,7 +123,7 @@ Die Aussagekraft dieser Zusammenfassung bleibt an die übergebenen Informationen
 
 ### Zusätzliche Quellen mit einem Agenten untersuchen
 
-Ein „AI Agent“ kann ausgewählte Werkzeuge einsetzen und aus deren Ergebnissen ableiten, welche Abfrage als Nächstes erforderlich ist. Die Einrichtung beginnt mit einer Aufgabenbeschreibung im Designer. Danach wird festgelegt, welche Werkzeuge der Agent verwenden darf und mit welchen Zugangsdaten er auf die Zielmaschine zugreift. Für Dateizugriffe müssen zusätzlich erlaubte absolute Pfade hinterlegt sein.
+Ein „KI-Agent“ kann ausgewählte Werkzeuge einsetzen und aus deren Ergebnissen ableiten, welche Abfrage als Nächstes erforderlich ist. Die Einrichtung beginnt mit einer Aufgabenbeschreibung im Designer. Danach wird festgelegt, welche Werkzeuge der Agent verwenden darf und mit welchen Zugangsdaten er auf die Zielmaschine zugreift. Für Dateizugriffe müssen zusätzlich erlaubte absolute Pfade hinterlegt sein.
 
 Eine mögliche Aufgabe lautet:
 
@@ -133,7 +133,7 @@ ContosoSync und der angegebene Pfad sind Beispielwerte, die durch die Angaben de
 
 Agenten arbeiten derzeit unter einer lesenden Ausführungsrichtlinie. NodePilot prüft die unterstützten Operationen und blockiert unzulässige Zugriffe, während der veröffentlichte Agent innerhalb dieser Grenzen selbstständig vorgeht. Eine Bestätigung für jeden Werkzeugaufruf ist nicht vorgesehen. Ein Reparaturvorschlag im Bericht bleibt ein Vorschlag, die darin beschriebene Änderung hat der Agent damit nicht ausgeführt.
 
-Sollen sich mehrere Zuständigkeiten ergänzen, lässt sich die Untersuchung mit „AI Agent Team“ aufteilen. Die Teamleitung kann unabhängige Fragen innerhalb der eingestellten Grenzen parallel an Spezialisten vergeben und deren Befunde anschließend prüfen lassen. Währenddessen erhalten die Mitglieder Hinweise auf neue Belege und Untersuchungsfragen ihrer Kollegen. Diese Hinweise ersetzen keine Originalbelege. Das Journal macht die einzelnen Aufträge einschließlich der Werkzeugaufrufe und Ergebnisse nachvollziehbar.
+Sollen sich mehrere Zuständigkeiten ergänzen, lässt sich die Untersuchung mit „KI-Agententeam“ aufteilen. Die Teamleitung kann unabhängige Fragen innerhalb der eingestellten Grenzen parallel an Spezialisten vergeben und deren Befunde anschließend prüfen lassen. Währenddessen erhalten die Mitglieder Hinweise auf neue Belege und Untersuchungsfragen ihrer Kollegen. Diese Hinweise ersetzen keine Originalbelege. Das Journal macht die einzelnen Aufträge einschließlich der Werkzeugaufrufe und Ergebnisse nachvollziehbar.
 
 Für die weitere Verarbeitung unterscheidet NodePilot zwischen dem technischen Abschluss und der inhaltlichen Bewertung eines Laufs. Dass eine Activity erfolgreich beendet wurde, sagt noch nichts darüber aus, ob die Untersuchung vollständig ist. Nachfolgende Schritte können deshalb zusätzlich zum Ausführungsstatus den Wert `outcome` berücksichtigen. Auch `completed` bezeichnet dabei eine Bewertung der Aufgabenerfüllung und belegt nicht die Richtigkeit jeder einzelnen Modellaussage.
 

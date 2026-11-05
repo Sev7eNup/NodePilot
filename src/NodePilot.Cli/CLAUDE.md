@@ -2,7 +2,7 @@
 
 Applies to `src/NodePilot.Cli/`. Project-wide rules are in the root `CLAUDE.md`.
 
-Pure HTTP client against the REST endpoints (Spectre.Console.Cli), shipped with both installers (`<install>\tools\np`, machine PATH via `deploy/MachinePath.ps1`), from the checkout via `dotnet publish` — **not** a `dotnet global tool` (`PackAsTool` × `net10.0-windows` = NETSDK1146). Command areas: `auth`, `workflow`, `exec`, `machine`, `credential`, `globals`, `user`, `shared-folder`, `maintenance`, `alerting`, `system-alert`, `audit`, `backup`, `db`, `cron`, `health`, `dashboard`, `failure-causes`, `operations`, `observability`, `settings`, `secrets`, `config`. Details: `docs/claude-reference.md`.
+Pure HTTP client against the REST endpoints (Spectre.Console.Cli), shipped with both installers (`<install>\tools\np`, machine PATH via `deploy/MachinePath.ps1`), from the checkout via `dotnet publish` — **not** a `dotnet global tool` (`PackAsTool` × `net10.0-windows` = NETSDK1146). Command areas: `agent`, `auth`, `workflow`, `exec`, `machine`, `credential`, `globals`, `user`, `shared-folder`, `maintenance`, `alerting`, `system-alert`, `audit`, `backup`, `db`, `cron`, `health`, `dashboard`, `failure-causes`, `operations`, `dependencies`, `observability`, `settings`, `secrets`, `config`. Details: `src/nodepilot-docs-ui/content/en/cli.md`.
 
 **Architecture convention:** New API endpoint → add a method in `NodePilotApiClient.cs` + a command in parallel. Duplicate DTOs in `Cli/Api/Dtos/` (no ProjectReference).
 

@@ -24,40 +24,43 @@ $env:PATH += ';C:\Tools\NodePilot-Cli'   # permanently through System properties
 np auth login --server https://nodepilot.example.com
 ```
 
-> **Conventions in the examples:** `<ARG>` = required, `[ARG]` = optional. `<ID-OR-NAME>` takes a workflow GUID **or** the workflow name (exact case wins, otherwise case-insensitive; ambiguous names → an error naming the GUIDs). Destructive commands prompt interactively. `delete` and `force-unlock` have no `--yes`; in CI/pipes, redirect stdin and the prompt is skipped. `db --write`, `secrets reencrypt` and `settings restart-service` take `--yes`, or skip the prompt when stdin is redirected. `backup restore` and the recursive folder deletes (`--recursive`) need `--yes` when stdin is redirected and refuse to run without it. `--file -` reads from stdin everywhere.
+> **Conventions in the examples:** `<ARG>` = required, `[ARG]` = optional. `<ID-OR-NAME>` takes a workflow GUID **or** the workflow name (exact case wins, otherwise case-insensitive; ambiguous names → an error naming the GUIDs). Destructive commands prompt interactively. `delete` and `force-unlock` have no `--yes`; in CI/pipes, redirect stdin and the prompt is skipped. `db --write`, `secrets reencrypt` and `settings restart-service` take `--yes`, or skip the prompt when stdin is redirected. `backup restore` and the recursive folder deletes (`--recursive`) need `--yes` when stdin is redirected and refuse to run without it. `--file -` reads from stdin for `workflow import`/`import-scorch`, `globals import` and `settings put`/`test` (for `workflow step-test`, `--config-file -` does the same).
 
 ## Command areas
 
 | Area | Subcommands |
 |---|---|
+| `agent` | runs/events, mcp list/tools/save/delete, skill list/import/enabled/delete |
 | `auth` | login / logout / whoami / **methods** (Local/LDAP/Windows; OIDC is browser-based and discoverable through `/api/auth/methods`) |
-| `workflow` | list/get/run/lock/unlock/publish/enable/disable/cancel-all/duplicate/delete/export/import/versions/rollback/force-unlock/import-scorch/stats/**contract**/**coverage**/**trigger**/**step-test**/**move-folder** |
+| `workflow` | list/get/run/lock/unlock/publish/enable/disable/cancel-all/concurrency-limit/duplicate/delete/export/import/versions/version/rollback/force-unlock/import-scorch/stats/**contract**/**coverage**/**trigger**/**step-test**/step-test-context/**move-folder** |
 | `exec` | list/get/steps/cancel/retry/watch/resume/paused-steps |
-| `machine` / `credential` / `globals` | list/create/update/delete (+ globals export/import) |
+| `machine` / `credential` / `globals` | list/create/update/delete (+ machine/credential get, machine test, globals export/import/move-folder/folder) |
 | `user` | CRUD |
 | `shared-folder` | Org RBAC: list/create/rename/move/delete (`--recursive` deletes contents too)/permissions/grant/revoke |
 | `maintenance` | Maintenance windows: list/get/create/update/delete |
 | `audit` | `audit list` |
-| `alerting` | list/get/create/update/delete/test-fire/deliveries (create/edit/delete/test-fire are admin only — see [Alerting](alerting)) |
+| `alerting` | catalog/list/get/create/update/delete/test-fire/deliveries (create/edit/delete/test-fire are admin only — see [Alerting](alerting)) |
 | `system-alert` | catalog/list/get/create/update/enable/disable/delete/test-fire — system alert policies (ADR 0008); create/update read a `SaveSystemAlertPolicyRequest` JSON through `--file` |
 | `health` | The health check (live/ready/leader) |
 | `cron` | `cron next` |
 | `db` | info/query (read by default, `--write` opt-in) |
 | `dashboard` | Statistics |
 | `failure-causes` | Recent failures grouped by their normalized message (`--window-hours 1..720`, default 24) |
+| `dependencies` | list/show/evidence (saved relationships between workflows, machines, credentials, variables and custom activities) |
 | `operations` | graph (a live-ops snapshot: workflows, the call graph, running and recently finished executions; RBAC folder-scoped; `--window 30\|60`) |
 | `observability` | summary/**query**/**query-range** |
-| `settings` | status/system-info/effective-sizing/get/put/test smtp\|llm |
+| `settings` | status/restart-service/system-info/effective-sizing/get/put/test smtp\|llm |
 | `secrets` | **reencrypt** |
 | `backup` | manifest/export/preview/restore |
 | `config` | get/set |
 
 ## Global flags
 
-Available on every command — from the base settings class `GlobalOptions`:
+Available on every command — from the base settings class `GlobalSettings` (`Settings/GlobalOptions.cs`):
 
 ```
 --server <URL>        Override the server URL for this call
+--allow-insecure      Allow HTTP only for an explicit loopback server (development only)
 --profile <NAME>      A named connection profile (default: 'default')
 --tls-thumbprint <S>  Accept exactly this server certificate (SHA-256 fingerprint)
 --insecure-tls        Skip certificate validation for this call only (never stored)
@@ -373,10 +376,11 @@ np observability query-range --query "rate(nodepilot_workflows_total[5m])" \
 np alerting catalog                           # event types, filter fields, channels
 np alerting list
 np alerting get 9a2f...
-np alerting create --file ./rule.json
-np alerting update 9a2f... --file ./rule.json
+np alerting create --name "Prod failures" --event-types ExecutionFailed \
+  --scope Workflows --workflow 21f1c0d4-... --email ops@internal   # the whole rule via flags
+np alerting update 9a2f... --cooldown-minutes 15 --disabled                 # changes only the flags passed
 np alerting test-fire 9a2f...
-np alerting deliveries 9a2f...                # the rule's delivery ledger
+np alerting deliveries --rule 9a2f...         # the rule's delivery ledger (--status Pending|Sent|Failed)
 np alerting deliveries --limit 50 -o json
 np alerting delete 9a2f...
 
@@ -388,7 +392,7 @@ np operations graph --window 60               # the look-back for finished runs:
 
 The most recent 4,000 finished runs in the window are listed individually. If there are more,
 `density[]` additionally provides bucketed counters (`total`/`failed`/`cancelled` per workflow and
-time slice) across the **whole** window — so "how much ran in the last four hours?" remains
+time slice) across the **whole** window — so "how much ran in the last hour?" remains
 answerable even when not every run is listed individually. The table output names the total in that
 case; `meta.densityBucketSeconds` gives the slice width, and `meta.densityCapped` says that even the
 counters are only a lower bound.
@@ -500,7 +504,7 @@ The rules that apply:
 
 ## Token storage
 
-DPAPI-encrypted (`CurrentUser` scope) at `%APPDATA%\NodePilot\session-<profile>.dat`. Refresh happens transparently through `TokenRefreshHandler`. The plaintext configuration (server URL, default profile, TLS pin) is in `config.json`.
+DPAPI-encrypted (`CurrentUser` scope) at `%APPDATA%\NodePilot\session-<profile-hash>.dat` (one file per profile; the name is a SHA-256 hash of the case-insensitive profile name). Refresh happens transparently through `TokenRefreshHandler`. The plaintext configuration (server URL, default profile, TLS pin) is in `config.json`.
 
 ## Architectural convention
 
