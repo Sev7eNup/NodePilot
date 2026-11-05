@@ -4,8 +4,6 @@ A scheduled PowerShell task can use a group Managed Service Account without anyo
 
 This walkthrough writes a small JSON file to an SMB share and reads it back. It records the account, runtime and result locally, so a successful registration cannot be mistaken for a successful export.
 
-The account test, task registration and successful and denied SMB writes were exercised on Windows Server 2025 with Windows PowerShell 5.1.26100.1591 on 25 October 2026. The task used `RunLevel Limited`, with no interactive user session. Names and paths below are example values. PowerShell 7 and older Windows Server releases were not part of this test.
-
 ## Prepare the account and three separate permissions
 
 Start with an existing gMSA, an authorized domain-joined execution host and the ActiveDirectory module. The [gMSA setup guide](/en/blog/gmsa-service-accounts/) covers account creation and the KDS prerequisites. On the execution host, run an elevated Windows PowerShell session:

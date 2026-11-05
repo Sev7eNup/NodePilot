@@ -4,8 +4,6 @@ Eine geplante PowerShell-Aufgabe kann unter einem gruppenverwalteten Dienstkonto
 
 Diese Anleitung schreibt eine kleine JSON-Datei auf eine SMB-Freigabe und liest sie zurück. Konto, Laufzeit und Ergebnis werden lokal protokolliert. So lässt sich die erfolgreiche Registrierung von einem tatsächlich erfolgreichen Export unterscheiden.
 
-Kontotest, Aufgabenregistrierung sowie erfolgreicher und verweigerter SMB-Zugriff wurden am 25. Oktober 2026 auf Windows Server 2025 mit Windows PowerShell 5.1.26100.1591 ausgeführt. Die Aufgabe lief mit `RunLevel Limited` ohne interaktive Benutzersitzung. Namen und Pfade unten sind Beispielwerte. PowerShell 7 und ältere Windows-Server-Versionen waren nicht Teil dieses Tests.
-
 ## Konto und drei getrennte Berechtigungen vorbereiten
 
 Vorausgesetzt werden ein vorhandenes gMSA, ein berechtigter Ausführungshost in der Domäne und das ActiveDirectory-Modul. Die [gMSA-Grundlagen](/blog/gmsa-service-accounts/) erklären Kontoanlage und KDS-Voraussetzungen. Auf dem Ausführungshost eine erhöhte Windows-PowerShell-Sitzung öffnen:

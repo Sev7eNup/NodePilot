@@ -71,3 +71,5 @@ Ein Dienst, der das Konto noch verwendet, fällt dann spätestens bei seinem nä
 Wird der Export über NodePilot angestoßen, müssen dessen Ausführungsidentität und die Identität des eigentlichen Exportdienstes weiterhin getrennt betrachtet werden. Aus der Unterstützung eines gMSA durch den Zieldienst folgt keine allgemeine Unterstützung dieses Kontotyps in beliebigen Zugangsdatenfeldern.
 
 Der NodePilot-Dienst selbst kann ebenfalls unter einem gMSA laufen. Das Setup trägt dafür eine Abhängigkeit zum Netlogon-Dienst ein, damit das verwaltete Kennwort beim Systemstart bereits abrufbar ist.
+
+Für einen konkreten unbeaufsichtigten Auftrag zeigt die [gMSA-Aufgabenanleitung](/blog/gmsa-scheduled-task/), wie Konto, Aufgabenplanung und tatsächlicher Zielzugriff zusammen geprüft werden.

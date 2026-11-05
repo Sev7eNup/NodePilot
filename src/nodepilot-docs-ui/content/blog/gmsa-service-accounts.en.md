@@ -71,3 +71,5 @@ A service that still uses the account then surfaces with a logon failure at its 
 If NodePilot triggers the export, its execution identity and that of the export service still need separate consideration. A target service's support for gMSA does not establish general support for that account type in arbitrary credential fields.
 
 The NodePilot service itself can also run under a gMSA. Setup adds a dependency on the Netlogon service so that the managed password can already be retrieved at system start.
+
+For a concrete unattended job, the [gMSA scheduled task guide](/en/blog/gmsa-scheduled-task/) shows how to verify the account, task configuration and actual destination access together.
