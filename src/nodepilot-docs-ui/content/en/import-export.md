@@ -92,6 +92,8 @@ An admin-only, portable **configuration backup** containing workflows + folders/
 
 The only supported envelope is `nodepilot-system-backup/v4` (`.npbackup`). Export fails instead of producing a partial archive when any requested section cannot be exported. A workflow export automatically pulls in custom activities as a hard dependency.
 
+A backup file may be at most 64 MiB. If the encrypted export would be larger, it fails; export fewer sections per file instead. Preview and restore reject larger files with `413`.
+
 ### Secret handling
 
 The complete configuration payload, including its metadata and section list, is encrypted and authenticated with the supplied passphrase (PBKDF2→HKDF→AES-GCM). Sensitive fields also retain their section-level protection. Metadata and preview data are unavailable until authenticated decryption succeeds.

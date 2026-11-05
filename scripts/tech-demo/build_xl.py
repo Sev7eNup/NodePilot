@@ -1098,7 +1098,7 @@ output = {
         "LANE MID (y=900) Processing: REST/SQL + XML/JSON + forEach + sub-workflows + retry-NofM + 10 deep operator combos. "
         "LANE BOT (y=1500) Ops: timing demo + remote-ops + email + power-abort + debug zone + 8 deep operator combos + cleanup. "
         "Sync bands at x=1960 (sync1) and via top-delay-phase3 (sync2), final-junction at x=10000. "
-        "All 19 activity types, all 14 edge operators + AND/OR/NOT, all 3 junction modes, breakpoints, disabled nodes, disabled edges, retry policies, error paths, sub-workflow calls. "
+        "20 activity types and all 6 triggers, all 14 edge operators + AND/OR/NOT, all 3 junction modes, breakpoints, disabled nodes, disabled edges, retry policies, error paths, sub-workflow calls. "
         "Bounds: 0..10720 x 0..1920."
     ),
     "nodes": nodes,

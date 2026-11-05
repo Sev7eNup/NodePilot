@@ -24,7 +24,7 @@ $env:PATH += ';C:\Tools\NodePilot-Cli'   # dauerhaft über Systemeigenschaften �
 np auth login --server https://nodepilot.example.com
 ```
 
-> **Konventionen in den Beispielen:** `<ARG>` = erforderlich, `[ARG]` = optional. `<ID-OR-NAME>` nimmt eine Workflow-GUID **oder** den Workflow-Namen (exakte Schreibweise gewinnt, sonst case-insensitive; mehrdeutige Namen → Fehler mit GUID-Hinweis). Destruktive Befehle (`delete`, `force-unlock`, `restore`, `reencrypt`, `db --write`) fragen interaktiv nach — in CI/Pipes `--yes` setzen oder stdin umleiten. `--file -` liest überall von stdin.
+> **Konventionen in den Beispielen:** `<ARG>` = erforderlich, `[ARG]` = optional. `<ID-OR-NAME>` nimmt eine Workflow-GUID **oder** den Workflow-Namen (exakte Schreibweise gewinnt, sonst case-insensitive; mehrdeutige Namen → Fehler mit GUID-Hinweis). Destruktive Befehle fragen interaktiv nach. `delete` und `force-unlock` kennen kein `--yes`; in CI/Pipes stdin umleiten, dann entfällt die Rückfrage. `db --write`, `secrets reencrypt` und `settings restart-service` nehmen `--yes` oder überspringen die Rückfrage bei umgeleitetem stdin. `backup restore` und die rekursiven Ordner-Löschungen (`--recursive`) verlangen bei umgeleitetem stdin `--yes` und brechen ohne ab. `--file -` liest überall von stdin.
 
 ## Command-Bereiche
 

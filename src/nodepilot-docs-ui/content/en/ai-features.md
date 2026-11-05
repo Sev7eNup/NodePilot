@@ -11,6 +11,7 @@ The AI features are disabled by default. The corresponding buttons (script edito
 | **Script editor** | Create or revise PowerShell for a `runScript` activity | Yes, after you accept it into the editor manually |
 | **Workflow designer** | Create new workflows, and explain, review and change the open one | Yes, after review and confirmation |
 | **AI chat** | Answer questions about NodePilot, the documentation and permitted operational data | No, read-only |
+| **AI agents** | Have a workflow step work through a task with selected tools (`aiAgent`, `aiAgentTeam`); draft a team from a description in the team editor | The draft: yes, after preview and acceptance. At run time the agents act only through the tools assigned to them |
 
 ## Script editor
 
@@ -101,7 +102,7 @@ The global AI chat is not tied to an open workflow. It serves as a read-only ass
 - Information about machines and operations
 - Questions about the source code, if that source is enabled
 
-The chat cannot propose or apply workflow changes. Answers depend on the knowledge sources enabled administratively:
+The chat cannot propose or apply workflow changes. Answers depend on the available knowledge sources. All of them except the system configuration are enabled administratively:
 
 | Knowledge source | Content | Access |
 |---|---|---|
@@ -109,6 +110,7 @@ The chat cannot propose or apply workflow changes. Answers depend on the knowled
 | **Workflows and operations** | The workflow definition and static analysis (Admin and Operator, additionally folder RBAC); scheduled execution times for all roles | See the content column |
 | **Source code** | The bundled NodePilot source code | Admin and Operator |
 | **Database** | Read-only questions about operational data | Global admins only |
+| **System configuration** | The effective admin settings, including runtime overrides, with secrets redacted; it has no switch of its own | Admin and Operator |
 
 The database source runs read-only queries exclusively. Write operations are blocked. Protected columns and detected secrets are not passed to the model.
 
@@ -123,6 +125,7 @@ The starter suggestions on the empty chat page depend on the available knowledge
 | Explain or change the current workflow | The AI assistant in the workflow designer |
 | Ask general questions about NodePilot or operations | The global AI chat |
 | Call a model during a workflow run | The `llmQuery` activity |
+| Have a workflow step work through a task with tools | The `aiAgent` or `aiAgentTeam` activity, see the [activity reference](activities-reference) |
 
 ## The `llmQuery` activity
 
@@ -200,7 +203,7 @@ Per profile:
 
 In corporate networks, outbound traffic is often only permitted through a proxy. The settings for
 that are under `Llm:Proxy` and apply to **all** AI calls — both chats, script and workflow
-generation, the `llmQuery` activity and the connection test in the settings. It is deliberately one
+generation, the `llmQuery` activity, the AI agents and team drafting, and the connection test in the settings. It is deliberately one
 block for the whole installation rather than one per profile: the mixed case — a cloud model through
 the proxy, a local model directly — is expressed through the bypass list.
 

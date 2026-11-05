@@ -168,6 +168,9 @@ restored 1:1.
 | `POST /api/backup/preview` | multipart `file` + `passphrase` | authenticated per-section diff |
 | `POST /api/backup/restore` | multipart `file` + `passphrase` + `policy{}` | applies it |
 
+**Size limit:** an `.npbackup` is at most 64 MiB (`BackupSections.MaximumArchiveBytes`). Export fails
+when the encrypted file would be larger; preview and restore answer `413` for larger files.
+
 **Conflict policy** (by-name match, as with import; default `skip`): `skip` / `rename` (suffix) /
 `overwrite`. Workflows are the exception: their names are not unique, so a backup workflow stands
 for a target row by id first, then by name within its target folder. Two backup rows never stand
