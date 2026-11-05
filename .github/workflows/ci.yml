@@ -4,8 +4,7 @@ on:
   # main is gated unconditionally: every commit that lands on the default branch gets a full CI
   # run, no matter how it got there. A merge commit re-tests the tree its PR run already covered;
   # that duplication is accepted so direct pushes and release cuts do not depend on someone
-  # triggering `workflow_dispatch`. The local nightly suite is no substitute: it runs against its
-  # checked-out tree, never pulls, and is not an origin/main status check.
+  # triggering `workflow_dispatch`.
   #   - CodeQL keeps its own `push: [main]` trigger: only a run on the default branch
   #     updates the repository's code-scanning dashboard.
   pull_request:
@@ -14,10 +13,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Within one branch the newest run wins; the PR/main duplication above is unaffected, because a
-# pull request and a push to main key on different groups.
+# Within one pull request the newest run wins. Every other run keys on its commit: a shared group
+# keeps only one pending run and replaces it on the next push, even without cancel-in-progress,
+# so commits merged in quick succession would end up without a CI result of their own.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.sha }}
   # Only superseded pull request runs are cancelled. A push to main always finishes, so a release
   # commit keeps its own green result even when the version bump lands minutes later.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -192,7 +192,6 @@ jobs:
           .\scripts\test-suite\Test-TestSuiteSafety.ps1
           .\scripts\ad-sso-labtest\Test-LabContracts.ps1
           .\scripts\Test-DevReset.ps1
-          .\scripts\Test-NightlyRetention.ps1
           .\scripts\Test-ExampleWorkflowScripts.ps1
 
       - name: Deployment security contracts (PowerShell 7)
@@ -220,7 +219,6 @@ jobs:
           .\scripts\test-suite\Test-TestSuiteSafety.ps1
           .\scripts\ad-sso-labtest\Test-LabContracts.ps1
           .\scripts\Test-DevReset.ps1
-          .\scripts\Test-NightlyRetention.ps1
           .\scripts\Test-ExampleWorkflowScripts.ps1
 
       - name: Build
@@ -397,7 +395,7 @@ jobs:
         run: npm audit --audit-level=moderate
 
       - name: Test reliability reporting
-        run: node --test scripts/test-reliability.test.mjs
+        run: node --test scripts/test-reliability.test.mjs scripts/vitest-retry-reporter.test.mjs
 
       - name: Lint
         # Ratchet: errors always fail, and warnings are capped at the current count (react-

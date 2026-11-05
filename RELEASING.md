@@ -33,7 +33,7 @@ cd src\nodepilot-docs-ui; npm run lint:ci; npm run test:run; npm run build
 cd src\nodepilot-desktop; npm run test:run
 ```
 
-A release cut is one of the few occasions where the **full** suite is the right call. CI on `main` has to be green as well, since the local nightly job runs against its own checkout and is not a status check on `origin/main`.
+A release cut is one of the few occasions where the **full** suite is the right call. CI on `main` has to be green as well, since a local run tests its own checkout and is not a status check on `origin/main`.
 
 ## 3. Update the changelog
 

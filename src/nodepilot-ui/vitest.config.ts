@@ -32,6 +32,11 @@ export default defineConfig({
     // Absorb residual CI flake by re-running a failed test up to twice. A deterministic
     // failure loses every retry and still goes red. Locally retries stay off.
     retry: process.env.CI ? 2 : 0,
+    // A pass after a retry reads as a plain pass, so on GitHub Actions the retry reporter
+    // annotates it and lists it in the job summary. Elsewhere Vitest keeps its own defaults.
+    reporters: process.env.GITHUB_ACTIONS === 'true'
+      ? ['default', 'github-actions', './scripts/vitest-retry-reporter.mjs']
+      : undefined,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
@@ -52,10 +57,10 @@ export default defineConfig({
       // Ratchet: floors sit just below the current measured coverage, so the gate fails on a
       // real regression while tolerating day-to-day churn. Only raise them, never lower.
       thresholds: {
-        lines: 73,
-        branches: 58,
-        statements: 70,
-        functions: 57,
+        lines: 80,
+        branches: 68,
+        statements: 77,
+        functions: 67,
       },
     },
   },

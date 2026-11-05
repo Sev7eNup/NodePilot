@@ -33,12 +33,17 @@ the summary is absent. Once each week, the maintainer reviews recurring entries,
 first failing trace and fixes the cause. Do not increase retries or skip tests to remove an
 entry. There is no automatic flake threshold until a representative baseline exists.
 
+The frontend unit tests (Vitest) retry a failed test up to twice in CI as well. On GitHub
+Actions, `scripts/vitest-retry-reporter.mjs` raises a warning annotation for every test that
+passed only after a retry and adds a "Vitest retries" section to the job summary. It records
+no history; the annotation is the signal to fix the test.
+
 ## Local reproduction
 
 From `src/nodepilot-ui`, in PowerShell:
 
 ```powershell
-node --test scripts/test-reliability.test.mjs
+node --test scripts/test-reliability.test.mjs scripts/vitest-retry-reporter.test.mjs
 $env:PLAYWRIGHT_JSON_OUTPUT_FILE = 'test-results/reliability-ui.json'
 npx playwright test e2e/script-editor.spec.ts --reporter=list,json
 node scripts/test-reliability.mjs collect test-results/reliability-ui.json reliability-current/ui-1.json ui 1

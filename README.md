@@ -365,7 +365,7 @@ samples/                  Example workflows for the importer
 
 ## Testing
 
-Six CI jobs gate every pull request and every push to `main`: backend build and tests with an enforced **85 % line / 70 % branch** coverage gate, frontend lint/build/vitest, docs-site lint/tests/build, desktop-shell typecheck and tests, as well as hermetic Playwright E2E. A local nightly task runs the same four suites against the checked-out tree.
+Six CI jobs gate every pull request and every push to `main`: backend build and tests with an enforced **85 % line / 70 % branch** coverage gate, frontend lint/build/vitest, docs-site lint/tests/build, desktop-shell typecheck and tests, as well as hermetic Playwright E2E.
 
 **Tests are mandatory.** Every behaviour change ships with tests in the same change. Which tests you run locally is scoped to what you touched. The full suite is CI's responsibility, not yours. Commands, the scoping rules and the guard-test mapping are documented in [CONTRIBUTING.md](CONTRIBUTING.md#build--test) and [CLAUDE.md](CLAUDE.md).
 
