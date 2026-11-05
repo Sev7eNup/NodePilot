@@ -21,8 +21,19 @@ same Markdown files. Versions 1.0.0 and 1.0.1 remain available for existing pinn
 To package the Windows diagnosis example from this directory:
 
 ```powershell
-Compress-Archive -Path .\windows-diagnostics\* -DestinationPath .\windows-diagnostics.zip
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$source = (Resolve-Path -LiteralPath .\windows-diagnostics).Path
+$zip = [System.IO.Compression.ZipFile]::Open((Join-Path $PWD 'windows-diagnostics.zip'), 'Create')
+try {
+    Get-ChildItem -LiteralPath $source -Recurse -File | ForEach-Object {
+        $entryName = $_.FullName.Substring($source.Length + 1).Replace('\', '/')
+        [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_.FullName, $entryName)
+    }
+} finally { $zip.Dispose() }
 ```
+
+`Compress-Archive` in Windows PowerShell 5.1 writes `\` into entry names such as
+`resources\log-locations.md`, and the import rejects those. The snippet above writes `/` instead.
 
 Import the ZIP in Settings → AI agents with version `1.0.2`. SKILL.md must be at the ZIP
 root. Select the imported version on an agent and select PowerShell to allow its inspection

@@ -1,6 +1,6 @@
 # NodePilot Tech-Demo — Full Showcase
 
-A sample workflow that demonstrates every activity, every edge condition operator and every control-flow variant that NodePilot supports.
+A sample workflow that demonstrates a cross-section of the activities, every edge condition operator and the main control-flow variants of NodePilot. It does not cover every activity type; `xl.json` covers more (see [xl.README.md](xl.README.md)).
 
 ## Files
 

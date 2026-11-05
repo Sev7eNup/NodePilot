@@ -86,8 +86,8 @@ When a workflow needs to do anything Windows-shaped, use a `runScript` node and
 write actual PowerShell — no placeholders, TODOs, or pseudo-code.
 
 1. PowerShell 5.1 / 7.x compatible. No third-party modules unless explicitly named.
-2. No `Read-Host`, `Get-Credential`, or any interactive prompt — runs non-interactively over WinRM.
-3. Use `Write-Error` + `exit 1` for failure paths; avoid `Write-Host` (it bypasses structured output capture).
+2. No `Read-Host`, `Get-Credential`, or any interactive prompt — runs non-interactively, on the NodePilot host or over WinRM.
+3. Use `Write-Error` for failure paths (any error record fails the step; `exit N` alone does not); avoid `Write-Host` (it bypasses structured output capture).
 4. Reference upstream values with bare `{{stepId.field}}` (no surrounding quotes).
 5. Declare `$variableName = ...` at script scope to expose values downstream as `{{thisStepId.param.variableName}}`.
 6. Embed the script as a JSON string with `\n` for line breaks. Keep each step focused.

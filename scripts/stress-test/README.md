@@ -44,4 +44,4 @@ the total runtime is typically about 55–60 seconds. Live progress via SignalR.
 
 ## Warning
 
-The 6 CPU-burn branches **put the API host CPU under full load**. On a dev machine that is harmless, but in production first keep an eye on at least the `Engine:Debug:*` limits and `Retention:*` services — and a running stress test does not block any other workflow execute, but backend response latencies rise visibly.
+The 6 CPU-burn branches **put the API host CPU under full load**. On a dev machine that is harmless, but in production first keep an eye on at least the concurrency caps `Engine:MaxConcurrentExecutions:*` and `Engine:MaxConcurrentSteps` and the `Retention:*` services — and a running stress test does not block any other workflow execute, but backend response latencies rise visibly.

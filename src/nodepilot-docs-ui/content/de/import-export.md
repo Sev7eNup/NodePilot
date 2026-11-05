@@ -99,6 +99,8 @@ Ein Admin-only, portables **Konfigurations-Backup** mit Workflows + Folders/Shar
 
 Das einzige unterstützte Envelope ist `nodepilot-system-backup/v4` (`.npbackup`). Kann eine angeforderte Sektion nicht vollständig exportiert werden, bricht der Export ab, statt ein Teil-Backup zu erzeugen. Ein Workflow-Export zieht Custom Activities automatisch als harte Abhängigkeit mit.
 
+Eine Backup-Datei darf höchstens 64 MiB groß sein. Würde der verschlüsselte Export größer, bricht er ab; dann weniger Sektionen pro Datei exportieren. Preview und Restore lehnen größere Dateien mit `413` ab.
+
 ### Secret-Handling
 
 Der komplette Konfigurations-Payload inklusive Metadaten und Sektionsliste wird mit der Passphrase verschlüsselt und authentifiziert (PBKDF2→HKDF→AES-GCM). Sensitive Felder behalten zusätzlich ihren Schutz innerhalb der Sektionen. Metadaten und Vorschau sind erst nach erfolgreicher authentifizierter Entschlüsselung verfügbar.

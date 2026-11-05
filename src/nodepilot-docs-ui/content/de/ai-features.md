@@ -11,6 +11,7 @@ Die AI-Funktionen sind standardmäßig deaktiviert. Die zugehörigen Schaltfläc
 | **Script-Editor** | PowerShell für eine `runScript`-Activity erstellen oder überarbeiten | Ja, nach manueller Übernahme in den Editor |
 | **Workflow-Designer** | neue Workflows erstellen sowie geöffnete Workflows erklären, prüfen und ändern | Ja, nach Prüfung und Bestätigung |
 | **AI-Chat** | Fragen zu NodePilot, Dokumentation und freigegebenen Betriebsdaten beantworten | Nein, ausschließlich lesend |
+| **AI-Agenten** | einen Workflow-Schritt eine Aufgabe mit ausgewählten Tools erledigen lassen (`aiAgent`, `aiAgentTeam`); im Team-Editor ein Team aus einer Beschreibung entwerfen | Der Entwurf: ja, nach Vorschau und Übernahme. Zur Laufzeit handeln die Agenten nur über die ihnen zugewiesenen Tools |
 
 ## Script-Editor
 
@@ -101,7 +102,7 @@ Der globale AI-Chat ist nicht an einen geöffneten Workflow gebunden. Er dient a
 - Informationen zu Maschinen und Betrieb
 - Fragen zum Quellcode, sofern diese Quelle freigegeben ist
 
-Der Chat kann keine Workflow-Änderungen vorschlagen oder übernehmen. Antworten richten sich nach den administrativ aktivierten Wissensquellen:
+Der Chat kann keine Workflow-Änderungen vorschlagen oder übernehmen. Antworten richten sich nach den verfügbaren Wissensquellen. Bis auf die Systemkonfiguration werden alle administrativ aktiviert:
 
 | Wissensquelle | Inhalt | Zugriff |
 |---|---|---|
@@ -109,6 +110,7 @@ Der Chat kann keine Workflow-Änderungen vorschlagen oder übernehmen. Antworten
 | **Workflows und Betrieb** | Workflow-Definition und statische Analyse (Admin und Operator, zusätzlich Folder-RBAC); geplante Ausführungszeitpunkte für alle Rollen | siehe Inhalt |
 | **Quellcode** | bereitgestellter NodePilot-Quellcode | Admin und Operator |
 | **Datenbank** | lesende Fragen zu Betriebsdaten | ausschließlich globale Admins |
+| **Systemkonfiguration** | die effektiven Admin-Einstellungen samt Runtime-Overrides, Secrets redigiert; ohne eigenen Schalter | Admin und Operator |
 
 Die Datenbankquelle führt ausschließlich lesende Abfragen aus. Schreiboperationen werden blockiert. Geschützte Spalten und erkannte Secrets werden nicht an das Modell ausgegeben.
 
@@ -123,6 +125,7 @@ Die Einstiegsvorschläge auf der leeren Chat-Seite richten sich nach den verfüg
 | aktuellen Workflow erklären oder verändern | KI-Assistent im Workflow-Designer |
 | allgemeine Fragen zu NodePilot oder zum Betrieb stellen | globaler AI-Chat |
 | während eines Workflow-Laufs ein Modell aufrufen | `llmQuery`-Activity |
+| einen Workflow-Schritt eine Aufgabe mit Tools erledigen lassen | `aiAgent`- oder `aiAgentTeam`-Activity, siehe [Activity-Referenz](activities-reference) |
 
 ## `llmQuery`-Activity
 
@@ -200,8 +203,8 @@ Je Profil:
 
 In Unternehmensnetzen ist ausgehender Verkehr oft nur über einen Proxy erlaubt. Die Einstellungen
 dafür liegen unter `Llm:Proxy` und gelten für **alle** AI-Aufrufe — beide Chats, die
-Script- und Workflow-Generierung, die `llmQuery`-Aktivität und die Verbindungsprüfung in den
-Einstellungen. Es ist bewusst ein Block für die gesamte Installation und nicht einer je Profil:
+Script- und Workflow-Generierung, die `llmQuery`-Aktivität, die AI-Agenten samt Team-Entwurf und
+die Verbindungsprüfung in den Einstellungen. Es ist bewusst ein Block für die gesamte Installation und nicht einer je Profil:
 der gemischte Fall — Cloud-Modell über den Proxy, lokales Modell direkt — wird über die
 Ausnahmeliste abgebildet.
 

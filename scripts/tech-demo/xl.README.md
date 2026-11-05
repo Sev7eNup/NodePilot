@@ -37,7 +37,7 @@ All three lanes start in parallel at the `sync1` junction (x=1960, waitAll) afte
 The active `trg-manual` feeds `log-kickoff`. The 5 other triggers (`trg-schedule`, `trg-webhook`, `trg-filewatch`, `trg-database`, `trg-eventlog`) are visible as illustration nodes via `data.disabled: true` — they show the respective config schema in the designer but are skipped at run time.
 
 ### 20 activity types
-Every activity type is represented at least once. Frequency highlights:
+Not every activity type is included: the AI activities (`aiAgent`, `aiAgentTeam`, `llmQuery`, `generateText`), `decision`, `scheduledTask`, `fileHash`, `zipOperation` and `textFileEdit` are missing. Frequency highlights:
 - 49x `log` (operator coverage, error branches, debug targets, phase markers)
 - 11x `delay` (timing demo, retry-NofM, hold patterns)
 - 11x `junction` (all 3 modes in several places)
