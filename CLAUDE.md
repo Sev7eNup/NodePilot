@@ -296,9 +296,7 @@ Standard invocations (`dotnet build|test`, in `src/nodepilot-ui` the `package.js
 
 ### Test scope per change
 
-**Writing tests ≠ running all tests.** The duty above applies unchanged to *writing*; locally you *run* only what the change affects. The full suite is measurably disproportionate (6,597 backend test cases, 260 Vitest files, 81 E2E specs — `DocumentationCountsTests` pins the two frontend figures to the file list, the backend figure stays a hand measurement) and gives no new signal locally: the safety net is `ci.yml`, which runs on **every PR and every push to main** (coverage gate and E2E included).
-
-**The nightly is not a reliable second floor.** It runs as a Windows task at 22:00 against the checked-out tree and is missed whenever the machine is off at that time. Anyone relying on it checks the date in `C:\temp\nodepilot-nightly\latest.md` first.
+**Writing tests ≠ running all tests.** The duty above applies unchanged to *writing*; locally you *run* only what the change affects. The full suite is measurably disproportionate (9,035 backend test cases, 260 Vitest files, 81 E2E specs — `DocumentationCountsTests` pins the two frontend figures to the file list, the backend figure stays a hand measurement) and gives no new signal locally: the safety net is `ci.yml`, which runs on **every PR and every push to main** (coverage gate and E2E included). There is no nightly run; CI is the only automated net.
 
 **Markdown exception:** a PR that touches **only** `*.md` or `docs/images/**` skips frontend, desktop, database and E2E (`changes` job). **Backend and docs-ui always run**, because Markdown is an input for them (`DocumentationCountsTests`, `SettingsSchemaDocumentationTests`, `MonitoringDeploymentSecurityTests`, language parity guard). Pushes to `main` **always** run in full; every error path of the detection ends in "run everything".
 
@@ -354,7 +352,7 @@ Parity/drift tests enforce consistency between files that sit far apart and are 
 | `index.css` / `designer-atelier.css` designer-light tokens | `designerLightParity.test.ts` | nodepilot-ui |
 | Font tokens / Monaco stack | `fontTokens.test.ts` | nodepilot-ui |
 
-**E2E (Playwright):** hermetic specs in `src/nodepilot-ui/e2e/`, all APIs mocked — conventions in `src/nodepilot-ui/CLAUDE.md` + `src/nodepilot-ui/e2e/README.md`. **Desktop shell:** its own vitest suite and CI job `desktop`, see `src/nodepilot-desktop/README.md`. **Nightly:** `scripts/nightly-tests.ps1` (Windows task, 22:00, report to `C:\temp\nodepilot-nightly\`); change the time with `scripts/register-nightly-task.ps1 -Time HH:mm`.
+**E2E (Playwright):** hermetic specs in `src/nodepilot-ui/e2e/`, all APIs mocked — conventions in `src/nodepilot-ui/CLAUDE.md` + `src/nodepilot-ui/e2e/README.md`. **Desktop shell:** its own vitest suite and CI job `desktop`, see `src/nodepilot-desktop/README.md`.
 
 ## Clients (`np` CLI + `nodepilot-mcp`)
 

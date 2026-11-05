@@ -600,4 +600,105 @@ public class UsersControllerTests
         // be unreadable once the User row is gone.
         entry.Details.Should().Contain("operator");
     }
+
+    // ── Break-glass recovery invariant ────────────────────────────────────────
+
+    private static User PlainAdmin(Guid? id = null) => new()
+    {
+        Id = id ?? Guid.NewGuid(),
+        Username = "plain-admin",
+        PasswordHash = "hash",
+        Role = UserRole.Admin,
+        IsActive = true,
+        CreatedAt = DateTime.UtcNow,
+        PasswordChangedAt = DateTime.UtcNow
+    };
+
+    [Theory]
+    [InlineData("Operator", null, null)]
+    [InlineData(null, false, null)]
+    [InlineData(null, null, false)]
+    public async Task Update_RemovingTheLastBreakGlassAdmin_Returns400AndKeepsTheAccount(
+        string? role, bool? isActive, bool? isBreakGlass)
+    {
+        // A second, ordinary admin keeps the last-admin guard quiet, so only the break-glass
+        // invariant can refuse the change.
+        var db = TestDbFactory.Create();
+        var breakGlassId = Guid.NewGuid();
+        db.Users.AddRange(AdminUser(breakGlassId), PlainAdmin());
+        await db.SaveChangesAsync();
+        var (controller, audit) = NewController(db);
+
+        var result = await controller.Update(breakGlassId,
+            new UpdateUserRequest(role, isActive, null, isBreakGlass), CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().BeEquivalentTo(
+            new { message = "cannot remove the last active local break-glass administrator" });
+        db.ChangeTracker.Clear();
+        (await db.Users.SingleAsync(u => u.Id == breakGlassId)).Should().Match<User>(u =>
+            u.Role == UserRole.Admin && u.IsActive && u.IsBreakGlass && u.SecurityStamp == 0);
+        audit.Calls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Update_ClearingBreakGlass_WhenAnotherBreakGlassAdminRemains_SucceedsAndAudits()
+    {
+        var db = TestDbFactory.Create();
+        var firstId = Guid.NewGuid();
+        var second = AdminUser();
+        second.Username = "admin-2";
+        db.Users.AddRange(AdminUser(firstId), second);
+        await db.SaveChangesAsync();
+        var (controller, audit) = NewController(db);
+
+        var result = await controller.Update(firstId,
+            new UpdateUserRequest(null, null, null, false), CancellationToken.None);
+
+        result.Should().BeOfType<NoContentResult>();
+        db.ChangeTracker.Clear();
+        (await db.Users.SingleAsync(u => u.Id == firstId)).Should().Match<User>(u =>
+            !u.IsBreakGlass && u.SecurityStamp == 1);
+        var entry = audit.Calls.Should().ContainSingle().Subject;
+        entry.Action.Should().Be("USER_BREAK_GLASS_CHANGED");
+        entry.Details.Should().Contain("\"oldValue\":true").And.Contain("\"newValue\":false");
+    }
+
+    [Fact]
+    public async Task Update_BreakGlassFlagOnExternalUser_Returns400()
+    {
+        var db = TestDbFactory.Create();
+        var external = OperatorUser();
+        external.Provider = AuthProvider.Ldap;
+        external.PasswordHash = null;
+        db.Users.AddRange(AdminUser(), external);
+        await db.SaveChangesAsync();
+
+        var result = await Controller(db).Update(external.Id,
+            new UpdateUserRequest(null, null, null, true), CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().BeEquivalentTo(
+            new { message = "only local users can be break-glass accounts" });
+        db.ChangeTracker.Clear();
+        (await db.Users.SingleAsync(u => u.Id == external.Id)).IsBreakGlass.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Delete_LastBreakGlassAdmin_Returns400AndKeepsTheAccount()
+    {
+        var db = TestDbFactory.Create();
+        var breakGlassId = Guid.NewGuid();
+        var plain = PlainAdmin();
+        db.Users.AddRange(AdminUser(breakGlassId), plain);
+        await db.SaveChangesAsync();
+        var (controller, audit) = NewController(db, callerId: plain.Id);
+
+        var result = await controller.Delete(breakGlassId, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().BeEquivalentTo(
+            new { message = "cannot delete the last active local break-glass administrator" });
+        db.ChangeTracker.Clear();
+        (await db.Users.SingleAsync(u => u.Id == breakGlassId)).Should().Match<User>(u =>
+            u.IsActive && !u.IsTombstoned);
+        audit.Calls.Should().BeEmpty();
+    }
 }

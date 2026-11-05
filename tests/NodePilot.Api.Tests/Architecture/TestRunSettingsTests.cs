@@ -62,7 +62,7 @@ public sealed class TestRunSettingsTests
     [Fact]
     public void Solution_ContainsEveryProjectUnderSrcAndTests()
     {
-        // CI, CodeQL, the vulnerability audit and the nightly all build NodePilot.slnx, so a
+        // CI, CodeQL and the vulnerability audit all build NodePilot.slnx, so a
         // project missing from it is never built, tested or analysed.
         var repoRoot = FindRepoRoot();
         var inSolution = XDocument.Load(Path.Combine(repoRoot, "NodePilot.slnx"))

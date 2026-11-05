@@ -501,7 +501,86 @@ public class DbAdminControllerTests
         body.GetProperty("code").GetString().Should().Be("cannot_demote_self");
     }
 
+    private static User BreakGlassAdmin(Guid id, string username) => new()
+    {
+        Id = id,
+        Username = username,
+        PasswordHash = "hash",
+        Role = UserRole.Admin,
+        IsActive = true,
+        IsBreakGlass = true,
+        CreatedAt = DateTime.UtcNow,
+        PasswordChangedAt = DateTime.UtcNow,
+    };
+
+    [Theory]
+    [InlineData("IsActive", false)]
+    [InlineData("IsBreakGlass", false)]
+    [InlineData("Role", "Operator")]
+    public async Task PatchRow_RemovingTheLastBreakGlassAdmin_Returns400_LastBreakGlassAdmin(string column, object value)
+    {
+        // The caller is an ordinary admin, so the last-admin guard stays quiet and only the
+        // break-glass invariant can refuse the change.
+        var callerId = Guid.NewGuid();
+        var breakGlassId = Guid.NewGuid();
+        var (ctrl, db) = NewController(callerId: callerId);
+        db.Users.AddRange(AdminUser(callerId), BreakGlassAdmin(breakGlassId, "recovery"));
+        await db.SaveChangesAsync();
+
+        var result = await ctrl.PatchRow(
+            "User", [breakGlassId.ToString()],
+            new DbAdminPatchRequest(column, JsonVal(value)),
+            CancellationToken.None);
+
+        var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        var body = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(bad.Value));
+        body.GetProperty("code").GetString().Should().Be("last_break_glass_admin");
+        db.ChangeTracker.Clear();
+        (await db.Users.SingleAsync(u => u.Id == breakGlassId)).Should().Match<User>(u =>
+            u.IsActive && u.IsBreakGlass && u.Role == UserRole.Admin);
+    }
+
+    [Fact]
+    public async Task PatchRow_ClearingBreakGlass_WhenAnotherBreakGlassAdminRemains_Succeeds()
+    {
+        var callerId = Guid.NewGuid();
+        var firstId = Guid.NewGuid();
+        var (ctrl, db) = NewController(callerId: callerId);
+        db.Users.AddRange(
+            AdminUser(callerId),
+            BreakGlassAdmin(firstId, "recovery-1"),
+            BreakGlassAdmin(Guid.NewGuid(), "recovery-2"));
+        await db.SaveChangesAsync();
+
+        var result = await ctrl.PatchRow(
+            "User", [firstId.ToString()],
+            new DbAdminPatchRequest("IsBreakGlass", JsonVal(false)),
+            CancellationToken.None);
+
+        result.Should().BeOfType<NoContentResult>();
+        db.ChangeTracker.Clear();
+        (await db.Users.SingleAsync(u => u.Id == firstId)).IsBreakGlass.Should().BeFalse();
+    }
+
     // ── DELETE tests ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DeleteRow_LastBreakGlassAdmin_Returns400_LastBreakGlassAdmin()
+    {
+        var callerId = Guid.NewGuid();
+        var breakGlassId = Guid.NewGuid();
+        var (ctrl, db) = NewController(callerId: callerId);
+        db.Users.AddRange(AdminUser(callerId), BreakGlassAdmin(breakGlassId, "recovery"));
+        await db.SaveChangesAsync();
+
+        var result = await ctrl.DeleteRow("User", [breakGlassId.ToString()], CancellationToken.None);
+
+        var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        var body = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(bad.Value));
+        body.GetProperty("code").GetString().Should().Be("last_break_glass_admin");
+        db.ChangeTracker.Clear();
+        (await db.Users.AnyAsync(u => u.Id == breakGlassId && u.IsActive)).Should().BeTrue();
+    }
 
     [Fact]
     public async Task DeleteRow_OnRevokedTokens_Returns405()

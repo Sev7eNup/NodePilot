@@ -334,8 +334,7 @@ Honest inventory so nobody assumes more coverage than exists:
   whether Chromium actually reports the SPA's favicon swap — is verified only by hand. The backend half of the feature *is* unit-tested (`DeploymentModeTests`,
   `DatabaseTlsBootValidatorTests`, `DatabaseReadinessGateTests`, `KestrelHttpsConfiguratorTests`).
 - **No CI coverage for `deploy/desktop/*`.** The `desktop` CI job runs `npm audit`, typecheck and
-  vitest for `src/nodepilot-desktop`, and the nightly script adds a `desktop-vitest` suite; there is
-  still no lint config. `Test-DeploymentTemplates.ps1` pins the desktop setup's contracts as text
+  vitest for `src/nodepilot-desktop`; there is still no lint config. `Test-DeploymentTemplates.ps1` pins the desktop setup's contracts as text
   (provisioning exit code, handoff profile, stop before copy, uninstall data question, service
   removal, staging of dot-sourced helpers) but runs none of the scripts, and
   `appsettings.Desktop.json.template` is never parsed by any check.

@@ -69,7 +69,7 @@ export function includeMissing(records, expected, metadata) {
     .map(([suite, shard]) => collect(null, { ...metadata, suite, shard }))];
 }
 
-function cell(value) {
+export function cell(value) {
   return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replaceAll('|', '&#124;').replaceAll('`', '&#96;').replace(/[\r\n]/g, ' ');
 }

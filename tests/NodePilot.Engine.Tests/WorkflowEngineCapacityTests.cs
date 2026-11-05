@@ -143,10 +143,10 @@ public sealed class WorkflowEngineCapacityTests : IDisposable
     {
         // Two concurrent ExecuteAsync calls share the same SQLite connection — their
         // SaveChanges-Calls serialize on the connection lock. Under heavy CPU contention
-        // (`dotnet test` runs the test DLLs in parallel, on a busy nightly host) this can
+        // (`dotnet test` runs the test DLLs in parallel, on a busy host) this can
         // push the time-to-executor far past a tight budget — 15 s then 30 s ceilings both
         // still flaked under load (only 1 of N executions started in time). 60 s is generous
-        // margin; the nightly also retries the whole backend suite once. We still fail fast
+        // margin. We still fail fast
         // if executions hang permanently — this only widens the scheduling-starvation window.
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (_startedExecutionIds.Count < expected && DateTime.UtcNow < deadline)

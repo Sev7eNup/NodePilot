@@ -9,12 +9,10 @@ using Xunit;
 namespace NodePilot.Engine.Tests.Triggers;
 
 /// <summary>
-/// Validation-path coverage for <see cref="EventLogTriggerSource"/>. The OnEntry filter
-/// logic (source/type/regex) is not exercised here because the runtime payload
-/// (<c>EntryWrittenEventArgs</c> wrapping a sealed <c>EventLogEntry</c>) cannot be
-/// constructed from test code without reflection-hacking the Win32 layer. The filter
-/// itself is a half-dozen string comparisons + a regex match - low complexity, low risk.
-/// What we DO test is everything that runs before the EventLog subscription is created:
+/// Validation-path coverage for <see cref="EventLogTriggerSource"/>. Delivery and the filters
+/// run against the real Application log in <see cref="EventLogTriggerSourceLiveTests"/>, because
+/// a sealed <c>EventLogEntry</c> cannot be constructed from test code.
+/// What we DO test here is everything that runs before the EventLog subscription is created:
 /// missing config, log-allow-list enforcement, regex parse errors, and dispose safety.
 /// </summary>
 public class EventLogTriggerSourceTests
