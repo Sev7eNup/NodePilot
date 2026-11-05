@@ -74,6 +74,12 @@ updates:
     # on its own, but in the full src/nodepilot-ui run it exposes cross-file pollution that
     # fails ExecutionsPage, which passes in isolation and on vitest 4. That is a migration,
     # not a bump. Lift both entries together when someone takes it on.
+    #
+    # msw 3 needs vitest 5, because the @vitest/mocker peer range of vitest 4 stops at msw 2.
+    # It also matches requests to handlers asynchronously, so tests that act on the first
+    # render or end with a request in flight see state from the wrong moment. With vitest 5,
+    # WorkflowEditorPage passes on msw 2 and fails two or three tests per run on msw 3.
+    # Move it after the vitest family.
     ignore:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
@@ -83,6 +89,8 @@ updates:
         versions: [">=5.0.0"]
       - dependency-name: "@vitest/*"
         versions: [">=5.0.0"]
+      - dependency-name: "msw"
+        versions: [">=3.0.0"]
     groups:
       npm-minor-patch:
         patterns:
