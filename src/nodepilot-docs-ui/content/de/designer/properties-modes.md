@@ -7,7 +7,7 @@ Das Eigenschaften-Panel enthält die Einstellungen des ausgewählten Nodes oder 
 Nach Auswahl eines Nodes zeigt das Panel die für diesen Activity-Typ verfügbaren Felder. Häufig verwendete Einstellungen sind:
 
 - **Bezeichnung:** sichtbarer Name des Schritts
-- **Ausgabevariable:** Name für den Zugriff auf das Ergebnis in nachfolgenden Schritten
+- **Ausgabevariable:** Name für den Zugriff auf das Ergebnis in nachfolgenden Schritten; eine Umbenennung passt jeden Verweis darauf im Workflow an
 - **Beschreibung:** optionale Erläuterung zum Schritt
 - **Zielmaschine und Zugangsdaten:** Ausführungsziel für Remote-Activities
 - **Timeout:** maximale Laufzeit des Schritts
