@@ -58,7 +58,7 @@ public class PerformanceSizingTests
     {
         var plan = Auto(cores: 8, ramGb: 16);
 
-        plan.MaxRunspaces.Value.Should().Be(32, "docs/performance-improvements.md row '8-Core / 20 par. WFs'");
+        plan.MaxRunspaces.Value.Should().Be(32, "docs/archived/performance-measurements.md row '8-Core / 20 par. WFs'");
         plan.MaxConcurrentSteps.Value.Should().Be(256, "same row");
         plan.MinRunspaces.Value.Should().Be(1, "same row — the pool grows lazily; eager pre-warm measured a 28% regression");
     }

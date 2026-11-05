@@ -246,4 +246,4 @@ returns exactly what was assigned. Guarded by `WrapperScopeAndExitCodeTests` and
 
 - Workflow JSON format and activity types: [CLAUDE.md](../CLAUDE.md)
 - Layout styleguide: [docs/workflow-styleguide.md](workflow-styleguide.md)
-- Activity config keys: [docs/claude-reference.md](claude-reference.md)
+- Activity config keys: [activity-config-reference.json](../src/NodePilot.Core/Activities/Embedded/activity-config-reference.json)

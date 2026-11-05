@@ -92,7 +92,7 @@ Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayM
 
 **Hybrid.** Runs PowerShell — with a machine set, through NodePilot's managed WinRM session; **without** a machine, engine-local in the API host, where the script can also manage the remote connection itself via `Invoke-Command`/`New-PSSession` (the SCOrch style; trade-offs in [Remote execution](configuration/remote-execution)).
 
-- **Config:** `script`, `engine` (`auto`/`powershell`/`pwsh`/`runspace`), `timeoutSeconds`, `isolated` (bool, local only — its own process inside a Windows job object: crash/leak containment, no orphaned processes) + optional caps `memoryLimitMb` (makes allocations fail, does not terminate) / `maxProcesses`, `successExitCodes` (comma-separated, an opt-in exit-code gate)
+- **Config:** `script`, `engine` (`auto`/`powershell`/`pwsh`/`runspace`), `timeoutSeconds`, `isolated` (bool, local only — its own process inside a Windows job object: crash/leak containment, no orphaned processes) + optional caps `memoryLimitMb` (makes allocations fail, does not terminate) / `maxProcesses`, `successExitCodes` (comma-separated, an opt-in exit-code gate), `transcript` (bool — records commands and output interleaved, as a console shows them)
 - **Engine (local only; a remote step always runs in Windows PowerShell 5.1 on the target):**
   - `auto` (default) and `powershell` run the script in Windows PowerShell 5.1 as a separate process. A local step therefore sees the same modules as the same script run remotely: every Windows module and every module installed for all users on the NodePilot server.
   - `pwsh` uses a PowerShell 7 process and requires PowerShell 7 to be installed.
@@ -116,13 +116,13 @@ Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayM
 **Remote.**
 
 - **Config:** `operation` (copy/move/delete/exists/list/create/rename), `path`, `destination`, `newName`. Asserts `-PathType Container`. `list` enumerates direct children.
-- **Outputs:** `param.operation`, `param.path`, `param.exists`, `param.fullName`, `param.creationTime`, `param.newPath`/`param.newName`; `list` → `param.items` + `param.count` + `param.truncated`
+- **Outputs:** `param.operation`, `param.path`, `param.destination`, `param.exists`, `param.fullName`, `param.creationTime`, `param.newPath`/`param.newName`; `list` → `param.items` + `param.count` + `param.truncated`
 
 ## `textFileEdit`
 
-**Remote.** BOM-aware, with an atomic write (tmp + `Move-Item -Force`).
+**Remote.** BOM-aware, with an atomic write (tmp file + `File.Replace`) that keeps the original file's permissions.
 
-- **Config:** `operation` (append/prepend/insert/delete/replace/replaceLine), `path`, `content`, `lineNumber`, `matchPattern`, `replace`, `useRegex`, `ignoreCase`, `occurrences`, `encoding` (auto/utf8/utf8-bom/utf16le/utf16be/ascii), `lineEnding` (preserve/crlf/lf), `createIfMissing`, `dryRun`, `backupSuffix`, `appendIfMissing` (exact), `maxFileSizeMB` (default 50)
+- **Config:** `operation` (append/prepend/insert/delete/replace/replaceLine), `path`, `content`, `lineNumber`, `lineRange` (`[from,to]`, a `delete` selector), `matchPattern`, `replace`, `useRegex`, `ignoreCase`, `occurrences`, `encoding` (auto/utf8/utf8-bom/utf16le/utf16be/ascii), `lineEnding` (preserve/crlf/lf), `createIfMissing`, `dryRun`, `backupSuffix`, `appendIfMissing`, `appendIfMissingExact` (default `true`), `maxFileSizeMB` (default 50)
 - **Outputs:** `param.operation`, `param.path`, `param.linesBefore`/`linesAfter`/`linesChanged`, `param.encoding`, `param.lineEnding`, `param.backupPath`, `param.dryRun`
 
 ## `serviceManagement`
@@ -143,7 +143,7 @@ Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayM
 
 **Remote.**
 
-- **Config:** `className`, `namespace`, `filter`, `mode` (`query`/`wql`/`invokeMethod`), `captureProperties` (an optional `string[]`). With `captureProperties` → the first row in `param.<name>` + `param.count`. Without it → legacy text in `output`. Property names have to be CIM-conformant (`^[A-Za-z_][A-Za-z0-9_]*$`).
+- **Config:** `className`, `namespace`, `filter`, `mode` (`query`/`wql`/`invokeMethod`), `query` (for `wql`), `methodName`/`arguments` (for `invokeMethod`), `captureProperties` (an optional `string[]`). With `captureProperties` → the first row in `param.<name>` + `param.count`. Without it → legacy text in `output`. Property names have to be CIM-conformant (`^[A-Za-z_][A-Za-z0-9_]*$`).
 - **Outputs:** `param.*`, `param.count`, `output`
 
 ## `startProgram`
@@ -201,13 +201,13 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 **Engine-local.**
 
 - **Config:** `url`, `method`, `body`, `headers` (on a request that carries a body, a `Content-Type` set here moves onto the entity — no second, conflicting field on the wire; an unparsable value is left alone and the body still goes out as `application/json`. A request without a body, and every GET/HEAD, has no entity, so a `Content-Type` set there is dropped), `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy`
-- **Outputs:** `param.statusCode` (the response body in `output` as `HTTP {code}\n{body}`; headers are not exposed as `param`)
+- **Outputs:** `param.statusCode` (the response body in `output` as `HTTP {code} {status}\n{body}`; headers are not exposed as `param`)
 
 ## `sql`
 
 **Engine-local.** Connection precedence: `connectionRef` > builder > raw `connectionString`.
 
-- **Config:** `provider` (sqlserver/sqlite/postgres), `query`, `timeoutSeconds`. Connection options: (a) the builder — SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode` (`VerifyFull` + `Trust Server Certificate=false` by default; weaker modes only for literal loopback hosts); SQLite: `dataSource`; (b) a raw `connectionString`; (c) a named `connectionRef` from `SqlActivity:ConnectionStrings:{name}`. The Postgres TLS policy applies to raw and ref as well.
+- **Config:** `provider` (sqlserver/sqlite/postgres), `query`, `parameters` (named query parameters), `timeoutSeconds`. Connection options: (a) the builder — SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode` (`VerifyFull` + `Trust Server Certificate=false` by default; weaker modes only for literal loopback hosts); SQLite: `dataSource`; (b) a raw `connectionString`; (c) a named `connectionRef` from `SqlActivity:ConnectionStrings:{name}`. The Postgres TLS policy applies to raw and ref as well.
 - **Outputs:** SELECT → `param.rowCount` + the first row's columns as `param.<col>` + `param.row{i}_{col}` (the first 20 rows) + `param.truncated`/`param.flatKeysTruncated`. DML/DDL → `param.rowsAffected` + `param.rowCount`
 - The shape follows the statement, not the number of hits: a `SELECT` that matches nothing still
   publishes the SELECT shape (`[]`, `param.rowCount` of 0) and no `rowsAffected`. Scalar columns
@@ -218,7 +218,7 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 **Engine-local.** A single recipient. SMTP through `Smtp:*`.
 
-- **Config:** `to`, `subject`, `body`, `isHtml`
+- **Config:** `to`, `subject`, `body`, `isHtml`, `timeoutSeconds`
 - **Outputs:** —
 
 ## `delay`
@@ -233,7 +233,7 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 **Engine-local, controlFlow.**
 
 - **Config:** `mode` (waitAll/waitAny/waitNofM), `requiredCount` (for waitNofM)
-- **Outputs:** —
+- **Outputs:** the upstream steps' `param.*` (for duplicate names the first value wins)
 
 ## `forEach`
 
@@ -254,7 +254,7 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 **Engine-local, controlFlow.**
 
 - **Config:** `workflowNameOrId`, `parameters`, `waitForCompletion`, `timeoutSeconds`
-- **Outputs:** synchronous → `param.*` (mirrored from the child's `returnData`) plus always `param.__executionId`/`__status`/`__workflowId`/`__workflowName`. Fire and forget → `param.workflowId`/`param.workflowName`/`param.waited`
+- **Outputs:** synchronous → `param.*` (mirrored from the child's `returnData`) plus always `param.__executionId`/`__status`/`__workflowId`/`__workflowName`. Fire and forget → `param.workflowId`/`param.workflowName`/`param.executionId`/`param.waited`
 
 ## `returnData`
 
@@ -291,14 +291,14 @@ The JSONPath library is supplied in memory; no additional installation is needed
 **Engine-local.**
 
 - **Config:** `level` (info/warning/error), `message`
-- **Outputs:** —
+- **Outputs:** `output` (the message), `param.level`, `param.message`
 
 ## `generateText`
 
 **Engine-local.** Entropy from `RandomNumberGenerator`, rejection-sampled (no modulo bias). The generated value is **not** redacted.
 
 - **Config:** `mode` (`alphanumeric` default /`alphabetic`/`numeric`/`hex`/`guid`/`password`/`custom`), `length` (1–1024, default 16; ignored for `guid`), `customCharset` (required for `mode=custom`), `excludeAmbiguous` (removes easily confused characters 0/O, 1/l/I …). `password` is only a charset preset (it guarantees no policy).
-- **Outputs:** `output` (the generated string), `param.text`
+- **Outputs:** `output` (the generated string), `param.text`, `param.length`
 
 ## `llmQuery`
 

@@ -108,7 +108,7 @@ curl -s --negotiate -u : -c cookie.jar -X POST "$NP/api/auth/windows"
 # GET $NP/api/auth/oidc
 
 # Refresh + Logout
-curl -s -b cookie.jar -c cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/auth/refresh" -H 'X-Auth-Token-Response: true'   # neues JWT, gleiche absolute Session-Grenze
+curl -s -b cookie.jar -c cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/auth/refresh"   # neues JWT im Cookie (Body nur Identität; Token im Body nur bei Authorization: Bearer), gleiche absolute Session-Grenze
 curl -s -b cookie.jar -c cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/auth/logout" -i                                   # 204 No Content
 ```
 

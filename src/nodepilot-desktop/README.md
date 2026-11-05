@@ -16,7 +16,7 @@ itself.
    anything unexpected throws rather than falling back to something permissive.
 2. Pins that certificate by SHA-256 and contains navigation (`src/security.ts`). The system root CA
    store is **not** trusted for this origin, and the shell will not follow a link off it.
-3. Polls `GET {origin}/healthz/ready` for up to 120 seconds behind a splash screen — the backend is
+3. Polls `GET {origin}/healthz/ready` for up to 240 seconds behind a splash screen — the backend is
    a separate Windows service and may still be starting.
 4. Loads the SPA, or the first-run setup window when the installer left an admin handoff behind.
 5. Follows the SPA's skin: the window and tray icon change with the favicon the page reports

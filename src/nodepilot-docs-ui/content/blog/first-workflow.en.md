@@ -22,7 +22,7 @@ Select the “Run Script” activity and enter this script:
 $env:COMPUTERNAME
 ```
 
-Set the output variable to `hostInfo`. Leave the “Machine” field empty so the script runs locally on the NodePilot host under the service identity. No separate target machine or additional credentials are needed.
+Set the output variable to `hostInfo`. Leave the “Target machine” field empty so the script runs locally on the NodePilot host under the service identity. No separate target machine or additional credentials are needed.
 
 **4. Publish and run**
 

@@ -47,10 +47,11 @@ csrf_token() {
 | `POST /{id}/execute` | Startet Lauf — 202 + ExecutionId |
 | `POST /{id}/duplicate` | Duplizieren — 201 (Copy born disabled) |
 | `POST /{id}/enable` / `disable` | Kill-Switch — 204 |
-| `POST /{id}/cancel-all` | Cancelt alle Running-Executions — 200 |
+| `POST /{id}/cancel-all` | Cancelt alle Running- und Pending-Executions — 200 |
 | `POST /{id}/lock` / `unlock` | Edit-Lock — 200 |
 | `POST /{id}/publish` | Save + Enable + Unlock (atomar) — 200 |
 | `POST /{id}/force-unlock` | Admin-only, bricht fremden Lock — 200 |
+| `PUT /{id}/concurrency-limit` | Admin/Op. Body `{"maxConcurrentExecutions": N}` (1..1000, `null` = unbegrenzt, das Feld ist Pflicht) — 204. Kein Edit-Lock, kein Versionssprung |
 
 ```bash
 # Liste + einzelner Workflow
@@ -161,13 +162,14 @@ Workflowdefinition verhindert die Aktivierung weiterhin sichtbar. Envelope-Typ:
 
 | Endpoint | Zweck |
 |---|---|
-| `GET /api/executions` | Liste (`?workflowId=&activeOnly=&terminalOnly=&includePayloads=`, 500-Cap). `includePayloads` ist als einziger dieser Parameter keine Filterung, sondern ändert die Antwortform: default `true`, mit `false` kommen `returnData` und `inputParametersJson` als `null` zurück. `sortBy` (`started`, `status`, `workflow`, `trigger`, `startedBy`, `steps`, `duration`) und `sortDir` (`asc`/`desc`, Default `started`/`desc`) sortieren serverseitig über alle Seiten; unbekannte Werte ergeben 400. Rein verengende Parameter (`page`, `pageSize`, `status`, `search`) stehen bewusst nicht in dieser Tabelle. |
+| `GET /api/executions` | Liste (`?workflowId=&activeOnly=&terminalOnly=&includePayloads=`, seitenweise: `{items, page, pageSize, total, totalPages}`). `includePayloads` ist als einziger dieser Parameter keine Filterung, sondern ändert die Antwortform: default `true`, mit `false` kommen `returnData` und `inputParametersJson` als `null` zurück. `sortBy` (`started`, `status`, `workflow`, `trigger`, `startedBy`, `steps`, `duration`) und `sortDir` (`asc`/`desc`, Default `started`/`desc`) sortieren serverseitig über alle Seiten; unbekannte Werte ergeben 400. Rein verengende Parameter (`page`, `pageSize`, `status`, `search`) stehen bewusst nicht in dieser Tabelle. |
 | `GET /api/executions/{id}` | Einzelne Execution |
 | `GET /api/executions/{id}/steps` | Steps einer Execution |
 | `POST /api/executions/{id}/cancel` / `retry` / `resume` | Einzelner Lauf |
+| `GET /api/executions/{id}/paused-steps` | Die Steps, auf denen ein Debug-Lauf pausiert, um den Debugger nach einem Neuladen der Seite wiederherzustellen (Leserecht auf den Workflow) |
 
 ```bash
-curl -s -b cookie.jar "$NP/api/executions?workflowId=21f1c0d4-...&activeOnly=true" | jq '.[0]'
+curl -s -b cookie.jar "$NP/api/executions?workflowId=21f1c0d4-...&activeOnly=true" | jq '.items[0]'
 curl -s -b cookie.jar "$NP/api/executions/7e3f..." | jq '{status,startedAt,completedAt,triggeredBy}'
 curl -s -b cookie.jar "$NP/api/executions/7e3f.../steps" | jq '.[] | {stepId,status,durationMs}'
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/executions/7e3f.../cancel" -i   # 204
@@ -206,6 +208,8 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/credenti
 ## Global Variables
 
 `GET /api/global-variables` (Admin/Op), `POST/PUT/DELETE` (Admin). Name-Pattern `[A-Za-z0-9_-]{1,100}`. Secrets werden gespeichert, aber nie zurückgegeben (`"value":"***"`).
+
+Ordner: `GET /api/global-variable-folders` (Admin/Op), `POST`, `PUT/DELETE /{id}`, `POST /{id}/move` (Admin). `POST /api/global-variables/{id}/move-folder` verschiebt eine Variable (Admin).
 
 ```bash
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/global-variables" -H 'Content-Type: application/json' \
@@ -293,6 +297,7 @@ Alle Webhook-Reject-Pfade (missing/wrong secret, disabled, path/method-Mismatch,
 | Endpoint | Zweck |
 |---|---|
 | `GET /api/observability/config\|query\|query_range\|summary` | Prometheus/OTel-Queries |
+| `GET /api/observability/dashboards/{key}` | Ein Dashboard aus dem festen Metrik-Katalog (alle Rollen) |
 | `GET /api/diagnostics/support-log\|support-log/download\|support-events\|support-events/export\|app-log\|app-log/download` | Diagnostics (Admin) |
 
 ```bash
@@ -309,10 +314,10 @@ curl -s -b cookie.jar "$NP/api/observability/summary" | jq '.panels[] | {key,val
 
 ```bash
 # Backup — multipart für preview/restore, Passphrase als Form-Field
-curl -s -b cookie.jar "$NP/api/backup/manifest" | jq   # {"sections":[{"section":"Credentials","count":12},...]}
+curl -s -b cookie.jar "$NP/api/backup/manifest" | jq   # {"sections":[{"section":"credentials","count":12},...]}
 
 curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/backup/export" -H 'Content-Type: application/json' \
-  -d '{ "sections":["Credentials","GlobalVariables","Workflows","Settings"],
+  -d '{ "sections":["credentials","globalVariables","workflows","settings"],
         "passphrase":"correct-horse-battery-staple" }' -o backup.npbackup
 
 # Restore: file + passphrase + policy (skip|rename|overwrite, per-section überschreibbar)
@@ -334,7 +339,13 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/admin/set
 | Bereich | Endpoints |
 |---|---|
 | Backup | `GET /api/backup/manifest`, `POST /export`, `POST /{preview\|restore}` (Admin, multipart) |
-| Users | `GET/POST /api/users`, `PUT/DELETE /api/users/{id}` (Admin) |
+| Users | `GET/POST /api/users`, `PUT/DELETE /api/users/{id}`, `POST /{id}/reactivate` (Admin) |
+| SCIM-Gruppen | `GET /api/admin/scim-groups/tombstones`, `POST /{id}/reactivate` (Admin) |
+| Custom Activities | `GET /api/custom-activities` (alle Rollen sehen aktivierte Einträge; Admin/Op mit `?includeDisabled=true` auch Entwürfe), `GET /{id}`, `GET /{id}/versions`, `GET /export`, `POST`, `PUT/DELETE /{id}`, `POST /{id}/rollback/{version}`, `POST /import` (Admin/Op; ein aktivierter Eintrag ist nur noch für Admins änderbar), `POST /{id}/enable\|disable` (Admin) |
+| Alerting-Regeln | `GET /api/alerting/catalog\|rules\|rules/{id}\|deliveries`, `POST /preview-filter\|preview-rule` (Admin/Op), `POST /rules`, `PUT/DELETE /rules/{id}`, `POST /rules/{id}/enable\|disable\|test-fire` (Admin) — siehe [Alerting](../alerting) |
+| System-Alert-Policies | `GET /api/alerting/system/catalog\|policies\|policies/{id}`, `POST /preview` (Admin/Op), `POST /policies`, `PUT/DELETE /policies/{id}`, `POST /policies/{id}/enable\|disable\|test-fire` (Admin) |
+| Abhängigkeiten | `GET /api/dependencies/objects` (`q`, `kind`, `state=problems\|unused`, `sort=name\|usage`, `cursor`, `limit`), `GET /{kind}/{id}`, `GET /{kind}/{id}/evidence` — `kind` ist `workflow\|machine\|credential\|variable\|customActivity`; alle Rollen, beschränkt auf die lesbaren Ordner |
+| Betrieb | `GET /api/operations/graph?windowMinutes=30\|60` — die Live-Betriebsansicht; alle Rollen, beschränkt auf die lesbaren Ordner |
 | Maintenance Windows | `GET /api/maintenance-windows`, `GET /{id}`, `GET /affecting/{workflowId}`, `POST`, `PUT/DELETE /{id}` |
 | Shared Folders | `GET/POST /api/shared-workflow-folders`, `PUT/DELETE /{id}`, `POST /{id}/move`, `POST /api/workflows/{workflowId}/move-folder` |
 | Folder-Permissions | `GET/POST /api/shared-workflow-folders/{folderId}/permissions`, `PUT/DELETE /{permissionId}` |
@@ -344,7 +355,7 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/admin/set
 | Activity-Catalog | `GET /api/activity-catalog` |
 | Scheduler | `GET /api/triggers/schedule/next-fires` |
 | System | `GET /api/system/host-info` (alle Rollen) |
-| AI | `POST /api/ai/generate-script\|generate-workflow\|generate-agent-team` (Admin/Op), `POST /api/ai/chat` (all roles; applying changes Admin/Op), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Op, folder-RBAC) — opt-in, SSE streaming |
+| AI | `POST /api/ai/generate-script\|generate-workflow\|generate-agent-team` (Admin/Op), `POST /api/ai/chat` (all roles; applying changes Admin/Op), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Op, folder-RBAC), `GET /api/ai/knowledge/capabilities` + `POST /api/ai/knowledge/ask` (der globale AI-Chat, alle Rollen; die Quellen hängen von der Rolle ab) — opt-in, SSE streaming |
 | Secrets | `POST /api/secrets/reencrypt` (Admin, kein Body) |
 
 Shared-Folder-Permission-Grant-Body: `{"principalType":"User","principalKey":"<guid>","role":"FolderEditor"}` — Rollen `FolderViewer|FolderOperator|FolderEditor|FolderAdmin`, `principalType` `User|Group` (`Group` = AD-SID `S-1-5-21-...`).
