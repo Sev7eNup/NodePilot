@@ -100,12 +100,14 @@ public sealed class RuntimeOverridesSecretRotationTests : IDisposable
             return _old.Unprotect(bytes);
         });
         protector.Setup(x => x.Protect(It.IsAny<string>())).Returns((string value) => _current.Protect(value));
-        var rotation = Task.Run(() => _writer.ReencryptSecrets(protector.Object, CancellationToken.None));
+        // Both parts block on purpose, so they get dedicated threads instead of waiting for the
+        // thread pool to grow under a parallel test run.
+        var rotation = RunOnDedicatedThread(() => _writer.ReencryptSecrets(protector.Object, CancellationToken.None));
         Task? save = null;
         try
         {
             entered.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
-            save = Task.Run(() => { saveStarted.Set(); _writer.MutateAndWrite(root => root["Unrelated"] = 99); });
+            save = RunOnDedicatedThread(() => { saveStarted.Set(); _writer.MutateAndWrite(root => root["Unrelated"] = 99); });
             saveStarted.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
             resume.Set();
             (await rotation.WaitAsync(TimeSpan.FromSeconds(10))).Skipped.Should().Be(0);
@@ -121,6 +123,12 @@ public sealed class RuntimeOverridesSecretRotationTests : IDisposable
             if (save is not null) await save.WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
+
+    private static Task<T> RunOnDedicatedThread<T>(Func<T> work) =>
+        Task.Factory.StartNew(work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+    private static Task RunOnDedicatedThread(Action work) =>
+        Task.Factory.StartNew(work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     private string Encrypt(string value) => EncryptingJsonConfigurationProvider.EncryptForPersist(value, _old);
     private string Decrypt(string value) => _current.Unprotect(Convert.FromBase64String(
