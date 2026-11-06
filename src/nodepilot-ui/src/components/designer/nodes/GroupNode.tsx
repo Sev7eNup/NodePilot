@@ -4,16 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { type NodeProps, type Node, NodeResizer, useReactFlow, useStore } from '@xyflow/react';
 import { getCollapsedGroupSize, getExpandedGroupSize } from '../../../lib/collapsedGraphView';
 import { groupLabelFontSize } from '../../../lib/groupLabel';
+import { AnnotationEditContext } from './AnnotationEditContext';
 
 type GroupColor = typeof COLORS[number];
 
 // Group chrome (see `.np-group-*` in index.css): a quiet tinted frame with a label chip.
 // The hue is user-picked data (9 fixed colors) resolved through `--np-group-<color>` tokens.
 const COLORS = ['blue', 'teal', 'green', 'amber', 'orange', 'rose', 'pink', 'violet', 'slate'] as const;
-
-export const GroupNodeEditContext = createContext<{
-  updateGroupNode: (id: string, updater: (node: Node) => Node) => void;
-} | null>(null);
 
 /**
  * Id of the group currently highlighted as the drag drop-target, or null. Set by the editor during
@@ -35,7 +32,8 @@ export function GroupNode({ id, data, selected }: NodeProps) {
   const collapsed = d.collapsed === true;
   const childCount = typeof d.__collapsedChildCount === 'number' ? d.__collapsedChildCount : 0;
   const { setNodes } = useReactFlow();
-  const editContext = useContext(GroupNodeEditContext);
+  const editContext = useContext(AnnotationEditContext);
+  const canWrite = editContext?.canWrite ?? false;
   const isDropTarget = useContext(GroupDropTargetContext) === id;
   // Zoom-aware label size: grows when zooming in, stays readable when zooming out. Subscribed via
   // selector so the node only re-renders on zoom change, not on pan/selection.
@@ -55,7 +53,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
 
   const updateGroupNode = useCallback((updater: (node: Node) => Node) => {
     if (editContext) {
-      editContext.updateGroupNode(id, updater);
+      if (editContext.canWrite) editContext.updateGroupNode(id, updater);
       return;
     }
     setNodes((nds: Node[]) => nds.map((n) => n.id === id ? updater(n) : n));
@@ -63,6 +61,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
 
   const commit = () => {
     setEditing(false);
+    if (!canWrite) return;
     const trimmed = draft.trim() || 'Group';
     if (trimmed === savedLabel) return;
     updateGroupNode((n) => ({
@@ -72,6 +71,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
   };
 
   const setColor = (c: GroupColor) => {
+    if (!canWrite) return;
     updateGroupNode((n) => ({
       ...n,
       data: { ...withoutRuntimeGroupData(n.data as Record<string, unknown>), color: c },
@@ -79,6 +79,10 @@ export function GroupNode({ id, data, selected }: NodeProps) {
   };
 
   const toggleCollapsed = () => {
+    if (editContext && !canWrite) {
+      editContext.toggleGroupView(id);
+      return;
+    }
     updateGroupNode((n) => {
       const data = withoutRuntimeGroupData((n.data as Record<string, unknown>) ?? {});
       if (collapsed) {
@@ -105,7 +109,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
       <NodeResizer
         minWidth={200}
         minHeight={120}
-        isVisible={selected && !collapsed}
+        isVisible={canWrite && selected && !collapsed}
         lineStyle={{ borderColor: `var(--np-group-${color})`, opacity: 0.6 }}
         handleStyle={{ width: 9, height: 9, borderRadius: '50%', background: `var(--np-group-${color})`, border: 'none' }}
       />
@@ -117,7 +121,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
         {/* Header: label chip on the left, actions on the right (shown on hover/selection). */}
         <div className="nodrag absolute top-0 left-0 right-0 flex items-center gap-2 px-3 py-2">
           <div className="np-group-chip">
-            {editing ? (
+            {canWrite && editing ? (
               <input
                 ref={inputRef}
                 value={draft}
@@ -132,10 +136,10 @@ export function GroupNode({ id, data, selected }: NodeProps) {
               />
             ) : (
               <span
-                className="min-w-0 truncate font-semibold font-headline text-left cursor-text select-none"
+                className={`min-w-0 truncate font-semibold font-headline text-left select-none ${canWrite ? 'cursor-text' : ''}`}
                 style={{ fontSize: `${labelFontSize}px` }}
-                onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); }}
-                title={t('nodes.group.rename')}
+                onDoubleClick={(e) => { e.stopPropagation(); if (canWrite) setEditing(true); }}
+                title={canWrite ? t('nodes.group.rename') : undefined}
               >
                 {savedLabel}
               </span>
@@ -144,7 +148,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
 
           <div className="np-group-action ml-auto flex items-center gap-1 shrink-0">
             {/* Color swatches — only visible when selected */}
-            {selected && !editing && COLORS.map((c) => (
+            {canWrite && selected && !editing && COLORS.map((c) => (
               <button
                 key={c}
                 type="button"

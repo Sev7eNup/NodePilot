@@ -36,7 +36,8 @@ import {
 import '@xyflow/react/dist/style.css';
 import { ActivityNode } from '../components/designer/nodes/ActivityNode';
 import { StickyNoteNode } from '../components/designer/nodes/StickyNoteNode';
-import { GroupNode, GroupNodeEditContext, GroupDropTargetContext } from '../components/designer/nodes/GroupNode';
+import { GroupNode, GroupDropTargetContext } from '../components/designer/nodes/GroupNode';
+import { AnnotationEditContext } from '../components/designer/nodes/AnnotationEditContext';
 import { lintWorkflow } from '../lib/workflowLint';
 import { useSettledGraph } from '../hooks/useSettledGraph';
 import { getSmartDefaults } from '../lib/lastSimilarNode';
@@ -218,6 +219,7 @@ function WorkflowEditorInner() {
   }, []);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [groupCollapseOverrides, setGroupCollapseOverrides] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [tidyingWorkflowId, setTidyingWorkflowId] = useState<string | null>(null);
   const isTidying = !!id && tidyingWorkflowId === id;
   const [selected, setSelected] = useState<SelectedItem>(null);
@@ -254,7 +256,7 @@ function WorkflowEditorInner() {
 
   const lockState = useWorkflowLock({ workflowId: id, workflow, currentUserId, roleCanWrite });
   const persistence = useWorkflowPersistence({
-    workflowId: id, workflow, nodes, edges, suspendAutoSave: isTidying,
+    workflowId: id, workflow, nodes, edges, canWrite: lockState.canWrite, suspendAutoSave: isTidying,
   });
   const {
     name, isDirty, isPublishing,
@@ -264,6 +266,9 @@ function WorkflowEditorInner() {
   // Publish saves and releases the lock atomically. Freeze all edit affordances as soon as it
   // is queued, and while an async layout still owns a pre-apply graph snapshot.
   const canWrite = lockState.canWrite && !isPublishing && !isTidying;
+
+  // View-only collapse choices must not carry into an editing session or another workflow.
+  useEffect(() => { setGroupCollapseOverrides(new Map()); }, [id, lockState.canWrite]);
 
   const { data: allWorkflows } = useQuery({
     queryKey: ['workflows', 'names'],
@@ -868,13 +873,16 @@ function WorkflowEditorInner() {
 
   // Mark dirty on any graph or name change (after initial load).
   const onNodesChangeDirty = useCallback((changes: Parameters<typeof onNodesChange>[0]) => {
-    onNodesChange(changes);
-    if (changes.some((c) => c.type !== 'select' && c.type !== 'dimensions')) markDirty();
-  }, [onNodesChange, markDirty]);
+    const accepted = canWrite ? changes : changes.filter((c) => c.type === 'select'
+      || (c.type === 'dimensions' && c.resizing === undefined && !c.setAttributes));
+    onNodesChange(accepted);
+    if (accepted.some((c) => c.type !== 'select' && c.type !== 'dimensions')) markDirty();
+  }, [canWrite, onNodesChange, markDirty]);
   const onEdgesChangeDirty = useCallback((changes: Parameters<typeof onEdgesChange>[0]) => {
-    onEdgesChange(changes);
-    if (changes.some((c) => c.type !== 'select')) markDirty();
-  }, [onEdgesChange, markDirty]);
+    const accepted = canWrite ? changes : changes.filter((c) => c.type === 'select');
+    onEdgesChange(accepted);
+    if (accepted.some((c) => c.type !== 'select')) markDirty();
+  }, [canWrite, onEdgesChange, markDirty]);
 
   // Revalidate every graph change for the header badge and lint panel without blocking saves.
   // Runs on the settled graph, not the live one: lintWorkflow walks every edge against every
@@ -1039,6 +1047,7 @@ function WorkflowEditorInner() {
     annotations: nodeAnnotations, coverage, varFlowEdgeIds,
     detachedEdgeId: edgeDetach.detachedEdgeId,
     dockTargetNodeId: edgeDetach.dockTargetNodeId,
+    groupCollapseOverrides: canWrite ? undefined : groupCollapseOverrides,
   });
 
   const detachedEdgeLabel = ((detachedEdge?.data as Record<string, unknown> | undefined)?.label as string) || '';
@@ -1061,13 +1070,23 @@ function WorkflowEditorInner() {
   );
 
   const updateGroupNode = useCallback((nodeId: string, updater: (node: Node) => Node) => {
+    if (!canWrite) return;
     commitHistory('Edit group');
     markDirty();
     setNodes((nds: Node[]) => nds.map((n) => n.id === nodeId ? updater(n) : n));
-  }, [commitHistory, setNodes, markDirty]);
-  const groupNodeEditContextValue = useMemo(
-    () => ({ updateGroupNode }),
-    [updateGroupNode],
+  }, [canWrite, commitHistory, setNodes, markDirty]);
+  const toggleGroupView = useCallback((nodeId: string) => {
+    const group = nodes.find((node) => node.id === nodeId && node.type === 'group');
+    if (canWrite || !group) return;
+    setGroupCollapseOverrides((previous) => {
+      const next = new Map(previous);
+      next.set(nodeId, !(previous.get(nodeId) ?? group.data.collapsed === true));
+      return next;
+    });
+  }, [canWrite, nodes]);
+  const annotationEditContextValue = useMemo(
+    () => ({ canWrite, updateGroupNode, toggleGroupView }),
+    [canWrite, updateGroupNode, toggleGroupView],
   );
 
   // Resolved here rather than inside an IIFE in the JSX below. The `(() => { ... })()` form
@@ -1172,7 +1191,7 @@ function WorkflowEditorInner() {
         >
           {premiumCanvas && <NpEdgeMarkerDefs />}
           <EdgeInsertContext.Provider value={edgeInsertContextValue}>
-          <GroupNodeEditContext.Provider value={groupNodeEditContextValue}>
+          <AnnotationEditContext.Provider value={annotationEditContextValue}>
           <GroupDropTargetContext.Provider value={dropTargetGroupId}>
           <ReactFlow
             nodes={displayedNodes}
@@ -1342,7 +1361,7 @@ function WorkflowEditorInner() {
             />
           </ReactFlow>
           </GroupDropTargetContext.Provider>
-          </GroupNodeEditContext.Provider>
+          </AnnotationEditContext.Provider>
           </EdgeInsertContext.Provider>
           {!fullscreen && workflow && (
             <div className="absolute top-2 left-2 z-30 max-w-[60%]">

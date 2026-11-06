@@ -439,7 +439,14 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
         _server.Given(Request.Create().WithPath($"/api/workflows/{wf}/move-folder").UsingPost())
                .RespondWith(Response.Create().WithStatusCode(204));
         await _client.MoveWorkflowToFolderAsync(wf, new MoveWorkflowToFolderRequest(target), CancellationToken.None);
-        // Reaching here without throwing means success.
+
+        var request = _server.LogEntries.Should().ContainSingle().Subject.RequestMessage;
+        Assert.NotNull(request);
+        request.Method.Should().Be("POST");
+        request.Path.Should().Be($"/api/workflows/{wf}/move-folder");
+        Assert.NotNull(request.Body);
+        using var body = JsonDocument.Parse(request.Body);
+        body.RootElement.GetProperty("targetFolderId").GetGuid().Should().Be(target);
     }
 
     // ---- Observability ------------------------------------------------------

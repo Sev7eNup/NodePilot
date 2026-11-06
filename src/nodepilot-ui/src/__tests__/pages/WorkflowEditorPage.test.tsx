@@ -233,6 +233,108 @@ async function waitForCanvasReady() {
   await waitFor(() => expect(document.querySelector('.react-flow__node')).not.toBeNull());
 }
 
+describe('WorkflowEditorPage — annotation write access', () => {
+  const definition = {
+    nodes: [
+      { id: 'group-1', type: 'group', position: { x: 0, y: 0 }, selected: true,
+        style: { width: 500, height: 250 },
+        data: { label: 'Review group', color: 'blue', collapsed: false, disabled: true } },
+      { id: 'note-1', type: 'stickyNote', parentId: 'group-1', position: { x: 40, y: 60 },
+        width: 200, height: 100, selected: true,
+        data: { text: 'Review note', fontSize: 13, disabled: true } },
+    ],
+    edges: [],
+  };
+
+  it.each(['Viewer', 'Operator'] as const)('%s can collapse groups locally without modifying or saving annotations', async (role) => {
+    const put = vi.fn();
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json({
+        ...MOCK_DISABLED, definitionJson: JSON.stringify(definition),
+      })),
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, () => { put(); return HttpResponse.json(MOCK_DISABLED); }),
+    );
+    const view = renderPage(role);
+    try {
+      await screen.findByText('Review note');
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      fireEvent.click(screen.getByTitle('Collapse group'));
+      expect(screen.queryByText('Review note')).not.toBeInTheDocument();
+      const unload = new Event('beforeunload', { cancelable: true });
+      globalThis.dispatchEvent(unload);
+      expect(unload.defaultPrevented).toBe(false);
+      await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+      expect(put).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByTitle('Expand group'));
+      expect(screen.getByText('Review note')).toBeInTheDocument();
+      expect(screen.queryByTitle('Larger text')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('rose')).not.toBeInTheDocument();
+      expect(view.container.querySelector('.react-flow__resize-control')).not.toBeInTheDocument();
+      expect(useToastStore.getState().toasts).toHaveLength(0);
+    } finally { vi.useRealTimers(); view.unmount(); }
+  });
+
+  it('keeps annotation editing and persisted group collapse available to the lock owner', async () => {
+    const writes: Array<{ definitionJson: string }> = [];
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json({
+        ...MOCK_WORKFLOW, definitionJson: JSON.stringify(definition),
+      })),
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+        writes.push(await request.json() as { definitionJson: string });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByTitle('Larger text'));
+    fireEvent.doubleClick(screen.getByText('Review note'));
+    const text = screen.getByDisplayValue('Review note');
+    fireEvent.change(text, { target: { value: 'Edited note' } });
+    fireEvent.blur(text);
+    fireEvent.click(screen.getByTitle('rose'));
+    fireEvent.doubleClick(screen.getByText('Review group'));
+    const label = screen.getByDisplayValue('Review group');
+    fireEvent.change(label, { target: { value: 'Renamed group' } });
+    fireEvent.keyDown(label, { key: 'Enter' });
+    fireEvent.click(screen.getByTitle('Collapse group'));
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await waitFor(() => expect(writes).toHaveLength(1));
+    const saved = JSON.parse(writes[0].definitionJson);
+    expect(saved.nodes.find((node: { id: string }) => node.id === 'group-1').data)
+      .toMatchObject({ label: 'Renamed group', color: 'rose', collapsed: true });
+    expect(saved.nodes.find((node: { id: string }) => node.id === 'note-1').data)
+      .toMatchObject({ fontSize: 16, text: 'Edited note' });
+  });
+
+  it('does not persist a read-only collapse when the operator later starts editing', async () => {
+    let locked = false;
+    const writes: Array<{ definitionJson: string }> = [];
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json({
+        ...(locked ? MOCK_WORKFLOW : MOCK_DISABLED), definitionJson: JSON.stringify(definition),
+      })),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/lock`, () => {
+        locked = true;
+        return HttpResponse.json(MOCK_WORKFLOW);
+      }),
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+        writes.push(await request.json() as { definitionJson: string });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderPage('Operator');
+    fireEvent.click(await screen.findByTitle('Collapse group'));
+    expect(screen.queryByText('Review note')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Edit$/i }));
+    fireEvent.click(await screen.findByTitle('Larger text'));
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await waitFor(() => expect(writes).toHaveLength(1));
+    const group = JSON.parse(writes[0].definitionJson).nodes.find((node: { id: string }) => node.id === 'group-1');
+    expect(group.data.collapsed).toBe(false);
+    expect(group.style).toMatchObject({ width: 500, height: 250 });
+  });
+});
+
 it('undo restores the property value from before a debounced edit burst', async () => {
   const view = renderPage();
   try {

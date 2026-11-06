@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using FluentAssertions;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Api.Dtos;
@@ -253,9 +254,18 @@ public sealed class NodePilotApiClientResourcesTests : IDisposable
     public async Task MoveGlobalVariableToFolderAsync_PostsAndAccepts204()
     {
         var id = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
         _server.Given(Request.Create().WithPath($"/api/global-variables/{id}/move-folder").UsingPost())
                .RespondWith(Response.Create().WithStatusCode(204));
-        await _client.MoveGlobalVariableToFolderAsync(id, Guid.NewGuid(), CancellationToken.None);
+        await _client.MoveGlobalVariableToFolderAsync(id, folderId, CancellationToken.None);
+
+        var request = _server.LogEntries.Should().ContainSingle().Subject.RequestMessage;
+        Assert.NotNull(request);
+        request.Method.Should().Be("POST");
+        request.Path.Should().Be($"/api/global-variables/{id}/move-folder");
+        Assert.NotNull(request.Body);
+        using var body = JsonDocument.Parse(request.Body);
+        body.RootElement.GetProperty("folderId").GetGuid().Should().Be(folderId);
     }
 
     // ---- Global Variable Folders --------------------------------------------
@@ -298,6 +308,14 @@ public sealed class NodePilotApiClientResourcesTests : IDisposable
         _server.Given(Request.Create().WithPath($"/api/global-variable-folders/{id}").UsingPut())
                .RespondWith(Response.Create().WithStatusCode(204));
         await _client.RenameGlobalVariableFolderAsync(id, new UpdateGlobalVariableFolderRequest("Renamed"), CancellationToken.None);
+
+        var request = _server.LogEntries.Should().ContainSingle().Subject.RequestMessage;
+        Assert.NotNull(request);
+        request.Method.Should().Be("PUT");
+        request.Path.Should().Be($"/api/global-variable-folders/{id}");
+        Assert.NotNull(request.Body);
+        using var body = JsonDocument.Parse(request.Body);
+        body.RootElement.GetProperty("name").GetString().Should().Be("Renamed");
     }
 
     [Fact]
@@ -307,6 +325,14 @@ public sealed class NodePilotApiClientResourcesTests : IDisposable
         _server.Given(Request.Create().WithPath($"/api/global-variable-folders/{id}/move").UsingPost())
                .RespondWith(Response.Create().WithStatusCode(204));
         await _client.MoveGlobalVariableFolderAsync(id, new MoveGlobalVariableFolderRequest(null), CancellationToken.None);
+
+        var request = _server.LogEntries.Should().ContainSingle().Subject.RequestMessage;
+        Assert.NotNull(request);
+        request.Method.Should().Be("POST");
+        request.Path.Should().Be($"/api/global-variable-folders/{id}/move");
+        Assert.NotNull(request.Body);
+        using var body = JsonDocument.Parse(request.Body);
+        body.RootElement.GetProperty("newParentFolderId").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
@@ -316,6 +342,11 @@ public sealed class NodePilotApiClientResourcesTests : IDisposable
         _server.Given(Request.Create().WithPath($"/api/global-variable-folders/{id}").UsingDelete())
                .RespondWith(Response.Create().WithStatusCode(204));
         await _client.DeleteGlobalVariableFolderAsync(id, CancellationToken.None);
+
+        var request = _server.LogEntries.Should().ContainSingle().Subject.RequestMessage;
+        Assert.NotNull(request);
+        request.Method.Should().Be("DELETE");
+        request.Path.Should().Be($"/api/global-variable-folders/{id}");
     }
 
     // ---- Users (Admin) ------------------------------------------------------

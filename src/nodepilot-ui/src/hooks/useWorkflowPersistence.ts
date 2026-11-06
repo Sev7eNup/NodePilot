@@ -15,6 +15,8 @@ interface UseWorkflowPersistenceArgs {
   workflow: Workflow | undefined;
   nodes: Node[];
   edges: Edge[];
+  /** Role and held edit lock; independent of temporary publish/layout UI freezes. */
+  canWrite: boolean;
   /** Pauses the debounce while an async graph producer has not decided which draft to apply. */
   suspendAutoSave?: boolean;
 }
@@ -48,7 +50,7 @@ export interface AsyncGraphEditToken {
  * affordances and a server refetch is adopted only when it cannot replace a local draft.
  */
 export function useWorkflowPersistence({
-  workflowId, workflow, nodes, edges, suspendAutoSave = false,
+  workflowId, workflow, nodes, edges, canWrite, suspendAutoSave = false,
 }: UseWorkflowPersistenceArgs) {
   const { t } = useTranslation(['editor', 'common']);
   const queryClient = useQueryClient();
@@ -69,6 +71,8 @@ export function useWorkflowPersistence({
   const syncedWorkflowIdRef = useRef<string | undefined>(undefined);
   const renderedWorkflowIdRef = useRef(workflowId);
   const draftGenerationRef = useRef(0);
+  const canWriteRef = useRef(canWrite);
+  useLayoutEffect(() => { canWriteRef.current = canWrite; }, [canWrite]);
 
   const blocker = useBlocker(isDirty);
 
@@ -108,7 +112,7 @@ export function useWorkflowPersistence({
 
   const captureSnapshot = useCallback((): WorkflowSnapshot | null => {
     const draft = draftRef.current;
-    if (!draft.workflowId) return null;
+    if (!draft.workflowId || !canWriteRef.current) return null;
     return {
       workflowId: draft.workflowId,
       generation: draftGenerationRef.current,
@@ -136,6 +140,7 @@ export function useWorkflowPersistence({
 
   const saveLoopRef = useRef<Promise<unknown> | null>(null);
   const saveLatest = useCallback(function saveCurrentDraft(): Promise<unknown> {
+    if (!canWriteRef.current) return Promise.resolve();
     if (saveLoopRef.current) return saveLoopRef.current.then((response) =>
       dirtyRef.current && !holdSavesRef.current ? saveCurrentDraft() : response);
 
@@ -190,13 +195,13 @@ export function useWorkflowPersistence({
   // Autosave five seconds after the newest edit. A running save performs its own follow-up.
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!isDirty || isSaving || isPublishQueued || hasVersionConflict || suspendAutoSave || !workflowId) return;
+    if (!canWrite || !isDirty || isSaving || isPublishQueued || hasVersionConflict || suspendAutoSave || !workflowId) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
       if (!holdSavesRef.current) void saveLatest().catch(() => undefined);
     }, 5000);
     return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current); };
-  }, [isDirty, isSaving, isPublishQueued, hasVersionConflict, suspendAutoSave, nodes, edges, name, workflowId, saveLatest]);
+  }, [canWrite, isDirty, isSaving, isPublishQueued, hasVersionConflict, suspendAutoSave, nodes, edges, name, workflowId, saveLatest]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => { if (isDirty) e.preventDefault(); };
@@ -293,7 +298,7 @@ export function useWorkflowPersistence({
   const saveAsync = useCallback(() => saveLatest(), [saveLatest]);
 
   const publish = useCallback(() => {
-    if (publishRef.current) return;
+    if (publishRef.current || !canWriteRef.current) return;
     const publishingWorkflowId = draftRef.current.workflowId;
     publishRef.current = true;
     // A late async producer must never apply across this lifecycle boundary.

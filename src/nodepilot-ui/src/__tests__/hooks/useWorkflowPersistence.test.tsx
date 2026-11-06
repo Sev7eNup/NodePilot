@@ -44,7 +44,7 @@ function makeWrapper() {
 
 function renderPersistence() {
   return renderHook(
-    () => useWorkflowPersistence({ workflowId: 'wf-1', workflow: undefined, nodes: [], edges: [] }),
+    () => useWorkflowPersistence({ workflowId: 'wf-1', workflow: undefined, canWrite: true, nodes: [], edges: [] }),
     { wrapper: makeWrapper() },
   );
 }
@@ -64,7 +64,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
   it('keeps the new workflow dirty when an old unlock completes after navigation', async () => {
     const unlock = deferred<void>();
     const { result, rerender } = renderHook(({ id }) => useWorkflowPersistence({
-      workflowId: id, workflow: undefined, nodes: [], edges: [],
+      workflowId: id, workflow: undefined, canWrite: true, nodes: [], edges: [],
     }), { initialProps: { id: 'a' }, wrapper: makeWrapper() });
     act(() => { result.current.syncFromServer('A', 1); result.current.markDirty(); });
     let pending!: Promise<void>;
@@ -80,13 +80,54 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     vi.mocked(api.post).mockReset();
   });
 
+  it('stops autosave and explicit writes after write access is lost, and resumes after reacquiring it', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.put).mockResolvedValue(undefined);
+      const { result, rerender } = renderHook(({ canWrite }) => useWorkflowPersistence({
+        workflowId: 'wf-1', workflow: undefined, nodes: [], edges: [], canWrite,
+      }), { initialProps: { canWrite: true }, wrapper: makeWrapper() });
+      act(() => { result.current.syncFromServer('Draft', 1); result.current.markDirty(); });
+      rerender({ canWrite: false });
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+      expect(api.put).not.toHaveBeenCalled();
+      await act(async () => { await result.current.saveAsync(); result.current.publish(); });
+      expect(api.put).not.toHaveBeenCalled();
+      expect(api.post).not.toHaveBeenCalled();
+      expect(result.current.isDirty).toBe(true);
+
+      rerender({ canWrite: true });
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(api.put).toHaveBeenCalledTimes(1);
+      expect(result.current.isDirty).toBe(false);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each([false, true])('does not follow up a running save after write access is lost (publish queued: %s)', async (queuePublish) => {
+    const saving = deferred<unknown>();
+    vi.mocked(api.put).mockImplementationOnce(() => saving.promise);
+    const { result, rerender } = renderHook(({ canWrite }) => useWorkflowPersistence({
+      workflowId: 'wf-1', workflow: undefined, nodes: [], edges: [], canWrite,
+    }), { initialProps: { canWrite: true }, wrapper: makeWrapper() });
+    act(() => { result.current.syncFromServer('Draft', 1); result.current.markDirty(); result.current.save(); });
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    act(() => { result.current.markDirty(); if (queuePublish) result.current.publish(); });
+    rerender({ canWrite: false });
+    await act(async () => saving.resolve(undefined));
+    expect(api.put).toHaveBeenCalledTimes(1);
+    expect(api.post).not.toHaveBeenCalled();
+    expect(result.current.isPublishing).toBe(false);
+    expect(result.current.isDirty).toBe(true);
+  });
+
   it.each(['quick-connect', 'edge-insert'])('autosaves a clean draft after %s adds a node', async (operation) => {
     vi.useFakeTimers();
     try {
       const { result } = renderHook(() => {
         const [nodes, setNodes] = React.useState<Node[]>([editableNode('Source')]);
         const [edges, setEdges] = React.useState<Edge[]>([{ id: 'edge-1', source: 'step-1', target: 'step-2' }]);
-        const persistence = useWorkflowPersistence({ workflowId: 'wf-1', workflow: undefined, nodes, edges });
+        const persistence = useWorkflowPersistence({ workflowId: 'wf-1', workflow: undefined, canWrite: true, nodes, edges });
         const { commitHistory } = useWorkflowHistory('wf-1', { nodes, edges, setNodes, setEdges }, persistence.markDirty);
         const connect = useCanvasConnect({ edges, setNodes, setEdges, setSelected: () => {}, commitHistory,
           markDirty: persistence.markDirty,
@@ -121,7 +162,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     const wrapper = makeWrapper();
     const { result, rerender } = renderHook(
       ({ label }) => useWorkflowPersistence({
-        workflowId: 'wf-1', workflow: undefined, nodes: [editableNode(label)], edges: [],
+        workflowId: 'wf-1', workflow: undefined, canWrite: true, nodes: [editableNode(label)], edges: [],
       }),
       { wrapper, initialProps: { label: 'revision-a' } },
     );
@@ -155,7 +196,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     const wrapper = makeWrapper();
     const { result, rerender } = renderHook(
       ({ label }) => useWorkflowPersistence({
-        workflowId: 'wf-1', workflow: undefined, nodes: [editableNode(label)], edges: [],
+        workflowId: 'wf-1', workflow: undefined, canWrite: true, nodes: [editableNode(label)], edges: [],
       }),
       { wrapper, initialProps: { label: 'published-snapshot' } },
     );
@@ -247,7 +288,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     const wrapper = makeWrapper();
     const { result, rerender } = renderHook(
       ({ workflowId }) => useWorkflowPersistence({
-        workflowId, workflow: undefined, nodes: [editableNode('initial')], edges: [],
+        workflowId, workflow: undefined, canWrite: true, nodes: [editableNode('initial')], edges: [],
       }),
       { wrapper, initialProps: { workflowId: 'wf-1' } },
     );
@@ -284,7 +325,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
     vi.mocked(api.post).mockResolvedValue({});
     const { result, rerender } = renderHook(
       ({ workflowId }) => useWorkflowPersistence({
-        workflowId, workflow: undefined, nodes: [editableNode(workflowId)], edges: [],
+        workflowId, workflow: undefined, canWrite: true, nodes: [editableNode(workflowId)], edges: [],
       }),
       { wrapper: makeWrapper(), initialProps: { workflowId: 'wf-1' } },
     );

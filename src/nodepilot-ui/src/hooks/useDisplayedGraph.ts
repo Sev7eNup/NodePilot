@@ -7,7 +7,7 @@ import type { NodeAnnotation } from './useNodeAnnotations';
 import type { CoverageAnnotation } from './useCoverageHeatmap';
 import { computeFlowingVariablesPerEdge } from '../lib/variableUsageScan';
 import { withDefaultEdgePorts } from '../lib/edgePorts';
-import { buildCollapsedGraphView } from '../lib/collapsedGraphView';
+import { buildCollapsedGraphView, getExpandedGroupSize } from '../lib/collapsedGraphView';
 
 /** Stable empties, so a disabled overlay or filter never invalidates a memo that depends on it. */
 const EMPTY_FLOWING_VARS: ReadonlyMap<string, string[]> = new Map<string, string[]>();
@@ -58,6 +58,8 @@ interface UseDisplayedGraphArgs {
   detachedEdgeId?: string | null;
   /** Node the detach preview is currently docking to — gets the highlight ring. */
   dockTargetNodeId?: string | null;
+  /** Local read-only viewing choices, never part of the authored graph. */
+  groupCollapseOverrides?: ReadonlyMap<string, boolean>;
 }
 
 /**
@@ -86,6 +88,7 @@ export function useDisplayedGraph({
   varFlowEdgeIds,
   detachedEdgeId = null,
   dockTargetNodeId = null,
+  groupCollapseOverrides,
 }: UseDisplayedGraphArgs): { displayedNodes: Node[]; displayedEdges: Edge[] } {
   // Variable-flow overlay: only computed when the toggle is on (the analysis touches every
   // node's config payload + transitive successor sets, so we don't pay for it during normal
@@ -226,10 +229,20 @@ export function useDisplayedGraph({
   }, [nodes, edges, simulation, revealIndex, lintCountsByNode, hiddenActivityTypes, failureHeatmapEnabled,
     criticalPath, annotations, coverage, dockTargetNodeId]);
 
-  const collapsedGraphView = useMemo(
-    () => buildCollapsedGraphView(nodesWithDegree, displayedEdges),
-    [nodesWithDegree, displayedEdges],
-  );
+  const collapsedGraphView = useMemo(() => {
+    const viewNodes = groupCollapseOverrides?.size
+      ? nodesWithDegree.map((node) => {
+        const collapsed = groupCollapseOverrides.get(node.id);
+        if (node.type !== 'group' || collapsed === undefined) return node;
+        return {
+          ...node,
+          style: collapsed ? node.style : { ...node.style, ...getExpandedGroupSize(node) },
+          data: { ...node.data, collapsed },
+        };
+      })
+      : nodesWithDegree;
+    return buildCollapsedGraphView(viewNodes, displayedEdges);
+  }, [nodesWithDegree, displayedEdges, groupCollapseOverrides]);
 
   return { displayedNodes: collapsedGraphView.nodes, displayedEdges: collapsedGraphView.edges };
 }

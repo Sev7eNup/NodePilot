@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type NodeProps, useReactFlow, useStore, NodeResizer, type Node } from '@xyflow/react';
 import { isMinimalSkin, useThemeStore } from '../../../stores/themeStore';
+import { AnnotationEditContext } from './AnnotationEditContext';
 
 /**
  * Pure annotation node — documents the workflow inline (why does this branch exist, what does
@@ -39,6 +40,7 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
   const savedText = (d.text as string) ?? (d.label as string) ?? '';
   const fontSize = typeof d.fontSize === 'number' ? (d.fontSize as number) : DEFAULT_FONT_SIZE;
   const { setNodes } = useReactFlow();
+  const canWrite = useContext(AnnotationEditContext)?.canWrite ?? false;
   const isDark = useThemeStore((s) => s.resolvedTheme === 'dark');
   const minimal = useThemeStore((s) => isMinimalSkin(s.theme));
 
@@ -93,6 +95,7 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
 
   const commit = () => {
     setEditing(false);
+    if (!canWrite) return;
     if (draft === savedText) return;
     setNodes((nds: Node[]) => nds.map((n) => n.id === id
       ? { ...n, data: { ...(n.data as Record<string, unknown>), text: draft } }
@@ -108,6 +111,7 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
   /** Steps through the size presets one at a time. +1 / -1 per click, clamped to the array's
    *  bounds so it never produces undefined. */
   const stepFontSize = (delta: 1 | -1) => {
+    if (!canWrite) return;
     // If the saved value isn't one of the presets (e.g. from an old import), jump to the next
     // preset in the direction of the change instead of stumbling over the index.
     const idx = FONT_SIZE_STEPS.indexOf(fontSize as typeof FONT_SIZE_STEPS[number]);
@@ -141,7 +145,7 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
       <NodeResizer
         minWidth={140}
         minHeight={50}
-        isVisible={selected && !editing}
+        isVisible={canWrite && selected && !editing}
         lineStyle={{ borderColor: isDark ? 'rgba(251,191,36,0.40)' : 'rgba(202,138,4,0.55)' }}
         handleStyle={{ width: 8, height: 8, borderRadius: 2, background: isDark ? '#92400e' : '#ca8a04' }}
       />
@@ -176,13 +180,13 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
         onMouseLeave={() => setHovered(false)}
         onDoubleClick={(e) => {
           e.stopPropagation();
-          setEditing(true);
+          if (canWrite) setEditing(true);
         }}
       >
       {/* Font-size stepper — only visible when the note is selected, so the canvas doesn't get
           cluttered with control chrome when there are many notes. `nodrag` makes sure clicks
           on the buttons aren't interpreted as a drag on the node. */}
-      {selected && !editing && (
+      {canWrite && selected && !editing && (
         <div
           className={`nodrag absolute -top-2.5 right-2 flex items-center gap-0.5 rounded-full border shadow-sm px-1 py-0.5 ${
             isDark ? 'bg-amber-950/90 border-amber-500/30' : 'bg-yellow-200/95 border-yellow-400/70'
@@ -223,7 +227,7 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
           and scrolling never kicks in. Padding moves here from the outer div, so the
           scrollbar sits at the note's outer edge. */}
       <div className="nowheel flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2.5">
-        {editing ? (
+        {canWrite && editing ? (
           // `nodrag` + `nopan` prevent React Flow from interpreting a mouse drag inside the
           // textarea as a node drag / canvas pan — otherwise text selection wouldn't work.
           // `h-full` so the textarea fills the whole scrollable area; its own native
