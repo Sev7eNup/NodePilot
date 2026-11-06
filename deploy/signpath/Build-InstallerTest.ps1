@@ -59,6 +59,13 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $pgRoot = Join-Path $toolRoot 'postgresql\pgsql'
 . (Join-Path $repoRoot 'deploy\desktop\Assert-DesktopRuntimePayload.ps1')
 Assert-DesktopPostgresPayload -PgRootPath $pgRoot -ExpectedMajorVersion 16
+
+# Use an explicitly reviewed pair from runtime-payload.lock.json instead of the
+# downloader's latest-version default, which can advance beyond the lockfile.
+$runtimeRoot = Join-Path $toolRoot 'dotnet-runtime'
+Write-Host '[signpath-test] Staging the locked .NET 10.0.13 runtime installers'
+[void](& (Join-Path $repoRoot 'deploy\Get-DotnetRuntimePayload.ps1') -Version '10.0.13' `
+    -OutputDirectory $runtimeRoot -CachePath (Join-Path $toolRoot 'runtime-cache'))
 Write-Host '[signpath-test] Installer prerequisites are ready'
 
 [xml]$props = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Build.props') -Raw
@@ -75,7 +82,8 @@ try {
     Write-Host "[signpath-test] Building server and desktop setup EXEs for $version"
     & (Join-Path $repoRoot 'deploy\Build-Artifact.ps1') -Version $version `
         -SigningCertificateThumbprint $certificate.Thumbprint `
-        -IncludeServerInstaller -IncludeDesktopInstaller -PgBinariesPath $pgRoot -IsccPath $iscc
+        -IncludeServerInstaller -IncludeDesktopInstaller -PgBinariesPath $pgRoot -IsccPath $iscc `
+        -RuntimePayloadPath $runtimeRoot
 
     $outRoot = Join-Path $repoRoot 'out'
     foreach ($name in @(
