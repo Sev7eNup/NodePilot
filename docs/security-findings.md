@@ -495,7 +495,7 @@ any package bump to keep this section honest.
 ### DEP-1 — Microsoft.OpenApi HIGH (GHSA-v5pm-xwqc-g5wc) — FIXED
 `Swashbuckle.AspNetCore` 10.1.7 (and `WireMock.Net.OpenApiParser` in the test graph) pulled
 `Microsoft.OpenApi` 2.4.1, vulnerable to an uncontrolled-recursion DoS on circular schema
-refs. Overridden with a direct pin, currently 2.12.2 (still 2.x → Swashbuckle Models-namespace stays
+refs. Overridden with a direct pin, currently 2.13.0 (still 2.x → Swashbuckle Models-namespace stays
 compatible).
 
 - [NodePilot.Api.csproj](../src/NodePilot.Api/NodePilot.Api.csproj) — `Microsoft.OpenApi` (version in [Directory.Packages.props](../Directory.Packages.props))
