@@ -898,7 +898,8 @@ public class WorkflowEngineUnpersistedFailureTests
         fast.Setup(e => e.ExecuteAsync(It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .Returns<StepExecutionContext, JsonElement, CancellationToken>(async (ctx, _, token) =>
             {
-                await Task.Delay(ctx.StepId == "branchSlow" ? 3000 : 10, token);
+                // branchSlow only ends through the junction's stand-down, so it always loses.
+                await Task.Delay(ctx.StepId == "branchSlow" ? Timeout.Infinite : 10, token);
                 return new ActivityResult { Success = true, Output = ctx.StepId };
             });
         var junction = new Mock<IActivityExecutor>();
@@ -944,7 +945,8 @@ public class WorkflowEngineUnpersistedFailureTests
         db.Workflows.Add(workflow);
         await db.SaveChangesAsync();
 
-        var execution = await engine.ExecuteAsync(workflow, "test-user", CancellationToken.None);
+        var execution = await engine.ExecuteAsync(workflow, "test-user", CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(30));
 
         cancelledFailure.Fired.Should().BeGreaterThan(0,
             "the losing branch must actually have attempted its Cancelled write");

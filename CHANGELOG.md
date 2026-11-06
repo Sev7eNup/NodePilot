@@ -88,6 +88,9 @@ Planned version: **1.5.4**.
   - `wmiQuery` method calls pass their arguments in the types the CIM method declares, so a UInt32
     above 2147483647 such as `hDefKey` 2147483649 (HKCU) works. A value outside the declared range
     fails the step with a message that names the argument (#616).
+  - A `fileWatcherTrigger` on a busy server no longer reports its directory as unreachable when the
+    check simply waited for a free worker thread. The time limit now covers only the directory
+    access itself.
 - **Notifications**
   - A run that finishes while the database is briefly unavailable still triggers its notification
     rules once the commit arrives, even when other runs finished later (#678).
