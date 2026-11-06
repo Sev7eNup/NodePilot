@@ -386,7 +386,7 @@ first verify it with the documented 500-parallel test, then commit. The gut-feel
 Not our problem, but documented so it isn't tried again:
 
 - **Microsoft.OpenApi 3.x** — Swashbuckle 10.2.3 requires the 2.x surface (transitive floor 2.7.5).
-  The pin on 2.x (currently 2.12.2) remains necessary. Only follow after a Swashbuckle major.
+  The pin on 2.x (currently 2.13.0) remains necessary. Only follow after a Swashbuckle major.
 - **TypeScript 7** — `typescript-eslint` aborts hard on load; support is only planned from TS ≥ 7.1.
   Side-by-side TS 6+7 or sacrificing the lint gate were both rejected.
 - **Spectre.Console 0.57.2** — `Spectre.Console.Cli` ends stably at 0.55.0 and pins the core to
