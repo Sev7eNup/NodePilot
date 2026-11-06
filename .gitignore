@@ -85,6 +85,8 @@ test.db
 # Personal/local-only files (machines snapshot, copied hosts file)
 /machines.json
 **/*-hosts-copy.txt
+# Unpublished audit backlog and suspected vulnerability details.
+/.audit-private/
 
 # Product-naming scratch — brainstorming, not a decision. Must not reach the public repo.
 /newnames.md

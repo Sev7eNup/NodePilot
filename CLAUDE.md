@@ -30,6 +30,7 @@ Modern, lean replacement for Microsoft System Center Orchestrator. Agentless wor
 - `docs/workflow-tests.md` — test suite under `scripts/test-suite/`: 51 generated workflows against the running engine, `suite-manifest.json` as the coverage source, guard test `TestSuiteCoverageTests`
 - `docs/enterprise-features.md` — HA, secret providers, LDAP/SSO, SIEM, folder RBAC
 - `docs/threat-model.md` — trust boundaries, global credentials, agent policy and security evidence
+- `.audit-private/later.md` — local-only audit backlog, if present; start here when asked for open audit points or the "Später-Liste", and deduplicate without skipping source checks or publicizing suspected vulnerabilities
 - `docs/ai-feature-ideas.md` — descriptive depth for the AI ideas, **not a specification**. Priority and status live in `docs/roadmap.md`.
 - `src/nodepilot-ui/e2e/README.md` — E2E coverage map + spec conventions
 - `src/nodepilot-ui/demo/` — **browser demo** of the SPA on www.nodepilot.run (`/demo/`), the same app against an in-memory backend; rules in `src/nodepilot-ui/CLAUDE.md`
