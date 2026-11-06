@@ -1,0 +1,144 @@
+name: SignPath installer test signing
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/signpath-onboarding]
+    paths:
+      - .github/workflows/signpath-installers-test.yml
+      - deploy/signpath/Build-InstallerTest.ps1
+      - deploy/signpath/Test-SignedInstaller.ps1
+      - deploy/signpath/Test-InstallerTest.ps1
+      - deploy/signpath/server-setup-zip.xml
+      - deploy/signpath/desktop-setup-zip.xml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signpath-installers-test-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sign-installers:
+    if: >-
+      github.repository == 'Sev7eNup/NodePilot' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/build/signpath-onboarding')
+    runs-on: windows-2025
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Check artifact integrity and deployment contracts
+        run: |
+          & ./deploy/signpath/Test-InstallerTest.ps1
+          & ./deploy/Test-ArtifactSecurity.ps1
+          & ./deploy/Test-DeploymentTemplates.ps1
+
+      - name: Build both installers with a temporary CMS signer
+        id: build
+        run: '& ./deploy/signpath/Build-InstallerTest.ps1'
+
+      - name: Upload unsigned server setup
+        id: server
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nodepilot-server-setup-unsigned-test
+          path: out/NodePilot-Server-Setup-${{ steps.build.outputs.version }}.exe
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Test-sign server setup
+        id: sign-server
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: e64c0f9b-346e-4e60-bce6-8791970f5567
+          project-slug: NodePilot
+          signing-policy-slug: test-signing
+          artifact-configuration-slug: server-setup-zip
+          github-artifact-id: ${{ steps.server.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 1800
+          output-artifact-directory: artifacts/server-signed
+
+      - name: Verify signed server setup and final checksum
+        timeout-minutes: 5
+        env:
+          TEST_VERSION: ${{ steps.build.outputs.version }}
+          CMS_THUMBPRINT: ${{ steps.build.outputs.cms-thumbprint }}
+          SIGNING_REQUEST_URL: ${{ steps.sign-server.outputs.signing-request-web-url }}
+        run: |
+          & ./deploy/signpath/Test-SignedInstaller.ps1 -Target Server -Version $env:TEST_VERSION `
+            -SignedDirectory artifacts/server-signed -UnsignedDirectory out `
+            -RequestUrl $env:SIGNING_REQUEST_URL -CmsThumbprint $env:CMS_THUMBPRINT
+
+      - name: Upload verified server test result
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nodepilot-server-setup-signed-test
+          path: artifacts/server-signed/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload unsigned desktop setup
+        id: desktop
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nodepilot-desktop-setup-unsigned-test
+          path: out/NodePilot-Desktop-Setup-${{ steps.build.outputs.version }}.exe
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Test-sign desktop setup
+        id: sign-desktop
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: e64c0f9b-346e-4e60-bce6-8791970f5567
+          project-slug: NodePilot
+          signing-policy-slug: test-signing
+          artifact-configuration-slug: desktop-setup-zip
+          github-artifact-id: ${{ steps.desktop.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 1800
+          output-artifact-directory: artifacts/desktop-signed
+
+      - name: Verify signed desktop setup and final checksum
+        timeout-minutes: 5
+        env:
+          TEST_VERSION: ${{ steps.build.outputs.version }}
+          CMS_THUMBPRINT: ${{ steps.build.outputs.cms-thumbprint }}
+          SIGNING_REQUEST_URL: ${{ steps.sign-desktop.outputs.signing-request-web-url }}
+        run: |
+          & ./deploy/signpath/Test-SignedInstaller.ps1 -Target Desktop -Version $env:TEST_VERSION `
+            -SignedDirectory artifacts/desktop-signed -UnsignedDirectory out `
+            -RequestUrl $env:SIGNING_REQUEST_URL -CmsThumbprint $env:CMS_THUMBPRINT
+
+      - name: Upload verified desktop test result
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nodepilot-desktop-setup-signed-test
+          path: artifacts/desktop-signed/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

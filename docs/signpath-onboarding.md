@@ -42,23 +42,95 @@ Neither the workflow nor its test artifact is a production release.
 
 ## Review and production integration
 
-The first request completed successfully in SignPath on 26 October 2026:
-`a4361446-00ae-4e7c-a212-7faf6a2ecb86`. Its source is commit `119e6f6`, built by
-[GitHub run 40314013517, attempt 2](https://github.com/Sev7eNup/NodePilot/actions/runs/40314013517/attempts/2).
-The subsequent Windows verification step stalled; this is not yet a successful
-end-to-end workflow result. The workflow correction uses the machine certificate
-store and adds progress messages so a stall can be located precisely.
+The Switcher integration passed end to end on 26 October 2026, including all 167
+Switcher tests, signing, Authenticode verification and evidence upload:
 
-After the run succeeds, inspect the request's GitHub origin in SignPath. Send the
-Foundation the workflow/run and signing-request links for its review. Repository
-publication and the support reply require the maintainer's approval.
+- [Successful GitHub run 40316031047](https://github.com/Sev7eNup/NodePilot/actions/runs/40316031047)
+- [Tested workflow at commit 495a4657e33adb928aefb6298253f0e658a146c3](https://github.com/Sev7eNup/NodePilot/blob/495a4657e33adb928aefb6298253f0e658a146c3/.github/workflows/signpath-test.yml)
+- [Completed SignPath request 73903cab-95aa-4d7a-a13a-6ac11b98ae62](https://app.signpath.io/Web/e64c0f9b-346e-4e60-bce6-8791970f5567/SigningRequests/73903cab-95aa-4d7a-a13a-6ac11b98ae62)
+
+The maintainer sent these links to the Foundation for technical review and asked
+whether the OSS subscription supports detached CMS/PKCS#7 signatures with DER
+`.p7s` output. As of 6 November 2026, the reply is outstanding and the portal still
+shows the release certificate as **CSR PENDING**. Further integration uses only
+`test-signing` until the production certificate and review are complete.
+
+## Installer artifact configurations
+
+The following configurations were added in the OSS portal on 6 November 2026.
+Both have status **VALID**; neither has completed a signing run yet.
+
+| Slug | XML | Signed file at the ZIP root |
+| --- | --- | --- |
+| `server-setup-zip` | [server-setup-zip.xml](../deploy/signpath/server-setup-zip.xml) | `NodePilot-Server-Setup-*.exe` |
+| `desktop-setup-zip` | [desktop-setup-zip.xml](../deploy/signpath/desktop-setup-zip.xml) | `NodePilot-Desktop-Setup-*.exe` |
+
+These configurations apply Authenticode to the outer setup executable only. They
+do not sign embedded application binaries, scripts, third-party components or CMS
+manifests. The existing default configuration, policies and certificate settings
+were not changed.
+
+## Prepared installer test workflow
+
+[SignPath installer test signing](../.github/workflows/signpath-installers-test.yml)
+builds both real installers on a GitHub-hosted Windows runner using the existing
+`Build-Artifact.ps1` path. It runs when its workflow, helpers or installer XML
+configurations are pushed to `build/signpath-onboarding`. Manual dispatch is also
+supported on that branch or `main` once the workflow exists on the default branch.
+Forks, pull requests and release tags cannot trigger this signing job.
+
+The workflow uses only `test-signing` and the existing `SIGNPATH_API_TOKEN` secret.
+It has no release-publishing step or repository write permission. This workflow
+is prepared locally; an end-to-end GitHub run has not yet been performed.
+
+1. Check the signing-test contract, artifact integrity and deployment templates.
+2. Download pinned PostgreSQL 16.15 binaries and Inno Setup 6.7.4 from their official
+   sources, checking SHA-256 before extraction or execution. Inno Setup must also
+   have a valid Authenticode signature.
+3. Create a non-exportable, seven-day code-signing certificate on the disposable
+   runner. Use it for the existing CMS manifest path, build both installers, then
+   verify the server ZIP through `Assert-NodePilotSignedArtifact`. Remove the
+   private certificate in `finally`. No production private key is uploaded.
+4. Submit each outer installer separately using `server-setup-zip` or
+   `desktop-setup-zip`. The inputs come directly from this GitHub build.
+5. Verify the returned installer against the pinned SignPath test certificate,
+   calculate its final SHA-256, and upload the result plus signing evidence as
+   `nodepilot-server-setup-signed-test` and `nodepilot-desktop-setup-signed-test`.
+   Test artifacts expire after seven days.
+
+The runner-local CMS signer is deliberately distinct from the SignPath
+Authenticode signer, and both thumbprints are recorded in the evidence. This is
+an installer integration test, not a replacement for the production CMS signer
+or the release-lab acceptance matrix. Embedded executables and scripts are not
+re-signed by this workflow. Never distribute these test builds as releases.
+
+The targeted contract check is runnable locally without trusting a test root:
+
+```powershell
+powershell.exe -NoProfile -File deploy/signpath/Test-InstallerTest.ps1
+```
+
+## Confirmed CMS subscription limitation
+
+On 6 November 2026, the portal rejected a ZIP configuration containing
+`create-cms-signature` with `output-encoding="der"`, SHA-256 and PKCS#1 padding:
+
+> The element 'create-cms-signature' cannot be used because the corresponding feature is not available with your current subscription type.
+
+No CMS configuration was created. The full migration cannot use SignPath for the
+existing detached `.p7s` manifests under this subscription. Ask the Foundation
+whether it can enable this feature or provide a supported equivalent. Do not
+replace the manifest signature with an unsigned checksum, remove publisher
+pinning or assume that signing the outer setup signs its embedded payloads.
+
+## Remaining production integration
 
 The full release pipeline still needs an integration for the server and desktop
 installers, scripts, and detached CMS manifests. Preserve this dependency order:
 sign executable/script payloads, hash the resulting payloads, create and sign the
 manifests, package the installers, sign the installers, then generate final release
-checksums. Confirm that detached CMS signing is available under the OSS subscription
-before replacing `ArtifactSecurity.ps1`'s local certificate signing. Do not weaken
+checksums. Resolve the CMS subscription limitation before replacing
+`ArtifactSecurity.ps1`'s local certificate signing. Do not weaken
 the installer's signature or pinned-publisher checks.
 
 The existing release acceptance gates in [RELEASING.md](../RELEASING.md) still apply.
