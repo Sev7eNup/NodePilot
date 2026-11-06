@@ -34,10 +34,15 @@ Planned version: **1.5.4**.
   `list_paused_steps` return one snapshot per paused step (step id, label, pause time, reason and
   redacted variables) instead of a list of step ids. The MCP result field is now `pausedSteps`
   (#606).
+- Folder and workflow lists reuse one set of permission data per user and request, avoiding an
+  additional database query for each folder while preserving access rules (#576).
 
 ### Fixed
 
 - **Designer**
+  - Read-only workflows keep note and group editing controls disabled. Collapsing or expanding a
+    group changes only the local view, without autosave or an unsaved-changes warning. Save and
+    publish also stop queuing writes when the edit lock is lost (#584).
   - Renaming an output variable updates every reference to it: templates in any field, a dynamic
     target machine or credential, breakpoint conditions, decision cases and edge conditions,
     including templates in their fixed comparison values (#689, #789).
@@ -128,6 +133,9 @@ Planned version: **1.5.4**.
   - The dashboard, Live-Ops and the execution pages update live again instead of waiting for their
     polling interval, and catch up after a reconnect (#706).
 - **Examples, test suite and tooling**
+  - CLI tests now verify write requests and their payloads. Telemetry
+    tests verify actual log delivery over HTTP and gRPC, including collector headers and disabled
+    export settings.
   - The Windows Update health example applies `freshnessDays` (#734). The temp-file cleanup
     example writes a new archive per run and keeps the earlier ones (#723). The README showcase
     reports a failed probe instead of success (#724). The tech demo uses one name for its child

@@ -42,6 +42,29 @@ function edgeData(edges: Edge[], id: string) {
   return (edges.find((e) => e.id === id)!.data ?? {}) as Record<string, unknown>;
 }
 
+it('expands a saved collapsed group for viewing without changing the authored graph', () => {
+  const nodes: Node[] = [
+    { id: 'group', type: 'group', position: { x: 0, y: 0 }, style: { width: 240, height: 74 },
+      data: { collapsed: true, expandedSize: { width: 500, height: 300 } } },
+    { ...NODES[0], parentId: 'group' },
+    NODES[1],
+  ];
+  const edges: Edge[] = [{ id: 'child-edge', source: 'a', target: 'b' }];
+  const authored = structuredClone({ nodes, edges });
+  const { result, rerender } = renderHook(({ overrides }) => useDisplayedGraph(baseArgs({
+    nodes, edges, groupCollapseOverrides: overrides,
+  })), { initialProps: { overrides: new Map([['group', false]]) } });
+  expect(result.current.displayedNodes.map((node) => node.id)).toEqual(['group', 'a', 'b']);
+  expect(result.current.displayedNodes[0].style).toMatchObject({ width: 500, height: 300 });
+  expect(result.current.displayedEdges[0]).toMatchObject({ source: 'a', target: 'b' });
+  expect({ nodes, edges }).toEqual(authored);
+
+  rerender({ overrides: new Map() });
+  expect(result.current.displayedNodes.map((node) => node.id)).toEqual(['group', 'b']);
+  expect(result.current.displayedEdges[0]).toMatchObject({ source: 'group', target: 'b' });
+  expect({ nodes, edges }).toEqual(authored);
+});
+
 describe('useDisplayedGraph — edge detach marker', () => {
   const cleanEdge: Edge = { id: 'e1', source: 'a', target: 'b', type: 'labeled', data: { label: 'On Success' } };
   /** An edge carrying a marker from an earlier session, e.g. a definition saved before the

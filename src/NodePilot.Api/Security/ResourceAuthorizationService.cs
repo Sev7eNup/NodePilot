@@ -15,7 +15,7 @@ namespace NodePilot.Api.Security;
 /// list/detail endpoint without leaking permissions across requests.
 /// <para>
 /// Permission resolution: walks the folder ancestry from the requested folder up to
-/// Root, collects every grant that targets the user (V1: only PrincipalType=User),
+/// Root, collects every grant that targets the user or an authority-scoped group,
 /// and takes the highest <see cref="SharedFolderRole"/>. Higher-role-implies-lower
 /// is encoded in the private <c>OpRequiresRole</c> helper. Global-Admin bypasses the whole chain.
 /// </para>
@@ -32,9 +32,11 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
     // any caller switching principals mid-scope would otherwise read stale grants. The
     // cost of keying on a Guid pair is one extra hash bucket per lookup.
     private readonly Dictionary<(Guid userId, Guid folderId), List<SharedFolderPermission>> _ancestryGrantsCache = [];
+    private readonly Dictionary<Guid, ILookup<Guid, SharedFolderPermission>> _principalGrantsCache = [];
     private readonly Dictionary<Guid, AccessibleFolderSet> _accessibleFolderSetCache = [];
     private readonly Dictionary<Guid, IReadOnlyCollection<DirectoryGroupPrincipal>> _directoryGroupCache = [];
     private List<SharedWorkflowFolder>? _allFoldersCache;
+    private Dictionary<Guid, SharedWorkflowFolder>? _foldersByIdCache;
 
     public ResourceAuthorizationService(NodePilotDbContext db, IOptions<AuthenticationPolicyOptions>? authenticationPolicy = null)
     {
@@ -100,22 +102,9 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
         if (userId is null) return AccessibleFolderSet.None;
         if (_accessibleFolderSetCache.TryGetValue(userId.Value, out var cached)) return cached;
 
-        // Pull every folder + every grant for this user in two queries, then resolve
-        // accessibility entirely in memory. Folder count in any realistic deployment is
-        // bounded (depth 5 means thousands max even at flat-org-of-thousands scale); the
-        // cost of the in-memory walk is negligible compared to per-row DB hits.
+        // Visibility and capabilities use the same per-principal grant snapshot.
         var allFolders = await GetAllFoldersAsync(ct);
-        var directoryGroups = await GetDirectoryGroupsAsync(userId.Value, ct);
-        // Group-aware grant lookup: include any (PrincipalType=Group, PrincipalKey IN
-        // userGroupSids) grant alongside the per-user grants. Local users have an empty
-        // groupSids list so this branch is a no-op for them.
-        var candidateGrants = await _db.SharedFolderPermissions
-            .AsNoTracking()
-            .Where(DirectoryGroupPrincipal.GrantPredicate(userId.Value, directoryGroups))
-            .ToListAsync(ct);
-        var grants = DirectoryGroupPrincipal.ExactMatches(candidateGrants, directoryGroups)
-            .Select(permission => new { permission.FolderId, permission.Role })
-            .ToList();
+        var grants = await GetPrincipalGrantsAsync(userId.Value, ct);
 
         if (grants.Count == 0)
         {
@@ -125,7 +114,7 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
 
         // Each grant on a folder F implicitly grants access to F + all descendants of F.
         // Collect the descendant set per granted folder, union them all.
-        var grantedFolderIds = grants.Select(g => g.FolderId).ToHashSet();
+        var grantedFolderIds = grants.Select(g => g.Key).ToHashSet();
         var byParent = allFolders.GroupBy(f => f.ParentFolderId)
             .ToDictionary(g => g.Key ?? Guid.Empty, g => g.ToList());
 
@@ -157,9 +146,11 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
     public void InvalidateAll()
     {
         _ancestryGrantsCache.Clear();
+        _principalGrantsCache.Clear();
         _accessibleFolderSetCache.Clear();
         _directoryGroupCache.Clear();
         _allFoldersCache = null;
+        _foldersByIdCache = null;
     }
 
     public async Task<ResourceCapabilities> GetWorkflowCapabilitiesAsync(ClaimsPrincipal user, Guid folderId, CancellationToken ct = default)
@@ -210,8 +201,7 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
         var userId = TryGetUserId(user);
         if (userId is null) return null;
 
-        var directoryGroups = await GetDirectoryGroupsAsync(userId.Value, ct);
-        var grants = await GetAncestryGrantsAsync(folderId, userId.Value, directoryGroups, ct);
+        var grants = await GetAncestryGrantsAsync(folderId, userId.Value, ct);
         if (grants.Count == 0) return null;
 
         // Highest role wins. Enum is ordered FolderViewer < FolderOperator < FolderEditor <
@@ -222,21 +212,18 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
     /// <summary>
     /// Returns every <see cref="SharedFolderPermission"/> that grants access to the
     /// folder at <paramref name="folderId"/> for <paramref name="userId"/> — including
-    /// grants on any ancestor folder, and any authority-scoped group grant represented by
-    /// <paramref name="directoryGroups"/>. Cached per (folderId, userId) tuple within the
-    /// request scope (group-membership doesn't change mid-request).
+    /// grants on any ancestor folder, and any authority-scoped group grant.
+    /// Cached per (folderId, userId) tuple within the request scope.
     /// </summary>
     private async Task<List<SharedFolderPermission>> GetAncestryGrantsAsync(
         Guid folderId, Guid userId,
-        IReadOnlyCollection<DirectoryGroupPrincipal> directoryGroups,
         CancellationToken ct)
     {
         var cacheKey = (userId, folderId);
         if (_ancestryGrantsCache.TryGetValue(cacheKey, out var cached)) return cached;
 
         // Build the ancestor chain folderId -> ... -> Root.
-        var allFolders = await GetAllFoldersAsync(ct);
-        var byId = allFolders.ToDictionary(f => f.Id);
+        var byId = _foldersByIdCache ??= (await GetAllFoldersAsync(ct)).ToDictionary(f => f.Id);
         var chain = new List<Guid>();
         var current = folderId;
         var depth = 0;
@@ -254,13 +241,22 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
             return _ancestryGrantsCache[cacheKey];
         }
 
-        var candidateGrants = await _db.SharedFolderPermissions
-            .AsNoTracking()
-            .Where(p => chain.Contains(p.FolderId))
+        var principalGrants = await GetPrincipalGrantsAsync(userId, ct);
+        var grants = chain.SelectMany(id => principalGrants[id]).ToList();
+        _ancestryGrantsCache[cacheKey] = grants;
+        return grants;
+    }
+
+    private async Task<ILookup<Guid, SharedFolderPermission>> GetPrincipalGrantsAsync(Guid userId, CancellationToken ct)
+    {
+        if (_principalGrantsCache.TryGetValue(userId, out var cached)) return cached;
+        var directoryGroups = await GetDirectoryGroupsAsync(userId, ct);
+        var candidates = await _db.SharedFolderPermissions.AsNoTracking()
             .Where(DirectoryGroupPrincipal.GrantPredicate(userId, directoryGroups))
             .ToListAsync(ct);
-        var grants = DirectoryGroupPrincipal.ExactMatches(candidateGrants, directoryGroups);
-        _ancestryGrantsCache[cacheKey] = grants;
+        var grants = DirectoryGroupPrincipal.ExactMatches(candidates, directoryGroups)
+            .ToLookup(permission => permission.FolderId);
+        _principalGrantsCache[userId] = grants;
         return grants;
     }
 

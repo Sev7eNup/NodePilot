@@ -1,6 +1,11 @@
+using System.Collections;
+using System.Buffers.Binary;
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using FluentAssertions;
+using Google.Protobuf;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using NodePilot.Telemetry;
 using Serilog;
 using Xunit;
@@ -8,14 +13,29 @@ using Xunit;
 namespace NodePilot.Api.Tests.Telemetry;
 
 /// <summary>
-/// Covers the Serilog-to-OpenTelemetry sink bridge. This wiring feeds the ECS/SIEM log
-/// pipeline, so a mistake here (wrong protocol switch, header parsing that throws on a
-/// malformed pair) silently drops production logs. Exercise every branch: the disabled
-/// no-op, the gRPC/HTTP protocol split, and the comma-separated header parser including a
-/// malformed entry that must be skipped rather than crash the host on boot.
+/// Verifies resource identity and actual log delivery through the configured OTLP transport.
 /// </summary>
-public class SerilogTelemetryBridgeTests
+[Collection(SerilogTelemetryBridgeCollection.Name)]
+public class SerilogTelemetryBridgeTests : IDisposable
 {
+    private readonly Dictionary<string, string?> _otelEnvironment;
+
+    public SerilogTelemetryBridgeTests()
+    {
+        // The sink reads OTEL_* directly; these tests must never use an external collector.
+        _otelEnvironment = Environment.GetEnvironmentVariables().Cast<DictionaryEntry>()
+            .Where(entry => ((string)entry.Key).StartsWith("OTEL_", StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(entry => (string)entry.Key, entry => (string?)entry.Value);
+        foreach (var key in _otelEnvironment.Keys)
+            Environment.SetEnvironmentVariable(key, null);
+    }
+
+    public void Dispose()
+    {
+        foreach (var (key, value) in _otelEnvironment)
+            Environment.SetEnvironmentVariable(key, value);
+    }
+
     private static IConfiguration Config(Dictionary<string, string?> values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
@@ -88,36 +108,34 @@ public class SerilogTelemetryBridgeTests
         attributes.Should().NotContainKey("service.instance.id");
     }
 
-    [Fact]
-    public void AddNodePilotOpenTelemetry_Disabled_ReturnsConfigUnchangedAndLogsWithoutOtel()
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task AddNodePilotOpenTelemetry_Disabled_DoesNotExport(bool enabled, bool logsEnabled)
     {
-        var cfg = new LoggerConfiguration();
-        var result = cfg.AddNodePilotOpenTelemetry(
-            Config(new() { ["OpenTelemetry:Enabled"] = "false" }), Env());
-
-        result.Should().BeSameAs(cfg);
-        using var logger = result.CreateLogger();
-        logger.Information("no otel sink attached");
-    }
-
-    [Fact]
-    public void AddNodePilotOpenTelemetry_EnabledButLogsExporterOff_IsNoOp()
-    {
+        await using var collector = await OtlpTestCollector.StartAsync(HttpProtocols.Http1);
         var cfg = new LoggerConfiguration();
         var result = cfg.AddNodePilotOpenTelemetry(
             Config(new()
             {
-                ["OpenTelemetry:Enabled"] = "true",
-                ["OpenTelemetry:Exporters:Logs"] = "false",
+                ["OpenTelemetry:Enabled"] = enabled.ToString(),
+                ["OpenTelemetry:Exporters:Logs"] = logsEnabled.ToString(),
+                ["OpenTelemetry:Otlp:Endpoint"] = collector.Endpoint,
+                ["OpenTelemetry:Otlp:Protocol"] = "http/protobuf",
             }),
             Env());
 
         result.Should().BeSameAs(cfg);
+        await EmitAndFlushAsync(result, $"disabled-{Guid.NewGuid():N}");
+
+        collector.Requests.Should().BeEmpty();
     }
 
     [Fact]
-    public void AddNodePilotOpenTelemetry_GrpcDefault_BuildsWorkingLogger()
+    public async Task AddNodePilotOpenTelemetry_GrpcDefault_ExportsLogRecord()
     {
+        await using var collector = await OtlpTestCollector.StartAsync(HttpProtocols.Http2);
+        var marker = $"grpc-{Guid.NewGuid():N}";
         var cfg = new LoggerConfiguration().AddNodePilotOpenTelemetry(
             Config(new()
             {
@@ -125,32 +143,94 @@ public class SerilogTelemetryBridgeTests
                 ["OpenTelemetry:Exporters:Logs"] = "true",
                 ["OpenTelemetry:ServiceName"] = "nodepilot-test",
                 ["OpenTelemetry:Environment"] = "staging",
-                // no protocol set, so grpc default; no endpoint set, so localhost:4317 default
+                ["OpenTelemetry:Otlp:Endpoint"] = collector.Endpoint,
             }),
             Env());
 
-        using var logger = cfg.CreateLogger();
-        logger.Information("emitted via otel grpc sink");
+        await EmitAndFlushAsync(cfg, marker);
+
+        var request = await collector.WaitForRequestAsync();
+        request.Method.Should().Be("POST");
+        request.Path.Should().Be("/opentelemetry.proto.collector.logs.v1.LogsService/Export");
+        request.Protocol.Should().Be("HTTP/2");
+        request.ContentType.Should().StartWith("application/grpc");
+        request.Body.Length.Should().BeGreaterThan(5);
+        request.Body[0].Should().Be(0, "the gRPC frame must be uncompressed");
+        BinaryPrimitives.ReadInt32BigEndian(request.Body.AsSpan(1, 4)).Should().Be(request.Body.Length - 5);
+        LogBodies(request.Body[5..]).Should().ContainSingle().Which.Should().Be(marker);
     }
 
     [Theory]
     [InlineData("http")]
     [InlineData("http/protobuf")]
-    public void AddNodePilotOpenTelemetry_HttpProtocolWithHeaders_ParsesHeadersAndBuilds(string protocol)
+    public async Task AddNodePilotOpenTelemetry_HttpProtocolWithHeaders_ExportsLogRecord(string protocol)
     {
+        await using var collector = await OtlpTestCollector.StartAsync(HttpProtocols.Http1);
+        var marker = $"http-{Guid.NewGuid():N}";
         var cfg = new LoggerConfiguration().AddNodePilotOpenTelemetry(
             Config(new()
             {
                 ["OpenTelemetry:Enabled"] = "true",
                 ["OpenTelemetry:Exporters:Logs"] = "true",
-                ["OpenTelemetry:Otlp:Endpoint"] = "http://collector.example:4318",
+                ["OpenTelemetry:Otlp:Endpoint"] = collector.Endpoint,
                 ["OpenTelemetry:Otlp:Protocol"] = protocol,
-                // one well-formed header, one malformed pair with no '=' that must be skipped
-                ["OpenTelemetry:Otlp:Headers"] = "x-api-key=secret123 , malformed-no-equals",
+                ["OpenTelemetry:Otlp:Headers"] = " x-api-key = synthetic-key , malformed-no-equals, x-tenant = team=one ",
             }),
             Env());
 
-        using var logger = cfg.CreateLogger();
-        logger.Information("emitted via otel http sink");
+        await EmitAndFlushAsync(cfg, marker);
+
+        var request = await collector.WaitForRequestAsync();
+        request.Method.Should().Be("POST");
+        request.Path.Should().Be("/v1/logs");
+        request.Protocol.Should().Be("HTTP/1.1");
+        request.ContentType.Should().Be("application/x-protobuf");
+        request.Headers.Should().Contain("x-api-key", "synthetic-key");
+        request.Headers.Should().Contain("x-tenant", "team=one");
+        request.Headers.Should().NotContainKey("malformed-no-equals");
+        LogBodies(request.Body).Should().ContainSingle().Which.Should().Be(marker);
     }
+
+    private static async Task EmitAndFlushAsync(LoggerConfiguration config, string marker)
+    {
+        var logger = config.CreateLogger();
+        try
+        {
+            logger.Information("{Marker}", marker);
+        }
+        finally
+        {
+            await logger.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+    }
+
+    private static IEnumerable<string> LogBodies(byte[] payload)
+    {
+        // ExportLogsServiceRequest.resource_logs -> scope_logs -> log_records -> body -> string_value.
+        return MessageFields(payload, 1)
+            .SelectMany(resource => MessageFields(resource, 2))
+            .SelectMany(scope => MessageFields(scope, 2))
+            .SelectMany(record => MessageFields(record, 5))
+            .SelectMany(body => MessageFields(body, 1))
+            .Select(Encoding.UTF8.GetString);
+    }
+
+    private static IEnumerable<byte[]> MessageFields(byte[] payload, int fieldNumber)
+    {
+        using var input = new CodedInputStream(payload);
+        uint tag;
+        while ((tag = input.ReadTag()) != 0)
+        {
+            if (tag == WireFormat.MakeTag(fieldNumber, WireFormat.WireType.LengthDelimited))
+                yield return input.ReadBytes().ToByteArray();
+            else
+                input.SkipLastField();
+        }
+    }
+}
+
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class SerilogTelemetryBridgeCollection
+{
+    public const string Name = "Serilog telemetry environment";
 }

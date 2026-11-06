@@ -249,6 +249,14 @@ public sealed class NodePilotApiClientTests : IDisposable
         _server.Given(Request.Create().WithPath($"/api/workflows/{id}/concurrency-limit").UsingPut())
                .RespondWith(Response.Create().WithStatusCode(204));
         await _client.SetWorkflowConcurrencyLimitAsync(id, 5, CancellationToken.None);
+
+        var request = _server.LogEntries.Should().ContainSingle().Subject.RequestMessage;
+        Assert.NotNull(request);
+        request.Method.Should().Be("PUT");
+        request.Path.Should().Be($"/api/workflows/{id}/concurrency-limit");
+        Assert.NotNull(request.Body);
+        using var body = JsonDocument.Parse(request.Body);
+        body.RootElement.GetProperty("maxConcurrentExecutions").GetInt32().Should().Be(5);
     }
 
     [Fact]
@@ -258,6 +266,14 @@ public sealed class NodePilotApiClientTests : IDisposable
         _server.Given(Request.Create().WithPath($"/api/workflows/{id}/concurrency-limit").UsingPut())
                .RespondWith(Response.Create().WithStatusCode(204));
         await _client.SetWorkflowConcurrencyLimitAsync(id, null, CancellationToken.None);
+
+        var request = _server.LogEntries.Should().ContainSingle().Subject.RequestMessage;
+        Assert.NotNull(request);
+        request.Method.Should().Be("PUT");
+        request.Path.Should().Be($"/api/workflows/{id}/concurrency-limit");
+        Assert.NotNull(request.Body);
+        using var body = JsonDocument.Parse(request.Body);
+        body.RootElement.GetProperty("maxConcurrentExecutions").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
