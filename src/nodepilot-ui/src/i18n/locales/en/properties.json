@@ -825,7 +825,8 @@
     "keyPlaceholder": "key",
     "valuePlaceholder": "value or {{var}}",
     "valuePlaceholderUpstream": "value or {{upstream.param.x}}",
-    "remove": "Remove"
+    "remove": "Remove",
+    "duplicateName": "This name is already used above; the row is not saved until it is unique."
   },
   "jsonPathTree": {
     "collapse": "Collapse JSON node",

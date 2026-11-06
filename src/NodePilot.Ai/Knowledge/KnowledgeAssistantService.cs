@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 using NodePilot.Core.Interfaces;
 
@@ -15,7 +17,8 @@ public sealed record KnowledgeAskRequest(
     string Question,
     IReadOnlyList<AiChatTurnDto>? History,
     string? TimeZone = null,
-    int? UtcOffsetMinutes = null);
+    int? UtcOffsetMinutes = null,
+    string? HistoryContextKey = null);
 
 /// <summary>
 /// Streams one turn of the global "AI Chat" knowledge assistant. Like
@@ -56,14 +59,16 @@ public sealed class KnowledgeAssistantService(
         var systemPrompt = prompts.KnowledgeSystemPrompt
             + "\n\n"
             + KnowledgeTimeContext.Build(DateTimeOffset.UtcNow, request.TimeZone, request.UtcOffsetMinutes);
-        var conversation = new List<LlmMessage>(BuildConversation(request));
-
-        var llm = llmFactory.Create(); // throws unless an active profile resolves
-        // Re-read instead of reusing: a config reload between the two calls can leave no active
-        // profile. A fresh LlmProfileOptions has tool calling off, which is the safe fallback.
-        var profile = llmOptions.CurrentValue.TryResolveActiveProfile(out var active)
-            ? active
-            : new LlmProfileOptions();
+        var options = llmOptions.CurrentValue;
+        if (!options.TryResolveActiveProfile(out var profile))
+            throw LlmClientFactory.NoActiveProfile();
+        var recipientKey = WorkflowAssistantService.HistoryContextKey(options.ActiveProfileId.Trim(), profile);
+        var contextKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{recipientKey}\n{profile.Model}")), 0, 8).ToLowerInvariant();
+        var historyDropped = request.History is { Count: > 0 }
+            && !string.Equals(request.HistoryContextKey, contextKey, StringComparison.Ordinal);
+        var turn = historyDropped ? request with { History = Array.Empty<AiChatTurnDto>() } : request;
+        var conversation = new List<LlmMessage>(BuildConversation(turn));
+        var llm = llmFactory.Create(profile);
         var kOpts = knowledgeOptions.CurrentValue;
         var maxDepth = Math.Max(1, profile.ToolCallMaxDepth);
 
@@ -104,8 +109,8 @@ public sealed class KnowledgeAssistantService(
         }
 
         sw.Stop();
-        yield return ChatStreamEvent.Done(loop.Model ?? "unknown", (int)sw.ElapsedMilliseconds,
-            loop.PromptTokens, loop.CompletionTokens, loop.GenerationMs);
+        yield return new ChatStreamEvent.DoneEvent(loop.Model ?? "unknown", (int)sw.ElapsedMilliseconds,
+            loop.PromptTokens, loop.CompletionTokens, loop.GenerationMs, contextKey, historyDropped);
     }
 
     private static IReadOnlyList<LlmMessage> BuildConversation(KnowledgeAskRequest request)

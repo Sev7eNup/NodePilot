@@ -10,6 +10,19 @@ namespace NodePilot.Engine.Tests.Activities;
 /// </summary>
 public class CustomActivityValidationTests
 {
+    [Theory]
+    [InlineData("Host")]
+    [InlineData("PID")]
+    [InlineData("WhatIfPreference")]
+    [InlineData("__np_private")]
+    public void WrapperReservedNames_AreRejectedForBothParameterDirections(string name)
+    {
+        CustomActivityValidation.Validate("k", "Name", "extension", "auto", false,
+            [Input(name)], [], true).Should().Contain("reserved");
+        CustomActivityValidation.Validate("k", "Name", "extension", "auto", false,
+            [], [Output(name)], true).Should().Contain("reserved");
+    }
+
     private static CustomActivityInputParameter Input(string name, string type = "string", string label = "L")
         => new(name, label, type);
 

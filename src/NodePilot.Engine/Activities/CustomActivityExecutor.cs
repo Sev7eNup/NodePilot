@@ -61,6 +61,14 @@ public sealed class CustomActivityExecutor : IActivityExecutor
         if (!def.IsEnabled)
             return Fail($"Custom activity '{def.Name}' is disabled and cannot run until an administrator enables it.");
 
+        var inputs = CustomActivityParameters.ParseInputs(def.InputParametersJson);
+        var outputs = CustomActivityParameters.ParseOutputs(def.OutputParametersJson);
+        var reservedParameter = inputs.Select(p => p.Name)
+            .Concat(outputs.Select(p => p.Name))
+            .FirstOrDefault(CustomActivityValidation.IsReservedParameterName);
+        if (reservedParameter is not null)
+            return Fail($"Custom activity parameter '{reservedParameter}' is reserved. Rename it before running this definition.");
+
         // 2. Drift guard: the node's embedded key (custom:<key>) must match the definition's key.
         var expectedKey = config.GetStringOrNull("__customKey");
         if (expectedKey is not null && !string.Equals(expectedKey, def.Key, StringComparison.Ordinal))
@@ -77,7 +85,7 @@ public sealed class CustomActivityExecutor : IActivityExecutor
         // as
         //    $name; the capture allow-list (step 6) keeps them out of the outputs.
         var variables = new Dictionary<string, string>(context.Variables);
-        foreach (var p in CustomActivityParameters.ParseInputs(def.InputParametersJson))
+        foreach (var p in inputs)
         {
             var raw = config.GetStringOrNull(p.Name) ?? p.Default;
             if (raw is null)
@@ -98,8 +106,7 @@ public sealed class CustomActivityExecutor : IActivityExecutor
 
         // 6. Build options. Allow-list = declared output names; exitCode is emitted separately
         // anyway.
-        var allowlist = CustomActivityParameters.ParseOutputs(def.OutputParametersJson)
-            .Select(o => o.Name).ToArray();
+        var allowlist = outputs.Select(o => o.Name).ToArray();
         var timeoutSeconds = config.GetOptionalPositiveInt("timeoutSeconds") ?? def.DefaultTimeoutSeconds;
         var successExitCodes = PowerShellActivitySupport.ParseSuccessExitCodes(def.SuccessExitCodes);
         var provenance = CustomActivityHashing.ProvenanceOf(def);

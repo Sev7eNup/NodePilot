@@ -161,7 +161,7 @@ Workflows have a per-user edit lock (`CheckedOutByUserId` + `CheckedOutAt`). Mut
 |---|---|
 | `POST /lock` | Atomically sets `IsEnabled=false` + the lock fields. 409 if already locked. |
 | `POST /unlock` | Lock fields to null. `IsEnabled` stays unchanged. |
-| `POST /publish` | Atomic: save + `IsEnabled=true` + unlock. Validates the **submitted** body first: weak webhook HMAC secret → `400 weak_webhook_hmac_secret`, cron expression invalid for Quartz → `400 invalid_cron_expression`. `enable` checks the same on the saved definition. |
+| `POST /publish` | Atomic: save + `IsEnabled=true` + unlock. Validates the **submitted** body first: weak webhook HMAC secret → `400 weak_webhook_hmac_secret`, cron expression invalid for Quartz → `400 invalid_cron_expression`, `waitNofM` above its inputs → `400 invalid_junction_required_count`. `enable` checks the same on the saved definition. |
 | `POST /force-unlock` | Admin-only. Breaks someone else's lock. |
 
 UX flow and button-state matrix: `docs/workflow-designer-features.md`. In short: `canWrite = role !== 'Viewer' && checkedOutByUserId === currentUserId`.

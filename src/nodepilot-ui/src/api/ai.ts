@@ -243,6 +243,7 @@ export async function chatStream(req: WorkflowChatRequest, h: ChatStreamHandlers
 export interface KnowledgeAskRequest {
   question: string;
   history: AiChatTurn[];
+  historyContextKey?: string | null;
   /** Caller's IANA time zone (e.g. `Europe/Berlin`) so the assistant can anchor "now" and render
    *  times in the user's local zone. */
   timeZone: string;

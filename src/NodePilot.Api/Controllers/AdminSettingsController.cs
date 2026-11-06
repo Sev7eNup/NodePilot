@@ -146,7 +146,8 @@ public sealed class AdminSettingsController : ControllerBase
     [HttpPut("{section}")]
     public async Task<IActionResult> PutSection(string section, [FromBody] JsonElement payload, CancellationToken ct)
     {
-        var adapter = _sectionAdapters.Find(section);
+        using var snapshot = SettingsConfigurationSnapshot.Capture(_configRoot, _writer, _protector);
+        var adapter = snapshot.Adapters.Find(section);
         if (adapter is null) return NotFound(new { code = "SETTINGS_SECTION_UNKNOWN", section });
         var descriptor = adapter.Descriptor;
         if (_clusterEnabled
@@ -196,11 +197,11 @@ public sealed class AdminSettingsController : ControllerBase
         if (adapter.CheckWriteAllowed(dto) is { } rejection)
             return BadRequest(new { code = rejection.Code, message = rejection.Message });
 
-        var oldSnapshot = ReadCurrentSectionObject(descriptor);
+        var oldSnapshot = snapshot.ReadSection(descriptor.SectionPath);
         var newSection = adapter.BuildSectionObject(dto, oldSnapshot);
 
-        var mergedConfig = SimulateMergedConfig(descriptor.SectionPath, newSection);
-        var issues = BootValidatorRunner.RunAllSafely(mergedConfig);
+        using var candidate = snapshot.WithSection(descriptor.SectionPath, newSection);
+        var issues = BootValidatorRunner.RunAllSafely(candidate.Configuration);
         var errorIssues = issues.Where(i => i.Severity == BootValidationSeverity.Error).ToList();
         if (errorIssues.Count > 0)
         {
@@ -405,14 +406,16 @@ public sealed class AdminSettingsController : ControllerBase
 
     private SettingsSectionResponse<object> BuildSectionResponse(ISettingsSectionAdapter adapter)
     {
-        var etag = _writer.ComputeSectionEtag(adapter.Descriptor.SectionPath);
+        using var snapshot = SettingsConfigurationSnapshot.Capture(_configRoot, _writer, _protector);
+        var currentAdapter = snapshot.Adapters.Find(adapter.Descriptor.SectionPath)
+            ?? throw new InvalidOperationException("Settings section is missing from the snapshot.");
         return new SettingsSectionResponse<object>
         {
             SectionPath = adapter.Descriptor.SectionPath,
-            Payload = adapter.BuildCurrentPayload(),
-            Etag = etag,
+            Payload = currentAdapter.BuildCurrentPayload(),
+            Etag = RuntimeOverridesWriter.ComputeEtag(snapshot.ReadSection(adapter.Descriptor.SectionPath)),
             IsHotReloadable = adapter.Descriptor.IsHotReloadable,
-            EffectiveSource = EffectiveSourceDetector.DetectMany(_configRoot, adapter.ConfigKeys),
+            EffectiveSource = EffectiveSourceDetector.DetectMany(snapshot.Configuration, currentAdapter.ConfigKeys),
         };
     }
 
@@ -421,71 +424,18 @@ public sealed class AdminSettingsController : ControllerBase
         JsonObject? sectionJson,
         string etag)
     {
+        using var snapshot = SettingsConfigurationSnapshot.Capture(_configRoot, _writer, _protector);
+        using var selected = snapshot.WithSection(adapter.Descriptor.SectionPath, sectionJson ?? new JsonObject());
+        var currentAdapter = selected.Adapters.Find(adapter.Descriptor.SectionPath)
+            ?? throw new InvalidOperationException("Settings section is missing from the snapshot.");
         return new SettingsSectionResponse<object>
         {
             SectionPath = adapter.Descriptor.SectionPath,
-            Payload = adapter.BuildPayloadFromJson(sectionJson),
+            Payload = currentAdapter.BuildCurrentPayload(),
             Etag = etag,
             IsHotReloadable = adapter.Descriptor.IsHotReloadable,
-            EffectiveSource = EffectiveSourceDetector.DetectMany(_configRoot, adapter.ConfigKeys),
+            EffectiveSource = EffectiveSourceDetector.DetectMany(selected.Configuration, currentAdapter.ConfigKeys),
         };
-    }
-
-    private JsonObject? ReadCurrentSectionObject(SettingsSectionDescriptor descriptor)
-    {
-        return _writer.ReadSection(descriptor.SectionPath);
-    }
-
-    private IConfigurationRoot SimulateMergedConfig(string sectionPath, JsonObject newSection)
-    {
-        return new ConfigurationBuilder()
-            .AddInMemoryCollection(CollectExistingNonSectionKeys(sectionPath))
-            .AddInMemoryCollection(FlattenSection(sectionPath, newSection))
-            .Build();
-    }
-
-    private IEnumerable<KeyValuePair<string, string?>> CollectExistingNonSectionKeys(string excludedSectionPath)
-    {
-        foreach (var kv in _configRoot.AsEnumerable())
-        {
-            if (excludedSectionPath.Equals("Security", StringComparison.OrdinalIgnoreCase)
-                && kv.Key.Equals("AllowedHosts", StringComparison.OrdinalIgnoreCase)) continue;
-            if (kv.Key.StartsWith(excludedSectionPath + ":", StringComparison.OrdinalIgnoreCase)) continue;
-            if (string.Equals(kv.Key, excludedSectionPath, StringComparison.OrdinalIgnoreCase)) continue;
-            yield return kv;
-        }
-    }
-
-    private static IEnumerable<KeyValuePair<string, string?>> FlattenSection(string sectionPath, JsonObject section)
-    {
-        foreach (var (k, v) in FlattenNode(section))
-            yield return new KeyValuePair<string, string?>(PersistedConfigKey(sectionPath, k), v);
-    }
-
-    private static IEnumerable<KeyValuePair<string, string?>> FlattenNode(JsonNode? node, string prefix = "")
-    {
-        switch (node)
-        {
-            case JsonObject obj:
-                foreach (var (k, child) in obj)
-                {
-                    var nextPrefix = string.IsNullOrEmpty(prefix) ? k : $"{prefix}:{k}";
-                    foreach (var kv in FlattenNode(child, nextPrefix))
-                        yield return kv;
-                }
-                break;
-            case JsonArray arr:
-                for (var i = 0; i < arr.Count; i++)
-                {
-                    var nextPrefix = string.IsNullOrEmpty(prefix) ? i.ToString() : $"{prefix}:{i}";
-                    foreach (var kv in FlattenNode(arr[i], nextPrefix))
-                        yield return kv;
-                }
-                break;
-            case JsonValue val:
-                yield return new KeyValuePair<string, string?>(prefix, val.ToString());
-                break;
-        }
     }
 
     private void StripEnvLockedKeys(JsonObject section, string sectionPath)

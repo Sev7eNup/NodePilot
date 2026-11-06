@@ -437,8 +437,14 @@ function Set-ServiceRegistryAclForSecrets {
       Windows grants BUILTIN\Users ReadKey there by default, so placing a password in the
       Environment MULTI_SZ without first protecting the service key simply moves the plaintext
       leak from JSON to the registry. SCM runs as SYSTEM and remains fully authorised.
+      The service account keeps read access to its own key: the service probes its SCM recovery
+      actions there, and the Environment values are its own.
     #>
-    param([Parameter(Mandatory)][string]$Path)
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ServiceAccount,
+        [switch]$SkipServiceRule
+    )
 
     # -Path, not -LiteralPath. On a registry path Get-Acl/Set-Acl -LiteralPath resolves against the
     # current provider instead of the drive qualifier in the string, so from a filesystem location
@@ -454,6 +460,15 @@ function Set-ServiceRegistryAclForSecrets {
             $identity,
             [Security.AccessControl.RegistryRights]::FullControl,
             [Security.AccessControl.InheritanceFlags]::ContainerInherit,
+            [Security.AccessControl.PropagationFlags]::None,
+            [Security.AccessControl.AccessControlType]::Allow)))
+    }
+    # LocalSystem already has FullControl via the SYSTEM ACE above.
+    if (-not $SkipServiceRule) {
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.RegistryAccessRule(
+            $ServiceAccount,
+            [Security.AccessControl.RegistryRights]::ReadKey,
+            [Security.AccessControl.InheritanceFlags]::None,
             [Security.AccessControl.PropagationFlags]::None,
             [Security.AccessControl.AccessControlType]::Allow)))
     }
@@ -830,7 +845,7 @@ function Restore-ServiceRollbackSnapshot {
         $registryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$($Snapshot.Name)"
         # The snapshot can contain secrets for any provider (including a seed passphrase).
         # Protect the recreated key before restoring any environment values.
-        Set-ServiceRegistryAclForSecrets -Path $registryPath
+        Set-ServiceRegistryAclForSecrets -Path $registryPath -ServiceAccount $Snapshot.StartName -SkipServiceRule:$isSystem
         New-ItemProperty `
             -Path $registryPath `
             -Name Environment `
@@ -1375,14 +1390,14 @@ $envValues = @(
 if ($DbProvider -eq 'postgres') {
     # The active Postgres connection string is intentionally absent from JSON. Restrict the
     # service registry key before placing the process-scoped secret in its Environment value.
-    Set-ServiceRegistryAclForSecrets -Path $envRegPath
+    Set-ServiceRegistryAclForSecrets -Path $envRegPath -ServiceAccount $AclIdentity -SkipServiceRule:$isLocalSystem
     $envValues += "ConnectionStrings__Postgres=$postgresServiceConnStr"
 }
 if ($SeedBackupPassphrase) {
     # Same reasoning as the connection string above: this unlocks a file containing every
     # credential the reference machine had, so it never reaches appsettings.Production.json. The
     # key is restricted BEFORE the value is written, not after.
-    Set-ServiceRegistryAclForSecrets -Path $envRegPath
+    Set-ServiceRegistryAclForSecrets -Path $envRegPath -ServiceAccount $AclIdentity -SkipServiceRule:$isLocalSystem
     $seedBstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SeedBackupPassphrase)
     try {
         $seedPassphrasePlain = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($seedBstr)

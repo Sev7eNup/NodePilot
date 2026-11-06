@@ -124,7 +124,7 @@ public sealed class AiKnowledgeController : ControllerBase
         var isPrivileged = User.IsPrivileged();
         var isAdmin = User.IsAdmin();
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        var normalized = new KnowledgeAskRequest(request.Question, history, request.TimeZone, request.UtcOffsetMinutes);
+        var normalized = new KnowledgeAskRequest(request.Question, history, request.TimeZone, request.UtcOffsetMinutes, request.HistoryContextKey);
 
         await using var en = _assistant
             .StreamAskAsync(normalized, accessible, isPrivileged, isAdmin, ct)

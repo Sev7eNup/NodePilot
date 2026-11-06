@@ -131,6 +131,26 @@ public class MaintenanceWindowsControllerValidationTests
         (await CreateResult(Build(db), req)).Should().BeOfType<BadRequestObjectResult>();
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task Create_MixedTimestampKinds_RejectsNonPositiveElapsedInterval(int endOffsetMinutes)
+    {
+        await using var db = TestDbFactory.Create();
+        var start = new DateTime(2026, 7, 8, 10, 0, 0, DateTimeKind.Utc);
+        var end = start.AddMinutes(endOffsetMinutes);
+        var positiveOffset = TimeZoneInfo.Local.GetUtcOffset(start) >= TimeSpan.Zero;
+        var req = Weekly("Mixed kinds") with
+        {
+            Recurrence = "OneTime",
+            OneTimeStartUtc = positiveOffset ? start : start.ToLocalTime(),
+            OneTimeEndUtc = positiveOffset ? end.ToLocalTime() : end,
+        };
+
+        (await CreateResult(Build(db), req)).Should().BeOfType<BadRequestObjectResult>();
+        db.MaintenanceWindows.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task Create_OneTime_Valid_Created()
     {

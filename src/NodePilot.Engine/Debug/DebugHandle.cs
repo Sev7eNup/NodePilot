@@ -32,6 +32,9 @@ public sealed record ResumeRequest(
 public sealed class DebugHandle
 {
     private readonly ConcurrentDictionary<string, TaskCompletionSource<ResumeRequest>> _pending = new();
+    private readonly object _pauseClockLock = new();
+    private int _activePauses;
+    private long _pauseStarted;
 
     /// <summary>Maximum minutes a step is allowed to wait at a breakpoint before it is
     /// automatically cancelled. Guards against zombie executions when the user closes
@@ -53,9 +56,33 @@ public sealed class DebugHandle
     /// trade-off, since step-over is inherently ambiguous across parallel branches.</summary>
     public bool StepOverArmed { get; set; }
 
-    /// <summary>Sum of all pause durations for this execution. Excludes debugger wait time
+    /// <summary>Time during which at least one step was paused. Excludes debugger wait time
     /// from the workflow timeout budget.</summary>
-    public TimeSpan TotalPausedDuration { get; set; }
+    public TimeSpan TotalPausedDuration { get; private set; }
+
+    internal void BeginPause(CancellationTokenSource executionCts)
+    {
+        lock (_pauseClockLock)
+        {
+            if (_activePauses++ != 0) return;
+            _pauseStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (OriginalTimeoutSeconds is > 0)
+                executionCts.CancelAfter(Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    internal void EndPause(DateTime executionStartedAt, CancellationTokenSource executionCts)
+    {
+        lock (_pauseClockLock)
+        {
+            if (--_activePauses != 0) return;
+            TotalPausedDuration += System.Diagnostics.Stopwatch.GetElapsedTime(_pauseStarted);
+            if (OriginalTimeoutSeconds is not > 0) return;
+            var remaining = TimeSpan.FromSeconds(OriginalTimeoutSeconds.Value)
+                - (DateTime.UtcNow - executionStartedAt) + TotalPausedDuration;
+            executionCts.CancelAfter(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
+        }
+    }
 
     /// <summary>Waits for a resume command to arrive for the given step. The engine
     /// thread blocks here until either <see cref="Resume"/> is called or

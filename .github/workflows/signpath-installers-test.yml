@@ -5,6 +5,7 @@ on:
   push:
     branches: [build/signpath-onboarding]
     paths:
+      - Directory.Build.props
       - .github/workflows/signpath-installers-test.yml
       - deploy/signpath/Build-InstallerTest.ps1
       - deploy/signpath/Test-SignedInstaller.ps1

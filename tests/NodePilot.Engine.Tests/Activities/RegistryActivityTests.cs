@@ -136,6 +136,48 @@ public sealed class RegistryActivityTests : IDisposable
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*Bogus*");
     }
 
+    [Theory]
+    [InlineData("HKEY_LOCAL_MACHINE\\Software\\Example")]
+    [InlineData("HKLM:\\Software\\Example")]
+    [InlineData("hklm:Software\\Example")]
+    [InlineData("Registry::HKEY_LOCAL_MACHINE\\Software\\Example")]
+    [InlineData("  HKEY_LOCAL_MACHINE\\Software\\Example")]
+    public async Task KeyPath_AcceptedSpellings_AreRewrittenToTheRegistryProvider(string keyPath)
+    {
+        _capturedScript = null;
+        await CreateActivity().ExecuteAsync(Ctx(),
+            Cfg("{\"operation\": \"deleteKey\", \"keyPath\": " + JsonSerializer.Serialize(keyPath) + "}"),
+            CancellationToken.None);
+        _capturedScript.Should().Contain("$__keyPath = 'Registry::HKEY_LOCAL_MACHINE\\Software\\Example'");
+    }
+
+    [Theory]
+    [InlineData("HKCU:\\Software\\X", "Registry::HKEY_CURRENT_USER\\Software\\X")]
+    [InlineData("HKCR:\\.txt", "Registry::HKEY_CLASSES_ROOT\\.txt")]
+    [InlineData("HKU:\\S-1-5-18", "Registry::HKEY_USERS\\S-1-5-18")]
+    [InlineData("HKCC:\\Software", "Registry::HKEY_CURRENT_CONFIG\\Software")]
+    [InlineData("HKLM:", "Registry::HKEY_LOCAL_MACHINE")]
+    [InlineData("HKEY_CURRENT_USER", "Registry::HKEY_CURRENT_USER")]
+    public void NormalizeRegistryKeyPath_HiveAliases_ResolveToProviderQualifiedPath(string input, string expected)
+        => RegistryActivity.NormalizeRegistryKeyPath(input).Should().Be(expected);
+
+    [Theory]
+    [InlineData("C:\\Windows")]
+    [InlineData("Registry::C:\\Windows")]
+    [InlineData("Env:Path")]
+    [InlineData("HKEY_LOCAL_MACHINEX\\Software")]
+    [InlineData("HKLMX:\\Software")]
+    [InlineData("Software\\Example")]
+    public async Task KeyPath_ResolvingToAnotherProvider_IsRejectedBeforeAnyScriptRuns(string keyPath)
+    {
+        _capturedScript = null;
+        Func<Task> act = () => CreateActivity().ExecuteAsync(Ctx(),
+            Cfg("{\"operation\": \"deleteKey\", \"keyPath\": " + JsonSerializer.Serialize(keyPath) + "}"),
+            CancellationToken.None);
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*registry provider path*");
+        _capturedScript.Should().BeNull();
+    }
+
     // ---- Script generation (substring) ----
 
     [Fact]

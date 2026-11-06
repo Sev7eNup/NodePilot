@@ -83,11 +83,13 @@ public sealed class BackupController : ControllerBase
     /// </summary>
     [HttpPost("preview")]
     [Consumes("multipart/form-data")]
-    [RequestSizeLimit(64 * 1024 * 1024)]
+    [RequestSizeLimit(BackupSections.MaximumUploadBytes)]
     public async Task<ActionResult<BackupPreviewResult>> Preview(
         IFormFile file, [FromForm] string? passphrase, CancellationToken ct)
     {
         if (file is null || file.Length == 0) return BadRequest(new { error = "Backup file is required." });
+        if (file.Length > BackupSections.MaximumArchiveBytes)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = "Backup files must not exceed 64 MiB." });
         var bytes = await ReadAllAsync(file, ct);
         try
         {
@@ -117,11 +119,13 @@ public sealed class BackupController : ControllerBase
     /// </summary>
     [HttpPost("restore")]
     [Consumes("multipart/form-data")]
-    [RequestSizeLimit(64 * 1024 * 1024)]
+    [RequestSizeLimit(BackupSections.MaximumUploadBytes)]
     public async Task<ActionResult<BackupRestoreResult>> Restore(
         IFormFile file, [FromForm] string passphrase, [FromForm] string? policy, CancellationToken ct)
     {
         if (file is null || file.Length == 0) return BadRequest(new { error = "Backup file is required." });
+        if (file.Length > BackupSections.MaximumArchiveBytes)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = "Backup files must not exceed 64 MiB." });
         if (string.IsNullOrEmpty(passphrase)) return BadRequest(new { error = "Passphrase is required for restore." });
 
         if (ParsePolicies(policy, out var policyError) is not { } policies)

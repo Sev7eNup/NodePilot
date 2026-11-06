@@ -167,6 +167,26 @@ public class CustomActivityRegistryDispatchTests
 
 public class CustomActivityExecutorBranchTests
 {
+    [Theory]
+    [InlineData("Host")]
+    [InlineData("__np_private")]
+    public async Task PersistedReservedParameter_FailsBeforeInvokingPowerShell(string name)
+    {
+        await using var db = TestDbFactory.Create();
+        var definition = new CustomActivityDefinition
+        {
+            Id = Guid.NewGuid(), Key = "invalid-schema", Name = "Invalid schema", IsEnabled = true,
+            ScriptTemplate = "throw 'must not execute'",
+            InputParametersJson = JsonSerializer.Serialize(new[] { new CustomActivityInputParameter(name, "Input", "string") })
+        };
+        db.CustomActivityDefinitions.Add(definition);
+        await db.SaveChangesAsync();
+        var result = await NewExecutor(db).ExecuteAsync(Ctx(),
+            Config(new { __customDefinitionId = definition.Id.ToString(), __customKey = definition.Key }), CancellationToken.None);
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("reserved").And.NotContain("must not execute");
+    }
+
     private static CustomActivityExecutor NewExecutor(NodePilotDbContext db) =>
         new(new CustomActivityDefinitionStore(db),
             new PowerShellEngineFactory(NullLoggerFactory.Instance),

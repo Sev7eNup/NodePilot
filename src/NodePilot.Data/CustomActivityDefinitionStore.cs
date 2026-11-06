@@ -66,13 +66,8 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
         var def = await LoadLiveAsync(id, ct);
         RequireCurrentToken(def, expectedConcurrencyToken);
 
-        SnapshotCurrent(def);          // capture previous state under its current version number
+        StageRevision(def, updatedBy, input.ChangeNote);
         ApplyInput(def, input);         // Key is immutable — ApplyInput does not touch it
-        def.Version += 1;
-        def.ChangeNote = input.ChangeNote;
-        def.ConcurrencyToken = Guid.NewGuid();
-        def.UpdatedAt = DateTime.UtcNow;
-        def.UpdatedBy = updatedBy;
         await SaveMutationAsync(ct);
         return def;
     }
@@ -113,7 +108,7 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
             .FirstOrDefaultAsync(v => v.DefinitionId == id && v.Version == version, ct)
             ?? throw new KeyNotFoundException($"Custom activity {id} has no version {version}.");
 
-        SnapshotCurrent(def);
+        StageRevision(def, updatedBy, $"Rolled back to version {version}");
         def.Name = snap.Name;
         def.Description = snap.Description;
         def.Icon = snap.Icon;
@@ -128,13 +123,19 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
         def.SuccessExitCodes = snap.SuccessExitCodes;
         def.InputParametersJson = snap.InputParametersJson;
         def.OutputParametersJson = snap.OutputParametersJson;
-        def.Version += 1;
-        def.ChangeNote = $"Rolled back to version {version}";
-        def.ConcurrencyToken = Guid.NewGuid();
-        def.UpdatedAt = DateTime.UtcNow;
-        def.UpdatedBy = updatedBy;
         await SaveMutationAsync(ct);
         return def;
+    }
+
+    /// <summary>Stages history and the new revision fence in the caller's unit of work.</summary>
+    public void StageRevision(CustomActivityDefinition definition, string? updatedBy, string? changeNote)
+    {
+        SnapshotCurrent(definition);
+        definition.Version = checked(definition.Version + 1);
+        definition.ConcurrencyToken = Guid.NewGuid();
+        definition.UpdatedAt = DateTime.UtcNow;
+        definition.UpdatedBy = updatedBy;
+        definition.ChangeNote = changeNote;
     }
 
     private static void RequireCurrentToken(CustomActivityDefinition definition, Guid expected)

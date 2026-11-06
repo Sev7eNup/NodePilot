@@ -63,6 +63,27 @@ public sealed class SettingsSectionAdapterRegistry : ISettingsSectionAdapterRegi
 
 public static class SettingsSectionAdapters
 {
+    internal static ISettingsSectionAdapterRegistry CreateSnapshot(IConfigurationRoot config, ISecretProtector protector)
+    {
+        var llm = config.GetSection(LlmOptions.SectionName).Get<LlmOptions>() ?? new();
+        new LlmProxyOptionsPostConfigure(config).PostConfigure(null, llm);
+        return CreateDefault(config, protector,
+            new SnapshotOptions<SmtpOptions>(config.GetSection(SmtpOptions.SectionName).Get<SmtpOptions>() ?? new()),
+            new SnapshotOptions<LlmOptions>(llm),
+            new SnapshotOptions<RetentionOptions>(config.GetSection(RetentionOptions.SectionName).Get<RetentionOptions>() ?? new()),
+            new SnapshotOptions<LdapOptions>(AuthenticationOptionBinding.ReadLdap(config)),
+            new SnapshotOptions<WindowsAuthOptions>(config.GetSection(WindowsAuthOptions.SectionName).Get<WindowsAuthOptions>() ?? new()),
+            new SnapshotOptions<NodePilotTelemetryOptions>(config.GetSection("OpenTelemetry").Get<NodePilotTelemetryOptions>() ?? new()),
+            new SnapshotOptions<AiKnowledgeOptions>(config.GetSection(AiKnowledgeOptions.SectionName).Get<AiKnowledgeOptions>() ?? new()));
+    }
+
+    private sealed class SnapshotOptions<T>(T value) : IOptionsMonitor<T>
+    {
+        public T CurrentValue => value;
+        public T Get(string? name) => value;
+        public IDisposable? OnChange(Action<T, string?> listener) => null;
+    }
+
     public static ISettingsSectionAdapterRegistry CreateDefault(
         IConfigurationRoot configRoot,
         ISecretProtector protector,

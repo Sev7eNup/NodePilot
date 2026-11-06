@@ -1304,6 +1304,73 @@ public class FileWatcherTriggerSourceTests
         }
     }
 
+    [Fact]
+    public async Task DebouncedChange_UpdatesSnapshot_SoReconcileDoesNotDeliverTheWriteAgain()
+    {
+        using var tempDir = new TempDirectory();
+        var dataPath = Path.Combine(tempDir.Path, "data.txt");
+        var deliveries = new System.Collections.Concurrent.ConcurrentQueue<TriggerSignal>();
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = Cfg($$"""{"directory":"{{Esc(tempDir.Path)}}","filter":"*.txt","watchType":"any"}"""),
+            OnFire = _ => Task.CompletedTask,
+            OnDurableFire = signal => { deliveries.Enqueue(signal); return Task.FromResult(true); },
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(null),
+            InitializeCheckpoint = _ => Task.FromResult(true),
+            SaveCheckpoint = _ => Task.FromResult(true),
+        };
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            ConfigWith(("Trigger:FileWatcher:HealthProbeSeconds", "0")));
+
+        try
+        {
+            await src.StartAsync(ctx, CancellationToken.None);
+            // Raise the events by hand so the native watcher's own timing cannot add or drop any.
+            var watcher = (FileSystemWatcher)typeof(FileWatcherTriggerSource)
+                .GetField("_watcher", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .GetValue(src)!;
+            watcher.EnableRaisingEvents = false;
+            void Raise(string method, WatcherChangeTypes kind) => typeof(FileSystemWatcher)
+                .GetMethod(method, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .Invoke(watcher, [new FileSystemEventArgs(kind, tempDir.Path, "data.txt")]);
+
+            await File.WriteAllTextAsync(dataPath, "1");
+            Raise("OnCreated", WatcherChangeTypes.Created);
+            await WaitUntilAsync(() => deliveries.Count == 1);
+
+            // Pin the change inside the 500 ms debounce window regardless of how long the
+            // first delivery took on this machine.
+            var lastFire = (System.Collections.Concurrent.ConcurrentDictionary<string, DateTime>)typeof(FileWatcherTriggerSource)
+                .GetField("_lastFirePerPath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .GetValue(src)!;
+            lastFire[dataPath] = DateTime.UtcNow.AddMinutes(5);
+            await File.AppendAllTextAsync(dataPath, "2222");
+            Raise("OnChanged", WatcherChangeTypes.Changed);
+
+            await InvokePrivateAsync(src, "ReconcileAsync", CancellationToken.None);
+
+            deliveries.Should().ContainSingle("one write within the debounce window starts the workflow once");
+            deliveries.Single().Parameters["fileAction"].Should().Be("created");
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("Condition was not met within 10 seconds.");
+            await Task.Delay(10);
+        }
+    }
+
     private static Task InvokePrivateAsync(FileWatcherTriggerSource source, string method, params object?[] args)
         => (Task)typeof(FileWatcherTriggerSource)
             .GetMethod(method, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!

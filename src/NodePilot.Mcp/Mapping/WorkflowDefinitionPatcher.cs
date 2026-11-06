@@ -15,8 +15,6 @@ namespace NodePilot.Mcp.Mapping;
 /// </summary>
 public static class WorkflowDefinitionPatcher
 {
-    private const string SecretMask = "***";
-
     public sealed record PatchResult(JsonObject Definition, IReadOnlyList<string> Notes);
 
     public sealed record PatchOp(string Op, JsonObject? Node, JsonObject? Edge, string? Id);
@@ -163,9 +161,9 @@ public static class WorkflowDefinitionPatcher
             // ANY key, so the original is restored whatever its JSON kind. Covers inline secrets
             // masked by CONTENT (a restApi headers string, body, or script) whose config key is not
             // itself in SecretConfigKeys.
-            if (IsMask(targetVal))
+            if (WorkflowSecretMask.IsMask(targetVal))
             {
-                if (sourceChild is not null && !IsMask(sourceChild))
+                if (sourceChild is not null && !WorkflowSecretMask.IsMask(sourceChild))
                     target[key] = sourceChild.DeepClone();
                 else if (sourceChild is null)
                     RejectMaskWithoutOriginal(key, itemId, notes);
@@ -194,7 +192,7 @@ public static class WorkflowDefinitionPatcher
     private static void ReconcileNamedSecret(
         JsonObject target, string key, JsonNode? proposed, JsonNode? original, List<string> notes)
     {
-        var originalReal = HasValue(original) && !IsMask(original) ? original : null;
+        var originalReal = HasValue(original) && !WorkflowSecretMask.IsMask(original) ? original : null;
         var proposedReal = HasValue(proposed) ? proposed : null;
 
         if (originalReal is not null)
@@ -205,7 +203,7 @@ public static class WorkflowDefinitionPatcher
         }
         else if (proposedReal is not null)
         {
-            target[key] = JsonValue.Create(SecretMask);
+            target[key] = JsonValue.Create(WorkflowSecretMask.Value);
             notes.Add($"Secret '{key}' must be set manually — the agent may not assign secret values.");
         }
     }
@@ -228,17 +226,18 @@ public static class WorkflowDefinitionPatcher
     private static bool HasValue(JsonNode? node)
         => node is not null && !(node is JsonValue value && value.TryGetValue(out string? text) && string.IsNullOrEmpty(text));
 
-    private static bool IsMask(JsonNode? node)
-        => node is JsonValue value && value.TryGetValue(out string? text) && text == SecretMask;
-
     // Nested condition/case arrays have no stable item identity. If a redacted array still
     // contains a mask, retain the whole original array so a reorder cannot attach a secret to the
-    // wrong case. Otherwise recurse by index to keep named-secret protection for nested objects.
+    // wrong case; a real change to such an array cannot be merged and is refused. Otherwise
+    // recurse by index to keep named-secret protection for nested objects.
     private static void MergeNestedArray(
         JsonArray target, JsonArray? source, List<string> notes, string? itemId, string key)
     {
-        if (source is not null && ContainsMask(target))
+        if (source is not null && WorkflowSecretMask.ContainsMask(target))
         {
+            if (WorkflowSecretMask.ChangesOriginal(target, source))
+                throw new ArgumentException(
+                    $"'{key}' on '{itemId ?? "?"}' contains masked values ('***'), so a change to it cannot be merged. Edit it in the designer instead. Nothing was saved.");
             target.Clear();
             foreach (var item in source)
                 target.Add(item?.DeepClone());
@@ -257,23 +256,12 @@ public static class WorkflowDefinitionPatcher
                 case JsonArray targetArray:
                     MergeNestedArray(targetArray, sourceItem as JsonArray, notes, itemId, key);
                     break;
-                case JsonValue targetValue when targetValue.TryGetValue(out string? value)
-                                               && value == SecretMask:
+                case JsonValue targetValue when WorkflowSecretMask.IsMask(targetValue):
                     if (sourceItem is not null) target[index] = sourceItem.DeepClone();
                     else RejectMaskWithoutOriginal(key, itemId, notes);
                     break;
             }
         }
-    }
-
-    private static bool ContainsMask(JsonNode node)
-    {
-        if (node is JsonValue value)
-            return value.TryGetValue(out string? text) && text == SecretMask;
-        if (node is JsonObject obj)
-            return obj.Any(property => property.Value is not null && ContainsMask(property.Value));
-        return node is JsonArray array
-               && array.Any(item => item is not null && ContainsMask(item));
     }
 
     private static List<JsonObject> ToObjectList(JsonElement def, string arrayName)

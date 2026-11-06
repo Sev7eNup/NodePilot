@@ -63,8 +63,8 @@ Assert-DesktopPostgresPayload -PgRootPath $pgRoot -ExpectedMajorVersion 16
 # Use an explicitly reviewed pair from runtime-payload.lock.json instead of the
 # downloader's latest-version default, which can advance beyond the lockfile.
 $runtimeRoot = Join-Path $toolRoot 'dotnet-runtime'
-Write-Host '[signpath-test] Staging the locked .NET 10.0.13 runtime installers'
-[void](& (Join-Path $repoRoot 'deploy\Get-DotnetRuntimePayload.ps1') -Version '10.0.13' `
+Write-Host '[signpath-test] Staging the locked .NET 10.0.14 runtime installers'
+[void](& (Join-Path $repoRoot 'deploy\Get-DotnetRuntimePayload.ps1') -Version '10.0.14' `
     -OutputDirectory $runtimeRoot -CachePath (Join-Path $toolRoot 'runtime-cache'))
 Write-Host '[signpath-test] Installer prerequisites are ready'
 

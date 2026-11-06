@@ -274,6 +274,45 @@ public sealed class AuthControllerExtraTests : IDisposable
     }
 
     [Fact]
+    public async Task Logout_RefreshCommittedAfterSessionWasTracked_RevokesCurrentSessionIdempotently()
+    {
+        await using var db = CreateContext();
+        var ct = TestContext.Current.CancellationToken;
+        var user = CreateUser();
+        var session = new AuthSession
+        {
+            Id = Guid.NewGuid(), UserId = user.Id, CurrentJti = "before-refresh",
+            ExpiresAt = DateTime.UtcNow.AddHours(1), AuthenticationMethod = "Local",
+        };
+        db.AddRange(user, session);
+        await db.SaveChangesAsync(ct);
+        await db.AuthSessions.Where(row => row.Id == session.Id).ExecuteUpdateAsync(setters => setters
+            .SetProperty(row => row.CurrentJti, "after-refresh")
+            .SetProperty(row => row.RefreshGeneration, 1), ct);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(AuthSessionIssuer.SessionIdClaim, session.Id.ToString()),
+            new Claim(JwtRegisteredClaimNames.Jti, "before-refresh"),
+            new Claim("exp", DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeSeconds().ToString()),
+        ], "test"));
+        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance,
+            new AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        {
+            ControllerContext = new ControllerContext { HttpContext = HttpCtx(user: principal) },
+        };
+
+        (await controller.Logout(ct)).Should().BeOfType<NoContentResult>();
+        (await controller.Logout(ct)).Should().BeOfType<NoContentResult>();
+
+        var persisted = await db.AuthSessions.AsNoTracking().SingleAsync(row => row.Id == session.Id, ct);
+        persisted.RevokedAt.Should().NotBeNull();
+        persisted.CurrentJti.Should().Be("after-refresh");
+        persisted.RefreshGeneration.Should().Be(2, "logout also fences a refresh that read the session before revocation");
+        (await db.RevokedTokens.CountAsync(row => row.Jti == "before-refresh", ct)).Should().Be(1);
+    }
+
+    [Fact]
     public async Task Logout_NoJtiClaim_StillReturnsNoContent_NoRevocationRow()
     {
         // No-jti path: the token may predate jti support, or the caller has no token at

@@ -164,6 +164,61 @@ describe('ScriptEditorDialog — AI streaming order into a real (read-only) edit
   });
 });
 
+describe('ScriptEditorDialog — a stream that fails after its first tokens', () => {
+  const failingGenerate = () => vi.fn(async (_p: string, _cur: string | null, onToken: (t: string) => void) => {
+    onToken('$partial = 1\n'); await tick();
+    onToken('Write-Host $partial'); await tick();
+    throw new Error('The model stopped at its output limit before the script was complete.');
+  });
+
+  it('replace-all restores the original script and reports the incomplete generation', async () => {
+    render(<ScriptEditorDialog value={'$old = 1\n# keep me'} onChange={() => {}} onClose={() => {}} onAiGenerate={failingGenerate()} />);
+
+    startGenerate(true);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('output limit');
+    expect(alert.textContent).toContain('The original script was restored.');
+    expect((screen.getByTestId('monaco-editor-mock') as HTMLTextAreaElement).value).toBe('$old = 1\n# keep me');
+  });
+
+  it('insert mode removes the partial insertion again', async () => {
+    render(<ScriptEditorDialog value={'# header\n'} onChange={() => {}} onClose={() => {}} onAiGenerate={failingGenerate()} />);
+
+    startGenerate(false);
+
+    await screen.findByRole('alert');
+    expect((screen.getByTestId('monaco-editor-mock') as HTMLTextAreaElement).value).toBe('# header\n');
+  });
+
+  it('an error before the first token leaves the script untouched without a restore note', async () => {
+    const onAiGenerate = vi.fn(async () => { throw new Error('LLM unreachable'); });
+    render(<ScriptEditorDialog value={'$old = 1'} onChange={() => {}} onClose={() => {}} onAiGenerate={onAiGenerate} />);
+
+    startGenerate(true);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('LLM unreachable');
+    expect(alert.textContent).not.toContain('restored');
+    expect((screen.getByTestId('monaco-editor-mock') as HTMLTextAreaElement).value).toBe('$old = 1');
+  });
+
+  it('a user cancel keeps the partial content and shows no error', async () => {
+    const onAiGenerate = vi.fn(async (_p: string, _cur: string | null, onToken: (t: string) => void) => {
+      onToken('$partial = 1'); await tick();
+      throw new DOMException('aborted', 'AbortError');
+    });
+    render(<ScriptEditorDialog value={'$old = 1'} onChange={() => {}} onClose={() => {}} onAiGenerate={onAiGenerate} />);
+
+    startGenerate(true);
+
+    await waitFor(() => {
+      expect((screen.getByTestId('monaco-editor-mock') as HTMLTextAreaElement).value).toBe('$partial = 1');
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
 describe('advanceStreamPosition', () => {
   it('advances the column within a single line', () => {
     expect(advanceStreamPosition({ lineNumber: 2, column: 3 }, 'abc')).toEqual({ lineNumber: 2, column: 6 });

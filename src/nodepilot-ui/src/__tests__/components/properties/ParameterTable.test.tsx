@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -137,6 +138,51 @@ describe('ParameterTable', () => {
     expect(onChange).toHaveBeenCalledWith({ a: '1', BB: '2', c: '3' });
     // Keys keep their original order; the renamed key does not move to the end.
     expect(Object.keys(onChange.mock.calls[0][0])).toEqual(['a', 'BB', 'c']);
+  });
+
+  it('typingNameThatPassesThroughExistingName_keepsExistingBinding', () => {
+    const onChange = vi.fn();
+    function Controlled() {
+      const [params, setParams] = useState<Record<string, string>>({ id: '42' });
+      return (
+        <ParameterTable
+          label="Parameter"
+          emptyMessage="empty"
+          parameters={params}
+          onChange={(next) => { onChange(next); setParams(next); }}
+        />
+      );
+    }
+    wrap(<Controlled />);
+
+    fireEvent.click(screen.getByText('+ Parameter'));
+    const second = () => screen.getAllByPlaceholderText('key')[1] as HTMLInputElement;
+    fireEvent.change(second(), { target: { value: 'i' } });
+    fireEvent.change(second(), { target: { value: 'id' } });
+
+    // The intermediate duplicate stays a marked draft instead of replacing id=42.
+    expect(second()).toHaveAttribute('aria-invalid', 'true');
+    expect(onChange).toHaveBeenLastCalledWith({ id: '42' });
+
+    fireEvent.change(second(), { target: { value: 'id2' } });
+
+    expect(onChange).toHaveBeenLastCalledWith({ id: '42', id2: '' });
+    expect((screen.getAllByPlaceholderText('key') as HTMLInputElement[]).map((i) => i.value)).toEqual(['id', 'id2']);
+    expect(second()).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('externalMapChange_resetsRows', () => {
+    const { rerender } = wrap(
+      <ParameterTable label="Parameter" emptyMessage="empty" parameters={{ a: '1' }} onChange={vi.fn()} />
+    );
+    const qc = new QueryClient();
+    rerender(
+      <QueryClientProvider client={qc}>
+        <ParameterTable label="Parameter" emptyMessage="empty" parameters={{ b: '2', c: '3' }} onChange={vi.fn()} />
+      </QueryClientProvider>
+    );
+
+    expect((screen.getAllByPlaceholderText('key') as HTMLInputElement[]).map((i) => i.value)).toEqual(['b', 'c']);
   });
 
   it('removingFirstRow_keepsRemainingOrder', () => {

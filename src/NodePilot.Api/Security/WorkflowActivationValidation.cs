@@ -21,6 +21,8 @@ internal static class WorkflowActivationValidation
         // A cron Quartz rejects would otherwise fail at trigger registration and retry forever.
         if (ScheduleCronValidation.ValidateDefinition(definitionJson) is { } cronError)
             return new Failure("invalid_cron_expression", cronError);
+        if (JunctionRequiredCountValidation.ValidateDefinition(definitionJson) is { } junctionError)
+            return new Failure("invalid_junction_required_count", junctionError);
         return null;
     }
 }

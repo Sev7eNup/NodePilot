@@ -182,6 +182,11 @@ if (Test-Path $credFile) {
         if ($status -in 'Succeeded', 'Failed', 'Cancelled') { break }
     }
     $result.execution = $status
+    # The installers configure SCM restart recovery, so the service must resolve it from its own
+    # registry key, including a gMSA whose key the installer restricted.
+    $settingsStatus = Invoke-Http GET '/api/admin/settings/status' $null
+    $result.settingsStatus = $settingsStatus.Status
+    $result.canRestartService = if ($settingsStatus.Status -eq 200) { ($settingsStatus.Body | ConvertFrom-Json).canRestartService } else { $null }
     if ($status -ne 'Succeeded') {
         $result.failedSteps = @(@(Invoke-Api GET "/api/executions/$execId/steps" $null) | Where-Object { $_.status -ne 'Succeeded' } |
             ForEach-Object { "$($_.stepId)=$($_.status): $("$($_.errorOutput)".Substring(0, [Math]::Min(300, "$($_.errorOutput)".Length)))" })
@@ -207,7 +212,8 @@ $result.errors = $errors.Count
 $result.warnings = @($lines | Where-Object { $_ -match 'type="2"' }).Count
 $errors | Set-Content (Join-Path $work "$($scenario.id)-errors.log") -Encoding utf8
 
-$ok = $result.healthz -eq 200 -and $result.execution -eq 'Succeeded' -and $result.errors -eq 0
+$ok = $result.healthz -eq 200 -and $result.execution -eq 'Succeeded' -and $result.errors -eq 0 -and
+    $result.settingsStatus -eq 200 -and $result.canRestartService -eq $true
 if ($scenario.check -eq 'allSigned' -and $result.machinePolicy -ne 'AllSigned') { $ok = $false }
 
 # --- a second installation over the first one with another identity ---------------------------

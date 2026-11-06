@@ -355,7 +355,7 @@ public sealed class BuildScriptTests : IDisposable
         var script = await ExecuteAndCaptureScript(activity, config);
 
         script.Should().Contain("Get-ItemPropertyValue -LiteralPath $__keyPath -Name $__valueName");
-        script.Should().Contain("'HKLM:\\SOFTWARE\\Test'");
+        script.Should().Contain("'Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Test'");
         script.Should().Contain("'MyValue'");
     }
 
@@ -369,7 +369,7 @@ public sealed class BuildScriptTests : IDisposable
 
         script.Should().Contain("Get-Item -LiteralPath $__keyPath");
         script.Should().Contain("$__result.values");
-        script.Should().Contain("'HKLM:\\SOFTWARE\\Test'");
+        script.Should().Contain("'Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Test'");
     }
 
     [Fact]

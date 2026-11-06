@@ -389,8 +389,10 @@ public class FileWatcherTriggerSource : ITriggerSource
             if (shouldFire)
             {
                 var last = _lastFirePerPath.TryGetValue(path, out var prev) ? prev : DateTime.MinValue;
-                if ((now - last) < DebounceWindow) return;
-                _lastFirePerPath[path] = now;
+                // Debounce suppresses only the fire. The event still updates the snapshot,
+                // otherwise reconcile sees the stale stamp and delivers the same write again.
+                if ((now - last) < DebounceWindow) shouldFire = false;
+                else _lastFirePerPath[path] = now;
             }
 
             // Prune the per-path map when it grows beyond a reasonable threshold. Cheap

@@ -261,9 +261,15 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             // instead of a wall-clock rate. Connect time and prompt prefill are not generation and
             // stay outside the window.
             long? firstOutputTs = null;
+            var completed = false;
 
             await foreach (var data in _transport.ReadSseDataAsync(resp, token, ct))
             {
+                if (data == "[DONE]")
+                {
+                    completed = true;
+                    break;
+                }
                 // Parsing happens outside a yield block (yield is not allowed inside try/catch).
                 string? delta = null;
                 var sawToolDelta = false;
@@ -271,6 +277,9 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                 {
                     using var doc = JsonDocument.Parse(data);
                     var root = doc.RootElement;
+                    if (root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object)
+                        throw new LlmException(LlmErrorKind.UpstreamError, "LLM stream reported an upstream error.",
+                            bodyExcerpt: ReadString(error, "message"));
                     model = ReadString(root, "model") ?? model;
                     if (root.TryGetProperty("choices", out var choices)
                         && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
@@ -306,6 +315,9 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                 if (!string.IsNullOrEmpty(delta))
                     yield return new LlmStreamEvent(delta, Model: model);
             }
+
+            if (!completed)
+                throw new LlmException(LlmErrorKind.MalformedResponse, "LLM stream ended before its completion marker.");
 
             // Attach the accumulated tool calls (if the model requested any) to the Done event.
             var finalToolCalls = ToolCallAccumulator.Materialize(toolAcc);

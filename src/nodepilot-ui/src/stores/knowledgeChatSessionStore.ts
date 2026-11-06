@@ -39,7 +39,7 @@ type Request = { controller: AbortController; finish: () => void };
 let activeRequest: Request | null = null;
 
 // Request ownership lives outside the view so minimizing and route changes keep the stream alive.
-async function stream(scope: string, threadId: string, question: string, history: AiChatTurn[]) {
+async function stream(scope: string, threadId: string, question: string, messages: ChatMessage[]) {
   const key = aiChatFullKey(scope, threadId);
   const generation = captureAuthBoundaryGeneration();
   const controller = new AbortController();
@@ -53,8 +53,13 @@ async function stream(scope: string, threadId: string, question: string, history
   update((messages) => [...messages, { role: 'assistant', content: '', streaming: true }]);
   let completed = false;
   try {
+    const lastCompleted = messages.findLastIndex((message) => message.role === 'assistant' && message.meta?.historyContextKey);
+    const contextKey = lastCompleted >= 0 ? messages[lastCompleted].meta?.historyContextKey : null;
+    const reset = messages.slice(0, lastCompleted + 1).findLastIndex((message) => message.meta?.historyDropped);
+    const historyMessages = lastCompleted < 0 ? messages : messages.slice(Math.max(0, reset - 1), lastCompleted + 1);
+    const history: AiChatTurn[] = historyMessages.map(({ role, content }) => ({ role, content }));
     await askStream({
-      question, history: trimHistory(history),
+      question, history: trimHistory(history), historyContextKey: contextKey,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       utcOffsetMinutes: -new Date().getTimezoneOffset(),
     }, {
@@ -110,7 +115,7 @@ export const useKnowledgeChatSessionStore = create<KnowledgeChatSession>((set, g
     const history = useAiChatStore.getState().messagesByThread[key] ?? [];
     get().setDraft(key, '');
     useAiChatStore.getState().updateMessages(scope, threadId, (messages) => [...messages, { role: 'user', content: question }]);
-    await stream(scope, threadId, question, history.map(({ role, content }) => ({ role, content })));
+    await stream(scope, threadId, question, history);
   },
   regenerate: async (scope, threadId) => {
     if (!threadId || activeRequest) return;
@@ -119,7 +124,7 @@ export const useKnowledgeChatSessionStore = create<KnowledgeChatSession>((set, g
     if (index < 0) return;
     const question = messages[index].content;
     useAiChatStore.getState().updateMessages(scope, threadId, () => messages.slice(0, index + 1));
-    await stream(scope, threadId, question, messages.slice(0, index).map(({ role, content }) => ({ role, content })));
+    await stream(scope, threadId, question, messages.slice(0, index));
   },
   stop: () => {
     const request = activeRequest;

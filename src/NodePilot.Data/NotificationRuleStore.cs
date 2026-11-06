@@ -188,7 +188,7 @@ public class NotificationRuleStore : INotificationRuleStore
         {
             if (systemStateInvalidated)
                 await _db.SystemAlertPolicyStates.Where(s => s.NotificationRuleId == id).ExecuteDeleteAsync(token);
-            await _db.SaveChangesAsync(token);
+            await _db.SaveChangesAsync(acceptAllChangesOnSuccess: false, token);
         }, ct);
     }
 
@@ -206,6 +206,8 @@ public class NotificationRuleStore : INotificationRuleStore
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
             await work(ct);
             await tx.CommitAsync(ct);
+            // A rolled-back attempt must retain Added/Modified/Deleted state for replay.
+            _db.ChangeTracker.AcceptAllChanges();
         });
     }
 
@@ -243,7 +245,7 @@ public class NotificationRuleStore : INotificationRuleStore
             if (existing.Kind == NotificationRuleKind.System)
                 await _db.SystemAlertPolicyStates.Where(s => s.NotificationRuleId == id).ExecuteDeleteAsync(token);
 
-            await _db.SaveChangesAsync(token);
+            await _db.SaveChangesAsync(acceptAllChangesOnSuccess: false, token);
         }, ct);
     }
 

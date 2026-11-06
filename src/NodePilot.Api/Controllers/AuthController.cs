@@ -1145,9 +1145,12 @@ public class AuthController : ControllerBase
 
         if (Guid.TryParse(sessionIdClaim, out var sessionId))
         {
-            var authSession = await _db.AuthSessions.FindAsync([sessionId], ct);
-            if (authSession is { RevokedAt: null } && authSession.UserId == userId)
-                authSession.RevokedAt = DateTime.UtcNow;
+            var revokedAt = DateTime.UtcNow;
+            await _db.AuthSessions
+                .Where(session => session.Id == sessionId && session.UserId == userId && session.RevokedAt == null)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(session => session.RevokedAt, revokedAt)
+                    .SetProperty(session => session.RefreshGeneration, session => session.RefreshGeneration + 1), ct);
         }
 
         if (string.IsNullOrEmpty(jti))

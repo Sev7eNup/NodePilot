@@ -184,6 +184,97 @@ public sealed class BackupRestoreServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Restore_SameNamedMachinesAndCredentials_PreservesDistinctIdentities()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        for (var index = 1; index <= 2; index++)
+        {
+            var credential = new Credential
+            {
+                Id = Guid.NewGuid(), Name = "shared", Username = $"user-{index}", EncryptedPassword = _atRest.Protect($"password-{index}"),
+            };
+            src.AddRange(credential, new ManagedMachine
+            {
+                Id = Guid.NewGuid(), Name = "shared", Hostname = $"host-{index}", DefaultCredentialId = credential.Id,
+            });
+        }
+        await src.SaveChangesAsync(ct);
+        var backup = await ExportAsync(src, [BackupSections.Machines, BackupSections.Credentials]);
+        using var dst = TestDbFactory.Create();
+
+        await Restore(dst).RestoreAsync(backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), RestoreActor, ct);
+
+        var machines = await dst.ManagedMachines.AsNoTracking().OrderBy(machine => machine.Hostname).ToListAsync(ct);
+        machines.Should().HaveCount(2);
+        var credentials = await dst.Credentials.AsNoTracking().ToDictionaryAsync(credential => credential.Id, ct);
+        credentials.Should().HaveCount(2);
+        for (var index = 0; index < machines.Count; index++)
+            credentials[machines[index].DefaultCredentialId!.Value].Username.Should().Be($"user-{index + 1}");
+    }
+
+    [Fact]
+    public async Task Restore_RenameGlobal_ProducesIdentifierAcceptedByOrdinaryUpdate()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        var name = new string('A', 100);
+        src.GlobalVariables.Add(new GlobalVariable { Id = Guid.NewGuid(), Name = name, Value = "restored" });
+        await src.SaveChangesAsync(ct);
+        var backup = await ExportAsync(src, [BackupSections.GlobalVariables]);
+        using var dst = TestDbFactory.Create();
+        dst.GlobalVariables.Add(new GlobalVariable { Id = Guid.NewGuid(), Name = name, Value = "original" });
+        await dst.SaveChangesAsync(ct);
+
+        await Restore(dst).RestoreAsync(backup, Passphrase, Policy(BackupSections.GlobalVariables, RestoreConflictPolicy.Rename), RestoreActor, ct);
+
+        var restored = await dst.GlobalVariables.SingleAsync(variable => variable.Value == "restored", ct);
+        restored.Name.Length.Should().BeLessThanOrEqualTo(100);
+        var controller = new NodePilot.Api.Controllers.GlobalVariablesController(new GlobalVariableStore(dst, _atRest),
+            new GlobalVariableFolderStore(dst), NoopAuditWriter.Instance)
+        {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext() },
+        };
+        (await controller.Update(restored.Id, new NodePilot.Api.Dtos.UpdateGlobalVariableRequest(restored.Name, null, false, null, null), ct))
+            .Should().BeOfType<Microsoft.AspNetCore.Mvc.NoContentResult>();
+    }
+
+    [Fact]
+    public async Task Restore_ConcurrentSettingsSaveBeforeFailedCommit_PreservesNewerSave()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var src = TestDbFactory.Create();
+        var sourceSettings = new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance);
+        sourceSettings.ReplaceAll(JsonNode.Parse("{\"Stats\":{\"WindowDays\":30}}")!.AsObject());
+        var backup = (await new BackupService([new SettingsBackupPart(sourceSettings, _atRest)], src)
+            .ExportAsync([BackupSections.Settings], Passphrase, "admin", ct)).Content;
+        using var dst = TestDbFactory.Create();
+        var targetSettings = new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance);
+        targetSettings.ReplaceAll(JsonNode.Parse("{\"Stats\":{\"WindowDays\":7}}")!.AsObject());
+        using var restoring = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(dst.Database.GetDbConnection()).AddInterceptors(new SaveSettingsThenFailCommit(targetSettings)).Options);
+        var restore = new BackupRestoreService(restoring, _atRest, targetSettings,
+            NullLogger<BackupRestoreService>.Instance, VersionProtector());
+
+        var action = () => restore.RestoreAsync(backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), RestoreActor, ct);
+
+        (await action.Should().ThrowAsync<BackupRestoreException>()).Which.Message.Should().Contain("newer settings were preserved");
+        targetSettings.ReadSection("Stats")!["WindowDays"]!.GetValue<int>().Should().Be(90);
+        (await dst.AuditLog.AnyAsync(entry => entry.Action == NodePilot.Core.Audit.AuditActions.BackupRestoreDbCommitted, ct)).Should().BeFalse();
+    }
+
+    private sealed class SaveSettingsThenFailCommit(RuntimeOverridesWriter writer) : DbTransactionInterceptor
+    {
+        public override ValueTask<InterceptionResult> TransactionCommittingAsync(DbTransaction transaction,
+            TransactionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default)
+        {
+            writer.TryUpdateSectionAtomic("Stats", writer.ComputeSectionEtag("Stats"),
+                new JsonObject { ["WindowDays"] = 90 }, null, "concurrent-admin", DateTimeOffset.UtcNow).Success.Should().BeTrue();
+            return ValueTask.FromException<InterceptionResult>(new IOException("Commit rejected after concurrent settings save."));
+        }
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]

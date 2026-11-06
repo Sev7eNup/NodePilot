@@ -94,6 +94,23 @@ describe('FindReplaceOverlay', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('replaceAll_changesEveryMatch_andTheListNotesThatItIsLimited', () => {
+    const onApply = vi.fn();
+    const nodes = Array.from({ length: 51 }, (_, i) => node(`n${i}`, `Foo ${i}`));
+    render(<FindReplaceOverlay canWrite nodes={nodes} edges={[]} onApply={onApply} onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/Find/i), { target: { value: 'Foo' } });
+    fireEvent.change(screen.getByPlaceholderText(/Replace with/i), { target: { value: 'Bar' } });
+
+    expect(screen.getByText('51 matches')).toBeInTheDocument();
+    expect(screen.getByText(/Showing the first 50 of 51 matches/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle(/Replace all 51 matches/i));
+
+    const [newNodes] = onApply.mock.calls[0] as [Node[], Edge[]];
+    const labels = newNodes.map((n) => (n.data as { label: string }).label);
+    expect(labels.filter((l) => l.startsWith('Bar'))).toHaveLength(51);
+  });
+
   it('replaceOneButton_callsOnApplyButDoesNotClose', () => {
     const onApply = vi.fn();
     const onClose = vi.fn();

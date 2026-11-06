@@ -93,9 +93,11 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         // (text delta or tool-call activity), never at connect or prompt prefill, so GenerationMs
         // stays comparable across both dialects.
         long? firstOutputTs = null;
+        var sawTerminal = false;
 
         await foreach (var data in _transport.ReadSseDataAsync(resp, token, ct))
         {
+            if (data == "[DONE]") break;
             // Parsing happens outside a yield block (yield is not allowed inside try/catch).
             string? delta = null;
             var sawOutput = false;
@@ -153,6 +155,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
 
                     case "response.completed":
                     case "response.incomplete":
+                        sawTerminal = true;
                         if (root.TryGetProperty("response", out var completed) && completed.ValueKind == JsonValueKind.Object)
                         {
                             model = ReadString(completed, "model") ?? model;
@@ -179,7 +182,11 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
 
             if (!string.IsNullOrEmpty(delta))
                 yield return new LlmStreamEvent(delta, Model: model);
+            if (sawTerminal) break;
         }
+
+        if (!sawTerminal)
+            throw new LlmException(LlmErrorKind.MalformedResponse, "LLM stream ended before its completion event.");
 
         var finalToolCalls = ToolCallAccumulator.Materialize(toolAcc);
         var generationMs = firstOutputTs is long outputStart

@@ -493,19 +493,37 @@ export function ScriptEditorDialog({
       setAiPhase('idle');
     };
 
+    const original = editor?.getValue() ?? code;
+    // Put the pre-generation content back after a failed stream, so a partial result is never
+    // left in the editor looking like finished work.
+    const restoreOriginal = () => {
+      const model = editor?.getModel();
+      if (editor && model) {
+        withWritable(() => editor.executeEdits('ai-restore', [{ range: model.getFullModelRange(), text: original }]));
+      }
+      setCode(original);
+    };
+
     try {
-        // Editor contents leave the browser only after the dialog's one-shot consent.
-      const currentScript = editor?.getValue() ?? code;
-      await onAiGenerate(prompt, includeCurrentScript ? currentScript : null, onToken, ac.signal);
+      // Editor contents leave the browser only after the dialog's one-shot consent.
+      await onAiGenerate(prompt, includeCurrentScript ? original : null, onToken, ac.signal);
       cleanup();
     } catch (err: unknown) {
       const aborted = (err instanceof DOMException || err instanceof Error) && err.name === 'AbortError';
-      cleanup();
       // The dialog is already closed, so errors before and during the stream show as an
       // editor banner. A cancel is not an error and keeps the partial content.
-      if (!aborted) setAiError(err instanceof Error ? err.message : String(err));
+      const restored = !aborted && !firstToken;
+      if (restored) {
+        pending = '';
+        restoreOriginal();
+      }
+      cleanup();
+      if (!aborted) {
+        const message = err instanceof Error ? err.message : String(err);
+        setAiError(restored ? `${message} ${t('ai:scriptDialog.originalRestored')}` : message);
+      }
     }
-  }, [onAiGenerate, code]);
+  }, [onAiGenerate, code, t]);
 
   const handleAiStop = useCallback(() => aiAbortRef.current?.abort(), []);
 

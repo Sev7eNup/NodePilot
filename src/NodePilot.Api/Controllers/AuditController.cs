@@ -47,8 +47,10 @@ public class AuditController : ControllerBase
     /// <param name="resourceId">Exact resource id.</param>
     /// <param name="userId">Exact actor id.</param>
     /// <param name="ipAddress">Exact remote IP address as a string.</param>
-    /// <param name="since">Only entries with Timestamp &gt;= since.</param>
-    /// <param name="until">Only entries with Timestamp &lt; until.</param>
+    /// <param name="since">Only entries with Timestamp &gt;= since. A UTC offset is honoured; a
+    /// value without one is read as UTC.</param>
+    /// <param name="until">Only entries with Timestamp &lt; until. Same offset rule as
+    /// <paramref name="since"/>.</param>
     /// <param name="afterTs">Cursor: Timestamp of the last row from the previous page.</param>
     /// <param name="afterId">Cursor: Id of the last row from the previous page. Required when
     /// afterTs is set.</param>
@@ -69,6 +71,8 @@ public class AuditController : ControllerBase
         CancellationToken ct = default)
     {
         take = Math.Clamp(take, 1, MaxTake);
+        since = AsUtcInstant(since);
+        until = AsUtcInstant(until);
 
         var query = _db.AuditLog.AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(action))       query = query.Where(a => a.Action == action);
@@ -151,6 +155,9 @@ public class AuditController : ControllerBase
             return;
         }
 
+        since = AsUtcInstant(since);
+        until = AsUtcInstant(until);
+
         var query = _db.AuditLog.AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(action))       query = query.Where(a => a.Action == action);
         if (!string.IsNullOrEmpty(resourceType)) query = query.Where(a => a.ResourceType == resourceType);
@@ -232,4 +239,14 @@ public class AuditController : ControllerBase
                 ("exported", batch)),
             ct);
     }
+
+    // Audit timestamps are stored in UTC. A value with an offset is converted to that instant;
+    // one without an offset carries no zone and is taken as UTC.
+    private static DateTime? AsUtcInstant(DateTime? value) => value switch
+    {
+        null => null,
+        { Kind: DateTimeKind.Utc } utc => utc,
+        { Kind: DateTimeKind.Local } local => local.ToUniversalTime(),
+        { } unspecified => DateTime.SpecifyKind(unspecified, DateTimeKind.Utc),
+    };
 }

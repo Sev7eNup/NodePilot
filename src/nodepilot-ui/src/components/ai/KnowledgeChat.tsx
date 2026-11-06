@@ -549,6 +549,9 @@ function MessageBubble({
             {message.meta && (compact ? <details className="ml-auto text-xs text-on-surface-variant"><summary className="cursor-pointer">{t('ai:widget.details')}</summary><UsageFooter meta={message.meta} /></details> : <UsageFooter meta={message.meta} />)}
           </div>
         )}
+        {message.meta?.historyDropped && (
+          <p className="pl-1 text-xs text-on-surface-variant">{t('ai:knowledge.historyDropped')}</p>
+        )}
       </div>
     </div>
   );

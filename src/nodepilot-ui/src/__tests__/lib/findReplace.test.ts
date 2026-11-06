@@ -85,11 +85,12 @@ describe('findMatches', () => {
     expect(hits[0].kind).toBe('node-label');
   });
 
-  it('cappedAt50Hits', () => {
-    // Hard cap so a search like "the" doesn't return thousands of rows and freeze the UI.
+  it('returnsEveryMatch_beyondTheDisplayLimit', () => {
+    // The overlay lists at most MAX_DISPLAYED_MATCHES rows, but the match set that drives
+    // Replace All must not be shortened.
     const manyNodes = Array.from({ length: 100 }, (_, i) => node(`n${i}`, 'Match'));
     const hits = findMatches('Match', manyNodes, [], ALL_SCOPES);
-    expect(hits).toHaveLength(50);
+    expect(hits).toHaveLength(100);
   });
 });
 
@@ -102,6 +103,17 @@ describe('applyReplaceAll', () => {
 
     expect((out[0].data as Record<string, unknown>).label).toBe('NewText');
     expect((out[1].data as Record<string, unknown>).label).toBe('NewText');
+  });
+
+  it('replacesEveryNode_whenMatchesExceedTheDisplayLimit', () => {
+    const nodes = Array.from({ length: 51 }, (_, i) => node(`n${i}`, 'x', { url: 'https://old.example/api' }));
+    const matches = findMatches('old.example', nodes, [], { nodeLabels: false, edgeLabels: false, configValues: true });
+
+    const { nodes: out } = applyReplaceAll(matches, 'old.example', 'new.example', nodes, []);
+
+    const urls = out.map((n) => ((n.data as Record<string, unknown>).config as { url: string }).url);
+    expect(urls).toHaveLength(51);
+    expect(urls.every((u) => u === 'https://new.example/api')).toBe(true);
   });
 
   it('replacesAllOccurrences_notJustFirst', () => {

@@ -106,7 +106,9 @@ before retrying a start whose response was lost.
   — the agent's `***` never overwrites them, and a
   secret the agent invents on a new node is rejected (masked + noted). A `***` with no stored
   value behind it (for example a condition literal copied onto a new edge id) rejects the whole
-  operation, because it would otherwise be saved as the literal `***`.
+  operation, because it would otherwise be saved as the literal `***`. So does any change to a
+  condition or case array that contains a mask: items have no stable id to restore against, so
+  such edits are made in the designer.
 - Credentials carry no password field; secret global values arrive masked. Create/update accept
   secrets write-only.
 
@@ -218,7 +220,9 @@ replacement for database permissions against every provider extension.
 ### Canvas assistant (for the in-designer chat — mostly in-process, work on the unsaved definition)
 `analyze_workflow` (unreachable nodes / no-trigger / cycles / remote-without-machine / unresolvable
 `{{…}}` references / duplicate edges + output variables / `Start-Job` in a hosted runspace; the same
-`NodePilot.Core.WorkflowAnalyzer` the AI chat calls, so both surfaces report identical codes) ·
+`NodePilot.Core.WorkflowAnalyzer` the AI chat calls, so both surfaces report identical codes; on very
+large graphs the duplicate published-name check stops after 2,000,000 ancestor visits and reports
+`analysis-budget-exceeded`) ·
 `find_unresolved_references` · `get_available_variables` · `check_styleguide` ·
 `validate_edge_condition` · `validate_activity_config` · `preview_template_resolution` ·
 `suggest_layout` · `diff_workflow_definition` · `get_workflow_node` · `get_failure_context`

@@ -183,16 +183,23 @@ internal sealed class StepRunner
         // availability gate, before the Running row exists, and outside the try below. A failure
         // there escaped StepRunner entirely and failed the whole run WITHOUT ever writing a step
         // row - the exact inversion the barrier exists to prevent, one line too early. The Running
-        // row does not need it (it persists the resolved target STRING), so moving it costs
-        // nothing.
+        // row first stores the target string and gets the machine ID once it resolves.
         var resolvedMachine = await MachineResolver.ResolveAsync(stepDb, resolvedTargetMachine, _logger, ct);
         var targetMachineId = resolvedMachine?.Id != Guid.Empty ? resolvedMachine?.Id : null;
+        if (targetMachineId is { } registeredMachineId)
+        {
+            stepExecution.TargetMachine = registeredMachineId.ToString();
+            await PersistStepStateDurablyAsync(
+                stepDb, stepExecution, "step.running", durabilityCancellation);
+        }
         stepActivity?.SetTag(
             TelemetryConstants.Attributes.StepHasCredential,
             credentialId.HasValue || resolvedMachine?.DefaultCredentialId is not null);
 
         try
         {
+            credentialId = VariableResolver.ParseExplicitCredentialId(node.Data.CredentialRaw, resolvedCredential);
+
             var executor = stepRegistry.GetExecutor(node.Type ?? "unknown", stepScope.ServiceProvider);
             var variables = VariableResolver.BuildStepVariables(inputParameters, globalVariables, previousResults, outputNameByStepId);
 
@@ -298,7 +305,7 @@ internal sealed class StepRunner
             // ever fire?". Only emit when non-empty to save row width on activities like
             // delay/log that never produce params. Already redacted by _redactor.Redact.
             stepExecution.OutputParametersJson = sanitized.OutputParameters is { Count: > 0 } op
-                ? TruncateForPersist(JsonSerializer.Serialize(op))
+                ? SerializeOutputParametersForPersist(op)
                 : null;
             // Reproducibility snapshot for custom-activity steps: which definition key/version/hash
             // actually ran. Survives latest-wins edits + rollbacks of the live definition.
@@ -620,9 +627,10 @@ internal sealed class StepRunner
                                        && ex is not NonRetryableRemoteException
                                        && attempt < retryPolicy.MaxAttempts)
             {
-                _logger.LogWarning(ex,
-                    "Step {StepId} ({ActivityType}) attempt {Attempt}/{Max} threw; retrying.",
-                    node.Id, node.Type, attempt, retryPolicy.MaxAttempts);
+                _logger.LogWarning(
+                    "Step {StepId} ({ActivityType}) attempt {Attempt}/{Max} threw; retrying. {Error}",
+                    node.Id, node.Type, attempt, retryPolicy.MaxAttempts,
+                    _redactor.Redact(ExceptionDetail.Describe(ex)));
                 result = new ActivityResult { Success = false, ErrorOutput = ex.Message };
                 continue;
             }
@@ -759,6 +767,40 @@ internal sealed class StepRunner
         if (value.Length <= _stepDetailMaxChars) return value;
         return value.Substring(0, _stepDetailMaxChars)
              + $"\n\u2026 [truncated, full length was {value.Length} chars]";
+    }
+
+    /// <summary>
+    /// Serializes the parameter map within the persist limit while keeping it valid JSON: small
+    /// parameters stay whole, oversized values are cut and carry a visible truncation marker.
+    /// The limit is shared evenly; space a small parameter does not use goes to larger ones.
+    /// </summary>
+    private string SerializeOutputParametersForPersist(IReadOnlyDictionary<string, string> parameters)
+    {
+        var json = JsonSerializer.Serialize(parameters);
+        if (_stepDetailMaxChars <= 0 || json.Length <= _stepDetailMaxChars) return json;
+
+        var bounded = new Dictionary<string, string>(parameters.Count, StringComparer.Ordinal);
+        var remaining = _stepDetailMaxChars;
+        var pending = parameters.Count;
+        foreach (var (key, value) in parameters.OrderBy(p => p.Value.Length))
+        {
+            var share = remaining / pending--;
+            var keyCost = JsonSerializer.Serialize(key).Length + 2;
+            var text = value;
+            var entryCost = keyCost + JsonSerializer.Serialize(text).Length;
+            if (entryCost > share)
+            {
+                var keep = Math.Min(Math.Max(0, share - keyCost), value.Length);
+                // A lone surrogate is not valid JSON text, so never cut inside a pair.
+                if (keep > 0 && char.IsHighSurrogate(value[keep - 1])) keep--;
+                text = value.Substring(0, keep) + $"\u2026 [truncated, full length was {value.Length} chars]";
+                entryCost = keyCost + JsonSerializer.Serialize(text).Length;
+            }
+            bounded[key] = text;
+            remaining = Math.Max(0, remaining - entryCost);
+        }
+        // Keep the activity's own parameter order rather than the size order used above.
+        return JsonSerializer.Serialize(parameters.Keys.ToDictionary(k => k, k => bounded[k], StringComparer.Ordinal));
     }
 
     /// <summary>

@@ -321,7 +321,7 @@ Roles: `FolderViewer | FolderOperator | FolderEditor | FolderAdmin`. `--principa
 
 ### maintenance (admin)
 
-`create`/`update` flags: `--name`, `--description`, `--enabled`/`--disabled`, `--mode <Blackout|AllowOnly>`, `--scope <Global|Folders|Workflows>`, `--recurrence <OneTime|Weekly|Cron>`, `--tz <TZID>`, `--one-time-start/--one-time-end <ISO>`, `--days <CSV>` (Mon..Sat), `--start/--end <HH:MM>`, `--cron <EXPR>` (Quartz, with a seconds field), `--duration-minutes <N>`, `--folder`/`--workflow` (repeatable).
+`create`/`update` flags: `--name`, `--description`, `--enabled`/`--disabled`, `--mode <Blackout|AllowOnly>`, `--scope <Global|Folders|Workflows>`, `--recurrence <OneTime|Weekly|Cron>`, `--tz <TZID>`, `--one-time-start/--one-time-end <ISO>`, `--days <CSV>` (Sun..Sat; an unknown day fails the command), `--start/--end <HH:MM>`, `--cron <EXPR>` (Quartz, with a seconds field), `--duration-minutes <N>`, `--folder`/`--workflow` (repeatable).
 
 ```bash
 np maintenance list

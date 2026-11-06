@@ -28,6 +28,7 @@
     "regenerate": "Neu generieren",
     "tokenUsed": "Tokens: {{tokens}} · {{ms}} ms",
     "errorPrefix": "KI-Fehler: {{message}}",
+    "originalRestored": "Das ursprüngliche Skript wurde wiederhergestellt.",
     "disabled": "KI-Features sind deaktiviert. Aktiviere sie via <code>Llm:Enabled=true</code> in der Backend-Config.",
     "warningPrefix": "Hinweis:",
     "reviewWarning": "KI-Output bitte vor dem Speichern lesen. Schadhafte Anweisungen können in Upstream-Daten eingeschleust sein."
@@ -128,6 +129,7 @@
     "scopeSelectionHint": "Frage auf die ausgewählten Nodes beziehen"
   },
   "knowledge": {
+    "historyDropped": "Der bisherige Verlauf wurde nicht mitgesendet, weil er dem aktuellen KI-Profil nicht zugeordnet werden konnte.",
     "title": "KI-Chat",
     "subtitle": "NodePilot fragen — Doku, Workflows, Betrieb, Quellcode",
     "inputPlaceholder": "Frag etwas zu NodePilot, deinen Workflows oder dem Quellcode…",

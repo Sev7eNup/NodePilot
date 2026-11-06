@@ -17,6 +17,9 @@ public static class AuditEventClassification
             return "failure";
 
         if (action == AuditActions.LoginLocked
+            || action == AuditActions.UserLdapRefusedBootstrap
+            || action == AuditActions.UserWindowsRefusedBootstrap
+            || action == AuditActions.UserDirectoryAccessRefused
             || action.EndsWith("_FAILED", StringComparison.Ordinal)
             || action.EndsWith("_SUPPRESSED", StringComparison.Ordinal)
             || action.EndsWith("_REJECTED", StringComparison.Ordinal)

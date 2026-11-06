@@ -22,13 +22,10 @@ public static partial class CustomActivityValidation
     private static readonly IReadOnlySet<string> AllowedEngines =
         new HashSet<string>(StringComparer.Ordinal) { "auto", "pwsh", "powershell", "runspace" };
 
-    // Names that collide with wrapper-injected or reserved PowerShell variables, or with exitCode.
-    private static readonly IReadOnlySet<string> ReservedParamNames =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Params", "exitCode", "input", "args", "PSScriptRoot", "PSCommandPath",
-            "ErrorActionPreference", "ProgressPreference", "_",
-        };
+    public static bool IsReservedParameterName(string name) =>
+        PowerShellReservedVariables.IsReserved(name)
+        || name.Equals("Params", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("exitCode", StringComparison.OrdinalIgnoreCase);
 
     public static string? Validate(
         string? key,
@@ -64,7 +61,7 @@ public static partial class CustomActivityValidation
         {
             if (string.IsNullOrWhiteSpace(p.Name) || !ParamNameRegex().IsMatch(p.Name))
                 return $"Input parameter name '{p.Name}' must match [A-Za-z0-9_]+.";
-            if (ReservedParamNames.Contains(p.Name))
+            if (IsReservedParameterName(p.Name))
                 return $"Input parameter name '{p.Name}' is reserved.";
             if (!CustomActivityParameterTypes.Input.Contains(p.Type))
                 return $"Input parameter '{p.Name}' has unsupported type '{p.Type}'.";
@@ -79,7 +76,7 @@ public static partial class CustomActivityValidation
         {
             if (string.IsNullOrWhiteSpace(o.Name) || !ParamNameRegex().IsMatch(o.Name))
                 return $"Output parameter name '{o.Name}' must match [A-Za-z0-9_]+.";
-            if (ReservedParamNames.Contains(o.Name))
+            if (IsReservedParameterName(o.Name))
                 return $"Output parameter name '{o.Name}' is reserved (exitCode is always provided automatically).";
             if (!CustomActivityParameterTypes.Output.Contains(o.Type))
                 return $"Output parameter '{o.Name}' has unsupported type '{o.Type}'.";

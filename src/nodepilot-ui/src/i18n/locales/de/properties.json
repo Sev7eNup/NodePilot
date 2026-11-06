@@ -825,7 +825,8 @@
     "keyPlaceholder": "Key",
     "valuePlaceholder": "Wert oder {{var}}",
     "valuePlaceholderUpstream": "Wert oder {{upstream.param.x}}",
-    "remove": "Entfernen"
+    "remove": "Entfernen",
+    "duplicateName": "Dieser Name ist oben schon vergeben; die Zeile wird erst gespeichert, wenn er eindeutig ist."
   },
   "jsonPathTree": {
     "collapse": "JSON-Node einklappen",

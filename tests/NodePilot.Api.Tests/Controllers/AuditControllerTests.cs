@@ -53,6 +53,45 @@ public class AuditControllerTests
     }
 
     [Fact]
+    public async Task GetAll_SinceUntilWithOffset_FilterOnTheUtcInstant()
+    {
+        var db = CreateContext();
+        // 14:00-14:30 in Berlin (UTC+2 in October) is 12:00-12:30 UTC.
+        db.AuditLog.Add(Entry("INSIDE", new DateTime(2026, 10, 22, 12, 10, 0, DateTimeKind.Utc)));
+        db.AuditLog.Add(Entry("WALL_CLOCK_MATCH_ONLY", new DateTime(2026, 10, 22, 14, 10, 0, DateTimeKind.Utc)));
+        await db.SaveChangesAsync();
+        var offset = TimeSpan.FromHours(2);
+        // The MVC binder hands an offset value over as a converted instant, possibly Local.
+        var since = new DateTimeOffset(2026, 10, 22, 14, 0, 0, offset).LocalDateTime;
+        var until = new DateTimeOffset(2026, 10, 22, 14, 30, 0, offset).LocalDateTime;
+
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
+        var result = await controller.GetAll(
+            action: null, resourceType: null, resourceId: null, userId: null,
+            ipAddress: null, since: since, until: until,
+            afterTs: null, afterId: null, take: 100, CancellationToken.None);
+
+        PageOf(result).Items.Select(i => i.Action).Should().Equal("INSIDE");
+    }
+
+    [Fact]
+    public async Task GetAll_SinceWithoutOffset_IsReadAsUtc()
+    {
+        var db = CreateContext();
+        db.AuditLog.Add(Entry("BEFORE", new DateTime(2026, 10, 22, 11, 59, 0, DateTimeKind.Utc)));
+        db.AuditLog.Add(Entry("AFTER", new DateTime(2026, 10, 22, 12, 1, 0, DateTimeKind.Utc)));
+        await db.SaveChangesAsync();
+
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
+        var result = await controller.GetAll(
+            action: null, resourceType: null, resourceId: null, userId: null,
+            ipAddress: null, since: new DateTime(2026, 10, 22, 12, 0, 0, DateTimeKind.Unspecified), until: null,
+            afterTs: null, afterId: null, take: 100, CancellationToken.None);
+
+        PageOf(result).Items.Select(i => i.Action).Should().Equal("AFTER");
+    }
+
+    [Fact]
     public async Task GetAll_FilterByAction_OnlyMatching()
     {
         var db = CreateContext();

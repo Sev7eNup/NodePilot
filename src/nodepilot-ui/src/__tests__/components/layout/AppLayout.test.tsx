@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { useState } from 'react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { AppLayout } from '../../../components/layout/AppLayout';
@@ -109,6 +110,58 @@ describe('AppLayout — mobile drawer', () => {
     const logout = within(aside).getByRole('button', { name: 'Logout' });
     const bottomArea = logout.closest('div.border-t');
     expect(bottomArea?.className).toContain('env(safe-area-inset-bottom)');
+  });
+});
+
+describe('AppLayout — workflow editor route', () => {
+  /** matchMedia whose result can flip at runtime, firing the change listeners like a resize. */
+  function resizableViewport(initialMobile: boolean) {
+    let mobile = initialMobile;
+    const listeners = new Set<() => void>();
+    window.matchMedia = ((q: string) => ({
+      get matches() { return mobile; }, media: q, onchange: null,
+      addEventListener: (_: string, l: () => void) => listeners.add(l),
+      removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    return (next: boolean) => act(() => { mobile = next; listeners.forEach((l) => l()); });
+  }
+
+  function renderEditor(path: string) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route path="workflows/:id" element={<EditorStub />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  function EditorStub() {
+    const [draft, setDraft] = useState('');
+    return <input aria-label="draft" value={draft} onChange={(e) => setDraft(e.target.value)} />;
+  }
+
+  it('keeps the mounted desktop editor and its draft when the window narrows', () => {
+    const setMobile = resizableViewport(false);
+    renderEditor('/workflows/wf-1');
+    fireEvent.change(screen.getByLabelText('draft'), { target: { value: 'unsaved' } });
+
+    setMobile(true);
+
+    expect(screen.getByLabelText('draft')).toHaveValue('unsaved');
+  });
+
+  it('opens a workflow on a narrow window in the mobile view, not the editor', () => {
+    resizableViewport(true);
+    renderEditor('/workflows/wf-1');
+
+    expect(screen.queryByLabelText('draft')).not.toBeInTheDocument();
   });
 });
 

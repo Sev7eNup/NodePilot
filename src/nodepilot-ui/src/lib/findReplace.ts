@@ -56,6 +56,9 @@ function traverseObject(
   }
 }
 
+/** How many matches the overlay lists. Only the list is capped; Replace All covers every match. */
+export const MAX_DISPLAYED_MATCHES = 50;
+
 export function findMatches(
   query: string,
   nodes: Node[],
@@ -118,7 +121,7 @@ export function findMatches(
     }
   }
 
-  return results.slice(0, 50);
+  return results;
 }
 
 /** Replaces inside the one string at `path`; every other config value is left untouched. */

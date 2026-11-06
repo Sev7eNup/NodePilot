@@ -95,7 +95,10 @@ test.describe('ION dark production skin', () => {
   });
 
   test('designer switches preserve geometry, selection and preferences; mobile graph inherits ION', async ({ page }, testInfo) => {
-    await page.addInitScript(() => localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: 'dark' }, version: 0 })));
+    // Seed only once, so the reload below keeps the skin chosen in the designer.
+    await page.addInitScript(() => {
+      if (!localStorage.getItem('nodepilot.theme')) localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: 'dark' }, version: 0 }));
+    });
     await page.goto(`/workflows/${WF_ID}`);
     const check = page.locator('.react-flow__node[data-id="check"]');
     await expect(check).toBeVisible();
@@ -122,7 +125,11 @@ test.describe('ION dark production skin', () => {
     const idle = page.locator('.react-flow__edge[data-id="start-check"] .react-flow__edge-path').first();
     await expect(idle).toHaveCSS('stroke', 'rgb(120, 149, 177)');
     await page.screenshot({ path: testInfo.outputPath('ion-designer.png'), fullPage: true, animations: 'disabled' });
+    // Narrowing keeps the open editor (and its draft); a fresh load on a phone gets the mobile graph.
     await page.setViewportSize({ width: 390, height: 844 });
+    await expect(check).toBeVisible();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-skin', 'dark-ion');
     await expect(page.getByText(/read-only view/i)).toBeVisible();
     await expect(page.locator('.np-mobile-canvas')).toBeVisible();
     await expect(page.locator('.react-flow__edge-path').first()).toBeAttached();

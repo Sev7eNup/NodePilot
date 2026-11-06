@@ -246,6 +246,139 @@ public sealed class ScimProvisioningServiceTests : IDisposable
         engine.Verify(x => x.CancelAsync(execution.Id, "scim-authorization-change", It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    private async Task<(Guid UserId, Guid ExecutionId, Guid SessionId)> SeedMemberWithRunningWorkAsync(
+        string subject, CancellationToken ct)
+    {
+        var created = await Service().CreateUserAsync(new ScimUserWriteRequest
+        {
+            ExternalId = subject, UserName = $"{subject}@example.test", Active = true,
+        }, "https://nodepilot/scim/v2", ct);
+        var userId = Guid.Parse(created.Value!.Id);
+        await Service().CreateGroupAsync(new ScimGroupWriteRequest
+        {
+            ExternalId = "nodepilot-users", DisplayName = "NodePilot Users",
+            Members = [new ScimMember { Value = userId.ToString() }],
+        }, "https://nodepilot/scim/v2", ct);
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = $"wf-{subject}", DefinitionJson = "{}" };
+        var execution = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), Workflow = workflow, WorkflowId = workflow.Id,
+            StartedByUserId = userId, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow,
+        };
+        var session = new AuthSession
+        {
+            Id = Guid.NewGuid(), UserId = userId, AuthenticationMethod = "Oidc",
+            CreatedAt = DateTime.UtcNow, LastSeenAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddHours(1),
+        };
+        _db.AddRange(workflow, execution, session);
+        await _db.SaveChangesAsync(ct);
+        _db.ChangeTracker.Clear();
+        return (userId, execution.Id, session.Id);
+    }
+
+    private static Mock<IWorkflowEngine> EngineAccepting(Guid executionId)
+    {
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(x => x.CancelAsync(executionId, It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        return engine;
+    }
+
+    [Fact]
+    public async Task AddingAdminGroup_RevokesSessionButKeepsRunningExecution()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (userId, executionId, sessionId) = await SeedMemberWithRunningWorkAsync("promoted", ct);
+        var engine = EngineAccepting(executionId);
+
+        var result = await Service(workflowEngine: engine.Object).CreateGroupAsync(new ScimGroupWriteRequest
+        {
+            ExternalId = "nodepilot-admins", DisplayName = "NodePilot Administrators",
+            Members = [new ScimMember { Value = userId.ToString() }],
+        }, "https://nodepilot/scim/v2", ct);
+
+        result.Succeeded.Should().BeTrue();
+        _db.ChangeTracker.Clear();
+        (await _db.Users.SingleAsync(x => x.Id == userId, ct)).Role.Should().Be(UserRole.Admin);
+        (await _db.AuthSessions.SingleAsync(x => x.Id == sessionId, ct)).RevokedAt.Should().NotBeNull();
+        (await _db.WorkflowExecutions.SingleAsync(x => x.Id == executionId, ct)).Status.Should().Be(ExecutionStatus.Running);
+        engine.Verify(x => x.CancelAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RemovingAdminGroup_DemotesAndCancelsRunningExecution()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (userId, executionId, sessionId) = await SeedMemberWithRunningWorkAsync("demoted", ct);
+        var admins = await Service().CreateGroupAsync(new ScimGroupWriteRequest
+        {
+            ExternalId = "nodepilot-admins", DisplayName = "NodePilot Administrators",
+            Members = [new ScimMember { Value = userId.ToString() }],
+        }, "https://nodepilot/scim/v2", ct);
+        var engine = EngineAccepting(executionId);
+
+        var result = await Service(workflowEngine: engine.Object).ReplaceGroupAsync(
+            Guid.Parse(admins.Value!.Id),
+            new ScimGroupWriteRequest { DisplayName = "NodePilot Administrators", Members = [] },
+            "https://nodepilot/scim/v2", ct);
+
+        result.Succeeded.Should().BeTrue();
+        _db.ChangeTracker.Clear();
+        (await _db.Users.SingleAsync(x => x.Id == userId, ct)).Role.Should().Be(UserRole.Viewer);
+        (await _db.AuthSessions.SingleAsync(x => x.Id == sessionId, ct)).RevokedAt.Should().NotBeNull();
+        (await _db.WorkflowExecutions.SingleAsync(x => x.Id == executionId, ct)).Status.Should().Be(ExecutionStatus.Cancelled);
+        engine.Verify(x => x.CancelAsync(executionId, "scim-authorization-change", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RenamingUser_RevokesSessionButKeepsRunningExecution()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (userId, executionId, sessionId) = await SeedMemberWithRunningWorkAsync("renamed", ct);
+        var engine = EngineAccepting(executionId);
+
+        var result = await Service(workflowEngine: engine.Object).ReplaceUserAsync(userId,
+            new ScimUserWriteRequest { UserName = "renamed-new@example.test", Active = true },
+            "https://nodepilot/scim/v2", ct);
+
+        result.Succeeded.Should().BeTrue();
+        _db.ChangeTracker.Clear();
+        (await _db.Users.SingleAsync(x => x.Id == userId, ct)).Username.Should().Be("renamed-new@example.test");
+        (await _db.AuthSessions.SingleAsync(x => x.Id == sessionId, ct)).RevokedAt.Should().NotBeNull();
+        (await _db.WorkflowExecutions.SingleAsync(x => x.Id == executionId, ct)).Status.Should().Be(ExecutionStatus.Running);
+        engine.Verify(x => x.CancelAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeactivatingUser_CancelsRunningExecution()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (userId, executionId, _) = await SeedMemberWithRunningWorkAsync("deactivated", ct);
+        var engine = EngineAccepting(executionId);
+
+        var result = await Service(workflowEngine: engine.Object).ReplaceUserAsync(userId,
+            new ScimUserWriteRequest { UserName = "deactivated@example.test", Active = false },
+            "https://nodepilot/scim/v2", ct);
+
+        result.Succeeded.Should().BeTrue();
+        _db.ChangeTracker.Clear();
+        (await _db.WorkflowExecutions.SingleAsync(x => x.Id == executionId, ct)).Status.Should().Be(ExecutionStatus.Cancelled);
+        engine.Verify(x => x.CancelAsync(executionId, "scim-authorization-change", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteUser_CancelsRunningExecution()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (userId, executionId, _) = await SeedMemberWithRunningWorkAsync("deprovisioned", ct);
+        var engine = EngineAccepting(executionId);
+
+        (await Service(workflowEngine: engine.Object).DeleteUserAsync(userId, ct)).Succeeded.Should().BeTrue();
+
+        _db.ChangeTracker.Clear();
+        (await _db.WorkflowExecutions.SingleAsync(x => x.Id == executionId, ct)).Status.Should().Be(ExecutionStatus.Cancelled);
+        engine.Verify(x => x.CancelAsync(executionId, "scim-authorization-change", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public async Task DeleteUser_DeactivatedAdminWithActiveBreakGlass_Succeeds()
     {

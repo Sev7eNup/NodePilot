@@ -357,6 +357,64 @@ public sealed class WorkflowDefinitionPatcherTests
         act.Should().Throw<ArgumentException>().WithMessage("*'value' on 'edge-2'*");
     }
 
+    private const string EdgeWithLiteralGroup = """
+        {"nodes":[],"edges":[{"id":"edge-1","source":"a","target":"b","data":{"conditionExpression":{
+          "type":"group","op":"AND","children":[{"type":"comparison",
+          "left":{"kind":"variable","value":"status"},"op":"==","right":{"kind":"literal","value":"ready"}}]}}}]}
+        """;
+
+    [Fact]
+    public void Apply_AddChildToMaskedGroup_ThrowsInsteadOfPartialMerge()
+    {
+        // The agent sees the literal as "***" and appends a second condition while switching op.
+        var ops = WorkflowDefinitionPatcher.ParseOps(E("""
+        [{"op":"upsertEdge","edge":{"id":"edge-1","source":"a","target":"b","data":{"conditionExpression":{
+          "type":"group","op":"OR","children":[
+            {"type":"comparison","left":{"kind":"variable","value":"status"},"op":"==","right":{"kind":"literal","value":"***"}},
+            {"type":"comparison","left":{"kind":"variable","value":"status"},"op":"==","right":{"kind":"literal","value":"done"}}]}}}}]
+        """));
+
+        var act = () => WorkflowDefinitionPatcher.Apply(E(EdgeWithLiteralGroup), ops);
+
+        act.Should().Throw<ArgumentException>().WithMessage("*'children' on 'edge-1'*masked*Nothing was saved*");
+    }
+
+    [Fact]
+    public void MergeFull_ChangedMaskedCaseArray_Throws()
+    {
+        var original = E("""
+        {"nodes":[{"id":"decision-1","data":{"config":{"cases":[{"label":"a",
+          "conditionExpression":{"type":"comparison","left":{"kind":"variable","value":"x"},
+          "op":"==","right":{"kind":"literal","value":"case-secret"}}}]}}}],"edges":[]}
+        """);
+        var proposed = E("""
+        {"nodes":[{"id":"decision-1","data":{"config":{"cases":[{"label":"renamed",
+          "conditionExpression":{"type":"comparison","left":{"kind":"variable","value":"x"},
+          "op":"==","right":{"kind":"literal","value":"***"}}}]}}}],"edges":[]}
+        """);
+
+        var act = () => WorkflowDefinitionPatcher.MergeFull(original, proposed);
+
+        act.Should().Throw<ArgumentException>().WithMessage("*'cases' on 'decision-1'*");
+    }
+
+    [Fact]
+    public void Apply_UnchangedMaskedGroup_RoundTripsWithScalarChange()
+    {
+        var ops = WorkflowDefinitionPatcher.ParseOps(E("""
+        [{"op":"upsertEdge","edge":{"id":"edge-1","source":"a","target":"b","data":{"label":"Ready","conditionExpression":{
+          "type":"group","op":"AND","children":[{"type":"comparison",
+          "left":{"kind":"variable","value":"status"},"op":"==","right":{"kind":"literal","value":"***"}}]}}}}]
+        """));
+
+        var result = WorkflowDefinitionPatcher.Apply(E(EdgeWithLiteralGroup), ops);
+
+        var data = result.Definition["edges"]![0]!["data"]!;
+        data["label"]!.GetValue<string>().Should().Be("Ready");
+        data["conditionExpression"]!["children"]![0]!["right"]!["value"]!.GetValue<string>().Should().Be("ready");
+        result.Notes.Should().BeEmpty();
+    }
+
     [Fact]
     public void Apply_UpsertNewNodeWithMaskedArrayItem_Throws()
     {

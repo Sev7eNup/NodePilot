@@ -352,7 +352,8 @@
     "edgeLabels": "Kanten-Labels",
     "configValues": "Config-Werte",
     "emptyHint": "Gib einen Suchbegriff ein, um Treffer in Nodes und Config-Feldern zu finden.",
-    "noMatches": "Keine Treffer gefunden."
+    "noMatches": "Keine Treffer gefunden.",
+    "resultsLimited": "Die ersten {{shown}} von {{count}} Treffern werden angezeigt. „Alle“ ersetzt jeden Treffer."
   },
   "help": {
     "title": "Tastaturkürzel",

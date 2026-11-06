@@ -150,6 +150,19 @@ public class WinRmSessionFactoryTests
     public void ClassifyConnectFailure_OtherException_StaysRetryable()
         => WinRmSessionFactory.ClassifyConnectFailure(new TimeoutException(), Machine()).Should().BeNull();
 
+    [Theory]
+    [InlineData("2001:db8::1", false, 5985, "http://[2001:db8::1]:5985/wsman")]
+    [InlineData("2001:db8::1", true, 5986, "https://[2001:db8::1]:5986/wsman")]
+    [InlineData("[2001:db8::1]", true, 5986, "https://[2001:db8::1]:5986/wsman")]
+    [InlineData("10.0.0.5", false, 5985, "http://10.0.0.5:5985/wsman")]
+    [InlineData("web01.corp", true, 15986, "https://web01.corp:15986/wsman")]
+    public void BuildWsManUri_AcceptedHostForms_ProduceValidEndpoint(string hostname, bool ssl, int port, string expected)
+    {
+        var uri = WinRmSessionFactory.BuildWsManUri(Machine(hostname, ssl, port));
+
+        uri.AbsoluteUri.Should().Be(expected);
+    }
+
     [Fact]
     public void Constructor_SingleArg_AcceptsCredentialStoreOnly()
     {

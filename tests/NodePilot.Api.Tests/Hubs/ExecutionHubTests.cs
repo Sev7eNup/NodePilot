@@ -139,6 +139,44 @@ public sealed class ExecutionHubTests : IDisposable
     }
 
     [Fact]
+    public async Task ConcurrentLastLeaveAndNewJoin_RetainsTheLiveSubscriber()
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var context = new Mock<HubCallerContext>();
+        context.SetupGet(x => x.ConnectionId).Returns("leaving");
+        var groups = new Mock<IGroupManager>();
+        groups.Setup(x => x.RemoveFromGroupAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var hub = new ExecutionHub(db, Mock.Of<IResourceAuthorizationService>())
+            { Context = context.Object, Groups = groups.Object };
+        using var barrier = new Barrier(2);
+        var executionIds = Enumerable.Range(0, 2000).Select(_ => Guid.NewGuid()).ToArray();
+        foreach (var id in executionIds)
+            ExecutionHub.RegisterGroupForTest("leaving", id.ToString());
+
+        var join = Task.Run(() =>
+        {
+            foreach (var id in executionIds)
+            {
+                barrier.SignalAndWait(TestContext.Current.CancellationToken);
+                ExecutionHub.RegisterGroupForTest("joining", id.ToString());
+            }
+        }, TestContext.Current.CancellationToken);
+        var leave = Task.Run(async () =>
+        {
+            foreach (var id in executionIds)
+            {
+                barrier.SignalAndWait(TestContext.Current.CancellationToken);
+                await hub.LeaveExecution(id.ToString());
+            }
+        }, TestContext.Current.CancellationToken);
+        await Task.WhenAll(join, leave);
+
+        ExecutionHub.SubscribedExecutionIds().Should().BeEquivalentTo(executionIds);
+        executionIds.Should().OnlyContain(id => ExecutionHub.HasSubscribers(id, Guid.Empty));
+    }
+
+    [Fact]
     public void FindConnectionsToDrop_EmptyMap_ReturnsNothing()
     {
         var hits = ExecutionHub.FindConnectionsToDrop(

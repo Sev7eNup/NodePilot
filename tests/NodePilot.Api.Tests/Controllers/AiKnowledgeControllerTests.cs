@@ -24,13 +24,13 @@ public class AiKnowledgeControllerTests
     private static (AiKnowledgeController controller, CapturingAuditWriter audit, FakeLlmClient llm, MemoryStream body)
         Build(bool llmEnabled = true, bool knowledgeEnabled = true, bool docs = true, bool op = true, bool src = false,
               string role = "Operator", bool enableToolCalling = false, bool db = false, bool withProfile = true,
-              SharedFolderRole? folderRole = null)
+              SharedFolderRole? folderRole = null, string baseUrl = "http://localhost/v1", string profileId = "default", string model = "test-model")
     {
         // withProfile: false = Llm:Enabled on but no resolvable active profile
         // (LLM_NO_ACTIVE_PROFILE state).
         var llmOptions = new StaticOptionsMonitor<LlmOptions>(withProfile
             ? LlmTestOptions.WithProfile(
-                enabled: llmEnabled, baseUrl: "http://localhost/v1", model: "test-model",
+                id: profileId, enabled: llmEnabled, baseUrl: baseUrl, model: model,
                 maxTokens: 100, timeoutSeconds: 30, enableToolCalling: enableToolCalling)
             : LlmTestOptions.EnabledWithoutProfile());
         var kOptions = new StaticOptionsMonitor<AiKnowledgeOptions>(new AiKnowledgeOptions
@@ -158,6 +158,47 @@ public class AiKnowledgeControllerTests
     }
 
     // ---- Streaming happy path + audit ----------------------------------------------------------
+
+    [Fact]
+    public async Task Ask_HistoryWithoutContext_IsNotSentToProvider()
+    {
+        var (controller, _, llm, body) = Build();
+        llm.EnqueueStream("answer");
+        var history = new[] { new AiChatTurnDto("user", "private prior turn") };
+
+        await controller.Ask(new KnowledgeAskRequest("new question", history), CancellationToken.None);
+
+        llm.Calls.Should().ContainSingle();
+        llm.Calls[0].Conversation.Should().NotContain(m => m.Content == "private prior turn");
+        var done = ParseSse(body).Single(e => e.ev == "done").data;
+        using var json = System.Text.Json.JsonDocument.Parse(done);
+        json.RootElement.GetProperty("historyDropped").GetBoolean().Should().BeTrue();
+        json.RootElement.GetProperty("historyContextKey").GetString().Should().NotBeNullOrEmpty();
+    }
+
+    [Theory]
+    [InlineData("http://localhost/v1", "default", "test-model", false)]
+    [InlineData("http://other.example/v1", "default", "test-model", true)]
+    [InlineData("http://localhost/v1", "other", "test-model", true)]
+    [InlineData("http://localhost/v1", "default", "other-model", true)]
+    public async Task Ask_BindsHistoryToEffectiveRecipient(string nextUrl, string profileId, string model, bool dropped)
+    {
+        var (first, _, firstLlm, firstBody) = Build();
+        firstLlm.EnqueueStream("first answer");
+        await first.Ask(new KnowledgeAskRequest("first question", null), CancellationToken.None);
+        using var firstDone = System.Text.Json.JsonDocument.Parse(ParseSse(firstBody).Single(e => e.ev == "done").data);
+        var key = firstDone.RootElement.GetProperty("historyContextKey").GetString();
+
+        var (next, _, nextLlm, nextBody) = Build(baseUrl: nextUrl, profileId: profileId, model: model);
+        nextLlm.EnqueueStream("next answer");
+        var history = new[] { new AiChatTurnDto("user", "first question"), new AiChatTurnDto("assistant", "first answer") };
+        await next.Ask(new KnowledgeAskRequest("next question", history, HistoryContextKey: key), CancellationToken.None);
+
+        nextLlm.Calls.Single().Conversation!.Any(m => m.Content == "first answer").Should().Be(!dropped);
+        using var nextDone = System.Text.Json.JsonDocument.Parse(ParseSse(nextBody).Single(e => e.ev == "done").data);
+        nextDone.RootElement.GetProperty("historyDropped").GetBoolean().Should().Be(dropped);
+        (nextDone.RootElement.GetProperty("historyContextKey").GetString() == key).Should().Be(!dropped);
+    }
 
     [Fact]
     public async Task Ask_Enabled_StreamsDeltasAndDone_FiresAudit()

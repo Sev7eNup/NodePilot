@@ -142,6 +142,9 @@ public sealed class BackupService(IEnumerable<IBackupPart> parts, NodePilotDbCon
 
         var json = envelope.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
         var content = Encoding.UTF8.GetBytes(json);
+        if (content.Length > BackupSections.MaximumArchiveBytes)
+            throw new BackupExportException(
+                "The encrypted backup exceeds the 64 MiB restore limit. Export smaller sets of configuration sections.");
 
         // Accurate audit signal: a backup "contains secrets" only if at least one field was
         // actually sealed (the $enc marker). A globals-only export with no secret variables, for

@@ -23,7 +23,7 @@ export async function buildSiteImages() {
     const image = sharp(fileURLToPath(new URL(source, import.meta.url)))
     const metadata = await image.metadata()
     const widths = [...new Set([480, 960, 1600, metadata.width].filter(width => width <= metadata.width))]
-    for (const width of widths) await image.clone().resize({ width }).webp({ quality: 82 }).toFile(fileURLToPath(new URL(`${key}-${width}.webp`, output)))
+    for (const width of widths) await image.clone().resize({ width }).webp({ quality: 90, smartSubsample: true }).toFile(fileURLToPath(new URL(`${key}-${width}.webp`, output)))
     manifest[key] = { width: metadata.width, height: metadata.height, widths }
   }
   writeFileSync(new URL('../src/site/image-manifest.json', import.meta.url), JSON.stringify(manifest, null, 2) + '\n')
