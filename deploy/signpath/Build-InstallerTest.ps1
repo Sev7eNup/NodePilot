@@ -10,6 +10,7 @@
 param()
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version 3.0
 
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
@@ -22,10 +23,12 @@ $toolRoot = Join-Path $env:RUNNER_TEMP ('nodepilot-signpath-' + [Guid]::NewGuid(
 
 function Get-PinnedDownload {
     param([string]$Uri, [string]$Path, [string]$Sha256)
+    Write-Host "[signpath-test] Downloading $(Split-Path $Path -Leaf)"
     Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $Path
     if ((Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -ne $Sha256) {
         throw "Downloaded build input has an unexpected SHA-256: $Uri"
     }
+    Write-Host "[signpath-test] Download verified: $(Split-Path $Path -Leaf)"
 }
 
 $innoInstaller = Join-Path $toolRoot 'innosetup-6.7.4.exe'
@@ -37,6 +40,7 @@ if ((Get-AuthenticodeSignature -LiteralPath $innoInstaller).Status -ne 'Valid') 
     throw 'The pinned Inno Setup installer does not have a valid Authenticode signature.'
 }
 $innoRoot = Join-Path $toolRoot 'inno'
+Write-Host '[signpath-test] Installing the pinned Inno Setup compiler'
 $process = Start-Process -FilePath $innoInstaller -WindowStyle Hidden -Wait -PassThru `
     -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $innoRoot + '"'))
 if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
@@ -48,10 +52,12 @@ Get-PinnedDownload `
     -Uri 'https://get.enterprisedb.com/postgresql/postgresql-16.15-1-windows-x64-binaries.zip' `
     -Path $pgArchive `
     -Sha256 '25e6fcdfb8caec38691bf461125e7564508760666f7b8e5dc6a5f0818f58f81e'
+Write-Host '[signpath-test] Extracting PostgreSQL binaries'
 Expand-Archive -LiteralPath $pgArchive -DestinationPath (Join-Path $toolRoot 'postgresql')
 $pgRoot = Join-Path $toolRoot 'postgresql\pgsql'
 . (Join-Path $repoRoot 'deploy\desktop\Assert-DesktopRuntimePayload.ps1')
 Assert-DesktopPostgresPayload -PgRootPath $pgRoot -ExpectedMajorVersion 16
+Write-Host '[signpath-test] Installer prerequisites are ready'
 
 [xml]$props = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Build.props') -Raw
 $versionNode = $props.SelectSingleNode('/Project/PropertyGroup/Version')
@@ -64,6 +70,7 @@ $certificate = New-SelfSignedCertificate -Type CodeSigningCert `
     -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 3072 `
     -HashAlgorithm SHA256 -KeyExportPolicy NonExportable -NotAfter ([DateTime]::Now.AddDays(7))
 try {
+    Write-Host "[signpath-test] Building server and desktop setup EXEs for $version"
     & (Join-Path $repoRoot 'deploy\Build-Artifact.ps1') -Version $version `
         -SigningCertificateThumbprint $certificate.Thumbprint `
         -IncludeServerInstaller -IncludeDesktopInstaller -PgBinariesPath $pgRoot -IsccPath $iscc
