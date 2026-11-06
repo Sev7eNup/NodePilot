@@ -58,7 +58,7 @@ shows the release certificate as **CSR PENDING**. Further integration uses only
 ## Installer artifact configurations
 
 The following configurations were added in the OSS portal on 6 November 2026.
-Both have status **VALID**; neither has completed a signing run yet.
+Both have status **VALID** and completed their first test-signing run that day.
 
 | Slug | XML | Signed file at the ZIP root |
 | --- | --- | --- |
@@ -70,7 +70,11 @@ do not sign embedded application binaries, scripts, third-party components or CM
 manifests. The existing default configuration, policies and certificate settings
 were not changed.
 
-## Prepared installer test workflow
+The ZIP is only the GitHub Actions artifact transport container. The delivered
+files are the signed `NodePilot-Server-Setup-<version>.exe` and
+`NodePilot-Desktop-Setup-<version>.exe`; the ZIP itself is not the signing target.
+
+## Installer test workflow
 
 [SignPath installer test signing](../.github/workflows/signpath-installers-test.yml)
 builds both real installers on a GitHub-hosted Windows runner using the existing
@@ -81,12 +85,31 @@ Forks, pull requests and release tags cannot trigger this signing job.
 
 The workflow uses only `test-signing` and the existing `SIGNPATH_API_TOKEN` secret.
 It has no release-publishing step or repository write permission. This workflow
-is prepared locally; an end-to-end GitHub run has not yet been performed.
+passed end to end on 6 November 2026 at commit
+`d323caa1e618214ba1579dc48546861a36c64203`, building NodePilot 1.5.2 from the
+onboarding branch, signing both setup EXEs, verifying Authenticode against the
+pinned test certificate, and uploading final checksums and signing evidence:
+
+- [Successful GitHub run 42262309031](https://github.com/Sev7eNup/NodePilot/actions/runs/42262309031)
+- [Completed server signing request](https://app.signpath.io/Web/e64c0f9b-346e-4e60-bce6-8791970f5567/SigningRequests/c08edbad-6de1-43c8-a61c-0c639ec0091b)
+- [Completed desktop signing request](https://app.signpath.io/Web/e64c0f9b-346e-4e60-bce6-8791970f5567/SigningRequests/97e24351-a7f2-4063-a31c-12c11e94898c)
+
+The signed EXE SHA-256 values from that run are:
+
+| Installer | SHA-256 |
+| --- | --- |
+| `NodePilot-Server-Setup-1.5.2.exe` | `38B7EF9F9D58321A8FF9030DC546C5975322A73A27ECF40FEF32B59288C4E2F0` |
+| `NodePilot-Desktop-Setup-1.5.2.exe` | `597C9F8F58CB3BCB2D053B6768019E152D537F1435A56905DFA47BDC3D412F83` |
+
+Each run performs these steps:
 
 1. Check the signing-test contract, artifact integrity and deployment templates.
 2. Download pinned PostgreSQL 16.15 binaries and Inno Setup 6.7.4 from their official
    sources, checking SHA-256 before extraction or execution. Inno Setup must also
-   have a valid Authenticode signature.
+   have a valid Authenticode signature. Stage the .NET and ASP.NET Core 10.0.13
+   installers through `Get-DotnetRuntimePayload.ps1`, verifying the vendor hashes,
+   committed SHA-512 pins and Microsoft Authenticode signatures. Pass these exact
+   runtime files to the server build instead of selecting the newest release.
 3. Create a non-exportable, seven-day code-signing certificate on the disposable
    runner. Use it for the existing CMS manifest path, build both installers, then
    verify the server ZIP through `Assert-NodePilotSignedArtifact`. Remove the
