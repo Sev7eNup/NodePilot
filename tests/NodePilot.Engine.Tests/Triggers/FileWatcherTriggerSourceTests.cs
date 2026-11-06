@@ -812,6 +812,17 @@ public class FileWatcherTriggerSourceTests
     }
 
     [Fact]
+    public async Task RunBoundedAsync_RunsWorkOffTheThreadPool()
+    {
+        var onPoolThread = await FileWatcherTriggerSource.RunBoundedAsync(
+            () => Thread.CurrentThread.IsThreadPoolThread, TimeSpan.FromSeconds(30),
+            disposeAbandoned: null, CancellationToken.None);
+
+        onPoolThread.Should().BeFalse(
+            "the deadline must not include the wait for a pool thread, and a hung call must not hold one");
+    }
+
+    [Fact]
     public async Task RunBoundedAsync_CancellationDisposesLateResultExactlyOnce()
     {
         using var release = new ManualResetEventSlim(false);

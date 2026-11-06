@@ -298,7 +298,10 @@ public class FileWatcherTriggerSource : ITriggerSource
     internal static async Task<T> RunBoundedAsync<T>(
         Func<T> work, TimeSpan timeout, Action<T>? disposeAbandoned, CancellationToken ct)
     {
-        var task = Task.Run(work, CancellationToken.None);
+        // A dedicated thread, so the deadline measures the filesystem call rather than the wait
+        // for a pool thread, and a hung SMB call does not hold a pool thread.
+        var task = Task.Factory.StartNew(
+            work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
             return await task.WaitAsync(timeout, ct);

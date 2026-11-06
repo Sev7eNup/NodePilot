@@ -1156,7 +1156,7 @@ public class WorkflowEngineTests
     [Fact]
     public async Task ExecuteAsync_WaitAnyJunction_FiresAfterFirstBranchCompletes()
     {
-        // Mock for runScript: branchFast=10ms, branchSlow=2000ms (DIFFERENCE the bug exposes)
+        // branchSlow never finishes on its own, so only the junction's stand-down can end it.
         _mockExecutor.Setup(e => e.ExecuteAsync(
                 It.IsAny<StepExecutionContext>(),
                 It.IsAny<JsonElement>(),
@@ -1166,7 +1166,7 @@ public class WorkflowEngineTests
                 var ms = ctx.StepId switch
                 {
                     "branchFast" => 10,
-                    "branchSlow" => 2000,
+                    "branchSlow" => Timeout.Infinite,
                     _ => 5,
                 };
                 try
@@ -1219,9 +1219,9 @@ public class WorkflowEngineTests
         _db.Workflows.Add(workflow);
         await _db.SaveChangesAsync();
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var execution = await engine.ExecuteAsync(workflow, "test-user", CancellationToken.None);
-        sw.Stop();
+        // A waitAny that waited for every branch would never finish; fail instead of hanging.
+        var execution = await engine.ExecuteAsync(workflow, "test-user", CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(30));
 
         execution.Status.Should().Be(ExecutionStatus.Succeeded, execution.ErrorMessage);
         var steps = _db.StepExecutions.Where(s => s.WorkflowExecutionId == execution.Id).ToList();
@@ -1229,9 +1229,8 @@ public class WorkflowEngineTests
         steps.Single(s => s.StepId == "join").Status.Should().Be(ExecutionStatus.Succeeded);
         steps.Single(s => s.StepId == "final").Status.Should().Be(ExecutionStatus.Succeeded,
             "the junction must have fired and released the downstream step");
-        // Must complete in significantly less than branchSlow's 2000ms — proves we didn't wait.
-        sw.ElapsedMilliseconds.Should().BeLessThan(1500,
-            "waitAny must fire after the fast branch (≈10ms), not after the slow branch (2000ms)");
+        steps.Single(s => s.StepId == "branchSlow").Status.Should().Be(ExecutionStatus.Cancelled,
+            "waitAny fired on the fast branch and stood the slow one down instead of waiting for it");
     }
 
     /// <summary>
