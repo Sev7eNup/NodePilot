@@ -53,7 +53,9 @@ Get-PinnedDownload `
     -Path $pgArchive `
     -Sha256 '25e6fcdfb8caec38691bf461125e7564508760666f7b8e5dc6a5f0818f58f81e'
 Write-Host '[signpath-test] Extracting PostgreSQL binaries'
-Expand-Archive -LiteralPath $pgArchive -DestinationPath (Join-Path $toolRoot 'postgresql')
+# Avoid the per-entry PowerShell overhead for the EDB archive's 20,000+ files.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[IO.Compression.ZipFile]::ExtractToDirectory($pgArchive, (Join-Path $toolRoot 'postgresql'))
 $pgRoot = Join-Path $toolRoot 'postgresql\pgsql'
 . (Join-Path $repoRoot 'deploy\desktop\Assert-DesktopRuntimePayload.ps1')
 Assert-DesktopPostgresPayload -PgRootPath $pgRoot -ExpectedMajorVersion 16
