@@ -39,7 +39,7 @@ The Windows Server deployment is intended for central production use.
 
 Supported combinations:
 
-- SQL Server 2022 or PostgreSQL 16+
+- SQL Server 2022 CU1 or later, or PostgreSQL 16+
 - LocalSystem or a gMSA as the service identity
 - Single node or an active/passive cluster
 - Kestrel HTTPS with a certificate from `LocalMachine\My`

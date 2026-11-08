@@ -34,7 +34,7 @@ Every row in the workflow list has a checkbox on the left, and the header checkb
 
 The bar calls no bulk API; it runs the same single-workflow actions one after another. Each one therefore keeps its own permission check, its own edit-lock check and its own audit entry — a bulk action is never a way around a permission. That shapes how it behaves:
 
-- A button is enabled only when the **whole** selection permits it; otherwise the tooltip names the reason. **Delete** requires the Admin role, everything else `FolderEditor`.
+- A button is enabled only when the **whole** selection permits it; otherwise the tooltip names the reason. **Delete** requires the Admin role, **Export** the global Admin or Operator role (otherwise the button is absent), everything else `FolderEditor`.
 - **Enable** is blocked as soon as one selected workflow is checked out — `POST /enable` rejects any lock with `423`, including the caller's own. **Disable** ignores locks (kill switch).
 - A failure does not stop the run: the remaining workflows are processed, a summary message names the failed ones, and exactly those stay selected — clicking again retries only them.
 - **Move** works through a destination dialog (folders without write access are disabled) **or** by drag and drop: drag a selected row onto a folder in the tree and the whole selection follows. Workflows already in the destination folder are skipped.

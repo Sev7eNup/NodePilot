@@ -5,7 +5,7 @@ The `startWorkflow` activity starts another workflow. The calling workflow is th
 ## Mode
 
 - `waitForCompletion: true` (default) → the parent waits for the child. The child's `returnData` is mirrored into the parent as `param.*`.
-- `waitForCompletion: false` → fire and forget. The parent receives `param.workflowId` / `param.workflowName` / `param.waited`.
+- `waitForCompletion: false` → fire and forget. The parent receives `param.workflowId` / `param.workflowName` / `param.executionId` / `param.waited`.
 
 **Maximum call depth: 10.** `forEach` shares the `ISubWorkflowGate` with `startWorkflow`.
 

@@ -39,7 +39,7 @@ Das Windows-Server-Deployment ist für den zentralen Produktivbetrieb vorgesehen
 
 Unterstützte Kombinationen:
 
-- SQL Server 2022 oder PostgreSQL 16+
+- SQL Server 2022 ab CU1 oder PostgreSQL 16+
 - LocalSystem oder gMSA als Dienstidentität
 - Single-Node oder Active/Passive-Cluster
 - Kestrel-HTTPS mit Zertifikat aus `LocalMachine\My`
