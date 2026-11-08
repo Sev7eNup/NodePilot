@@ -36,4 +36,6 @@ An activity is an executable work step. The scope determines where it runs:
 | `log` | Engine-local |
 | `generateText` | Engine-local |
 | `llmQuery` | Engine-local |
+| `aiAgent` | Engine-local |
+| `aiAgentTeam` | Engine-local |
 | `waitForCondition` | Hybrid |

@@ -36,4 +36,6 @@ Eine Activity ist ein ausführbarer Arbeitsschritt. Der Scope legt den Ausführu
 | `log` | Engine-local |
 | `generateText` | Engine-local |
 | `llmQuery` | Engine-local |
+| `aiAgent` | Engine-local |
+| `aiAgentTeam` | Engine-local |
 | `waitForCondition` | Hybrid |
