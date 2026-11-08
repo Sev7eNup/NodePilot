@@ -31,7 +31,7 @@ Features, die nur im Expert-Modus sichtbar sind, sind in den folgenden Seiten mi
 - **Unlock** `Ctrl+U` → Lock freigeben (`IsEnabled` bleibt). Ungespeicherte Änderungen werden nach Rückfrage verworfen, der Canvas zeigt danach den gespeicherten Stand. Dasselbe gilt für das Wiederherstellen einer Version im Diff-Dialog.
 - **Publish** `Ctrl+Shift+S` → atomar Save + Enable + Unlock (durch Pre-Publish-Checklist).
 - **Disable/Enable** — Kill-Switch (Disable **nicht** lock-gegated).
-- **Force-Unlock** (Admin) `Ctrl+Shift+U` — bricht fremden Lock.
+- **Force-Unlock** (Admin) `Ctrl+Shift+U` **(Expert)** — bricht fremden Lock.
 
 Ohne `canWrite` sind Drag, Connect, Delete, Kontextmenüs und Inline-Edits deaktiviert (Read-Only).
 

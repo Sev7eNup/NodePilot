@@ -46,7 +46,7 @@ Für Betriebs- und Ticketdiagnose stehen `GET /api/diagnostics/support-log|suppo
 - `nodepilot.database.requests_rejected` — Requests, die der offene Datenbank-Breaker sofort mit 503 beendet.
 - `nodepilot.database.outages` — bestätigte Ausfall-Episoden.
 - `nodepilot.database.probe_cleanup_timeouts` — abgebrochene Cleanup-Schritte der Recovery-Sonde.
-- `nodepilot.scheduler.triggers.dropped_db_unavailable` — während eines bekannten Ausfalls beobachtete und verworfene Trigger-Fires.
+- `nodepilot.scheduler.triggers.admission_deferred` — Trigger-Fires, deren Zulassung zurückgestellt wurde, weil die Datenbank nicht verfügbar war; die Quelle behält das Signal und versucht es nach der Erholung erneut.
 - `nodepilot.audit_archive.hash_drift` — Audit-Archive-Drift.
 - `nodepilot_credential_crypto_calls{operation,result}` — `encrypt`/`decrypt` × `success`/`failure`.
 - `nodepilot_credential_crypto_legacy_reads` — Decrypts aus Legacy-Provider (Migration-Window).

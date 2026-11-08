@@ -34,7 +34,7 @@ $env:COMPUTERNAME
 ```
 
 5. Enter `hostInfo` as the **output variable**.
-6. Leave **Machine** empty. With no machine, the script runs without WinRM directly in the API process, and therefore under its service identity — for remote systems see [Remote execution](../configuration/remote-execution).
+6. Leave **Machine** empty. With no machine, the script runs without WinRM locally on the NodePilot host (with `engine: auto` as a Windows PowerShell 5.1 process), and therefore under the API's service identity — for remote systems see [Remote execution](../configuration/remote-execution).
 
 ## 3. Publish and run
 

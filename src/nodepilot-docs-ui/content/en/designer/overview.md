@@ -31,7 +31,7 @@ Features that are only visible in expert mode are marked **(Expert)** on the fol
 - **Unlock** `Ctrl+U` → releases the lock (`IsEnabled` stays as it is). Unsaved changes are discarded after a confirmation, and the canvas then shows the saved version. Restoring a version from the diff dialog does the same.
 - **Publish** `Ctrl+Shift+S` → atomically save + enable + unlock (through the pre-publish checklist).
 - **Disable/Enable** — the kill switch (disable is **not** lock-gated).
-- **Force unlock** (admin) `Ctrl+Shift+U` — breaks someone else's lock.
+- **Force unlock** (admin) `Ctrl+Shift+U` **(Expert)** — breaks someone else's lock.
 
 Without `canWrite`, dragging, connecting, deleting, context menus and inline edits are disabled (read-only).
 

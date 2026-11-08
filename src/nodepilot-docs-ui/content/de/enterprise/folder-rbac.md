@@ -34,7 +34,7 @@ Jede Zeile der Workflow-Liste hat links eine Checkbox, die Kopfzeile wählt alle
 
 Die Leiste ruft keine Sammel-API auf, sondern führt dieselben Einzelaktionen nacheinander aus. Jede einzelne behält damit ihre Rechteprüfung, ihren Edit-Lock-Check und ihren Audit-Eintrag — eine Sammelaktion ist nie ein Weg an einer Berechtigung vorbei. Daraus folgt die Bedienlogik:
 
-- Ein Button ist nur aktiv, wenn die **gesamte** Auswahl ihn zulässt; sonst nennt der Tooltip den Grund. **Löschen** verlangt die Admin-Rolle, alles andere `FolderEditor`.
+- Ein Button ist nur aktiv, wenn die **gesamte** Auswahl ihn zulässt; sonst nennt der Tooltip den Grund. **Löschen** verlangt die Admin-Rolle, **Exportieren** die globale Rolle Admin oder Operator (sonst fehlt der Button), alles andere `FolderEditor`.
 - **Aktivieren** ist gesperrt, sobald ein ausgewählter Workflow ausgecheckt ist — `POST /enable` weist jeden Lock mit `423` ab, auch den eigenen. **Deaktivieren** ignoriert Locks (Kill-Switch).
 - Ein Fehlschlag stoppt den Lauf nicht: die übrigen Workflows werden fertig verarbeitet, eine Sammelmeldung nennt die gescheiterten namentlich, und genau diese bleiben ausgewählt — ein erneuter Klick wiederholt nur sie.
 - **Verschieben** geht über einen Zielordner-Dialog (Ordner ohne Schreibrecht sind deaktiviert) **oder** per Drag & Drop: zieht man eine ausgewählte Zeile auf einen Ordner im Baum, wandert die ganze Auswahl mit. Workflows, die bereits im Zielordner liegen, werden übersprungen.

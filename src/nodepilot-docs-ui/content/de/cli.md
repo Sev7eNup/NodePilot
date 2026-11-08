@@ -103,7 +103,7 @@ np auth whoami -o json
 np auth logout
 ```
 
-Ohne `--windows` nutzt `np auth login` den Passwort-Endpunkt und deckt damit lokale sowie LDAP-Anmeldung ab. `--windows` authentifiziert das eigene Windows-Konto per Negotiate/Kerberos und braucht kein Passwort; Voraussetzung sind `Authentication:Windows:Enabled` am Server, ein registrierter SPN und ein Kerberos-Ticket (NTLM wird abgelehnt) — fehlt eines davon, endet der Befehl mit Exit-Code `3`. OIDC bleibt ein Browserflow; die Metadaten stehen vollständig über `GET /api/auth/methods` zur Verfügung, werden vom aktuellen CLI-DTO aber noch nicht dargestellt.
+Ohne `--windows` nutzt `np auth login` den Passwort-Endpunkt und deckt damit lokale sowie LDAP-Anmeldung ab. `--windows` authentifiziert das eigene Windows-Konto per Negotiate/Kerberos und braucht kein Passwort; Voraussetzung sind `Authentication:Windows:Enabled` am Server, ein registrierter SPN und ein Kerberos-Ticket (NTLM wird abgelehnt) — fehlt eines davon, endet der Befehl mit Exit-Code `3`. OIDC bleibt ein Browserflow; `np auth methods -o json` liefert die Metadaten aus `GET /api/auth/methods` (`oidc`, `oidcEndpoint`, `oidcDisplayName`); die Tabellenansicht zeigt nur Local/LDAP/Windows.
 
 ## workflow
 
@@ -212,7 +212,7 @@ np workflow move-folder deploy-prod --target-folder 8a2f...
 Positional `<EXECUTION-ID>` (Guid) für get/steps/cancel/retry/watch/paused-steps.
 
 ```bash
-np exec list -w deploy-prod --limit 20 -o table      # --workflow, --limit (Server-Cap 500)
+np exec list -w deploy-prod --limit 20 -o table      # --workflow, --limit (ohne --limit blättert die CLI durch alle Läufe)
 np exec get 7e3f...
 np exec steps 7e3f...
 np exec cancel 7e3f...
@@ -426,10 +426,11 @@ np settings test smtp --file ./smtp-probe.json
 np settings test llm --file ./llm-probe.json
 ```
 
-`smtp-probe.json` (Envelope, inneres `settings` = serverseitiges `SmtpSettingsDto`; `***` hält das bestehende Secret):
+`smtp-probe.json` (Envelope, inneres `settings` = serverseitiges `SmtpSettingsDto`; `********` oder `__unchanged__` behält das gespeicherte Passwort):
 
 ```json
-{ "settings": { "Host": "smtp.internal", "Port": 587, "Username": "alerts", "Password": "***" },
+{ "settings": { "Host": "smtp.internal", "Port": 587, "Username": "alerts", "Password": "********",
+                "From": "alerts@internal" },
   "toAddress": "ops@internal" }
 ```
 

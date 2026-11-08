@@ -6,7 +6,7 @@ Eine Activity ist ein ausführbarer Arbeitsschritt. Der Scope legt den Ausführu
 - **Engine-local:** Ausführung im NodePilot-API-Prozess.
 - **Hybrid:** Ausführungsort hängt von der Konfiguration ab.
 
-`runScript` und `waitForCondition` sind hybrid. `ControlFlow` ist eine fachliche Kategorie im Activity-Katalog und kein Ausführungsort.
+`runScript`, `waitForCondition`, `xmlQuery` und `jsonQuery` sind hybrid. `ControlFlow` ist eine fachliche Kategorie im Activity-Katalog und kein Ausführungsort.
 
 | Type | Scope |
 |---|---|
@@ -36,4 +36,6 @@ Eine Activity ist ein ausführbarer Arbeitsschritt. Der Scope legt den Ausführu
 | `log` | Engine-local |
 | `generateText` | Engine-local |
 | `llmQuery` | Engine-local |
+| `aiAgent` | Engine-local |
+| `aiAgentTeam` | Engine-local |
 | `waitForCondition` | Hybrid |

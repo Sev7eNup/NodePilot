@@ -8,10 +8,10 @@ verlassen Ihren Rechner.
 
 Alles, was das Frontend allein leistet, verhält sich wie in einer echten Installation:
 
-- **Fünf Beispiel-Workflows** in drei Ordnern durchsehen: eine tägliche Plattenplatz-Prüfung, einen
+- **Sechs Beispiel-Workflows** in drei Ordnern durchsehen: eine tägliche Plattenplatz-Prüfung, einen
   Windows-Update-Health-Check, einen Spooler-Watchdog, der den Dienst neu startet und eskaliert
-  wenn er unten bleibt, eine SCCM-Paket- und AD-Gruppen-Bereitstellung und eine Temp-Bereinigung
-  mit Trigger-Parametern.
+  wenn er unten bleibt, eine SCCM-Paket- und AD-Gruppen-Bereitstellung, eine Temp-Bereinigung
+  mit Trigger-Parametern und ein geführtes Beispiel zur Auslieferung einer Konfigurationsdatei.
 - **Den Designer öffnen** und die komplette Autoren-Oberfläche nutzen: Canvas-Linter,
   Variablen-Picker, Auto-Layout, Versions-Diff, Simulation und Pre-Publish-Check. Nichts davon
   braucht einen Server — auch in einer echten Installation läuft es im Browser.

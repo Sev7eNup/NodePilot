@@ -8,9 +8,10 @@ data leaves your machine.
 
 Everything the frontend does on its own works exactly as it does in a real installation:
 
-- **Browse five sample workflows** in three folders: a daily disk-space check, a Windows Update
+- **Browse six sample workflows** in three folders: a daily disk-space check, a Windows Update
   health check, a Print Spooler watchdog that restarts the service and escalates if it stays down,
-  an SCCM package and AD group provisioning run, and a temp-file cleanup with trigger parameters.
+  an SCCM package and AD group provisioning run, a temp-file cleanup with trigger parameters, and a
+  guided configuration-file delivery example.
 - **Open the designer** and use the full authoring surface: the canvas linter, the variable picker,
   auto-layout, the version diff, the workflow simulation and the pre-publish check. None of these
   need a server even in a real installation — they run in the browser there too.

@@ -15,7 +15,7 @@ An edge connects two nodes. A condition determines when the target node is execu
 | **Always** | Always execute the target node |
 | **On Success** | Execute only after the source node succeeded |
 | **On Failure** | Execute only after the source node failed |
-| **Custom** | Compare values using your own rules |
+| **Expression** | Compare values using your own rules |
 
 ## A custom condition
 

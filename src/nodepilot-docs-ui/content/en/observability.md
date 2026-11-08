@@ -46,7 +46,7 @@ For operations and ticket diagnosis, `GET /api/diagnostics/support-log|support-l
 - `nodepilot.database.requests_rejected` — requests the open database breaker terminated immediately with 503.
 - `nodepilot.database.outages` — confirmed outage episodes.
 - `nodepilot.database.probe_cleanup_timeouts` — aborted cleanup steps of the recovery probe.
-- `nodepilot.scheduler.triggers.dropped_db_unavailable` — trigger fires observed and discarded during a known outage.
+- `nodepilot.scheduler.triggers.admission_deferred` — trigger fires whose admission was deferred because the database was unavailable; the source keeps the signal and retries it after recovery.
 - `nodepilot.audit_archive.hash_drift` — audit archive drift.
 - `nodepilot_credential_crypto_calls{operation,result}` — `encrypt`/`decrypt` × `success`/`failure`.
 - `nodepilot_credential_crypto_legacy_reads` — decrypts from the legacy provider (migration window).

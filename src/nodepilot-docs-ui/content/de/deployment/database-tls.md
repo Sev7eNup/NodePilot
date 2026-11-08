@@ -107,4 +107,4 @@ SQL Server braucht keine CRL. Den FQDN aus `-DnsName` dem Installer als `-SqlCer
 | `The remote certificate was rejected by the provided RemoteCertificateValidationCallback` (PostgreSQL) | CRL nicht importiert oder abgelaufen, Root-Zertifikat nicht angegeben oder Hostname passt nicht |
 | `The certificate chain was issued by an authority that is not trusted` (SQL Server) | `.cer` nicht in `LocalMachine\Root` auf dem NodePilot-Server importiert |
 | `The target principal name is incorrect` (SQL Server) | Über IP oder Kurzname verbunden statt über den Namen im Zertifikat |
-| `Aborted: Postgres pre-flight failed - certificate revocation could not be checked.` | CRL fehlt auf dem NodePilot-Server, siehe Schritt 4 |
+| `Aborted: Postgres pre-flight failed - certificate revocation validation failed.` | CRL fehlt auf dem NodePilot-Server, siehe Schritt 4 |
