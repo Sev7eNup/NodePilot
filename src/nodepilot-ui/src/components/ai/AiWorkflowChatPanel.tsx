@@ -47,6 +47,16 @@ const EMPTY_THREAD: ChatMessage[] = [];
 const EMPTY_THREADS: ChatThreadMeta[] = [];
 const SUGGESTION_KEYS = ['suggestion1', 'suggestion2', 'suggestion3', 'suggestion4'] as const;
 
+// Proposals carry no id. Their object identity survives streaming patches, so it keys the card's
+// local state: a regenerated proposal arrives as a new object and starts with fresh state.
+const proposalKeys = new WeakMap<WorkflowChatProposal, number>();
+let nextProposalKey = 0;
+function proposalKey(proposal: WorkflowChatProposal): number {
+  let key = proposalKeys.get(proposal);
+  if (key === undefined) { key = nextProposalKey++; proposalKeys.set(proposal, key); }
+  return key;
+}
+
 interface Props {
   workflowId: string | undefined;
   /** Returns the current canvas definition with runtime-only fields stripped. */
@@ -413,7 +423,7 @@ export function AiWorkflowChatPanel({
           ) : (
             messages.map((m, i) => (
               <MessageBubble
-                key={i}
+                key={`${threadId}:${i}`}
                 message={m}
                 isLastAssistant={m.role === 'assistant' && i === lastIndex && !sending}
                 onRegenerate={regenerate}
@@ -644,6 +654,7 @@ function MessageBubble({
         )}
         {message.proposal && effectiveBase && (
           <ProposalCard
+            key={proposalKey(message.proposal)}
             proposal={message.proposal}
             baseDef={effectiveBase}
             canApply={canApply}

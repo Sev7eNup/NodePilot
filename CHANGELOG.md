@@ -80,6 +80,9 @@ Planned version: **1.5.4**.
 - **AI**
   - The AI chats keep working when browser storage is full or blocked. A note says what survives a
     reload; once the storage budget is reached, only the newest history is kept (#701).
+  - Switching between conversations or regenerating an answer in the designer's AI chat no longer
+    carries a proposal's discarded, applied or deselected state over to a different proposal
+    (#815).
 - **Running workflows**
   - A breakpoint condition can use the run's inputs (`{{manual.*}}`) (#685).
   - Input values that look like `{{…}}` stay plain text and no longer fail the step as unresolved
