@@ -41,8 +41,8 @@ Ein Dienst: `NodePilot` (Anzeigename `NodePilot Orchestrator`), ausgeführt als 
 | Prozess | Priorität | Restrisiko |
 |---|---|---|
 | `C:\Program Files\NodePilot\NodePilot.Api.exe` | Pflicht | Führt konstruktionsbedingt Workflow-PowerShell aus. Kompensiert durch NodePilot-eigene Rollen, Folder-RBAC und Audit-Log |
-| `pwsh.exe` (`C:\Program Files\PowerShell\7`) | Pflicht | Weitreichend. Wo möglich auf den Elternprozess `NodePilot.Api.exe` einschränken |
-| `powershell.exe` (`System32\WindowsPowerShell\v1.0`) | Pflicht, falls PowerShell 7 nicht garantiert vorhanden | wie oben |
+| `powershell.exe` (`System32\WindowsPowerShell\v1.0`) | Pflicht | Standard-Host lokaler Skript-Schritte (Engine `auto`, `powershell`, isoliert). Weitreichend. Wo möglich auf den Elternprozess `NodePilot.Api.exe` einschränken |
+| `pwsh.exe` (`C:\Program Files\PowerShell\7`) | Pflicht, wenn Schritte die Engine `pwsh` nutzen (`auto` nutzt ihn nur, wenn Windows PowerShell fehlt) | wie oben |
 | `where.exe` | Empfohlen | Einmalige Pfadauflösung beim Engine-Start, kein Schreibzugriff |
 
 ### Verhaltensregeln
@@ -96,7 +96,7 @@ Ports (informativ): Loopback 47000–47049 für die API, 47100–47149 für Post
 
 Ein Ausschluss „alles unterhalb der beiden NodePilot-Verzeichnisse" wirkt vollständig, lässt aber genau diese Skriptdatei ungeschützt — sie liegt außerhalb jedes NodePilot-benannten Pfads.
 
-Die **Standard-Ausführungsart schreibt keine temporäre Datei und startet keinen Kindprozess**: Skripte laufen in einem prozessinternen Runspace-Pool innerhalb von `NodePilot.Api.exe`. Werden Isolation und explizite PowerShell-Hosts in der Umgebung nicht genutzt, entfallen die Einträge dieses Abschnitts und die Skript-Host-Prozesse.
+Nur die Engine `runspace` **schreibt keine temporäre Datei und startet keinen Kindprozess**: diese Skripte laufen in einem prozessinternen Runspace-Pool innerhalb von `NodePilot.Api.exe`. Die Standard-Engine `auto` startet einen Windows-PowerShell-5.1-Prozess. Nur wenn alle lokalen Skript-Schritte `runspace` nutzen, entfallen die Einträge dieses Abschnitts und die Skript-Host-Prozesse.
 
 ## Nur bei Installation und Update
 

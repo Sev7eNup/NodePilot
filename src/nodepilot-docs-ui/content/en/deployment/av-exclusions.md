@@ -41,8 +41,8 @@ One service: `NodePilot` (display name `NodePilot Orchestrator`), running as Loc
 | Process | Priority | Residual risk |
 |---|---|---|
 | `C:\Program Files\NodePilot\NodePilot.Api.exe` | Required | Executes workflow PowerShell by design. Compensated by NodePilot's own roles, folder RBAC and audit log |
-| `pwsh.exe` (`C:\Program Files\PowerShell\7`) | Required | Broad. Restrict it to the parent process `NodePilot.Api.exe` where possible |
-| `powershell.exe` (`System32\WindowsPowerShell\v1.0`) | Required if PowerShell 7 is not guaranteed to be present | As above |
+| `powershell.exe` (`System32\WindowsPowerShell\v1.0`) | Required | Default host for local script steps (engine `auto`, `powershell`, isolated). Broad. Restrict it to the parent process `NodePilot.Api.exe` where possible |
+| `pwsh.exe` (`C:\Program Files\PowerShell\7`) | Required when steps use engine `pwsh` (`auto` uses it only when Windows PowerShell is missing) | As above |
 | `where.exe` | Recommended | A one-off path resolution at engine start, with no write access |
 
 ### Behavioural rules
@@ -96,7 +96,7 @@ Ports (informational): loopback 47000–47049 for the API, 47100–47149 for Pos
 
 An exclusion covering "everything under the two NodePilot directories" looks complete but leaves precisely this script file unprotected — it lives outside every NodePilot-named path.
 
-The **default execution mode writes no temporary file and starts no child process**: scripts run in an in-process runspace pool inside `NodePilot.Api.exe`. If isolation and explicit PowerShell hosts are not used in the environment, the entries of this section and the script-host processes do not apply.
+Only the engine `runspace` **writes no temporary file and starts no child process**: those scripts run in an in-process runspace pool inside `NodePilot.Api.exe`. The default engine `auto` starts a Windows PowerShell 5.1 process. Only if every local script step uses `runspace` do the entries of this section and the script-host processes not apply.
 
 ## Only during installation and update
 

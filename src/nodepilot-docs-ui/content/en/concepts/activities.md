@@ -6,7 +6,7 @@ An activity is an executable work step. The scope determines where it runs:
 - **Engine-local:** executed in the NodePilot API process.
 - **Hybrid:** where it runs depends on the configuration.
 
-`runScript` and `waitForCondition` are hybrid. `ControlFlow` is a functional category in the activity catalog, not an execution location.
+`runScript`, `waitForCondition`, `xmlQuery` and `jsonQuery` are hybrid. `ControlFlow` is a functional category in the activity catalog, not an execution location.
 
 | Type | Scope |
 |---|---|

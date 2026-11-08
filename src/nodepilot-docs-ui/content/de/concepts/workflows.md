@@ -41,7 +41,7 @@ bleiben unverändert und müssen zur Zielumgebung passen.
 |---|---|
 | **Remote** | Auf der Zielmaschine via `targetMachineId` / WinRM |
 | **Engine-local** | Im API-Prozess |
-| **Hybrid** | Beides (`runScript`, `waitForCondition`) |
+| **Hybrid** | Beides (`runScript`, `waitForCondition`, `xmlQuery`, `jsonQuery`) |
 | **ControlFlow** | Engine-local, Kategorie `ControlFlow` im `ActivityCatalog` (Palette-Achse, unabhängig vom Scope) |
 
 Die vollständige Liste aller 29 Activity-Typen mit Config-Keys und Output-Semantik: [Activity-Referenz](../activities-reference).
@@ -55,7 +55,7 @@ Ein Workflow-Lauf (`POST /execute`, asynchron, `202` + `ExecutionId`) durchläuf
 3. Schreiben der Outputs (`output`, `error`, `success`, `param.*`) in den Datenbus.
 4. Evaluation der ausgehenden Edge-Conditions → Scheduling der Target-Nodes.
 
-Step-Status: `Pending`, `Running`, `Succeeded`, `Failed`, `Skipped`, `Paused`.
+Step-Status: `Pending`, `Running`, `Succeeded`, `Failed`, `Skipped`, `Cancelled`, `Paused`.
 
 ## Trigger nach Neustart und Failover
 

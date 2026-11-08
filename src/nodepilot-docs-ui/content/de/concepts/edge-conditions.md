@@ -12,10 +12,10 @@ Eine Edge verbindet zwei Nodes. Eine Bedingung legt fest, wann der Ziel-Node aus
 
 | Bedingung | Wirkung |
 |---|---|
-| **Always** | Ziel-Node immer ausführen |
-| **On Success** | Nur nach erfolgreichem Ausgangs-Node ausführen |
-| **On Failure** | Nur nach fehlgeschlagenem Ausgangs-Node ausführen |
-| **Custom** | Werte mit eigenen Regeln vergleichen |
+| **Immer** | Ziel-Node immer ausführen |
+| **Bei Erfolg** | Nur nach erfolgreichem Ausgangs-Node ausführen |
+| **Bei Fehler** | Nur nach fehlgeschlagenem Ausgangs-Node ausführen |
+| **Ausdruck** | Werte mit eigenen Regeln vergleichen |
 
 ## Eigene Bedingung
 
