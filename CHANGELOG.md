@@ -128,6 +128,8 @@ Planned version: **1.5.4**.
   - A manual update with `Update-NodePilot.ps1` keeps the server setup's uninstaller and its
     `deploy\` scripts, so "Apps & features" can still uninstall an installation updated that way
     (#622).
+  - The **Create administrator** button of the desktop first-time setup has readable text contrast
+    and a visible keyboard focus ring (#817).
 - **Monitoring**
   - The observability summary queries the counter names the exporter actually publishes, so
     executions per minute, success rate and failures show values again. The Grafana CPU panels use
@@ -154,7 +156,8 @@ Planned version: **1.5.4**.
   - The failover drill recognises a healthy leader again. Its HTTP 200 answer has no `reason`, and
     reading that field stopped the drill before the takeover (#624).
   - The SSO lab drills check the requested run and use the configured account prefix throughout
-    (#717, #645).
+    (#717, #645). Their database checks for refused logins, deprovisioning and JIT creation can
+    pass again, because they match the audit columns the server actually fills (#775).
   - CI classifies changed files through `scripts/classify-changes.sh`, also for long file lists
     (#729).
   - The release lab also runs the failure paths: a reinstall with another service account that

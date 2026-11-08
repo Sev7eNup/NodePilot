@@ -93,9 +93,11 @@ SELECT COUNT(*) FROM "ExternalIdentities" e
 JOIN "Users" u ON u."Id" = e."UserId" WHERE u."Username" ILIKE '$UserPrefix.bob%';
 "@
     Add-Check 'W12. Keine ExternalIdentity fuer bob' ($bobIds -eq '0') "COUNT=$bobIds"
+    # bob has no user row and the Windows actor name is DOMAIN\sam, so only the UPN in
+    # Details carries the prefix.
     $refused = Get-Scalar @"
 SELECT COUNT(*) FROM "AuditLog"
-WHERE "Action" = 'USER_DIRECTORY_ACCESS_REFUSED' AND "Username" ILIKE '$UserPrefix.bob%'
+WHERE "Action" = 'USER_DIRECTORY_ACCESS_REFUSED' AND "Details" ILIKE '%"upn":"$UserPrefix.bob@%'
   AND "Timestamp" > NOW() - INTERVAL '2 hours';
 "@
     Add-Check 'W12. Audit USER_DIRECTORY_ACCESS_REFUSED vorhanden' ([int]$refused -gt 0) "COUNT=$refused"
@@ -111,10 +113,11 @@ JOIN "Users" u ON u."Id" = e."UserId" WHERE u."Username" ILIKE '$UserPrefix.dave
 "@
     Add-Check 'W18. Genau eine Identity fuer dave' ($daveIds -eq '1') "COUNT=$daveIds"
     # Exactly one JIT_CREATED shows the unique-index race resolved correctly: the losing
-    # callers take the update path instead of a second insert.
+    # callers take the update path instead of a second insert. The audit row names the
+    # created user in ResourceId; its actor name is DOMAIN\sam.
     $created = Get-Scalar @"
-SELECT COUNT(*) FROM "AuditLog"
-WHERE "Action" = 'USER_WINDOWS_JIT_CREATED' AND "Username" ILIKE '$UserPrefix.dave%';
+SELECT COUNT(*) FROM "AuditLog" a JOIN "Users" u ON u."Id" = a."ResourceId"
+WHERE a."Action" = 'USER_WINDOWS_JIT_CREATED' AND u."Username" ILIKE '$UserPrefix.dave%';
 "@
     Add-Check 'W18. Genau ein USER_WINDOWS_JIT_CREATED fuer dave' ($created -eq '1') "COUNT=$created"
 }
@@ -135,10 +138,11 @@ SELECT COUNT(*) FROM "AuthSessions" s JOIN "Users" u ON u."Id" = s."UserId"
 WHERE u."Username" ILIKE '$UserPrefix.erin%' AND s."RevokedAt" IS NULL;
 "@
     Add-Check 'W15. Keine offene Session fuer erin' ($open -eq '0') "offeneSessions=$open"
+    # The directory sync writes this row without an actor; the user is in ResourceId.
     $deprov = Get-Scalar @"
-SELECT COUNT(*) FROM "AuditLog"
-WHERE "Action" = 'USER_DIRECTORY_DEPROVISIONED' AND "Username" ILIKE '$UserPrefix.erin%'
-  AND "Timestamp" > NOW() - INTERVAL '2 hours';
+SELECT COUNT(*) FROM "AuditLog" a JOIN "Users" u ON u."Id" = a."ResourceId"
+WHERE a."Action" = 'USER_DIRECTORY_DEPROVISIONED' AND u."Username" ILIKE '$UserPrefix.erin%'
+  AND a."Timestamp" > NOW() - INTERVAL '2 hours';
 "@
     Add-Check 'W15. Audit USER_DIRECTORY_DEPROVISIONED vorhanden' ([int]$deprov -gt 0) "COUNT=$deprov"
 
