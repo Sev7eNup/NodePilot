@@ -399,6 +399,13 @@ Not our problem, but documented so it isn't tried again:
   only works as a family. Tried: vitest 5.0.1 runs all three roots green (3,219 / 136 / 112) and the
   coverage gate holds, but in the full run of `nodepilot-ui` `ExecutionsPage` fails on a
   cross-file contamination that does not occur in isolation or under vitest 4. A migration, not a bump.
+- **msw 3** — needs vitest 5 (the `@vitest/mocker` peer range of vitest 4 stops at msw 2) and matches
+  requests to handlers asynchronously: with vitest 5, `WorkflowEditorPage` passes on msw 2 and fails
+  two or three tests per run on msw 3. Dependabot holds `msw >=3.0.0`; move it after the vitest family.
+- **Browser OpenTelemetry 3.x SDK** — api 1.10 and the 0.300 instrumentations need the 3.x SDK, and
+  `@opentelemetry/sdk-trace-web` has no 3.x release, so a partial bump fails `npm ci` with ERESOLVE.
+  Dependabot holds minor and major `@opentelemetry/*` bumps in `nodepilot-ui`; patches still come
+  through. Lift when `src/telemetry/otel.ts` moves to the 3.x SDK.
 
 ### Not product scope
 

@@ -31,19 +31,33 @@ $queryFixture = @'
 function Invoke-Psql([string]$sql, [switch]$Table) {
     if ($Table) { return }
     if ($sql -match 'IsTombstoned') { return '0' }
-    if ($sql -notmatch "ILIKE '([^']+)'") { throw "Unscoped synthetic query: $sql" }
-    $pattern = $Matches[1].Replace('%', '*')
+    if ($sql -notmatch "(u\.)?""(\w+)"" ILIKE '([^']+)'") { throw "Unscoped synthetic query: $sql" }
+    $viaUser = [bool]$Matches[1]; $column = $Matches[2]; $pattern = $Matches[3].Replace('%', '*')
     $actualPrefix = 'nptest'
     if ($env:LAB_FIXTURE_MODE -eq 'custom') { $actualPrefix = 'lab2' }
-    if ($sql -match 'USER_DIRECTORY_ACCESS_REFUSED') { return [string][int]("$actualPrefix.bob" -like $pattern) }
-    if ($sql -match 'USER_DIRECTORY_DEPROVISIONED') { return [string][int]("$actualPrefix.erin" -like $pattern) }
+    # Audit rows as the server writes them: the Windows actor name is DOMAIN\sam, the
+    # directory sync writes no actor, ResourceId points at the user, and a refused login
+    # without a user row names the person only by UPN in Details.
+    $audit = @{
+        USER_DIRECTORY_ACCESS_REFUSED = @{ Username = "NPLAB\$actualPrefix.bob"; User = $null
+            Details = '{{"upn":"{0}.bob@np.lab","provider":"Windows","reason":"no_allowed_directory_group"}}' -f $actualPrefix }
+        USER_DIRECTORY_DEPROVISIONED = @{ Username = $null; User = "$actualPrefix.erin@np.lab"
+            Details = '{"authorizationChanged":true,"groupCount":0}' }
+        USER_WINDOWS_JIT_CREATED = @{ Username = "NPLAB\$actualPrefix.dave"; User = "$actualPrefix.dave@np.lab"
+            Details = '{{"upn":"{0}.dave@np.lab"}}' -f $actualPrefix }
+    }
+    foreach ($action in $audit.Keys) {
+        if ($sql -notmatch $action) { continue }
+        $row = $audit[$action]
+        $value = if ($viaUser) { $row.User } else { $row[$column] }
+        return [string][int]($null -ne $value -and $value -like $pattern)
+    }
     if ($sql -match 'AuthSessions') {
         return [string][int]($env:LAB_FIXTURE_MODE -eq 'unsafe' -and "$actualPrefix.erin" -like $pattern)
     }
-    if ($pattern -like '*bob*') {
-        return [string][int]($env:LAB_FIXTURE_MODE -eq 'unsafe' -and "$actualPrefix.bob" -like $pattern)
-    }
-    return [string][int]("$actualPrefix.erin" -like $pattern)
+    $users = @("$actualPrefix.erin@np.lab", "$actualPrefix.dave@np.lab")
+    if ($env:LAB_FIXTURE_MODE -eq 'unsafe') { $users += "$actualPrefix.bob@np.lab" }
+    return [string]@($users | Where-Object { $_ -like $pattern }).Count
 }
 '@
 $safeSource = $source.Remove($queryFunction.Extent.StartOffset, $queryFunction.Extent.EndOffset - $queryFunction.Extent.StartOffset).Insert($queryFunction.Extent.StartOffset, $queryFixture)
@@ -61,9 +75,13 @@ try {
         @{ Mode = 'unsafe'; Prefix = 'nptest'; Scenario = 'Revocation'; Exit = 1 },
         @{ Mode = 'safe'; Prefix = 'wrong'; Scenario = 'Gate'; Exit = 1 },
         @{ Mode = 'safe'; Prefix = 'wrong'; Scenario = 'Revocation'; Exit = 1 },
+        @{ Mode = 'safe'; Prefix = 'wrong'; Scenario = 'Race'; Exit = 1 },
+        @{ Mode = 'safe'; Prefix = 'nptest'; Scenario = 'Gate'; Exit = 0 },
         @{ Mode = 'safe'; Prefix = 'nptest'; Scenario = 'Revocation'; Exit = 0 },
+        @{ Mode = 'safe'; Prefix = 'nptest'; Scenario = 'Race'; Exit = 0 },
         @{ Mode = 'custom'; Prefix = 'lab2'; Scenario = 'Gate'; Exit = 0 },
-        @{ Mode = 'custom'; Prefix = 'lab2'; Scenario = 'Revocation'; Exit = 0 }
+        @{ Mode = 'custom'; Prefix = 'lab2'; Scenario = 'Revocation'; Exit = 0 },
+        @{ Mode = 'custom'; Prefix = 'lab2'; Scenario = 'Race'; Exit = 0 }
     )) {
         $env:LAB_FIXTURE_MODE = $case.Mode
         $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $fixturePath,
