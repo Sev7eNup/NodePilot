@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Edge, Node } from '@xyflow/react';
 import { AiWorkflowChatPanel } from '../../../components/ai/AiWorkflowChatPanel';
 import { aiApi, type WorkflowChatRequest, type ChatStreamHandlers, type ChatDiagnostic, type ChatDoneMeta } from '../../../api/ai';
@@ -753,5 +753,82 @@ describe('AiWorkflowChatPanel (proposal reload survival)', () => {
     setup({ workflowId: 'wf-1' });
 
     await waitFor(() => expect(screen.getByText(/no longer applicable/i)).toBeInTheDocument());
+  });
+});
+
+describe('AiWorkflowChatPanel (proposal state isolation)', () => {
+  const scope = 'anon::wf-1';
+  const proposalMessages = (reply: string) => [
+    { role: 'user' as const, content: `Question ${reply}` },
+    {
+      role: 'assistant' as const,
+      content: reply,
+      proposal: {
+        definitionJson: proposalDefinitionJson, summary: '', nodeCount: 2, edgeCount: 1,
+        baseDefinitionHash: hashDefinition(baseDef()),
+      },
+    },
+  ];
+
+  function seedTwoConversations() {
+    useAiChatStore.setState({
+      messagesByThread: {
+        [`${scope}::a`]: proposalMessages('Answer in A'),
+        [`${scope}::b`]: proposalMessages('Answer in B'),
+      },
+      threadsByScope: {
+        [scope]: [
+          { id: 'a', name: 'Chat A', createdAt: 1, updatedAt: 1 },
+          { id: 'b', name: 'Chat B', createdAt: 2, updatedAt: 2 },
+        ],
+      },
+      activeThreadByScope: { [scope]: 'a' },
+    });
+  }
+
+  it('does not carry a discarded proposal over when switching to another conversation', async () => {
+    seedTwoConversations();
+    const { applyDefinition } = setup({ workflowId: 'wf-1' });
+
+    await screen.findByText('Answer in A');
+    fireEvent.click(await screen.findByRole('button', { name: /discard/i }));
+    await screen.findByText(/proposal discarded/i);
+
+    act(() => useAiChatStore.getState().setActiveThread(scope, 'b'));
+
+    await screen.findByText('Answer in B');
+    expect(screen.queryByText(/proposal discarded/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^apply$/i }));
+    expect(applyDefinition).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not carry the deselected rows of one conversation over to another', async () => {
+    seedTwoConversations();
+    setup({ workflowId: 'wf-1' });
+
+    const checkboxes = await screen.findAllByRole('checkbox');
+    fireEvent.click(checkboxes[0]);
+    expect((screen.getAllByRole('checkbox')[0] as HTMLInputElement).checked).toBe(false);
+
+    act(() => useAiChatStore.getState().setActiveThread(scope, 'b'));
+    await screen.findByText('Answer in B');
+
+    expect(screen.getAllByRole('checkbox').every((c) => (c as HTMLInputElement).checked)).toBe(true);
+  });
+
+  it('offers a regenerated proposal for applying although the replaced one was discarded', async () => {
+    chatMock.mockImplementation(streamMock({ reply: 'First proposal.', proposal: true }));
+    const { applyDefinition } = setup();
+    await ask('Add a log step.');
+    fireEvent.click(await screen.findByRole('button', { name: /discard/i }));
+    await screen.findByText(/proposal discarded/i);
+
+    chatMock.mockImplementation(streamMock({ reply: 'Second proposal.', proposal: true }));
+    fireEvent.click(screen.getByRole('button', { name: /regenerate/i }));
+
+    await screen.findByText('Second proposal.');
+    expect(screen.queryByText(/proposal discarded/i)).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
+    expect(applyDefinition).toHaveBeenCalledTimes(1);
   });
 });
