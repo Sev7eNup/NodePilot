@@ -34,6 +34,8 @@ src/
   NodePilot.Api/        ASP.NET-Core-Host, Controller und SignalR
   NodePilot.Cli/        Kommandozeilenwerkzeug `np`
   NodePilot.Mcp/        MCP-Server `nodepilot-mcp`
+  NodePilot.Switcher/   WPF-Werkzeug zur exklusiven lokalen Steuerung der NodePilot-/SCOrch-Dienste
+  nodepilot-desktop/    Electron-Shell der Desktop-Installation
   nodepilot-ui/         Produktoberfläche
   nodepilot-docs-ui/    Dokumentationsoberfläche (auch mitausgeliefert, unter /docs)
 tests/
@@ -45,12 +47,14 @@ tests/
 ```text
 Api -> Ai, Engine, Scheduler, Data, Remote, Core, Telemetry
 Engine -> Ai, Data, Remote, Core, Telemetry
+Scheduler -> Engine, Data, Core
 Ai -> Core
 Data -> Core
 Remote -> Core
 Telemetry -> Core
 Cli -> Core
 Mcp -> Core
+Switcher -> (keine)
 ```
 
 `NodePilot.Core` besitzt keine Projektabhängigkeiten. CLI und MCP greifen ausschließlich über HTTP auf eine laufende NodePilot-Instanz zu.

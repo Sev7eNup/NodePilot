@@ -224,12 +224,12 @@ This part concerns **the executing host**, i.e. the orchestrator server or the d
 > `C:\ProgramData\NodePilot`" looks complete but leaves precisely this script file unprotected — it
 > lives outside every NodePilot-named path.
 
-### C.2 The default case needs none of this
+### C.2 When none of this is needed
 
-The default execution mode writes **no** temporary file and starts **no** child process: scripts run in
-an in-process runspace pool inside `NodePilot.Api.exe`. Temp files and PowerShell child processes only
-arise when a step explicitly requests isolation or a specific PowerShell host. If those execution modes
-are not used in the environment, the entries from
+Only the engine `runspace` writes **no** temporary file and starts **no** child process: those scripts
+run in an in-process runspace pool inside `NodePilot.Api.exe`. The default engine `auto` starts a
+Windows PowerShell 5.1 process, as do the engines `powershell`/`pwsh` and the isolated mode. Only if
+every local script step in the environment uses `runspace` do the entries from
 [C.1](#c1-temporary-script-and-transcript-files) and the script-host processes from
 [A.2](#a2-processes) do not apply.
 
