@@ -297,7 +297,7 @@ Standard invocations (`dotnet build|test`, in `src/nodepilot-ui` the `package.js
 
 ### Test scope per change
 
-**Writing tests ≠ running all tests.** The duty above applies unchanged to *writing*; locally you *run* only what the change affects. The full suite is measurably disproportionate (9,035 backend test cases, 260 Vitest files, 81 E2E specs — `DocumentationCountsTests` pins the two frontend figures to the file list, the backend figure stays a hand measurement) and gives no new signal locally: the safety net is `ci.yml`, which runs on **every PR and every push to main** (coverage gate and E2E included). There is no nightly run; CI is the only automated net.
+**Writing tests ≠ running all tests.** The duty above applies unchanged to *writing*; locally you *run* only what the change affects. The full suite is measurably disproportionate (9,035 backend test cases, 262 Vitest files, 81 E2E specs — `DocumentationCountsTests` pins the two frontend figures to the file list, the backend figure stays a hand measurement) and gives no new signal locally: the safety net is `ci.yml`, which runs on **every PR and every push to main** (coverage gate and E2E included). There is no nightly run; CI is the only automated net.
 
 **Markdown exception:** a PR that touches **only** `*.md` or `docs/images/**` skips frontend, desktop, database and E2E (`changes` job). **Backend and docs-ui always run**, because Markdown is an input for them (`DocumentationCountsTests`, `SettingsSchemaDocumentationTests`, `MonitoringDeploymentSecurityTests`, language parity guard). Pushes to `main` **always** run in full; every error path of the detection ends in "run everything".
 
