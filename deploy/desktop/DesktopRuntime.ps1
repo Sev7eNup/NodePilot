@@ -173,6 +173,13 @@ function Restore-DesktopServiceSnapshots {
             New-ItemProperty -Path $keyPath -Name $value.Name -PropertyType $value.Type `
                 -Value $value.Value -Force | Out-Null
         }
+        if ($snapshot.Start -eq 2 -and $snapshot.DelayedAutostart -eq 1) {
+            # The SCM keeps the delayed flag in memory, so the registry value alone only applies after a reboot.
+            & sc.exe config $snapshot.Name start= delayed-auto | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "Service '$($snapshot.Name)' could not be set to delayed automatic start (sc.exe exit code $LASTEXITCODE)."
+            }
+        }
         if (-not (Test-DesktopServiceExists -Name $snapshot.Name)) {
             throw "Service '$($snapshot.Name)' is not registered after restoring it."
         }
