@@ -12,7 +12,7 @@ exhaustive.
 
 ## [Unreleased]
 
-Planned version: **1.5.4**.
+## [1.5.4] - 2026-11-10
 
 ### Changed
 
@@ -2350,7 +2350,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.5.3...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.5.4...main
+[1.5.4]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.4
 [1.5.3]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.3
 [1.5.2]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.2
 [1.5.1]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.5.1

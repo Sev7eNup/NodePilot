@@ -220,6 +220,8 @@ try {
     function Remove-DesktopService { param($Name) $log.Add("remove:$Name"); Remove-Item -LiteralPath (Join-Path $root $Name) -Recurse -Force -ErrorAction SilentlyContinue }
     function Test-DesktopServiceExists { param($Name) Test-Path -LiteralPath (Join-Path $root $Name) }
     function Write-Host { param($Object) }
+    function sc.exe { $log.Add("sc:$($args -join ' ')"); $global:LASTEXITCODE = $script:scExit }
+    $script:scExit = 0
     function Invoke-CimMethod {
         param($ClassName, $MethodName, $Arguments)
         $log.Add("create:$($Arguments.Name)")
@@ -263,7 +265,7 @@ try {
         Remove-Item -LiteralPath (Join-Path $root 'fake-db'), (Join-Path $root 'fake-api') -Recurse -Force
         $log.Clear()
         Restore-DesktopServiceSnapshots -Snapshots $snapshots -ServicesRoot $root
-        Assert-True (($log -join ',') -eq 'remove:fake-api,remove:fake-db,create:fake-db,create:fake-api') 'Service restoration must remove dependents first and register the database before the API.'
+        Assert-True (($log -join ',') -eq 'remove:fake-api,remove:fake-db,create:fake-db,create:fake-api,sc:config fake-api start= delayed-auto') 'Service restoration must remove dependents first, register the database before the API and apply the delayed start through the SCM.'
         Assert-True ($script:createArgs['fake-db'].StartName -eq 'NT AUTHORITY\NetworkService' -and $script:createArgs['fake-db'].StartPassword -eq '') 'The database service must be registered again as NetworkService.'
         Assert-True ($script:createArgs['fake-api'].StartName -eq 'LocalSystem' -and -not $script:createArgs['fake-api'].ContainsKey('StartPassword')) 'The API service must be registered again as LocalSystem.'
         Assert-True ($script:createArgs['fake-api'].PathName -eq $snapshots[1].ImagePath -and @($script:createArgs['fake-api'].ServiceDependencies) -join ',' -eq 'fake-db') 'The API service keeps its quoted binary path and its dependency.'
@@ -279,6 +281,12 @@ try {
         try { Restore-DesktopServiceSnapshots -Snapshots $snapshots -ServicesRoot $root } catch { $failure = $_ }
         $script:createFails = $false
         Assert-True ($null -ne $failure -and $failure.Exception.Message -match 'could not be registered again') 'A failed registration must fail the restoration explicitly.'
+
+        $script:scExit = 1
+        $failure = $null
+        try { Restore-DesktopServiceSnapshots -Snapshots $snapshots -ServicesRoot $root } catch { $failure = $_ }
+        $script:scExit = 0
+        Assert-True ($null -ne $failure -and $failure.Exception.Message -match 'delayed automatic start') 'A failed delayed-start change must fail the restoration explicitly.'
 
         $missing = $null
         try { [void](Get-DesktopServiceSnapshot -Name 'not-registered' -ServicesRoot $root) } catch { $missing = $_ }

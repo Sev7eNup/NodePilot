@@ -23,6 +23,9 @@
     <!-- Force patched floor over WireMock.Net.OpenApiParser's transitive Microsoft.OpenApi 2.x
          (GHSA-v5pm-xwqc-g5wc, HIGH). Version central in Directory.Packages.props. -->
     <PackageReference Include="Microsoft.OpenApi" />
+    <!-- Force the patched floor over WireMock.Net's transitive Microsoft.AspNetCore.WebUtilities 2.3.0
+         (GHSA-6527-9fp8-r4x6). Version central in Directory.Packages.props. -->
+    <PackageReference Include="Microsoft.AspNetCore.WebUtilities" />
     <!-- MCP client for the stdio-process smoke test (spike). -->
     <PackageReference Include="ModelContextProtocol" />
   </ItemGroup>
