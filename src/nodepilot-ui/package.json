@@ -1,7 +1,7 @@
 {
   "name": "nodepilot-ui",
   "private": true,
-  "version": "1.5.4",
+  "version": "1.5.5",
   "type": "module",
   "engines": {
     "node": ">=22.22.0"
