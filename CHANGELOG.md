@@ -12,6 +12,8 @@ exhaustive.
 
 ## [Unreleased]
 
+Planned version: **1.5.5**.
+
 ## [1.5.4] - 2026-11-10
 
 ### Changed
