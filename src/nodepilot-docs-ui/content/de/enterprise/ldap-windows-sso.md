@@ -133,7 +133,7 @@ Viewer.
 - LDAPS mit vollständiger Zertifikatsprüfung ist verpflichtend: Das DC-Zertifikat muss gegen den Windows-Zertifikatsspeicher des API-Hosts validieren, einen In-App-Bypass gibt es nicht. Plaintext-LDAP und StartTLS auf Port 389 sind kein unterstützter Enterprise-Pfad. LDAP-Referrals werden nie verfolgt — jede Abfrage wird vom bewusst konfigurierten Endpunkt beantwortet.
 - `AllowedGroupSids` ist die Zugangs-Policy; `GlobalRoleMappings` bestimmt davon unabhängig die globale Rolle. Ohne Rollen-Match gilt `Viewer`.
 - `DirectorySyncIntervalMinutes` liegt zwischen 1 und 5 Minuten. `DirectorySyncMaxConcurrency` begrenzt einen Sync-Pass auf 1–32 parallele Service-Bind-Lookups, Default 16.
-- Windows-SSO ist Kerberos-only. `AllowNtlmFallback=true` wird abgelehnt; `NtlmDisabledByPolicy=true` bestätigt die zusätzlich umgesetzte Host-/Domain-Policy.
+- Windows-SSO ist Kerberos-only. `AllowNtlmFallback=true` wird abgelehnt; `NtlmDisabledByPolicy=true` ist bei aktiviertem Windows-SSO Pflicht (sonst bricht der Boot ab) und bestätigt die zusätzlich umgesetzte Host-/Domain-Policy.
 - Secrets gehören in Umgebungsvariablen oder den Secret-Provider, nicht in eine eingecheckte Datei.
 
 Die komplette `Authentication`-Sektion ist boot-fest. Gespeicherte Änderungen werden erst nach einem Service-Neustart aktiv. Der LDAP-Verbindungstest in den Admin-Einstellungen prüft den noch nicht gespeicherten Entwurf gegen TLS-Vertrauen, Service-Bind und Search Base.

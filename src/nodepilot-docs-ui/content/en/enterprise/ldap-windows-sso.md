@@ -131,7 +131,7 @@ suffix itself. A missing role mapping is not an error — the user is created as
 - LDAPS with full certificate validation is mandatory: the DC certificate has to validate against the API host's Windows certificate store, and there is no in-app bypass. Plaintext LDAP and StartTLS on port 389 are not a supported enterprise path. LDAP referrals are never followed — every query is answered by the endpoint you deliberately configured.
 - `AllowedGroupSids` is the access policy; `GlobalRoleMappings` determines the global role independently of it. Without a role match, `Viewer` applies.
 - `DirectorySyncIntervalMinutes` is between 1 and 5 minutes. `DirectorySyncMaxConcurrency` limits a sync pass to 1–32 concurrent service-bind lookups, default 16.
-- Windows SSO is Kerberos only. `AllowNtlmFallback=true` is rejected; `NtlmDisabledByPolicy=true` confirms the host/domain policy you have additionally implemented.
+- Windows SSO is Kerberos only. `AllowNtlmFallback=true` is rejected; `NtlmDisabledByPolicy=true` is mandatory when Windows SSO is enabled (otherwise the boot fails) and attests the host/domain policy you have additionally implemented.
 - Secrets belong in environment variables or the secret provider, not in a checked-in file.
 
 The entire `Authentication` section is fixed at boot. Saved changes only take effect after a service restart. The LDAP connection test in the admin settings checks the not-yet-saved draft against TLS trust, the service bind and the search base.
