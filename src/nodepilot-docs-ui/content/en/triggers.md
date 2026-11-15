@@ -92,7 +92,7 @@ Example:
 |---|---|---|
 | `ticketId` | `$.ticket.id` | `{{manual.ticketId}}` |
 
-If the body contains no JSON, or the path is not found, the mapped value stays empty.
+If the path is not found, the mapped value stays empty. If the body is empty or not valid JSON, no mapped values are set, so a reference such as `{{manual.ticketId}}` does not resolve.
 
 Further available webhook data:
 

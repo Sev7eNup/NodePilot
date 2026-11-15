@@ -26,11 +26,11 @@ Der **Standardmodus** enthält die Funktionen zum Erstellen, Konfigurieren, Test
 Der **Expertenmodus** ergänzt Funktionen für umfangreiche Workflows:
 
 - Breakpoints und Debug-Läufe
-- Simulation und Versionsvergleich
+- Simulation
 - Suchen und Ersetzen
 - Gruppierung und genaue Positionierung von Nodes
 - zusätzliche Ansichts- und Darstellungsoptionen
-- JSON-Export und erweiterte Navigation
+- erweiterte Navigation
 
 Der Modus kann im Designer umgeschaltet werden. Bestehende Workflow-Daten werden dadurch nicht verändert.
 

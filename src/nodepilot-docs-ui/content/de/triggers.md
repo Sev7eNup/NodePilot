@@ -92,7 +92,7 @@ Beispiel:
 |---|---|---|
 | `ticketId` | `$.ticket.id` | `{{manual.ticketId}}` |
 
-Wenn der Body kein JSON enthält oder der Pfad nicht gefunden wird, bleibt der gemappte Wert leer.
+Wird der Pfad nicht gefunden, bleibt der gemappte Wert leer. Ist der Body leer oder kein gültiges JSON, werden keine gemappten Werte gesetzt; eine Referenz wie `{{manual.ticketId}}` wird dann nicht aufgelöst.
 
 Weitere verfügbare Webhook-Daten:
 

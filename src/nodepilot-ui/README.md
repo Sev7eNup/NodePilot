@@ -2,12 +2,12 @@
 
 The NodePilot single-page app: workflow designer (React Flow), execution monitor (SignalR live status), admin/settings surfaces, and the operator dashboards. Talks to the NodePilot API over REST + SignalR.
 
-**Stack:** React 19 · TypeScript · Vite 8 · Tailwind CSS 4 · @xyflow/react (React Flow v12) · TanStack React Query (server state) · Zustand (client state) · react-i18next (DE default, EN) · SignalR (`@microsoft/signalr`) · CodeMirror (script editing) · Vitest + Playwright (tests).
+**Stack:** React 19 · TypeScript · Vite 8 · Tailwind CSS 4 · @xyflow/react (React Flow v12) · TanStack React Query (server state) · Zustand (client state) · react-i18next (DE default, EN) · SignalR (`@microsoft/signalr`) · Monaco (script editor dialog) · CodeMirror (inline code fields) · Vitest + Playwright (tests).
 
 ## Prerequisites
 
 - Node.js 22.22+ (floor set by react-router 8).
-- For full local use, the **NodePilot API on `http://localhost:5000`** (see the repo root `CLAUDE.md` → "Projekt starten": start Postgres, then `dotnet run`). The dev server proxies to it.
+- For full local use, the **NodePilot API on `http://localhost:5000`** (see the repo root `CLAUDE.md` → "Running the project": start Postgres, then `dotnet run`). The dev server proxies to it.
 
 ## Develop
 
@@ -16,7 +16,7 @@ npm install
 npm run dev          # Vite dev server on http://localhost:5173
 ```
 
-The dev server (`vite.config.ts`) proxies `/api`, `/healthz`, and `/hubs` (WebSocket) to `http://localhost:5000`, so the SPA runs against the real backend without CORS config. First login on an empty DB creates the admin account.
+The dev server (`vite.config.ts`) proxies `/api`, `/healthz`, and `/hubs` (WebSocket) to `http://localhost:5000`, so the SPA runs against the real backend without CORS config. First login on an empty DB creates the admin account; it requires the setup token from `src/NodePilot.Api/admin-setup.token`.
 
 ## Build / lint
 

@@ -6,9 +6,9 @@ Retention services delete or archive historical data after a retention period. I
 
 | Service | Purpose | Default | Gating |
 |---|---|---|---|
-| `ExecutionRetentionService` | Trims `WorkflowExecutions` | 30 d | `Retention:Executions:Enabled` |
-| `AuditLogRetentionService` | Trims `AuditLogs` + gzip/SHA-256 archives | 365 d | `Retention:AuditLog:Enabled` |
-| `WorkflowVersionsRetentionService` | Keeps N versions per workflow | 50 | `Retention:WorkflowVersions:Enabled` |
+| `ExecutionRetentionService` | Trims `WorkflowExecutions` | 30 d | `Retention:Executions:Enabled`, leader only |
+| `AuditLogRetentionService` | Trims `AuditLogs` + gzip/SHA-256 archives | 365 d | `Retention:AuditLog:Enabled`, leader only |
+| `WorkflowVersionsRetentionService` | Keeps N versions per workflow | 50 | `Retention:WorkflowVersions:Enabled`, leader only |
 | `SupportEventRetentionService` | Trims `SupportEvents` | 90 d | `Retention:SupportEvents:Enabled`, leader only |
 | `NotificationRetentionService` | Trims terminal `NotificationDeliveryAttempt` records + orphaned `NotificationSuppressionState` | 90 d | `Retention:Notifications:Enabled`, leader only |
 | `TriggerReceiptRetentionService` | Trims `TriggerDeliveryReceipts` — one row per observed trigger signal, so the fastest-growing table here. `TriggerDeliveryCheckpoints` is never swept: one row per trigger node, updated in place | 7 d | `Retention:TriggerReceipts:Enabled`, leader only |
@@ -21,10 +21,10 @@ Retention services delete or archive historical data after a retention period. I
 | `TriggerOrchestrator` + Quartz | Trigger scan (5 s) + Quartz cron for `scheduleTrigger` | Leader only (in a cluster) |
 | `ExecutionDispatchWorker` | Leased dispatch of persisted `Pending` executions from the database outbox | Leader-only (in a cluster) |
 | `MaintenanceWindowSnapshotService` | Keeps the maintenance-window snapshot per node current | Always on |
-| `WorkflowStatsRefresher` | Computes the `WorkflowStats` aggregates | Always on |
+| `WorkflowStatsRefresher` | Computes the `WorkflowStats` aggregates | Leader only (in a cluster) |
 | `ExecutionStatsRollupService` | Keeps the hourly buckets behind the dashboard history current (`ExecutionHourlyStat` including a duration histogram, `FailureCauseHourlyStat`); sweeps every 60 s, initial fill in daily chunks | `Stats:Rollup:Enabled` (on by default), leader only |
 | `DashboardAggregateWarmup` | Precomputes the 24 h / 7 d / 30 d dashboard aggregates after startup and after folder changes so the first caller hits the cache too | `Dashboard:Warmup:Enabled` (on by default), per node |
-| `RevokedTokensCleanupService` | Daily sweep of `RevokedTokens` | Always on |
+| `RevokedTokensCleanupService` | Daily sweep of `RevokedTokens` | Leader only (in a cluster) |
 | `HubRevocationSweeper` | Closes SignalR connections on logout/deactivation | Always on |
 | `SupportEventFlushService` | Buffered flush of support events into the database | Always on (when the DB projection is enabled) |
 | `ClusterLeaderService` / `ClusterFencingHost` / `ClusterFailoverRecoveryHost` | Leader lease, fencing, failover recovery | Only with `Cluster:Enabled` |

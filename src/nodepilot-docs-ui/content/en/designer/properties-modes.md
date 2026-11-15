@@ -26,11 +26,11 @@ After selecting a connection, you can change the label, condition and appearance
 **Expert mode** adds functions for larger workflows:
 
 - Breakpoints and debug runs
-- Simulation and version comparison
+- Simulation
 - Find and replace
 - Grouping and precise positioning of nodes
 - Additional view and appearance options
-- JSON export and extended navigation
+- Extended navigation
 
 The mode can be switched in the designer. Existing workflow data is not changed by it.
 
