@@ -116,7 +116,7 @@ dotnet run -c Release -- --scenario soak
 # Spike — 0 → 200 RPS → 0
 dotnet run -c Release -- --scenario spike
 
-# Ramp — linear 1 → 500 RPS over 10 min; look for the knee-point
+# Ramp — linear 0 → 500 RPS over 10 min; look for the knee-point
 dotnet run -c Release -- --scenario ramp
 
 # Burst — 100 executions in <1 s, wait for drain

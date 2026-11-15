@@ -75,8 +75,9 @@ The transport is **stdio** (streamable HTTP is planned as a later option). Windo
 - **Destructive gate:** `delete_*`, `force_unlock_workflow`, `cancel_all_executions`, `restart_service` and `test_step` are
   only **registered** with `NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true` — otherwise they do not even appear in
   `tools/list`. `get_safety_status` shows the mode.
-- **Secrets:** workflow definitions are redacted before tool output (`secret`/`apiKey`/`password`/
-  `authToken`/`bearer`/`connectionString` → `***`). On `publish`/`update`/`apply_workflow_patch`, real
+- **Secrets:** workflow definitions are redacted before tool output (for example `secret`/`apiKey`/`password`/
+  `authToken`/`bearer`/`connectionString`/`token`/`clientSecret`/`privateKey`/`Authorization`/`Cookie`
+  — about twenty keys in all — plus values recognised as secrets by their content → `***`). On `publish`/`update`/`apply_workflow_patch`, real
   secrets are restored by node ID from the stored version — the agent's `***` never overwrites a real
   value. A `***` on a new node or edge ID has nothing to restore, so the call is rejected and nothing
   is saved. The same applies to a change in a condition or case array that contains a `***`; make

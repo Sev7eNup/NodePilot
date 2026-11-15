@@ -45,7 +45,7 @@ Der Zeitplan-Trigger startet einen Workflow anhand eines Cron-Ausdrucks. Vorlage
 | täglich um 06:00 Uhr | `0 0 6 * * ?` |
 | Montag bis Freitag um 08:00 Uhr | `0 0 8 ? * MON-FRI` |
 
-Die Vorschau im Eigenschaften-Panel zeigt die nächsten Ausführungszeiten und weist auf einen ungültigen Ausdruck hin. Eine Schrittweite von 0 (etwa `0/0`) und Jahre nach 2199 lehnt NodePilot beim Veröffentlichen ab. Beide Tagesfelder dürfen `*` sein, `0 0 2 * * *` ist also gültig.
+Die Vorschau im Eigenschaften-Panel zeigt die nächsten Ausführungszeiten und weist auf einen ungültigen Ausdruck hin. Eine Schrittweite von 0 (etwa `0/0`) und ein Jahr, das mehr als 100 Jahre in der Zukunft liegt, lehnt NodePilot beim Veröffentlichen ab. Beide Tagesfelder dürfen `*` sein, `0 0 2 * * *` ist also gültig.
 
 Zeitumstellung:
 
@@ -144,6 +144,7 @@ Ausgabedaten:
 - `fileName`: Dateiname inklusive Endung
 - `fileNameWithoutExtension`: Dateiname ohne Endung
 - `fileDirectory`: Ordner, in dem die Datei liegt
+- `fileOldPath`: vorheriger vollständiger Pfad; nur gesetzt, wenn die Datei umbenannt wurde
 
 ## Datenbank
 

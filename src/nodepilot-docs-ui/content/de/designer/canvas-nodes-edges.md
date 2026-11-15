@@ -29,7 +29,7 @@ Die wichtigsten Node-Typen:
 |---|---|
 | **Trigger** | Startet den Workflow |
 | **Activity** | Führt einen Arbeitsschritt aus |
-| **Group** | Gruppiert Nodes nur visuell |
+| **Group** | Gruppiert Nodes nur visuell; eine Auswahl mit `Ctrl+G` zu gruppieren ist **(Expert)** |
 | **Sticky Note** | Fügt eine Notiz hinzu und wird nicht ausgeführt |
 
 ## Nodes bearbeiten
@@ -68,9 +68,9 @@ Eine bestehende Edge lässt sich auf ein anderes Ziel umhängen, ohne sie neu an
 
 Deaktivierte Nodes und Edges werden abgeschwächt dargestellt und bei der Ausführung nicht verwendet.
 
-## Ansicht anpassen
+## Ansicht anpassen **(Expert)**
 
-Über die Ansichtsoptionen stehen bei Bedarf folgende Hilfen zur Verfügung:
+Die Ansichtsoptionen gibt es nur im Expert-Modus; sie bieten bei Bedarf folgende Hilfen:
 
 - Raster und Snap-to-Grid
 - unterschiedliche Node-Darstellungen und Größen

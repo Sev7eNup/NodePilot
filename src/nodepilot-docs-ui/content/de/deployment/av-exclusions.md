@@ -68,7 +68,7 @@ Die API liegt hier eine Ebene tiefer als beim Server — `…\NodePilot\app\Node
 |---|---|---|---|
 | `C:\Program Files\NodePilot\app` | API-Dienst | Pflicht | wie Server-Programmverzeichnis |
 | `C:\Program Files\NodePilot\desktop` | Electron-Shell samt Chromium-Nativ-DLLs (`vk_swiftshader.dll`, `ffmpeg.dll`, `dxcompiler.dll`, `libEGL.dll`, `libGLESv2.dll`) | Pflicht | Statischer Programmcode; ein einzelner Quarantäne-Fund macht die Oberfläche startunfähig |
-| `C:\Program Files\NodePilot\pgsql` | Mitgeliefertes PostgreSQL | Empfohlen | Alternativ nur die sechs genutzten Prozesse ausschließen statt des ganzen Ordners |
+| `C:\Program Files\NodePilot\pgsql` | Mitgeliefertes PostgreSQL | Empfohlen | Alternativ nur die sieben genutzten Prozesse ausschließen statt des ganzen Ordners |
 | `C:\ProgramData\NodePilot` | `pgdata`, `secrets`, `logs`, `backups`, `rollback`, `archive`, `desktop.json` | Pflicht | Enthält Datenbank-Passwörter; deren Schutz liegt bei der ACL |
 | `%APPDATA%\NodePilot` | Chromium-Profil und Caches der Shell | Empfohlen | Nur Cache-Daten, kein ausführbarer Code |
 | `%LOCALAPPDATA%\NodePilot` | `admin-setup.handoff`, Einmal-Token für den Erstlogin | Empfohlen | Kurzlebige Textdatei |
@@ -80,10 +80,10 @@ Die API liegt hier eine Ebene tiefer als beim Server — `…\NodePilot\app\Node
 | `app\NodePilot.Api.exe` | Pflicht | wie Server |
 | `desktop\NodePilot.exe` | Pflicht | Startet Kindprozesse desselben Namens und über das Infobereichsmenü ein UAC-angehobenes `powershell.exe` für den Dienst-Neustart. Ausschluss auf den Pfad einschränken, nicht auf den Dateinamen |
 | `pgsql\bin\postgres.exe`, `pgsql\bin\pg_ctl.exe` | Pflicht | Bindung ausschließlich an `127.0.0.1` |
-| `pgsql\bin\initdb.exe`, `psql.exe`, `pg_dump.exe`, `pg_restore.exe` | Empfohlen | Laufen nur bei Installation und Update |
+| `pgsql\bin\initdb.exe`, `pg_isready.exe`, `psql.exe`, `pg_dump.exe`, `pg_restore.exe` | Empfohlen | Laufen nur bei Installation und Update |
 | `powershell.exe` / `pwsh.exe` | Pflicht | wie Server |
 
-Die übrigen 37 Programme in `pgsql\bin` werden nicht aufgerufen und brauchen keinen Ausschluss.
+Die übrigen 36 Programme in `pgsql\bin` werden nicht aufgerufen und brauchen keinen Ausschluss.
 
 Ports (informativ): Loopback 47000–47049 für die API, 47100–47149 für PostgreSQL; je ein freier Port wird bei der Installation gewählt und festgehalten.
 
@@ -115,7 +115,7 @@ Diese Einträge lassen sich auf ein Wartungsfenster befristen.
 |---|---|
 | `C:\Windows\Temp` als Ganzes | Für viele Prozesse beschreibbar; nur das Muster `nodepilot_*.ps1` ausschließen |
 | Zielpfade von Workflows | Datei-, Ordner-, Textdatei-, ZIP- und Registry-Activities schreiben an frei konfigurierbare Ziele. Genau diese Schreibvorgänge sollen weiter geprüft werden |
-| Der gesamte Ordner `pgsql\bin` | 37 der 43 Programme werden nie aufgerufen |
+| Der gesamte Ordner `pgsql\bin` | 36 der 43 Programme werden nie aufgerufen |
 | Benutzerprofile | Es genügen `%APPDATA%\NodePilot` und `%LOCALAPPDATA%\NodePilot` |
 | `pwsh.exe`/`powershell.exe` systemweit ohne Elternprozess-Einschränkung | Die engere Regel ist vorzuziehen, wo das Produkt sie unterstützt |
 | Skript-Scanning / AMSI abschalten | Wird von NodePilot nicht behindert |

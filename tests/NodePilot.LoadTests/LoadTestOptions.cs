@@ -43,7 +43,6 @@ public class SpikeOptions
 
 public class RampOptions
 {
-    public int StartRps { get; set; } = 1;
     public int EndRps { get; set; } = 500;
     public int DurationSeconds { get; set; } = 600;
 }

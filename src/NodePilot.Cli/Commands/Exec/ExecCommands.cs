@@ -17,7 +17,7 @@ public sealed class ExecListSettings : GlobalSettings
     public string? Workflow { get; set; }
 
     [CommandOption("--limit <N>")]
-    [Description("Limit rows shown (server caps at 500).")]
+    [Description("Limit rows shown (fetched in pages of 200).")]
     public int? Limit { get; set; }
 }
 

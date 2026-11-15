@@ -666,8 +666,8 @@ Rückweg das Zurücksetzen des Thumbprints in derselben Zeile. Erst danach entfe
 
 Entfernt werden Dienst, Dienst-Binaries samt der Binär-Sicherungen aus Updates und abgebrochenen
 Installationen (`<Installationspfad>.backup.*` / `.rollback.*`), Firewall-Regeln, der Installations-Marker und der
-Registry-Environment-Eintrag (in dem das Postgres-Passwort liegt). Logs und Konfiguration bleiben
-erhalten. Vollständige Entfernung der lokalen Betriebsdaten:
+Registry-Environment-Eintrag (in dem das Postgres-Passwort liegt). Die Laufzeit-Einstellungen (`appsettings.runtime.json`), die Schlüssel und die Logs im Datenpfad bleiben
+erhalten; `appsettings.Production.json` im Installationsverzeichnis wird entfernt. Vollständige Entfernung der lokalen Betriebsdaten:
 
 ```powershell
 .\deploy\Uninstall-NodePilot.ps1 -PurgeData

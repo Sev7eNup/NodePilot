@@ -166,7 +166,7 @@ every main screen into `__screens__/*.png`; it documents visuals, it asserts not
 | 74 | Workflow snippets | `snippets.spec.ts` |
 | 75 | Quick-interactions | `quick-interactions.spec.ts` |
 | 77 | AI workflow assistant + SSE streaming (explain + propose, role-gated apply, stale-guard; chat/script SSE mocked via `text/event-stream` body) plus the shared right panel: the chat overlays the properties, a canvas node click hands the slot back | `ai-assistant.spec.ts` |
-| 9 (DR) | System-config Backup & Restore (export validation + restore preview/run, incl. the preview that fires on file pick) | `backup.spec.ts` |
+| — (new) | System-config Backup & Restore (export validation + restore preview/run, incl. the preview that fires on file pick) | `backup.spec.ts` |
 | 83 | Live-Ops Mission Control: real-time execution timeline (running + recently-finished bars), bar drill-down with failed-step names and the incident actions (cancel / retry / cancel-all / quarantine incl. disable-before-cancel ordering and per-node RBAC gating), stuck strip + overdue bar treatment for long-running runs, step-activity (finished count / last progress, no percentage), window selector 30 m / 1 h with display freeze and the density histogram that fills a window the individual bars cannot cover (columns on a per-lane baseline, below-baseline failure marker), wheel zoom over the track (pointer-anchored, short runs stay clickable, reset via "Back to live view") versus wheel scrolling over the workflow labels, next-fires departure board incl. maintenance-window blackout marking, folder scoping | `operations.spec.ts` |
 | 78 | Alerting rules (list/create/test-fire/secret-redaction/role-gating/gauge-scope-gate/deliveries-modal/cancelledBy-filter) | `alerting.spec.ts` |
 | 79 | Toolbar-layout toggle: compact ⇄ classic toolbar, persisted in designStore, toggle reachable from both layouts | `toolbar-layout.spec.ts` |
@@ -181,6 +181,8 @@ every main screen into `__screens__/*.png`; it documents visuals, it asserts not
 | — (new) | Editor-header stacking-context regression: header popovers above canvas-local breadcrumb overlay | `designer-header-layering.spec.ts` |
 | — (new) | SPA smoke: unauthenticated redirect → /login, authenticated landing → dashboard | `smoke.spec.ts` |
 | 84 | Script editor against the MINIFIED bundle: opens a runScript node's Monaco editor under `dark-bank`, `dark`, `light-minimal`, `dark-minimal` and `dark-ion` and asserts no uncaught error and no theme rejection; plus Monaco refresh when a base skin switches to Minimal and back, and Monaco/CodeMirror surviving Dark ⇄ ION ⇄ Minimal switches with the skin's code palette. Production CSS shortens token colors (`#ffffff` → `#fff`), which Monaco refuses — the dev-server config cannot reproduce it | `script-editor.spec.ts` |
+| 85 | Browser demo against the published bundle (own suite `e2e-demo/`, `npm run test:e2e:demo`): boot, route walk, write paths, sub-path asset resolution, Apache-style page fallback | `e2e-demo/demo-smoke.spec.ts`, `e2e-demo/routing.spec.ts` |
+| 86 | Guided tasks of the browser demo (all ten, started via `?tour=<id>`) | `e2e-demo/guided-tour.spec.ts`, `e2e-demo/additional-tours.spec.ts` |
 
 ## Not covered as UI e2e (by design)
 

@@ -1,6 +1,6 @@
 # Audit-Log
 
-Das Audit-Log speichert sicherheitsrelevante Aktionen. Aktionscodes folgen dem Muster `VERB_NOMEN`. Passwörter und Secrets dürfen nicht in Audit-Details erscheinen.
+Das Audit-Log speichert sicherheitsrelevante Aktionen. Aktionscodes folgen dem Muster `NOMEN_VERB`. Passwörter und Secrets dürfen nicht in Audit-Details erscheinen.
 
 ## Schreiben
 
@@ -14,7 +14,7 @@ Schreibfehler darf eine normale Mutation **nie** abbrechen. Ausnahme: Beliebiges
 
 ## Audit-Codes
 
-Der autoritative Katalog lebt in `NodePilot.Core.Audit.AuditActions` — die Guard-Tests halten ihn vollständig und stale-frei. Codes folgen dem Muster `VERB_NOMEN`:
+Der autoritative Katalog lebt in `NodePilot.Core.Audit.AuditActions` — die Guard-Tests halten ihn vollständig und stale-frei. Codes folgen dem Muster `NOMEN_VERB`:
 
 | Bereich | Codes |
 |---|---|

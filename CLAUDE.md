@@ -388,7 +388,7 @@ Both are pure HTTP clients against the REST API — **no** backend path of their
 - **Idempotency:** `POST /api/trigger/{name}` accepts `Idempotency-Key`, replay only within the same key principal and workflow; `Pending` + reservation + dispatch intent are created in **one** transaction and survive failover.
 - **Rate limiting** (per IP, sliding window): login 50/min, refresh 20/min, webhook 60/min, trigger 30/min, ai-generate 20/min, audit 60/min, alerting-heavy 20/min, backup 10/min.
 - **Output redaction:** `OutputRedactor` masks secrets. Always active. Custom patterns via `Logging:Redaction:Patterns`; an invalid pattern stops the boot.
-- **Localhost bypass / operator trust:** without credentials, execution runs in-process under the NodePilot service identity. `Operator` is deliberately a trusted automation author and may publish/run such workflow code. Folder RBAC is not a code sandbox. **Product feature — do not add a require-target guard.**
+- **Localhost bypass / operator trust:** without a target machine (or loopback host without credential), execution runs locally under the NodePilot service identity (a separate PowerShell process by default, in-process only for `engine: runspace`). `Operator` is deliberately a trusted automation author and may publish/run such workflow code. Folder RBAC is not a code sandbox. **Product feature — do not add a require-target guard.**
 - **Security headers (non-dev):** HSTS, CSP, X-Frame-Options=DENY, nosniff, Referrer-Policy. **SignalR auth** via the httpOnly `np_auth` cookie on the WebSocket upgrade (only `/hubs/`); no `?access_token=` query string.
 - **REST API proxy:** `RestApi:Proxy:Enabled` (default `false`). Per-step override via `proxyMode`.
 
@@ -406,7 +406,7 @@ Admin settings saves persist atomically to `appsettings.runtime.json` (`reloadOn
 
 ## AuditLog
 
-Inject `IAuditWriter`, `await _audit.LogAsync(AuditActions.VerbNoun, "Resource", resourceId, detailsJson, ct)` **after** `SaveChanges`. A write failure must never abort the normal mutation. Exception: DB admin write SQL runs fail-closed — without a previously persisted `DBADMIN_SQL_WRITE_ATTEMPTED` entry the SQL is not executed. Never put passwords/secrets in the details. Codes follow `VERB_NOUN` and are registered **centrally** in `NodePilot.Core.Audit.AuditActions` — never a raw string literal at the call site (guard: `AuditActionsCatalogTests`). Code overview: `src/NodePilot.Core/Audit/AuditActions.cs`.
+Inject `IAuditWriter`, `await _audit.LogAsync(AuditActions.WorkflowPublished, "Resource", resourceId, detailsJson, ct)` **after** `SaveChanges`. A write failure must never abort the normal mutation. Exception: DB admin write SQL runs fail-closed — without a previously persisted `DBADMIN_SQL_WRITE_ATTEMPTED` entry the SQL is not executed. Never put passwords/secrets in the details. Codes follow `NOUN_VERB` (e.g. `WORKFLOW_PUBLISHED`) and are registered **centrally** in `NodePilot.Core.Audit.AuditActions` — never a raw string literal at the call site (guard: `AuditActionsCatalogTests`). Code overview: `src/NodePilot.Core/Audit/AuditActions.cs`.
 
 ## AI features
 

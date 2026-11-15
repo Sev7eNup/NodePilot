@@ -171,7 +171,7 @@ public static class CommandRegistration
             g.AddCommand<GlobalsCreateCommand>("create").WithDescription("Create a new global variable (Admin only).");
             g.AddCommand<GlobalsUpdateCommand>("update").WithDescription("Update a global variable (Admin only).");
             g.AddCommand<GlobalsDeleteCommand>("delete").WithDescription("Delete a global variable (Admin only).");
-            g.AddCommand<GlobalsExportCommand>("export").WithDescription("Export all globals as JSON (secrets shown as ***).");
+            g.AddCommand<GlobalsExportCommand>("export").WithDescription("Export all globals as JSON (secret values are exported as null).");
             g.AddCommand<GlobalsImportCommand>("import").WithDescription("Bulk-import globals from JSON file (Admin only).");
             g.AddCommand<GlobalsMoveVariableCommand>("move-folder").WithDescription("Move a variable into a folder (Admin only).");
             g.AddBranch("folder", f =>
@@ -305,7 +305,7 @@ public static class CommandRegistration
         {
             c.SetDescription("View / modify CLI configuration.");
             c.AddCommand<ConfigGetCommand>("get").WithDescription("Show the resolved config and profiles.");
-            c.AddCommand<ConfigSetCommand>("set").WithDescription("Set a config key (server, default-profile).");
+            c.AddCommand<ConfigSetCommand>("set").WithDescription("Set a config key (server, tls-thumbprint, default-profile).");
         });
     }
 }

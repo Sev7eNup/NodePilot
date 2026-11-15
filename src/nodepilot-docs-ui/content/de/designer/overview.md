@@ -14,7 +14,7 @@ Features, die nur im Expert-Modus sichtbar sind, sind in den folgenden Seiten mi
 ## Hauptbestandteile
 
 - **Canvas** mit Pan/Zoom, MiniMap, Background-Varianten, Viewport-Virtualisierung.
-- **Node-Library / Palette** links (Kategorien: Triggers, Actions, Control Flow, Logic, Annotations + Snippets).
+- **Node-Library / Palette** links (Kategorien: Triggers, Actions, Control Flow, Logic, Annotations + Snippets, dazu Custom Nodes, sobald aktivierte Custom Activities existieren).
 - **Workflow-Browser** links (Folder-View oder Trigger-View, Search/Filter, Info-Card).
 - **Properties-Panel** rechts (kontextsensitiv pro selektiertem Node/Edge). Der KI-Assistent teilt sich diesen Bereich: er überlagert die Properties und weicht wieder, sobald im Canvas etwas selektiert wird.
 - **Header/Toolbar** in zwei Layouts: kompakt (Standard; History, Inspect, Run, Lifecycle, View/Overlays/Tools liegen in Menüs) oder die klassische Inline-Zeile (sieben Abschnitte). Beide tragen einen KI-Assistent-Button und einen **Farb-Skin-Umschalter** (Palette-Icon — Popover mit 10 Skins + `system`, synchron mit Einstellungen).

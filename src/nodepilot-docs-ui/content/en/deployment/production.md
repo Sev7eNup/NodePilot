@@ -664,7 +664,7 @@ start, the way back is to put the previous thumbprint into that same line. Remov
 
 This removes the service, the service binaries including the binary backups left by updates and
 interrupted installations (`<install path>.backup.*` / `.rollback.*`), the firewall rules, the installation marker and the
-registry environment entry (which holds the Postgres password). Logs and configuration are preserved.
+registry environment entry (which holds the Postgres password). The runtime settings (`appsettings.runtime.json`), the keys and the logs in the data path are preserved; `appsettings.Production.json` in the install directory is removed.
 To remove the local operational data completely:
 
 ```powershell

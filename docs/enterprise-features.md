@@ -61,6 +61,8 @@ deliberately converge on the same identity, session, membership and offboarding 
   method/path rules. This is needed for every endpoint whose HTTP verb looks harmless but
   which actually changes state. A `GET` webhook ingress is exactly this case
   (`WebhooksController` carries the attribute). New semantically mutating GETs get it too.
+  `/hubs/*` (SignalR, including the `GET` handshake), `/signin-oidc` and `/api/auth/oidc*`
+  are always leader-only, whatever the method.
 - **`ClusterFailoverRecoveryHost`** subscribes to `OnLeadershipAcquired` in the **constructor**
   (not in `StartAsync`, so the first acquire event does not fire into an empty handler list)
   and calls `StartupRecovery.RecoverOrphanedExecutionsAsync`.
@@ -161,8 +163,8 @@ Expected: 40–60 s until `/healthz/leader` turns green on node-b. The audit log
   STRIPE_KEY exists in the DB but cannot be decrypted (scope
   mismatch, key rotation without sweep), the workflow fails **before the first step** with
   a clear error message. The literal is not silently substituted into an HTTP header.
-- **Audit of crypto operations** via metrics: `nodepilot_credential_crypto_calls{operation,result}`
-  distinguishes `encrypt`/`decrypt` × `success`/`failure`. `nodepilot_credential_crypto_legacy_reads`
+- **Audit of crypto operations** via metrics: `nodepilot.credential.crypto.calls{operation,provider,result}`
+  distinguishes `encrypt`/`decrypt` × provider × `success`/`failure`. `nodepilot.credential.crypto.legacy_reads`
   counts decrypts served by the legacy provider during the migration window. Even when the
   counter is at zero, the legacy config may only be removed after a clean sweep with
   `workflowVersionsSkipped=0`.

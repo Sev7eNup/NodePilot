@@ -14,7 +14,7 @@ Features that are only visible in expert mode are marked **(Expert)** on the fol
 ## Main parts
 
 - **Canvas** with pan/zoom, minimap, background variants and viewport virtualization.
-- **Node library / palette** on the left (categories: triggers, actions, control flow, logic, annotations + snippets).
+- **Node library / palette** on the left (categories: triggers, actions, control flow, logic, annotations + snippets, plus custom nodes once enabled custom activities exist).
 - **Workflow browser** on the left (folder view or trigger view, search/filter, info card).
 - **Properties panel** on the right (context-sensitive per selected node/edge). The AI assistant shares this area: it overlays the properties and gives way again as soon as something is selected on the canvas.
 - **Header/toolbar** in two layouts: the default compact one (history, inspect, run, lifecycle; view, overlays and tools sit in menus) or the classic inline row (seven sections). Both carry an AI assistant button and a **colour skin switcher** (palette icon — a popover with 10 skins + `system`, in sync with the settings).

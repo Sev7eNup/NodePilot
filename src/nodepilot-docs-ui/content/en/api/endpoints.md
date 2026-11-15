@@ -263,7 +263,7 @@ curl -s -b cookie.jar "$NP/api/audit?afterTs=2026-06-25T10:00:00Z&afterId=7e3f..
 curl -s -b cookie.jar "$NP/api/audit/export?format=ndjson&since=2026-06-01T00:00:00Z" -o audit.ndjson
 ```
 
-Audit codes follow `VERB_NOUN`. The complete list: [Audit log](../security/audit-log).
+Audit codes follow `NOUN_VERB` (for example `WORKFLOW_PUBLISHED`). The complete list: [Audit log](../security/audit-log).
 
 ## Triggers & webhooks
 
