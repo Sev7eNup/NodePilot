@@ -30,8 +30,11 @@ Alles, was das Frontend allein leistet, verhält sich wie in einer echten Instal
 
 Alles, was einen echten Server braucht, sagt das auch, statt es vorzutäuschen — und benennt dabei
 die Aktion, statt stumm zu scheitern: PowerShell auf einem Host ausführen, eine WinRM-Verbindung
-testen, Mail versenden, ein Runbook importieren, ein Backup exportieren oder zurückspielen, das
-Support-Log herunterladen, SQL ausführen und der KI-Assistent.
+testen, Mail versenden, ein Runbook, eine Workflow-JSON-Datei oder eine Custom Activity importieren,
+einen einzelnen Schritt testen, einen pausierten Lauf fortsetzen, Servereinstellungen speichern oder
+eine ausgehende Verbindung testen, Alarmregeln und Systemrichtlinien anlegen, Secrets neu
+verschlüsseln, ein Backup exportieren oder zurückspielen, das Support-Log herunterladen, SQL
+ausführen und der KI-Assistent.
 
 ## Ihre eigene Kopie
 

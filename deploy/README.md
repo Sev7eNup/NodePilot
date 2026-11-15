@@ -539,7 +539,7 @@ changed in between is refused, and the updater reports the failed rollback inste
 ## Uninstall
 
 ```powershell
-.\deploy\Uninstall-NodePilot.ps1              # logs + configuration preserved
+.\deploy\Uninstall-NodePilot.ps1              # runtime settings, keys + logs preserved; appsettings.Production.json removed
 .\deploy\Uninstall-NodePilot.ps1 -PurgeData   # everything except the database removed
 ```
 

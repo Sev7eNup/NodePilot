@@ -176,7 +176,7 @@ rule is created.
 |---|---|---|---|---|
 | `C:\Program Files\NodePilot\app\` | The API service and its dependencies | As in part A: an update swaps the directory; contains `powershell.config.json` | Required | As in part A |
 | `C:\Program Files\NodePilot\desktop\` | The Electron interface: `NodePilot.exe` plus native DLLs (`vk_swiftshader.dll`, `ffmpeg.dll`, `dxcompiler.dll`, `dxil.dll`, `libEGL.dll`, `libGLESv2.dll`, `vulkan-1.dll`), `resources\app.asar`, `*.pak`, `icudtl.dat`, `snapshot_blob.bin` | Chromium native libraries regularly produce generic heuristic hits; a single quarantine finding makes the interface unable to start | Required | Static program code, changed only by the installer/update. The residual risk equals that of any excluded program directory |
-| `C:\Program Files\NodePilot\pgsql\` | The bundled PostgreSQL (binaries, `lib`, `share`) | Read in full by `pg_ctl.exe`/`postgres.exe` at startup | Recommended | Contains 43 programs, of which NodePilot uses only six. To keep the surface small, exclude only the six processes from [B.3](#b3-processes) instead of the folder |
+| `C:\Program Files\NodePilot\pgsql\` | The bundled PostgreSQL (binaries, `lib`, `share`) | Read in full by `pg_ctl.exe`/`postgres.exe` at startup | Recommended | Contains 43 programs, of which NodePilot uses only seven. To keep the surface small, exclude only the seven processes from [B.3](#b3-processes) instead of the folder |
 | `C:\ProgramData\NodePilot\` | `pgdata\` (the database cluster), `secrets\` (database passwords plus `appsettings.runtime.json` and its rollback copies), `logs\`, `backups\`, `rollback\`, `archive\`, `desktop.json`, `jwt-secret.key`, `data-protection-keys\` | Continuous database and WAL I/O plus all runtime writes by the API | Required | As in part A. The desktop installer protects `secrets\`, including the runtime overrides, with an ACL for SYSTEM and Administrators only; the exclusion changes nothing about that access protection |
 | `%APPDATA%\NodePilot\` (per user) | The interface's Chromium profile: `Cache`, `GPUCache`, `Code Cache`, cookies | High-frequency cache I/O while the interface is in use | Recommended | Browser cache data only; no executable code |
 | `%LOCALAPPDATA%\NodePilot\` (per user) | `admin-setup.handoff` — the one-time token for the first sign-in | Read and deleted on first start | Recommended | A single short-lived text file |
@@ -190,12 +190,13 @@ rule is created.
 | `postgres.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | The database server process; continuous I/O in `pgdata\` | Required | Binds to `127.0.0.1` only, TLS is off, port from the range 47100–47149 |
 | `pg_ctl.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Service host, starting/stopping the cluster | Required | Low |
 | `initdb.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Creates the cluster — runs **only** during the first installation | Recommended | Low |
+| `pg_isready.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Readiness check of the cluster — only during installation and update | Recommended | Low |
 | `psql.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Creates the role and database — only during installation | Recommended | Low |
 | `pg_dump.exe` / `pg_restore.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Backup before each update, and rollback | Recommended | Low; they run only in the maintenance window |
 | `powershell.exe` / `pwsh.exe` | System paths | Workflow execution — identical to part A | Required | See [A.2](#a2-processes) |
 | `np.exe` / `nodepilot-mcp.exe` | `C:\Program Files\NodePilot\tools\np\`<br>`C:\Program Files\NodePilot\tools\mcp\` | The operations CLI and the MCP server, shipped since 1.2.8. Published **self-contained** in the desktop package, so each brings its own .NET runtime (~80 MB per directory) | Optional — only needed if they are used on this device | Pure HTTPS clients against the local API, no service context. Both are **not** Authenticode-signed (only the installer is) — a publisher rule does not apply, use a process/path rule. Unlike on the server, they are **not** on the `PATH` here |
 
-The remaining 37 programs in `pgsql\bin` (`pgbench.exe`, `pg_upgrade.exe`, `stackbuilder.exe`, …) are
+The remaining 36 programs in `pgsql\bin` (`pgbench.exe`, `pg_upgrade.exe`, `stackbuilder.exe`, …) are
 **never** invoked by NodePilot and need no exclusion.
 
 ### B.4 Network (informational)
@@ -279,7 +280,7 @@ For quick attribution if the exclusions were set incompletely.
 |---|---|
 | `C:\Windows\Temp\` as a whole | Writable by many processes. Exclude only the pattern `nodepilot_*.ps1` |
 | Paths that workflows write to | The file, folder, text-file, ZIP and registry activities write to freely configurable targets — potentially anywhere. Those writes are exactly what should keep being inspected. NodePilot covers this area through its own roles, folder permissions, path checks and the audit log |
-| The whole `pgsql\bin` folder | 37 of the 43 programs are never invoked. The six from [B.3](#b3-processes) are enough |
+| The whole `pgsql\bin` folder | 36 of the 43 programs are never invoked. The seven from [B.3](#b3-processes) are enough |
 | User profiles (`C:\Users\…`) | NodePilot only writes `%APPDATA%\NodePilot` and `%LOCALAPPDATA%\NodePilot` there — those two subfolders suffice |
 | `pwsh.exe`/`powershell.exe` **system-wide without a parent-process restriction** | Where the AV product supports restricting to the parent process `NodePilot.Api.exe`, that is considerably narrower and should be used |
 | Disabling script scanning / AMSI | NodePilot is not hindered by it and it should stay enabled |

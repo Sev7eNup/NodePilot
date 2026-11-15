@@ -29,7 +29,7 @@ The most important node types:
 |---|---|
 | **Trigger** | Starts the workflow |
 | **Activity** | Performs a work step |
-| **Group** | Groups nodes visually only |
+| **Group** | Groups nodes visually only; grouping a selection with `Ctrl+G` is **(Expert)** |
 | **Sticky note** | Adds a note and is not executed |
 
 ## Editing nodes
@@ -68,9 +68,9 @@ An existing edge can be re-routed to a different target without recreating it: e
 
 Disabled nodes and edges are dimmed and are not used during execution.
 
-## Adjusting the view
+## Adjusting the view **(Expert)**
 
-The view options provide the following aids when needed:
+The view options are only available in expert mode and provide the following aids when needed:
 
 - Grid and snap-to-grid
 - Different node representations and sizes

@@ -1,6 +1,6 @@
 # Audit log
 
-The audit log records security-relevant actions. Action codes follow the pattern `VERB_NOUN`. Passwords and secrets must not appear in audit details.
+The audit log records security-relevant actions. Action codes follow the pattern `NOUN_VERB`. Passwords and secrets must not appear in audit details.
 
 ## Writing
 
@@ -14,7 +14,7 @@ A write failure must **never** abort a normal mutation. The exception: arbitrary
 
 ## Audit codes
 
-The authoritative catalog lives in `NodePilot.Core.Audit.AuditActions` — the guard tests keep it complete and free of stale entries. Codes follow the pattern `VERB_NOUN`:
+The authoritative catalog lives in `NodePilot.Core.Audit.AuditActions` — the guard tests keep it complete and free of stale entries. Codes follow the pattern `NOUN_VERB`:
 
 | Area | Codes |
 |---|---|

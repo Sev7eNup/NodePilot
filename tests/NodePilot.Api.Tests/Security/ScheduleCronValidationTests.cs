@@ -41,6 +41,18 @@ public class ScheduleCronValidationTests
     }
 
     [Fact]
+    public void ValidateDefinition_YearWithinHundredYears_IsAccepted()
+        => ScheduleCronValidation
+            .ValidateDefinition(Definition($"0 0 2 1 1 ? {DateTime.Now.Year + 100}"))
+            .Should().BeNull();
+
+    [Fact]
+    public void ValidateDefinition_YearBeyondHundredYears_IsReported()
+        => ScheduleCronValidation
+            .ValidateDefinition(Definition($"0 0 2 1 1 ? {DateTime.Now.Year + 101}"))
+            .Should().NotBeNull();
+
+    [Fact]
     public void ValidateDefinition_NoCronConfigured_IsNotAnError()
     {
         const string definition =

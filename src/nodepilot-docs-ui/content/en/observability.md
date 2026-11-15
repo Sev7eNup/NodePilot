@@ -48,8 +48,8 @@ For operations and ticket diagnosis, `GET /api/diagnostics/support-log|support-l
 - `nodepilot.database.probe_cleanup_timeouts` — aborted cleanup steps of the recovery probe.
 - `nodepilot.scheduler.triggers.admission_deferred` — trigger fires whose admission was deferred because the database was unavailable; the source keeps the signal and retries it after recovery.
 - `nodepilot.audit_archive.hash_drift` — audit archive drift.
-- `nodepilot_credential_crypto_calls{operation,result}` — `encrypt`/`decrypt` × `success`/`failure`.
-- `nodepilot_credential_crypto_legacy_reads` — decrypts from the legacy provider (migration window).
+- `nodepilot.credential.crypto.calls{operation,provider,result}` — `encrypt`/`decrypt` × secret provider × `success`/`failure`.
+- `nodepilot.credential.crypto.legacy_reads` — decrypts from the legacy provider (migration window).
 
 For monitoring: `/healthz/ready` is the traffic gate and returns 503 on `Armed` or `Unavailable`.
 `/healthz/database` always answers 200 and reports `ok`, `armed` or `unavailable`, including a rough

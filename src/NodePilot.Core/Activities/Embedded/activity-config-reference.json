@@ -357,7 +357,7 @@
     "emailNotification": {
       "description": "Send an email (engine-local).",
       "configKeys": [
-        { "key": "to", "type": "string", "required": true, "description": "Recipient(s)." },
+        { "key": "to", "type": "string", "required": true, "description": "Single recipient address (lists are rejected; use one step per recipient)." },
         { "key": "subject", "type": "string", "required": true, "description": "Subject." },
         { "key": "body", "type": "string", "required": false, "description": "Body." },
         { "key": "isHtml", "type": "boolean", "required": false, "description": "Send as HTML." },

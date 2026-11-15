@@ -28,7 +28,7 @@ Rollen **Admin / Operator / Viewer**. Siehe [Authentifizierung & Rollen](../api/
 
 ## Localhost-Bypass
 
-Ohne Credentials läuft `runScript` in-process — unter der Dienstidentität der API (gMSA, bzw. `NT AUTHORITY\SYSTEM` bei LocalSystem). **Produkt-Feature, kein Guard einziehen.** Welches Konto welchen Pfad trägt: [Remote-Execution](../configuration/remote-execution).
+Ohne Zielmaschine (bzw. mit Loopback-Host und ohne Credential) läuft `runScript` lokal auf dem API-Host — unter der Dienstidentität der API (gMSA, bzw. `NT AUTHORITY\SYSTEM` bei LocalSystem), standardmäßig als eigener Windows-PowerShell-5.1-Prozess und nur mit `engine: runspace` im API-Prozess. **Produkt-Feature, kein Guard einziehen.** Welches Konto welchen Pfad trägt: [Remote-Execution](../configuration/remote-execution).
 
 ## Security-Headers (Non-Dev)
 

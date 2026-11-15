@@ -11,7 +11,7 @@ Remote-Activities werden ohne zusätzlichen Agent über WinRM ausgeführt; auf d
 
 ## Localhost-Bypass & Self-Managed-Remoting
 
-Ohne gesetzte Maschine (bzw. `targetMachineId: "localhost"` ohne Credential) läuft `runScript` engine-local im API-Host statt über eine managed WinRM-Session. **Produkt-Feature, kein Guard einziehen.** Ideal für Demos — und der Escape-Hatch für den SCOrch-Stil: das Script kann die Remote-Verbindung **selbst** aufbauen (`Invoke-Command -ComputerName SRV01 -Credential $c { … }` / `New-PSSession`), z. B. für dynamische Ziellisten oder Fan-out auf N Maschinen in einem Node.
+Ohne gesetzte Maschine (bzw. `targetMachineId: "localhost"` ohne Credential) läuft `runScript` engine-local auf dem API-Host statt über eine managed WinRM-Session — standardmäßig als eigener Windows-PowerShell-5.1-Prozess (`engine: auto`), nur mit `engine: runspace` im API-Prozess. **Produkt-Feature, kein Guard einziehen.** Ideal für Demos — und der Escape-Hatch für den SCOrch-Stil: das Script kann die Remote-Verbindung **selbst** aufbauen (`Invoke-Command -ComputerName SRV01 -Credential $c { … }` / `New-PSSession`), z. B. für dynamische Ziellisten oder Fan-out auf N Maschinen in einem Node.
 
 Trade-offs beim Self-Managen: läuft auf dem **API-Host** (der braucht Netz-/WinRM-Zugriff selbst); der DPAPI-Credential-Store ist **nicht** verdrahtet (`PSCredential` im Script bauen, Secret via `{{globals.NAME}}`); kein Machine-Targeting/-Test/-Audit; und Hardening wie `Remote:RequireWinRmSsl` + der Session-Pool **greifen nicht** — die hängen am managed WinRM-Pfad.
 
@@ -23,7 +23,7 @@ Welches Konto die WinRM-Verbindung trägt, hängt allein davon ab, ob für den S
 |---|---|
 | Credential am Node oder als Machine-Default hinterlegt | Das hinterlegte Konto (`Domain\User`) — Negotiate mit explizitem Passwort |
 | Kein Credential, echte Zielmaschine | **Dienstidentität der API** — gMSA, bzw. Computerkonto `DOMAIN\HOST$` wenn der Dienst als LocalSystem läuft (integrierte Windows-Auth) |
-| Kein Credential, Loopback-Hostname | Kein WinRM — der Node läuft engine-local im API-Prozess, damit ebenfalls unter der Dienstidentität (siehe Abschnitt oben) |
+| Kein Credential, Loopback-Hostname | Kein WinRM — der Node läuft engine-local auf dem API-Host, damit ebenfalls unter der Dienstidentität (siehe Abschnitt oben) |
 
 Die Credential-Auflösung ist **zweistufig**: Credential am Node → `DefaultCredentialId` der Maschine → Dienstidentität. Ein globales Default-Credential gibt es nicht. Wird ein Credential gelöscht, verliert die Maschine ihren Verweis darauf still und fällt auf die Dienstidentität zurück.
 

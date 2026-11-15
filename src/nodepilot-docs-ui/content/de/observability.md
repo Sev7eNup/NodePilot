@@ -48,8 +48,8 @@ Für Betriebs- und Ticketdiagnose stehen `GET /api/diagnostics/support-log|suppo
 - `nodepilot.database.probe_cleanup_timeouts` — abgebrochene Cleanup-Schritte der Recovery-Sonde.
 - `nodepilot.scheduler.triggers.admission_deferred` — Trigger-Fires, deren Zulassung zurückgestellt wurde, weil die Datenbank nicht verfügbar war; die Quelle behält das Signal und versucht es nach der Erholung erneut.
 - `nodepilot.audit_archive.hash_drift` — Audit-Archive-Drift.
-- `nodepilot_credential_crypto_calls{operation,result}` — `encrypt`/`decrypt` × `success`/`failure`.
-- `nodepilot_credential_crypto_legacy_reads` — Decrypts aus Legacy-Provider (Migration-Window).
+- `nodepilot.credential.crypto.calls{operation,provider,result}` — `encrypt`/`decrypt` × Secret-Provider × `success`/`failure`.
+- `nodepilot.credential.crypto.legacy_reads` — Decrypts aus Legacy-Provider (Migration-Window).
 
 Für Monitoring gilt: `/healthz/ready` ist das Traffic-Gate und liefert bei `Armed` oder `Unavailable`
 503. `/healthz/database` antwortet immer 200 und berichtet `ok`, `armed` oder `unavailable` inklusive

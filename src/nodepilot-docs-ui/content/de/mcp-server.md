@@ -78,8 +78,9 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
 - **Destructive-Gate:** `delete_*`, `force_unlock_workflow`, `cancel_all_executions`, `restart_service`, `test_step` werden nur bei
   `NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true` **registriert** — sonst tauchen sie nicht einmal in
   `tools/list` auf. `get_safety_status` zeigt den Modus.
-- **Secrets:** Workflow-Definitionen werden vor Tool-Output redigiert (`secret`/`apiKey`/`password`/
-  `authToken`/`bearer`/`connectionString` → `***`). Bei `publish`/`update`/`apply_workflow_patch`
+- **Secrets:** Workflow-Definitionen werden vor Tool-Output redigiert (zum Beispiel `secret`/`apiKey`/`password`/
+  `authToken`/`bearer`/`connectionString`/`token`/`clientSecret`/`privateKey`/`Authorization`/`Cookie`
+  — insgesamt rund zwanzig Schlüssel — sowie Werte, die am Inhalt als Secret erkannt werden → `***`). Bei `publish`/`update`/`apply_workflow_patch`
   werden echte Secrets per Node-ID aus der gespeicherten Version wiederhergestellt — das `***` des
   Agenten überschreibt nie einen echten Wert. Ein `***` auf einer neuen Node- oder Edge-ID hat kein
   Original, deshalb wird der Aufruf abgelehnt und nichts gespeichert. Dasselbe gilt für eine

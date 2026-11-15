@@ -1,6 +1,6 @@
 # ADR 0011 – Database-Availability Breaker
 
-**Status:** Accepted – 2026-08-07  
+**Status:** Accepted – 2026-08-07 · Amended – 2026-11-15 (trigger metric name)  
 **Scope:** The application database failing or hanging during operation. The boot path stays
 fail-closed.
 
@@ -94,7 +94,9 @@ Signals that matter:
 
 - Metrics: `nodepilot.database.requests_rejected`, `nodepilot.database.outages`,
   `nodepilot.database.probe_cleanup_timeouts` and
-  `nodepilot.scheduler.triggers.dropped_db_unavailable`.
+  `nodepilot.scheduler.triggers.admission_deferred`. The latter replaces the original
+  `dropped_db_unavailable` (amended 2026-11-15): a trigger fire during an outage is deferred and
+  retried after recovery, not dropped.
 - Audit: exactly one `DATABASE_RECOVERED` per process-local recovery episode; no trip audit,
   because the database is not reliably writable at the moment the breaker opens.
 - Logs: the opening, real reason changes and the closing of an episode — not every probe tick.

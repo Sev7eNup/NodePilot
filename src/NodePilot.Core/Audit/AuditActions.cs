@@ -1,7 +1,7 @@
 namespace NodePilot.Core.Audit;
 
 /// <summary>
-/// The single authoritative registry of audit-event action codes (the <c>VERB_NOMEN</c> string
+/// The single authoritative registry of audit-event action codes (the <c>NOUN_VERB</c> string
 /// stored in <c>AuditLog.Action</c>).
 ///
 /// <para>Audit calls reference a constant here instead of a raw literal. The guard test

@@ -28,8 +28,10 @@ Everything the frontend does on its own works exactly as it does in a real insta
 
 Anything that needs a real server says so rather than pretending, naming the action instead of
 failing quietly. That covers running PowerShell on a host, testing a WinRM connection, sending mail,
-importing a runbook, exporting or restoring a backup, downloading the support log, running SQL and
-the AI assistant.
+importing a runbook, a workflow JSON file or a custom activity, testing a single step, resuming a
+paused run, saving server settings or testing an outbound connection, creating alert rules and
+system policies, re-encrypting secrets, exporting or restoring a backup, downloading the support
+log, running SQL and the AI assistant.
 
 ## Your own copy
 

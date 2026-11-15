@@ -68,7 +68,7 @@ The certificate with its private key has to be present in `LocalMachine\My` on e
 - **`ClusterLeaderService`** is both a `BackgroundService` (the renew loop) and an `IClusterStateProvider` ("am I the leader?").
 - Lease acquire/renew: an atomic `UPDATE … WHERE OwnerNodeId = me AND ExpiresAt > now` — two nodes cannot be leader at the same time.
 - **The database clock, not the application clock:** before every lease operation, `SYSUTCDATETIME()` (SQL Server) or `now() AT TIME ZONE 'UTC'` (Postgres) is read → no split brain with diverging wall clocks.
-- **`LeaderRequiredMiddleware`** blocks every mutating path on a follower with 503. Permitted: `/healthz/*`, `/openapi/*` and read-only endpoints. A `[LeaderOnly]` attribute on an endpoint wins over the path heuristic — for endpoints whose HTTP verb looks harmless but which change state (webhook ingress via `GET`).
+- **`LeaderRequiredMiddleware`** blocks every mutating path on a follower with 503. Permitted: `/healthz/*`, `/openapi/*` and read-only endpoints. A `[LeaderOnly]` attribute on an endpoint wins over the path heuristic — for endpoints whose HTTP verb looks harmless but which change state (webhook ingress via `GET`). `/hubs/*` (SignalR, including the `GET` handshake), `/signin-oidc` and `/api/auth/oidc*` are always leader-only, whatever the method — real-time connections and OIDC sign-in must go through the leader.
 - **The `ClusterLeader` table** with the single-row sentinel `Resource='primary'`, seeded in the `MigrationBootstrapper`.
 
 ## Health probe

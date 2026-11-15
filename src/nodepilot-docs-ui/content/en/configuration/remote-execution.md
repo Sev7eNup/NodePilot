@@ -11,7 +11,7 @@ Remote activities are executed over WinRM without an additional agent; nothing i
 
 ## Localhost bypass & self-managed remoting
 
-Without a machine set (or with `targetMachineId: "localhost"` and no credential), `runScript` runs engine-local in the API host instead of through a managed WinRM session. **This is a product feature; do not introduce a guard against it.** Ideal for demos — and the escape hatch for the SCOrch style: the script can establish the remote connection **itself** (`Invoke-Command -ComputerName SRV01 -Credential $c { … }` / `New-PSSession`), for example for dynamic target lists or fan-out to N machines from one node.
+Without a machine set (or with `targetMachineId: "localhost"` and no credential), `runScript` runs engine-local on the API host instead of through a managed WinRM session — by default as a separate Windows PowerShell 5.1 process (`engine: auto`), in-process only with `engine: runspace`. **This is a product feature; do not introduce a guard against it.** Ideal for demos — and the escape hatch for the SCOrch style: the script can establish the remote connection **itself** (`Invoke-Command -ComputerName SRV01 -Credential $c { … }` / `New-PSSession`), for example for dynamic target lists or fan-out to N machines from one node.
 
 The trade-offs of managing it yourself: it runs on the **API host** (which then needs network/WinRM access itself); the DPAPI credential store is **not** wired up (build the `PSCredential` in the script, take the secret from `{{globals.NAME}}`); there is no machine targeting, testing or auditing; and hardening such as `Remote:RequireWinRmSsl` and the session pool **do not apply** — those hang off the managed WinRM path.
 
@@ -23,7 +23,7 @@ Which account carries the WinRM connection depends solely on whether a credentia
 |---|---|
 | Credential set on the node or as the machine default | The stored account (`Domain\User`) — Negotiate with an explicit password |
 | No credential, real target machine | **The service identity of the API** — the gMSA, or the computer account `DOMAIN\HOST$` when the service runs as LocalSystem (integrated Windows authentication) |
-| No credential, loopback host name | No WinRM at all — the node runs engine-local in the API process and therefore also under the service identity (see the section above) |
+| No credential, loopback host name | No WinRM at all — the node runs engine-local on the API host and therefore also under the service identity (see the section above) |
 
 Credential resolution has **two levels**: credential on the node → the machine's `DefaultCredentialId` → the service identity. There is no global default credential. Deleting a credential silently clears the machine's reference to it, and the machine falls back to the service identity.
 
