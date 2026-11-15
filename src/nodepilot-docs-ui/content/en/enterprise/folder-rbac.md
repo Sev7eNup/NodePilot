@@ -14,16 +14,16 @@ Folder RBAC is active by default. Existing users receive a permission on the roo
 
 - **Permissions inherit downwards:** `FolderEditor` on `/Finance` applies to `/Finance/Reports` and deeper without further grants.
 - **Highest role wins:** explicit grants on subfolders do **not** override — editor on `/Finance` + viewer on `/Finance/Reports` → editor applies everywhere.
-- **A global admin** bypasses everything; global operators/viewers are **capped** by their `UserRole` — a viewer with FolderAdmin gets no run/edit/admin rights.
+- **A global admin** bypasses everything; global operators/viewers are **capped** by their `UserRole` — a viewer with FolderAdmin gets no run/edit/admin rights, and an operator with FolderAdmin gets no admin rights (managing permissions stays with global admins).
 - **Existence hiding:** unreadable workflows return `404` instead of `403`, so their existence is not revealed.
 - **Capabilities per workflow** (`canRead`, `canRun`, `canEdit`, `canAdmin`) in list/detail responses — the UI only shows buttons where the user can actually use them.
-- **Sub-workflow authorization at runtime:** when workflow A starts workflow B, the engine checks the effective principal's read permission on B's folder.
+- **Sub-workflow authorization at runtime:** when workflow A starts workflow B, the effective principal needs the global role Operator or Admin; if B lives in a different folder, an operator additionally needs at least `FolderOperator` on B's folder chain.
 - **SignalR group routing:** execution events only reach the hub groups of users who may read the workflow.
 - **Authority-scoped groups:** `PrincipalType=Group` stores `PrincipalAuthority` plus `PrincipalKey`. AD uses the canonical AD authority and a Windows SID; OIDC/SCIM uses the exact HTTPS issuer and the opaque group ID. Groups are evaluated exclusively with server-side membership snapshots, never from JWT claims.
 
 ## Granting permissions in the UI
 
-On the **Workflows** page there are two routes to a folder's permissions dialog — both appear only if the caller has `FolderAdmin` on that folder (global admins always):
+On the **Workflows** page there are two routes to a folder's permissions dialog — both appear only for global admins (a `FolderAdmin` grant confers no admin rights on global operators or viewers):
 
 - **Right-click** the folder in the tree → **Permissions…**. This also works on the root folder `\`, which can be neither renamed nor deleted and therefore has no other context-menu entry.
 - **Click the folder** (select it) → the **Permissions…** button at the bottom of the folder card.

@@ -385,13 +385,15 @@ FolderViewer < FolderOperator < FolderEditor < FolderAdmin
 - **Highest role wins:** a grant on a subfolder does **not override** downwards.
   Editor on `/Finance` + Viewer on `/Finance/Reports` results in Editor on both.
 - **Global Admin bypasses everything**. Global Operator/Viewer are **capped** by their `UserRole`:
-  a global Viewer with FolderAdmin still gets no Run/Edit/Admin.
+  a global Viewer with FolderAdmin still gets no Run/Edit/Admin, a global Operator with
+  FolderAdmin no Admin (managing permissions stays with global admins).
 - **Existence hiding:** unreadable workflows return `404` instead of `403`, so their mere
   existence is not disclosed.
 - **Capabilities per row** (`canRead`, `canRun`, `canEdit`, `canAdmin`) in list and
   detail responses. The UI only shows buttons the caller is allowed to use.
 - **Sub-workflow authorization at runtime:** if workflow A starts workflow B, the
-  engine checks the effective principal's read permission on B's folder.
+  effective principal needs the global role Operator or Admin; if B lives in a different
+  folder, an operator additionally needs at least `FolderOperator` on B's folder chain.
 - **SignalR group routing:** execution events only reach the hub groups of users who
   are allowed to read the workflow.
 - **Authority-scoped groups:** `PrincipalType=Group` stores `PrincipalAuthority` plus
@@ -399,7 +401,7 @@ FolderViewer < FolderOperator < FolderEditor < FolderAdmin
   exact HTTPS issuer and the opaque group ID. Evaluation is done exclusively against
   server-side membership snapshots, never against JWT claims.
 
-A FolderAdmin assigns grants in the UI on the **Workflows** page: right-click the
+A global admin assigns grants in the UI on the **Workflows** page: right-click the
 folder in the tree → **Permissions…** (also works on Root `\`), or select the folder
 and use the **Permissions…** button at the bottom of the folder card.
 

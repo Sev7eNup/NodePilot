@@ -14,16 +14,16 @@ Folder-RBAC ist standardmäßig aktiv. Bestehende Benutzer erhalten beim Upgrade
 
 - **Permissions vererben nach unten:** `FolderEditor` auf `/Finance` gilt für `/Finance/Reports` und tiefer ohne weitere Grants.
 - **Highest-Role-Wins:** explizite Grants auf Subord-Ordnern **override** nicht — Editor auf `/Finance` + Viewer auf `/Finance/Reports` → Editor gilt überall.
-- **Global Admin** bypassed alles; globale Operator/Viewer werden durch ihre `UserRole` **gecappt** — ein Viewer mit FolderAdmin bekommt keine Run/Edit/Admin-Rechte.
+- **Global Admin** bypassed alles; globale Operator/Viewer werden durch ihre `UserRole` **gecappt** — ein Viewer mit FolderAdmin bekommt keine Run/Edit/Admin-Rechte, ein Operator mit FolderAdmin keine Admin-Rechte (Berechtigungen verwalten bleibt globalen Admins vorbehalten).
 - **Existence Hiding:** Nicht lesbare Workflows liefern `404` statt `403`, damit ihre Existenz nicht offengelegt wird.
 - **Capabilities pro Workflow** (`canRead`, `canRun`, `canEdit`, `canAdmin`) in List/Detail-Responses — die UI zeigt Buttons nur, wo der User sie nutzen kann.
-- **Sub-Workflow-Authorization zur Laufzeit:** wenn Workflow A Workflow B startet, prüft die Engine die Read-Permission des effektiven Principals auf B's Folder.
+- **Sub-Workflow-Authorization zur Laufzeit:** wenn Workflow A Workflow B startet, braucht der effektive Principal die globale Rolle Operator oder Admin; liegt B in einem anderen Ordner, braucht ein Operator zusätzlich mindestens `FolderOperator` auf der Ordnerkette von B.
 - **SignalR-Group-Routing:** Execution-Events landen nur in Hub-Groups von Usern, die den Workflow lesen dürfen.
 - **Authority-scoped Gruppen:** `PrincipalType=Group` speichert `PrincipalAuthority` plus `PrincipalKey`. AD nutzt die kanonische AD-Authority und eine Windows-SID; OIDC/SCIM nutzt den exakten HTTPS-Issuer und die opake Gruppen-ID. Gruppen werden ausschließlich mit serverseitigen Membership-Snapshots ausgewertet, nie aus JWT-Claims.
 
 ## Grants in der UI vergeben
 
-Auf der Seite **Workflows** gibt es zwei Wege zum Berechtigungs-Dialog eines Ordners — beide erscheinen nur, wenn der Aufrufer `FolderAdmin` auf diesem Ordner hat (globale Admins immer):
+Auf der Seite **Workflows** gibt es zwei Wege zum Berechtigungs-Dialog eines Ordners — beide erscheinen nur für globale Admins (ein `FolderAdmin`-Grant verleiht globalen Operatoren und Viewern keine Admin-Rechte):
 
 - **Rechtsklick** auf den Ordner im Baum → **Berechtigungen…**. Funktioniert auch auf dem Root-Ordner `\`, der weder umbenannt noch gelöscht werden kann und deshalb sonst keinen Kontextmenü-Eintrag hat.
 - **Ordner anklicken** (auswählen) → Button **Berechtigungen…** am unteren Rand der Ordner-Karte.
