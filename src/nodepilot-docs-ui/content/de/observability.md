@@ -12,7 +12,7 @@ Mehrere Zeilen desselben Workflows sind wiederverwendete **Parallelspuren**. Ein
 
 ## OpenTelemetry (opt-in)
 
-OpenTelemetry ist opt-in. Setup in `NodePilot.Telemetry` — Constants, Options, `PrometheusClient`.
+OpenTelemetry ist opt-in. Setup in `NodePilot.Telemetry` (Options, `PrometheusClient`); Meter- und Source-Namen in `NodePilot.Core.Telemetry.TelemetryConstants`.
 
 ## Prometheus-Scrape
 
@@ -30,6 +30,7 @@ OpenTelemetry ist opt-in. Setup in `NodePilot.Telemetry` — Constants, Options,
 | `GET /api/observability/query` | PromQL-Query |
 | `GET /api/observability/query_range` | PromQL-Range-Query |
 | `GET /api/observability/summary` | Zusammenfassung |
+| `GET /api/observability/dashboards/{key}` | Natives Metrik-Dashboard aus festem Katalog (alle Rollen) |
 
 CLI: `np observability summary|query|query-range`.
 

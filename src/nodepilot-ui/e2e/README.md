@@ -61,12 +61,12 @@ release acceptance are in [test reliability](../../../docs/testing/test-reliabil
   state (so mid-test toggles survive `page.reload`).
   **Any seed that replaces the whole `nodepilot-design` key must re-assert that pin** — that is why
   `seedExpertMode` repeats it.
-- **The preview build renders the UI in English** (i18n falls back to EN). All
+- **The preview build renders the UI in English** (language detection picks up the browser's en-US locale). All
   activity- and trigger-config panels are translated for both DE and EN. Prefer
   language-agnostic selectors anyway — `getByRole` with bilingual regex
   (`/save|speichern/i`), input attributes, `getByText(/…/i)` — since a few
   non-config editor strings may still render German under EN.
-- **The right slot (properties / edge inspector / AI chat) is a fixed 450 px and narrows the
+- **The right slot (properties / edge inspector / AI chat) opens at 450 px (resizable 280–640 px) and narrows the
   canvas.** React Flow keeps its viewport transform when the pane shrinks, so nodes that `fitView`
   centred on the full-width canvas end up beside the pane and `onlyRenderVisibleElements` unmounts
   them — a locator for such a node then hangs. `refitCanvas(page)` from `fixtures/canvas.ts` fits

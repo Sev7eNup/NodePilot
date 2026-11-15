@@ -12,7 +12,7 @@ Multiple rows for one workflow are reusable **parallel tracks**. An empty space 
 
 ## OpenTelemetry (opt-in)
 
-OpenTelemetry is opt-in. The setup is in `NodePilot.Telemetry` — constants, options, `PrometheusClient`.
+OpenTelemetry is opt-in. The setup is in `NodePilot.Telemetry` (options, `PrometheusClient`); the meter and source names are in `NodePilot.Core.Telemetry.TelemetryConstants`.
 
 ## Prometheus scraping
 
@@ -30,6 +30,7 @@ OpenTelemetry is opt-in. The setup is in `NodePilot.Telemetry` — constants, op
 | `GET /api/observability/query` | PromQL query |
 | `GET /api/observability/query_range` | PromQL range query |
 | `GET /api/observability/summary` | Summary |
+| `GET /api/observability/dashboards/{key}` | Native metrics dashboard from a fixed catalogue (all roles) |
 
 CLI: `np observability summary|query|query-range`.
 
