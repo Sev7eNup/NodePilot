@@ -23,6 +23,14 @@ public sealed class EffectiveSizingDto
     /// restart.</summary>
     public required bool DesiredManualTuning { get; init; }
 
+    /// <summary>Whether the process booted in experimental mode. The script process limit is in
+    /// force only then.</summary>
+    public required bool ExperimentalMode { get; init; }
+
+    /// <summary>Experimental mode as currently saved — differs after a save until
+    /// restart.</summary>
+    public required bool DesiredExperimentalMode { get; init; }
+
     public required int ProcessorCount { get; init; }
 
     /// <summary>Detected usable memory, or null when detection failed (CPU-only sizing).</summary>
@@ -46,4 +54,11 @@ public sealed class SizedValueDto
 
     /// <summary><c>Cpu</c> | <c>Ram</c> | <c>Floor</c> | <c>Ceiling</c> | <c>Manual</c>.</summary>
     public required string Bound { get; init; }
+
+    /// <summary>What automatic sizing would use. Only set for the step limit.</summary>
+    public int? Automatic { get; init; }
+
+    /// <summary>A hand-set value above this is far past automatic sizing and the UI warns. Only
+    /// set for the step limit.</summary>
+    public int? WarnAbove { get; init; }
 }

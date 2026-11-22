@@ -20,6 +20,14 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     private readonly ILogger _logger;
     private readonly int _maxCapturedOutputChars;
 
+    // Bounds how many script processes exist at once, shared by every process engine. Null means
+    // no bound: experimental mode is off, or a test or tool built the engine directly.
+    private readonly SemaphoreSlim? _processSlots;
+
+    // Experimental mode (Engine:ExperimentalMode): the same command line for every script. Off,
+    // a script starts as it did up to 1.5.4.
+    private readonly bool _experimentalMode;
+
     // Grace period for the stdout/stderr drain AFTER the script process has exited (isolated: and
     // its job tree has been terminated). A read still open then is held by an inherited pipe
     // handle: a background program the script started, or a leak in an unrelated process (see
@@ -31,8 +39,17 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     public bool IsAvailable { get; }
 
     /// <summary>
-    /// Command-line arguments that run the wrapped script at <paramref name="scriptPath"/> the way
-    /// a remote step runs over WinRM. The bootstrap:
+    /// Environment variable that names the script file for the bootstrap. The bootstrap removes it
+    /// before the script runs, so neither the script nor its child processes see it.
+    /// </summary>
+    internal const string ScriptPathVariable = "NODEPILOT_SCRIPT_PATH";
+
+    /// <summary>
+    /// Command-line arguments that run the wrapped script the way a remote step runs over WinRM.
+    /// In experimental mode the line is the same for every script and the script file is named by
+    /// <see cref="ScriptPathVariable"/>: antivirus products judge a process start by its command
+    /// line and look up each new one, which delays every start. Otherwise the line carries the
+    /// path of the script file, as it did up to 1.5.4. The bootstrap:
     /// <list type="bullet">
     /// <item>reads the script as text and deletes the file at once, so injected values stay on disk
     /// only for that moment;</item>
@@ -46,12 +63,19 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     /// </list>
     /// `exit N` still ends the process with N.
     /// </summary>
-    internal static string BootstrapArguments(string scriptPath)
+    internal static readonly string ConstantBootstrapArguments = BuildBootstrapArguments(
+        $"$__npPath = $env:{ScriptPathVariable}\n$env:{ScriptPathVariable} = $null");
+
+    /// <summary>The arguments for one script file, with its path on the command line.</summary>
+    internal static string BootstrapArgumentsFor(string scriptPath)
+        => BuildBootstrapArguments($"$__npPath = {PowerShellQuoter.Literal(scriptPath)}");
+
+    private static string BuildBootstrapArguments(string pathAssignment)
     {
         var bootstrap = $$"""
             try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }
             $ProgressPreference = 'SilentlyContinue'
-            $__npPath = {{PowerShellQuoter.Literal(scriptPath)}}
+            {{pathAssignment}}
             try { $__npText = [System.IO.File]::ReadAllText($__npPath, [System.Text.Encoding]::UTF8) }
             finally { try { [System.IO.File]::Delete($__npPath) } catch { } }
             $__npErrorSeen = $false
@@ -116,8 +140,11 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     // NodePilot.Engine.Tests access; production still uses the CreatePwsh/CreateWindowsPowerShell
     // factory methods.
     internal ProcessExecutionEngine(string engineType, string executable, bool available, ILogger logger,
-        TimeSpan? isolatedDrainGrace = null, int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit)
+        TimeSpan? isolatedDrainGrace = null, int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit,
+        SemaphoreSlim? processSlots = null, bool experimentalMode = false)
     {
+        _processSlots = processSlots;
+        _experimentalMode = experimentalMode;
         EngineType = engineType;
         _executable = executable;
         IsAvailable = available;
@@ -128,20 +155,64 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     }
 
     public static ProcessExecutionEngine CreatePwsh(ILogger logger, TimeSpan? isolatedDrainGrace = null,
-        int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit)
+        int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit, SemaphoreSlim? processSlots = null,
+        bool experimentalMode = false)
     {
         var path = FindExecutable("pwsh.exe", "pwsh");
-        return new ProcessExecutionEngine("pwsh", path ?? "pwsh.exe", path is not null, logger, isolatedDrainGrace, maxCapturedOutputChars);
+        return new ProcessExecutionEngine("pwsh", path ?? "pwsh.exe", path is not null, logger, isolatedDrainGrace, maxCapturedOutputChars, processSlots, experimentalMode);
     }
 
     public static ProcessExecutionEngine CreateWindowsPowerShell(ILogger logger, TimeSpan? isolatedDrainGrace = null,
-        int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit)
+        int maxCapturedOutputChars = ScriptOutputBudget.DefaultLimit, SemaphoreSlim? processSlots = null,
+        bool experimentalMode = false)
     {
         var path = FindExecutable("powershell.exe", "powershell");
-        return new ProcessExecutionEngine("powershell", path ?? "powershell.exe", path is not null, logger, isolatedDrainGrace, maxCapturedOutputChars);
+        return new ProcessExecutionEngine("powershell", path ?? "powershell.exe", path is not null, logger, isolatedDrainGrace, maxCapturedOutputChars, processSlots, experimentalMode);
     }
 
     public async Task<PowerShellExecutionResult> ExecuteAsync(PowerShellExecutionRequest request, CancellationToken ct)
+    {
+        if (_processSlots is null) return await ExecuteWithSlotAsync(request, ct);
+
+        var waited = await AcquireSlotAsync(_processSlots, request.ProcessWaitTimeout, ct);
+        try
+        {
+            var result = await ExecuteWithSlotAsync(request, ct);
+            result.ProcessWait = waited;
+            return result;
+        }
+        finally
+        {
+            _processSlots.Release();
+        }
+    }
+
+    /// <summary>
+    /// Takes a script process slot and returns how long that took. The wait happens before the
+    /// script's own timeout starts. The step keeps its place in the global step limit meanwhile:
+    /// the waiting steps are what holds the load on everything else back.
+    /// </summary>
+    private async Task<TimeSpan> AcquireSlotAsync(SemaphoreSlim slots, TimeSpan? waitTimeout, CancellationToken ct)
+    {
+        if (slots.Wait(0)) return TimeSpan.Zero;
+
+        _logger.LogInformation("{Engine}: every script process is in use; the script waits for a free one", EngineType);
+        var sw = Stopwatch.StartNew();
+        bool acquired;
+        try
+        {
+            acquired = await slots.WaitAsync(waitTimeout ?? System.Threading.Timeout.InfiniteTimeSpan, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+        }
+
+        if (!acquired) throw new ScriptProcessWaitTimeoutException(waitTimeout!.Value);
+        return sw.Elapsed;
+    }
+
+    private async Task<PowerShellExecutionResult> ExecuteWithSlotAsync(PowerShellExecutionRequest request, CancellationToken ct)
     {
         if (request.Isolated)
         {
@@ -170,7 +241,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             var psi = new ProcessStartInfo
             {
                 FileName = _executable,
-                Arguments = BootstrapArguments(tempScript),
+                Arguments = _experimentalMode ? ConstantBootstrapArguments : BootstrapArgumentsFor(tempScript),
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -182,6 +253,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 StandardErrorEncoding = Encoding.UTF8,
             };
             ChildProcessEnvironment.Apply(psi.Environment);
+            if (_experimentalMode) psi.Environment[ScriptPathVariable] = tempScript;
 
             // Waits for the script process itself, not for pipe EOF like WaitForExitAsync does: a
             // background program the script started without a new window (Start-Process
@@ -301,8 +373,12 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             await WritePrivateScriptAsync(tempScript, wrappedScript, ct);
 
             _logger.LogDebug("Starting isolated {Engine}: {File}", EngineType, tempScript);
-            using var launched = IsolatedProcessLauncher.Launch(
-                _executable, BootstrapArguments(tempScript), request.WorkingDirectory ?? Environment.CurrentDirectory, request.IsolationLimits);
+            using var launched = _experimentalMode
+                ? IsolatedProcessLauncher.Launch(
+                    _executable, ConstantBootstrapArguments, request.WorkingDirectory ?? Environment.CurrentDirectory, request.IsolationLimits,
+                    new Dictionary<string, string> { [ScriptPathVariable] = tempScript })
+                : IsolatedProcessLauncher.Launch(
+                    _executable, BootstrapArgumentsFor(tempScript), request.WorkingDirectory ?? Environment.CurrentDirectory, request.IsolationLimits);
 
             // Start draining the pipes IMMEDIATELY and concurrently with the wait — a noisy script
             // would otherwise deadlock once the pipe buffers fill (child blocks writing, we block

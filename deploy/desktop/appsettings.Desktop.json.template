@@ -87,6 +87,8 @@
     "Debug": { "MaxPauseMinutes": 10 },
     "MaxConcurrentExecutions": { "Global": 200, "PerUser": 100 },
     "MaxConcurrentSteps": 32,
+    "MaxScriptProcesses": 0,
+    "ExperimentalMode": false,
     "IsolatedDrainGraceSeconds": 5,
     "Runspace": { "MinRunspaces": 8, "MaxRunspaces": 64 }
   },

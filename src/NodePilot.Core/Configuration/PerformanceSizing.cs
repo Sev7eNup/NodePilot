@@ -26,7 +26,7 @@ public enum SizingBound
     Floor,
     /// <summary>Result would have exceeded the maximum safe value.</summary>
     Ceiling,
-    /// <summary>Taken verbatim from configuration because manual tuning is switched on.</summary>
+    /// <summary>Taken verbatim from configuration.</summary>
     Manual,
 }
 
@@ -52,6 +52,32 @@ public sealed record PerformancePlan
     public required SizedValue MinWorkerThreads { get; init; }
     public required SizedValue MinIoCompletionThreads { get; init; }
     public required SizedValue DispatchWorkerCount { get; init; }
+
+    /// <summary>
+    /// How many PowerShell processes for local script steps may exist at once. Derived from the
+    /// detected CPU and memory unless <c>Engine:MaxScriptProcesses</c> sets a value; that key
+    /// applies with and without manual tuning. In force only in <see cref="ExperimentalMode"/>.
+    /// </summary>
+    public required SizedValue MaxScriptProcesses { get; init; }
+
+    /// <summary>
+    /// <c>Engine:ExperimentalMode</c>. On: local scripts start with the same command line every
+    /// time and their processes are limited to <see cref="MaxScriptProcesses"/>. Off (the
+    /// default): local scripts run as they did up to 1.5.4.
+    /// </summary>
+    public bool ExperimentalMode { get; init; }
+
+    /// <summary>The step limit automatic sizing would use on this hardware.</summary>
+    public required int AutomaticMaxConcurrentSteps { get; init; }
+
+    /// <summary>
+    /// True when the step limit was set by hand to more than
+    /// <see cref="PerformanceSizing.ManualStepWarningFactor"/> times the automatic one. The
+    /// startup log and the settings page then warn.
+    /// </summary>
+    public bool StepLimitFarAboveAutomatic =>
+        MaxConcurrentSteps.Bound == SizingBound.Manual
+        && MaxConcurrentSteps.Value > (long)AutomaticMaxConcurrentSteps * PerformanceSizing.ManualStepWarningFactor;
 
     // Engine:MaxConcurrentExecutions is deliberately absent. Those values are safety caps
     // against trigger loops and sub-workflow cascades, not throughput levers, so deriving them
@@ -102,6 +128,23 @@ public static class PerformanceSizing
     internal const long RunspaceCostBytes = 8L * 1024 * 1024;
     internal const long StepCostBytes = 256L * 1024;
 
+    // PowerShell processes for local script steps run outside this process and outside the app
+    // budget. Together they may take this share of the detected memory, and there are never more
+    // per core than the in-process pool has runspaces: more of them only slow each other down.
+    internal const int ScriptProcessesPerCore = 4;
+    internal const double ServerScriptProcessShare = 0.40;
+    internal const double DesktopScriptProcessShare = 0.15;
+    internal const long ScriptProcessCostBytes = 80L * 1024 * 1024;
+    internal const int ScriptProcessesFloor = 8;
+
+    /// <summary>
+    /// A hand-set step limit above this multiple of the automatic one is reported. Measured on
+    /// an 8-core server at 2.3 times the automatic limit: the same load took as long, steps that
+    /// run inside the service ran into their timeouts, and the service needed several times the
+    /// memory.
+    /// </summary>
+    public const int ManualStepWarningFactor = 2;
+
     /// <summary>
     /// Below this, memory detection counts as failed rather than merely small: no supported host
     /// runs NodePilot in under 1 GB, so a lower reading is meaningless. Public because the
@@ -111,7 +154,8 @@ public static class PerformanceSizing
 
     /// <summary>
     /// Builds the plan. <paramref name="configured"/> holds the operator's explicit values and is
-    /// read only when <paramref name="manualTuning"/> is set; a key missing there falls back to
+    /// read only when <paramref name="manualTuning"/> is set, except for the script process
+    /// limit, which is read in both modes; a key missing there falls back to
     /// the automatic value, so a partly filled manual section cannot produce nonsense.
     /// </summary>
     public static PerformancePlan Create(
@@ -147,20 +191,42 @@ public static class PerformanceSizing
                 MinWorkerThreads = threads,
                 MinIoCompletionThreads = threads,
                 DispatchWorkerCount = workers,
+                MaxScriptProcesses = Manual(configured, ConfigKeys.MaxScriptProcesses, ScriptProcesses(resources, cores, steps)),
+                AutomaticMaxConcurrentSteps = steps.Value,
             };
         }
 
+        var manualSteps = Manual(configured, ConfigKeys.MaxConcurrentSteps, steps);
         return new PerformancePlan
         {
             ManualTuning = true,
             Resources = resources,
             MinRunspaces = Manual(configured, ConfigKeys.MinRunspaces, minRunspaces),
             MaxRunspaces = Manual(configured, ConfigKeys.MaxRunspaces, maxRunspaces),
-            MaxConcurrentSteps = Manual(configured, ConfigKeys.MaxConcurrentSteps, steps),
+            MaxConcurrentSteps = manualSteps,
             MinWorkerThreads = Manual(configured, ConfigKeys.MinWorkerThreads, threads),
             MinIoCompletionThreads = Manual(configured, ConfigKeys.MinIoCompletionThreads, threads),
             DispatchWorkerCount = Manual(configured, ConfigKeys.DispatchWorkerCount, workers),
+            MaxScriptProcesses = Manual(configured, ConfigKeys.MaxScriptProcesses, ScriptProcesses(resources, cores, manualSteps)),
+            AutomaticMaxConcurrentSteps = steps.Value,
         };
+    }
+
+    /// <summary>
+    /// The script process limit: the smaller of what the cores and the memory share allow, and
+    /// never more than the steps that can run at once.
+    /// </summary>
+    private static SizedValue ScriptProcesses(DetectedResources resources, int cores, SizedValue steps)
+    {
+        int? ramValue = null;
+        if (resources.UsableMemoryBytes is { } total && total >= MinPlausibleMemoryBytes)
+        {
+            var share = resources.IsDesktop ? DesktopScriptProcessShare : ServerScriptProcessShare;
+            ramValue = (int)Math.Min(int.MaxValue, (long)(total * share) / ScriptProcessCostBytes);
+        }
+
+        var sized = Resolve(cores * ScriptProcessesPerCore, ramValue, ScriptProcessesFloor, int.MaxValue);
+        return sized.Value > steps.Value ? new SizedValue(steps.Value, SizingBound.Ceiling) : sized;
     }
 
     /// <summary>
@@ -214,14 +280,16 @@ public static class PerformanceSizing
         public const string MinRunspaces = "Engine:Runspace:MinRunspaces";
         public const string MaxRunspaces = "Engine:Runspace:MaxRunspaces";
         public const string MaxConcurrentSteps = "Engine:MaxConcurrentSteps";
+        public const string MaxScriptProcesses = "Engine:MaxScriptProcesses";
+        public const string ExperimentalMode = "Engine:ExperimentalMode";
         public const string MinWorkerThreads = "Threading:MinWorkerThreads";
         public const string MinIoCompletionThreads = "Threading:MinIoCompletionThreads";
         public const string DispatchWorkerCount = "ExecutionDispatch:WorkerCount";
 
         public static readonly string[] All =
         [
-            MinRunspaces, MaxRunspaces, MaxConcurrentSteps, MinWorkerThreads, MinIoCompletionThreads,
-            DispatchWorkerCount,
+            MinRunspaces, MaxRunspaces, MaxConcurrentSteps, MaxScriptProcesses, MinWorkerThreads,
+            MinIoCompletionThreads, DispatchWorkerCount,
         ];
     }
 }

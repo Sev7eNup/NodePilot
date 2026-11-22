@@ -83,6 +83,8 @@ const SECTIONS: Record<string, unknown> = {
     debug: { maxPauseMinutes: 10 },
     maxConcurrentExecutions: { global: 5000, perUser: 2000 },
     maxConcurrentSteps: 600,
+    maxScriptProcesses: 0,
+    experimentalMode: false,
     runspace: { minRunspaces: 256, maxRunspaces: 768 },
   },
   ExecutionDispatch: { workerCount: 600 },
@@ -143,11 +145,14 @@ export const settingsRoutes: Route[] = [
     json({
       manualTuning: false,
       desiredManualTuning: false,
+      experimentalMode: false,
+      desiredExperimentalMode: false,
       processorCount: 8,
       usableMemoryBytes: 32 * 1024 * MB,
       isDesktop: false,
       values: [
         { key: 'Engine:MaxConcurrentSteps', value: 600, bound: 'Cpu' },
+        { key: 'Engine:MaxScriptProcesses', value: 32, bound: 'Cpu' },
         { key: 'Engine:Runspace:MaxRunspaces', value: 768, bound: 'Ram' },
         { key: 'ExecutionDispatch:WorkerCount', value: 600, bound: 'Cpu' },
       ],

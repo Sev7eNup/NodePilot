@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Activities;
 using NodePilot.Engine.PowerShell;
+using NodePilot.Engine.Tests.Helpers;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.PowerShell;
@@ -11,13 +12,22 @@ namespace NodePilot.Engine.Tests.PowerShell;
 /// <summary>
 /// A local runScript in a Windows PowerShell process must end like the same script over WinRM:
 /// any error record fails the step, output is each object's ToString(), host and warning output
-/// are not output, and the error text is the plain message.
+/// are not output, and the error text is the plain message. Runs as the service starts scripts
+/// by default; <see cref="ProcessEngineRemoteParityExperimentalTests"/> repeats every case in
+/// experimental mode.
 /// </summary>
 public class ProcessEngineRemoteParityTests
 {
-    private readonly RunScriptActivity _activity = new(
-        new PowerShellEngineFactory(NullLoggerFactory.Instance),
-        NullLogger<RunScriptActivity>.Instance);
+    private readonly bool _experimentalMode;
+    private readonly RunScriptActivity _activity;
+
+    public ProcessEngineRemoteParityTests() : this(experimentalMode: false) { }
+
+    protected ProcessEngineRemoteParityTests(bool experimentalMode)
+    {
+        _experimentalMode = experimentalMode;
+        _activity = new RunScriptActivity(EngineFactories.Create(experimentalMode), NullLogger<RunScriptActivity>.Instance);
+    }
 
     private async Task<ActivityResult> RunAsync(string script, bool isolated, string? successExitCodes = null)
     {
@@ -72,6 +82,41 @@ public class ProcessEngineRemoteParityTests
 
         result.Success.Should().BeTrue(result.ErrorOutput);
         Lines(result.Output).Should().Equal("@{a=1}", "plain", "42");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CommandLine_IsTheSameForEveryScript_OnlyInExperimentalMode(bool isolated)
+    {
+        // The command line is what antivirus products look up per process start. In experimental
+        // mode nothing in it changes per script; otherwise it carries the script file's path, as
+        // it did up to 1.5.4.
+        var first = await RunAsync("$line = [Environment]::CommandLine; $marker = 'one'", isolated);
+        var second = await RunAsync("$line = [Environment]::CommandLine; $marker = 'two'", isolated);
+
+        first.Success.Should().BeTrue(first.ErrorOutput);
+        second.Success.Should().BeTrue(second.ErrorOutput);
+        first.OutputParameters!["line"].Should().Contain("-EncodedCommand");
+        if (_experimentalMode)
+            second.OutputParameters!["line"].Should().Be(first.OutputParameters["line"]);
+        else
+            second.OutputParameters!["line"].Should().NotBe(first.OutputParameters["line"]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScriptPathVariable_IsGoneBeforeTheScriptRuns(bool isolated)
+    {
+        var result = await RunAsync(
+            $"$seen = [string]$env:{ProcessExecutionEngine.ScriptPathVariable}; " +
+            $"$inChild = (cmd /c \"echo [%{ProcessExecutionEngine.ScriptPathVariable}%]\")",
+            isolated);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        result.OutputParameters!["seen"].Should().BeEmpty();
+        result.OutputParameters["inChild"].Should().Be($"[%{ProcessExecutionEngine.ScriptPathVariable}%]");
     }
 
     [Theory]
@@ -176,4 +221,11 @@ public class ProcessEngineRemoteParityTests
             Directory.Delete(dir, recursive: true);
         }
     }
+}
+
+/// <summary>The same cases with experimental mode on: constant command line, script file named by
+/// an environment variable.</summary>
+public class ProcessEngineRemoteParityExperimentalTests : ProcessEngineRemoteParityTests
+{
+    public ProcessEngineRemoteParityExperimentalTests() : base(experimentalMode: true) { }
 }

@@ -58,10 +58,22 @@ export type SettingsStatus = {
 export type EffectiveSizing = {
   manualTuning: boolean;
   desiredManualTuning: boolean;
+  // Booted and saved state of Engine:ExperimentalMode. The script process limit is in force
+  // only while the process booted with it on.
+  experimentalMode: boolean;
+  desiredExperimentalMode: boolean;
   processorCount: number;
   usableMemoryBytes: number | null;
   isDesktop: boolean;
-  values: { key: string; value: number; bound: 'Cpu' | 'Ram' | 'Floor' | 'Ceiling' | 'Manual' }[];
+  // `automatic` and `warnAbove` come only with the step limit: what automatic sizing would use,
+  // and the hand-set value above which the page warns.
+  values: {
+    key: string;
+    value: number;
+    bound: 'Cpu' | 'Ram' | 'Floor' | 'Ceiling' | 'Manual';
+    automatic?: number | null;
+    warnAbove?: number | null;
+  }[];
 };
 
 export type SettingsSectionResponse<TPayload> = {

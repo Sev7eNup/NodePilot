@@ -173,6 +173,13 @@ public sealed class SettingsEffectiveSizingCommand : BaseCommand<GlobalSettings>
                         "[yellow]{0} after restart[/]",
                         value.DesiredManualTuning ? "manual" : "automatic"));
             }
+            grid.AddRow("Experimental Mode", value.ExperimentalMode ? "on" : "off (script processes are not limited)");
+            if (value.DesiredExperimentalMode != value.ExperimentalMode)
+            {
+                grid.AddRow(
+                    "  Pending",
+                    string.Format("[yellow]{0} after restart[/]", value.DesiredExperimentalMode ? "on" : "off"));
+            }
             grid.AddRow("Processors", value.ProcessorCount.ToString());
             grid.AddRow(
                 "Usable Memory",

@@ -1407,3 +1407,799 @@ Fallback auf reine CPU-Dimensionierung, damit ein Messfehler nicht alles auf die
 (1,2–1,4 MB leer vs. ~8 MB unter Volllast) ist Faktor 6 breit; belastbare Werte brauchen eine
 Messreihe unter realistischem Activity-Mix, je Messpunkt eigener Prozess, nach blockierender
 Gen2-GC. Bis dahin kann die Speicher-Dimension den Plan nur **verkleinern**, nie vergrößern.
+
+## Lokale Skript-Steps: Prozessstart und Kommandozeile (Session 2026-11-18)
+
+Lab-Instanz CM1: 4 vCPU, 5 GB, Windows Server 2025, SQL Server lokal, Microsoft Defender mit
+Echtzeitschutz und Cloud-Schutz (`MAPSReporting=2`), kein Internet, Dienst unter gMSA,
+`Performance:ManualTuning=true` mit dem Hochlast-Preset (600 parallele Steps).
+
+### Befund
+
+Jeder lokale Skript-Step im eigenen Prozess brauchte rund 2 s allein für `Process.Start`, und
+`ProcessSpawnCoordinator.Gate` lässt nur einen Start zur Zeit zu. Der Dienst schaffte damit rund
+0,5 Skripte pro Sekunde, unabhängig von der Zahl der wartenden Steps.
+
+- Fünf Debugger-Proben (`cdb -pv`) des Dienstes unter Last zeigen den startenden Thread jedes
+  Mal in `ntdll!NtCreateUserProcess`, also im Kernel und nicht in .NET.
+- Der Start lässt sich ohne NodePilot aus einer Administrator-Sitzung nachstellen und hängt an
+  der Kommandozeile:
+
+  | Kommandozeile von `powershell.exe` | `Process.Start` |
+  |---|---:|
+  | `-Command "1"` | 2 ms |
+  | Bootstrap mit dem Pfad des Skripts, jedes Mal ein neuer Pfad (bisheriger Stand) | 2030–2045 ms |
+  | derselbe Bootstrap, jedes Mal dieselbe Zeile | 2034 ms, danach 2 ms |
+  | Bootstrap ohne Pfad, Pfad in einer Umgebungsvariable | 19–35 ms, danach 2 ms |
+  | kurze kodierte Zeile, jedes Mal neu | 15–17 ms |
+  | `cmd.exe` mit derselben Zeile als Text | 9–11 ms |
+
+- Defenders eigene Aufzeichnung (`New-MpPerformanceRecording`) nennt für diese Starts eine
+  Echtzeit-Signaturabfrage mit dem Schlüssel `#SLF:CMD_HSTR:General.ML.B`, ausgelöst durch
+  `powershell.exe`. Die Wartezeit von konstant 2 s passt zu einer Cloud-Abfrage ohne
+  erreichbaren Dienst; die Abfrage selbst wurde nicht mitgeschnitten.
+- Eine einmal gesehene Zeile blieb über 240 s Pause hinweg bei 2 ms.
+
+### Änderung
+
+Der Bootstrap enthält den Skriptpfad nicht mehr. Der Pfad steht in der Umgebungsvariable
+`NODEPILOT_SCRIPT_PATH`, die der Bootstrap vor dem Skript wieder entfernt. Die Kommandozeile
+ist damit für jeden Step gleich. Die Skriptdatei wird weiter beim Schreiben geprüft und ihr
+Inhalt weiter über AMSI.
+
+### Messung (CM1, Wiederverwendung aus)
+
+| | vorher | mit der Änderung |
+|---|---:|---:|
+| 5-Skript-Workflow, ein Lauf | 69–102 s | 1,6–2,0 s |
+| derselbe Workflow, 30 Läufe gleichzeitig | 459 s | 22 s |
+| `Verify-TestSuite.ps1 -Once` | 2042 s, 31 bestanden / 1 Fehlschlag | 203 s, 31 / 1 |
+| Tech-Demo XL (Laborkopie), ein Lauf | 101 s | 25 s |
+| Tech-Demo XL, 50 Läufe gleichzeitig | 805 s | 84 s |
+
+Der Suite-Fehlschlag ist in beiden Spalten `[TestSuite] waitForCondition`, Step `v4`. Die
+Step-Urteile der XL-Läufe sind bei einem Lauf gleich; bei 50 Läufen weicht `m-log-end` in einem
+Lauf ab, weil dort die Reihenfolge der drei Bahnen entscheidet.
+
+### Grenze: 500 Läufe gleichzeitig
+
+Vorher war nach 2400 s kein Lauf fertig. Mit der Änderung endeten alle 500 nach 581 s, aber
+nicht regulär: Ohne die Bremse am Prozessstart liefen bis zu 106 PowerShell-Prozesse mit
+zusammen 7 GB auf einer Maschine mit 5 GB. SQL Server nahm zeitweise keine Verbindungen mehr an,
+die meisten Läufe brachen mit Datenbankfehlern vorzeitig ab (18.763 statt rund 59.000 Steps),
+und 13 Läufe blieben als `Running` in der Datenbank stehen, ohne dass im Dienst noch etwas für
+sie lief. Bei den zwei im Log nachverfolgten Läufen war der Auslöser ein Timeout des
+Verbindungspools beim Schreiben des Endzustands, den die Verfügbarkeitsprüfung nicht als Ausfall
+wertet.
+
+Die Zahl gleichzeitiger Skriptprozesse begrenzte bis dahin allein `Engine:MaxConcurrentSteps`.
+Das Speicherbudget der automatischen Dimensionierung rechnet mit 256 KB pro Step und kennt
+diese Prozesse nicht.
+
+### Obergrenze für Skriptprozesse (2026-11-20)
+
+Die Engine begrenzt die Zahl der Skriptprozesse. Die erste Fassung rechnete nur mit dem
+Speicher: 40 % davon bei 80 MB pro Prozess, mindestens 8, nie mehr als
+`Engine:MaxConcurrentSteps`. Auf CM1 sind das 25 Prozesse. Gemessen wurde der Stand mit
+konstanter Kommandozeile, dieser Obergrenze und der Korrektur des Step-Zustands nach einem
+Datenbankausfall, Wiederverwendung aus:
+
+| | vorher | Kommandozeile allein | mit Obergrenze |
+|---|---:|---:|---:|
+| 5-Skript-Workflow, 30 Läufe gleichzeitig | 459 s | 22 s | 17 s |
+| `Verify-TestSuite.ps1 -Once` | 2042 s, 31 / 1 | 203 s, 31 / 1 | 225 s, 31 / 1 |
+| Tech-Demo XL, ein Lauf | 101 s | 25 s | 25 s |
+| Tech-Demo XL, 50 Läufe gleichzeitig | 805 s | 84 s, bis 57 Prozesse (4,3 GB) | 70 s, bis 27 Prozesse (2,0 GB) |
+| Tech-Demo XL, 500 Läufe gleichzeitig | kein Lauf nach 2400 s | 581 s, überwiegend abgebrochen | 590 s, bis 29 Prozesse (2,1 GB) |
+
+Die Step-Urteile sind bei einem Lauf gleich; bei 50 Läufen weicht wieder nur `m-log-end` ab.
+
+Der 500er-Lauf lief mit Obergrenze ohne Datenbankausfall durch, und kein Lauf blieb als
+`Running` stehen. Die Maschine ist dabei weiter überlastet: Rund 1.500 Steps der eingebauten
+Aktivitäten (`r01` bis `r12`, im In-Process-Pool) liefen in ihr Limit von 30 s, und in den
+letzten zehn Sekunden scheiterten 91 Läufe an einem Timeout des Verbindungspools, als alle
+500 gleichzeitig endeten. Mit Wiederverwendung (817 s) trat das eine nicht und das andere in
+anderer Form auf (37 Steps mit `Nullable object must have a value`).
+
+Nicht gemessen ist der Fall, in dem die Obergrenze langsamer macht: mehr gleichzeitige lange
+Skripte, als die Grenze zulässt. Dort laufen die Skripte in Schüben; bei 50 Skripten von je
+zehn Minuten auf CM1 wären das rechnerisch rund 20 statt 12 Minuten.
+
+### Speicher des Dienstes bei 500 Läufen
+
+In einem früheren 500er-Lauf wuchs der Dienst kurz vor dem Ende auf 6 GB privaten Speicher.
+Ein Lauf mit `dotnet-counters` und einem Heap-Schnappschuss (`dotnet-gcdump` bei 3 GB) ordnet
+das zu: Es ist verwalteter Speicher, überwiegend große Zeichenketten. Beim Schnappschuss lagen
+2,0 GB auf dem GC-Heap, davon rund 1 GB in 970 Zeichenketten von je 1.005.838 Bytes. Das ist
+die Ausgabe des Steps `r07-file-list` (Liste von `C:\Windows\System32`, 502.908 Zeichen), die
+jeder laufende Lauf für seine Nachfolger im Speicher hält. Vier Junctions dahinter schreiben
+die gesammelten Parameter ihrer Vorgänger noch einmal als JSON in ihre eigene Ausgabe, je rund
+774.000 Zeichen. Gespeichert werden davon nur 10.000 Zeichen pro Feld
+(`Logging:StepDetail:MaxOutputChars`). Der Large Object Heap erreichte 2,9 GB von 3,6 GB.
+
+Der Speicher hängt damit an der Zahl gleichzeitiger Läufe mal der Größe ihrer Step-Ausgaben und
+nicht an der Art, wie Skripte gestartet werden.
+
+### PowerShell 7 als Skript-Host und die CPU-Grenze (2026-11-20)
+
+PowerShell 7.6.10 wurde auf CM1 installiert. GW1 war ab hier online; `httpbin.org` ist damit
+erreichbar, die XL-Läufe nehmen einen anderen Weg als oben und sind mit den Zahlen davor nicht
+vergleichbar.
+
+Ein Workflow mit 17 Skript-Steps (Exit-Codes mit und ohne `successExitCodes`, Fehler, `throw`,
+Syntaxfehler, Timeout, Isolation, Umlaute, Variablenübergabe, Ausgabe) lieferte unter
+Windows PowerShell 5.1 und unter PowerShell 7 dieselben Urteile, Parameter und Fehlertexte.
+
+Mit 25 Prozessen liefen bei 50 XL-Läufen unter PowerShell 7 jedoch 25 Skript-Steps
+(`collect-net`, lädt drei CDXML-Module) in ihr Limit von 30 s. Ein Einzelskript dieser Art, 50
+Läufe gleichzeitig:
+
+| Skript-Host | Grenze | alle 50 fertig | Lebensdauer eines Prozesses (p50 / max) |
+|---|---:|---:|---:|
+| PowerShell 7 | 25 | 31,3 s | 12,5 s / 17,3 s |
+| PowerShell 7 | 16 | 22,9 s | 5,8 s / 7,1 s |
+| Windows PowerShell 5.1 | 25 | 12,8 s | 4,9 s / 5,7 s |
+
+Ohne Modulimporte dauert ein PowerShell-7-Prozess bei 25 gleichzeitigen 2,8 s; der reine Start
+ist nicht das Problem. Mehr Prozesse pro Kern machen jedes Skript langsamer, ohne dass mehr
+fertig werden. Die automatische Grenze ist deshalb jetzt der kleinere Wert aus vier Prozessen
+pro Kern (wie beim In-Process-Pool) und dem Speicheranteil; auf CM1 sind das 16.
+`Engine:MaxScriptProcesses` setzt die Grenze von Hand und gilt mit und ohne manuelles Tuning.
+
+| Grenze 16 | Ergebnis |
+|---|---|
+| XL, 50 Läufe, Skripte unter PowerShell 7 | 73 s, kein Skript-Timeout (mit 25: 100 s, 25 Timeouts) |
+| XL, 50 Läufe, Windows PowerShell 5.1 | 63 s |
+| XL, 500 Läufe, Windows PowerShell 5.1 | 545 s, alle 59.000 Steps erfasst, kein Datenbankfehler im Log, bis 21 Prozesse (1,5 GB) |
+| 30 Läufe mit je 5 Skripten | 15,8 s (5.1), 22,8 s (PowerShell 7) |
+| `Verify-TestSuite.ps1 -Once` | 188 s, 32 bestanden / 0 Fehlschläge (GW1 online) |
+
+Im 500er-Lauf liefen weiter Steps der eingebauten Aktivitäten in ihr Limit von 30 s (je rund
+50 bei `r01` bis `r12`, 452 bei `r07-file-list`). Ein von Hand gesetzter Wert von 6 erschien im
+Startlog als `script processes 6 (Manual)`, und es liefen nie mehr als 6 Prozesse.
+
+### Nach dem Review: zwei verworfene Varianten (2026-11-20)
+
+Ein Review schlug vor, dass ein Skript-Step seinen Platz im Step-Limit freigibt, solange er auf
+einen Skriptprozess wartet, und dass `waitForCondition` auch beim Warten auf einen Prozess sein
+`timeoutSeconds` einhält. Beides wurde gebaut und auf CM1 mit 500 XL-Läufen gefahren
+(`Engine:MaxConcurrentSteps` dort von Hand auf 600):
+
+| | Step behält seinen Platz | Step gibt seinen Platz frei, strenges Timeout |
+|---|---:|---:|
+| Dauer | 505 s | 411 s |
+| erfasste Steps | 59.000 | 44.132 |
+| Timeouts des Verbindungspools im Log | 0 | 734 |
+| `waitForCondition` gescheitert | 0 | 687, alle mit „0 attempts" |
+
+Ohne die wartenden Steps im Step-Limit liefen mehr andere Steps gleichzeitig, der
+Verbindungspool lief leer und Läufe brachen ab. Die wartenden Skript-Steps halten also die Last
+auf den Rest zurück; ein Skript-Step behält deshalb seinen Platz. Die `waitForCondition`-Steps
+(`$true`, 30 s) scheiterten, ohne dass ihre Bedingung einmal geprüft wurde, weil in 30 s kein
+Prozess frei wurde. Jetzt zählt die Wartezeit vor der ersten Prüfung nicht zum Timeout, wie bei
+einem Skript-Step; erst eine spätere Prüfung wartet höchstens so lange, wie das Timeout es
+zulässt.
+
+Endstand auf CM1: `Verify-TestSuite.ps1 -Once` 246 s mit 32 bestanden / 0 Fehlschlägen; XL mit
+50 Läufen 58 s (Windows PowerShell 5.1) und 73 s (PowerShell 7), ohne Skript-Timeout; XL mit
+500 Läufen 505 s, vollständig, ohne Datenbankfehler im Log. Dort liefen weiter Steps der
+eingebauten Aktivitäten in ihr Limit von 30 s, und 11 Aufrufe des Kind-Workflows scheiterten.
+
+### Vergleich unter gleichen Bedingungen, mit Internet (2026-11-20)
+
+Beide Stände wurden nacheinander auf CM1 installiert und mit derselben Reihe gemessen: der
+Ausgangsstand (`main`, Commit `d3c7d7c`, ohne die Änderungen dieses Abschnitts) und der
+Endstand. GW1 war online, CM1 hatte damit Internet. Vor jedem Abschnitt wartete die Reihe, bis
+die CPU eine Minute lang unter 20 % lag. `Engine:MaxConcurrentSteps` stand von Hand auf 600.
+
+| | Ausgangsstand | Endstand |
+|---|---:|---:|
+| 5-Skript-Workflow, ein Lauf (dritter von drei) | 2,5 s | 1,6 s |
+| derselbe Workflow, 30 Läufe gleichzeitig | 98,9 s | 16,7 s |
+| `Verify-TestSuite.ps1 -Once` | 299 s, 32 bestanden / 0 Fehlschläge | 188 s, 32 / 0 |
+| Tech-Demo XL (Laborkopie), ein Lauf | 10,2 s | 10,3 s |
+| Tech-Demo XL, 50 Läufe gleichzeitig | 161 s | 57 s |
+| Tech-Demo XL, 500 Läufe gleichzeitig | 1514 s | 503 s |
+
+Mit Internet kommt die Abfrage von Defender zurück, statt nach rund 2 s abzulaufen; der
+Ausgangsstand ist deshalb viel schneller als in den Messungen ohne Internet weiter oben (30
+Läufe 459 s, Suite 2042 s, 500 XL-Läufe nicht fertig nach 2400 s). Der Abstand zum Endstand ist
+entsprechend kleiner.
+
+Im 500er-Lauf erfassten beide Stände alle 59.000 Steps. Beim Ausgangsstand scheiterten nur die
+drei Steps pro Lauf, die im Lab immer scheitern (`m03-sql-select`, `m04-sql-params`,
+`final-return`). Beim Endstand liefen zusätzlich 953 Steps der eingebauten Aktivitäten in ihr
+Limit von 30 s (`r01` bis `r12` je rund 60, `r07-file-list` 459): Die Skripte halten die Läufe
+nicht mehr auseinander, die eingebauten Steps aller 500 Läufe treffen gleichzeitig auf den
+In-Process-Pool. Bei 50 Läufen trat das in keinem der beiden Stände auf.
+
+Speicher, alle 15 s gemessen:
+
+| | Ausgangsstand | Endstand |
+|---|---:|---:|
+| Dienst nach dem Start, ohne Last | 164 MB | 168 MB |
+| Dienst, 50 XL-Läufe, Spitze | 730 MB | 1.332 MB |
+| Skriptprozesse, 50 XL-Läufe, Spitze | 8 Prozesse, 348 MB | 18 Prozesse, 1.297 MB |
+| Dienst, 500 XL-Läufe, Spitze | 4.636 MB | 2.331 MB |
+| Skriptprozesse, 500 XL-Läufe, Spitze | 8 Prozesse, 481 MB | 20 Prozesse, 1.409 MB |
+| freier Arbeitsspeicher, 500 XL-Läufe, Tiefstwert | 225 MB | 365 MB |
+| Dienst fünf Minuten nach den 500 Läufen | 366 MB | 1.449 MB |
+
+Die Werte sind privater Speicher. Die Spitze des Dienstes hängt daran, wie viele Läufe
+gleichzeitig Step-Ausgaben halten. Beim Endstand laufen mehr Skriptprozesse gleichzeitig, bis
+zur Grenze von 16 (die Zählung enthält auch Prozesse der Messung selbst). Warum der Dienst beim
+Endstand fünf Minuten nach der Last noch 1,4 GB hielt und beim Ausgangsstand nicht, ist nicht
+untersucht; beim Ausgangsstand war der freie Arbeitsspeicher zuvor knapper.
+
+### 500 XL-Läufe ohne Step-Timeouts (2026-11-20)
+
+Gegenprobe zum Endstand: In der Laborkopie des XL-Workflows stand `timeoutSeconds` bei 20 Steps
+auf `0` (eingebaute Aktivitäten und Skript-Steps), sonst war alles wie im Vergleich oben. Ein
+Lauf, nicht wiederholt.
+
+| | Endstand, Timeouts 30 s | Endstand, ohne Timeouts |
+|---|---:|---:|
+| Dauer | 503 s | 589 s |
+| erfasste Steps (erwartet 59.000) | 59.000 | 41.707 |
+| Steps im Timeout | 953 | 0 |
+| abgebrochene Steps | – | 2.085 |
+| Steps, die auf `Running` stehen blieben | 0 | 14 |
+| Dienst, Spitze | 2.331 MB | 4.869 MB |
+| freier Arbeitsspeicher, Tiefstwert | 365 MB | 194 MB |
+| Logzeilen „Timeout beim Holen einer Verbindung aus dem Pool“ | 0 | 791 |
+| Logzeilen „paused until database recovery“ | 0 | 58 |
+
+Ohne Timeouts lief kein Step in ein Zeitlimit. Die Läufe wurden trotzdem nicht vollständig:
+Die Steps blieben länger offen, der Dienst wuchs auf 4,9 GB bei 5 GB Arbeitsspeicher der VM, der
+Verbindungspool zur Datenbank lief leer und die Läufe pausierten oder brachen ab. Die Timeouts
+waren bei dieser Last also nicht die einzige Grenze; sie haben den Speicherbedarf des Dienstes
+begrenzt. Was genau den Speicher hält, ist nicht untersucht. Der Dienst hielt nach dem Lauf
+3,1 GB und wurde danach neu gestartet.
+
+### Wiederholung auf 8 GB, mit automatischer Bemessung und SQL-Mindestspeicher (2026-11-20)
+
+CM1 bekam 8 GB festen Arbeitsspeicher (vorher 5 GB), sonst unverändert: 4 Kerne, Internet,
+SQL Server (Developer Edition, Obergrenze 3.072 MB) auf derselben VM. Gemessen wurden wieder
+der Ausgangsstand (`main`, Commit `d3c7d7c`) und der Endstand, jeder Lauf einmal. Vor dem Lauf
+ohne Timeouts wurde der Dienst neu gestartet.
+
+Grenzen von Hand gesetzt (`Engine:MaxConcurrentSteps` 600, 768 Runspaces, 600 Dispatch-Worker):
+
+| | Ausgangsstand | Endstand |
+|---|---:|---:|
+| 5-Skript-Workflow, 30 Läufe gleichzeitig | 105,3 s | 15,5 s |
+| `Verify-TestSuite.ps1 -Once` | 383 s, 32 bestanden / 0 Fehlschläge | 188 s, 32 / 0 |
+| Tech-Demo XL, ein Lauf | 10,1 s | 10,2 s |
+| Tech-Demo XL, 50 Läufe gleichzeitig | 156 s | 55 s |
+| Tech-Demo XL, 500 Läufe, Timeouts 30 s | 1.759 s, 59.000 Steps | 481 s, 59.000 Steps, 641 Steps im Timeout |
+| Tech-Demo XL, 500 Läufe, ohne Timeouts | 1.746 s, 59.000 Steps | 559 s, 53.713 Steps, 265 Pool-Timeouts, 62 Datenbank-Pausen |
+| Dienst, Spitze, 500 Läufe mit / ohne Timeouts | 4,5 GB / 4,9 GB | 3,0 GB / 6,4 GB |
+| Dienst fünf Minuten danach, mit / ohne Timeouts | 596 MB / 680 MB | 1.679 MB / 3.292 MB |
+
+Beim Ausgangsstand scheiterten in allen Läufen nur die drei Steps, die im Lab immer scheitern.
+Mehr Arbeitsspeicher hat das Bild von 5 GB nicht geändert: Bei 500 gleichzeitigen Läufen mit
+600 erlaubten Steps ist der Endstand schneller, aber nicht fehlerfrei. Ohne Timeouts wuchs der
+Dienst auf 6,4 GB, der SQL Server fiel von 3,0 auf 0,4 GB Arbeitssatz, und in dieser Minute
+kamen alle Datenbankfehler. Beim Ausgangsstand liefen nie mehr als 7 Skriptprozesse; die Last
+verteilte sich auf 29 Minuten. Dass der langsame Prozessstart dort als Bremse wirkt, ist die
+naheliegende Erklärung, aber nicht belegt.
+
+Automatische Bemessung (`Performance:ManualTuning` aus; auf dieser VM 128 Steps, 1–16
+Runspaces, 20 Dispatch-Worker), nur die 500 Läufe:
+
+| | Ausgangsstand | Endstand |
+|---|---:|---:|
+| 500 Läufe, Timeouts 30 s | 1.523 s, 59.000 Steps | 476 s, 59.000 Steps |
+| 500 Läufe, ohne Timeouts | 1.463 s, 59.000 Steps | 481 s, 59.000 Steps |
+| Dienst, Spitze, mit / ohne Timeouts | 1,1 GB / 1,0 GB | 1,4 GB / 1,5 GB |
+| Skriptprozesse, Spitze | 6–8 | 18–21 |
+| freier Arbeitsspeicher, Tiefstwert | 1,9 GB | 1,4 GB |
+| Dienst fünf Minuten danach, mit / ohne Timeouts | 523 MB / 626 MB | 438 MB / 859 MB |
+
+Mit automatischer Bemessung liefen beide Stände fehlerfrei: keine Steps im Timeout, keine
+Datenbankfehler, nur die drei immer scheiternden Steps pro Lauf. Der Endstand war rund dreimal
+schneller. Die Fehler oben treten also nur mit den von Hand weit hochgesetzten Grenzen auf.
+
+Gegenprobe mit `min server memory` 2.048 MB am SQL Server (Endstand, Grenzen von Hand):
+
+| | Minimum 0 | Minimum 2.048 MB |
+|---|---:|---:|
+| 500 Läufe ohne Timeouts, erfasste Steps | 53.713 | 58.908 |
+| Pool-Timeouts / Datenbank-Pausen | 265 / 62 | 2 / 0 |
+| Dienst, Spitze | 6,4 GB | 7,1 GB |
+| SQL Server, kleinster Arbeitssatz | 0,4 GB | 1,1 GB |
+| 500 Läufe mit Timeouts, Steps im Timeout | 641 | 895 |
+
+Der Mindestwert nahm fast alle Datenbankfehler weg. Windows lagerte den SQL Server trotzdem
+teilweise aus, weil der Dienst fast den ganzen Arbeitsspeicher belegte; das Recht „Sperren von
+Seiten im Speicher“ für das SQL-Dienstkonto ist nicht getestet. Die Timeouts der eingebauten
+Aktivitäten hängen nicht am SQL-Speicher. Der Mindestwert steht nach dem Test wieder auf 0.
+
+Nicht untersucht: was im Dienst den Speicher pro offenem Lauf hält, warum der Endstand nach
+Last mehr Speicher behält, und warum eingebaute Aktivitäten bei 600 gleichzeitigen Steps in ihr
+Zeitlimit laufen.
+
+### Was bei 500 XL-Läufen mit handgesetzten Grenzen im Einzelnen passiert (2026-11-20)
+
+Instrumentierte Läufe auf CM1 (8 GB, 4 Kerne, 600 Steps von Hand, ohne Step-Timeouts, wo nicht
+anders gesagt): Messwerte alle 5 s (CPU, Auslagerung, Dienst, Sitzungen am SQL Server), dazu die
+.NET-Laufzeitzähler, die Step-Dauern von 60 Läufen und ein Heap-Abbild nach der Last.
+
+| | Ausgangsstand | Endstand |
+|---|---:|---:|
+| Dauer | 1.562 s | 570 s |
+| CPU-Auslastung | 24–73 % | durchgehend 100 % |
+| eingebaute Aktivität, Dauer (Median je Step) | 0,0–0,1 s | 27–53 s |
+| Skript-Step einschließlich Warten (Median je Step) | 270–314 s | 37–121 s |
+| Dienst, Spitze | 4,4 GB | 7,0 GB |
+| Zuwachs im Heap, Spitze | 119 MB/s | 358 MB/s |
+| Sitzungen am SQL Server, Höchststand (Pool: 800) | 98 | 523 |
+| gleichzeitige Abfragen, Höchststand | 32 | 213 |
+| längste Abfrage | 1,4 s | 23 s |
+| SQL Server, kleinster Arbeitssatz | 0,5 GB | 0,4 GB |
+| Dienst fünf Minuten nach der Last | 0,5 GB | 3,2–4,0 GB |
+| davon erreichbare Objekte (Heap-Abbild) | 0,13 GB, 1,6 Mio. | 0,82 GB, 9,9 Mio. |
+| Threads des Dienstes fünf Minuten danach | rund 50 | rund 400 |
+
+Ablauf beim Endstand:
+
+1. Alle 500 Läufe sind sofort offen (600 Dispatch-Worker).
+2. Die CPU steht ab dem Start auf 100 %. Die Skriptprozesse starten ohne Wartezeit und rechnen.
+   Der Test dauert deshalb immer rund 480–610 s: mit 6 oder 16 Skriptprozessen, mit oder ohne
+   Timeouts, mit handgesetzten oder automatischen Grenzen (476 s). Die hohen Grenzen bringen auf
+   dieser Maschine kein Tempo.
+3. Eingebaute Aktivitäten laufen im Dienst und teilen sich die 4 Kerne mit bis zu 600 Steps und
+   den Skriptprozessen. Aus Millisekunden werden 27–53 s, bei `r07-file-list` 33–65 s. Ein
+   Timeout von 30 s läuft dabei ab; das sind die 641 bis 953 Step-Timeouts der Läufe oben.
+4. Die Läufe bewegen sich im Gleichschritt und erreichen die Junctions in derselben Minute.
+   `r07-file-list` liefert die Liste von `C:\Windows\System32` (rund 1 MB). Vier Junctions
+   liegen dahinter, und jede schreibt alle gesammelten Werte ihrer Vorgänger als JSON in ihre
+   eigene Ausgabe (rund 1,5 MB je Junction). Pro Lauf sind das rund 6,6 MB im Large Object Heap.
+5. Der Large Object Heap wächst in einer Minute von 2,3 auf 5,9 GB. Rund 3,3 GB davon sind
+   belegt, 2,6 GB sind freie Lücken, die die Speicherbereinigung in dem Moment nicht schließt.
+6. Windows nimmt dem SQL Server den Arbeitssatz weg (3,0 auf 0,4 GB). Er liest seine Seiten von
+   der Platte zurück (`PAGEIOLATCH`), Abfragen dauern bis 23 s, die Sitzungen stauen sich.
+7. Sind alle 800 Verbindungen des Pools belegt, scheitert ein Schreibvorgang nach 15 s mit
+   „Timeout expired … obtaining a connection from the pool“. Das trat in zwei von sieben
+   Läufen dieser Art ein (einer davon auf 5 GB), in den übrigen nicht: ein Grenzfall.
+
+Was der Pool-Timeout auslöst: `DbErrorClassifier` stuft ihn als `CapacityBackpressure` ein, mit
+Absicht nicht als Ausfall. `StepRunner.PersistStepStateDurablyAsync` wartet und wiederholt aber
+nur bei einem bestätigten Ausfall (`IsServable == false`). Solange die Verfügbarkeitsprüfung
+nichts gemeldet hat, schlägt der Schreibvorgang durch und der Lauf endet. Im Lauf mit 53.713
+Steps starben so 63 Läufe, alle an dieser Stelle; 62 Schreibvorgänge kamen nach der Meldung der
+Prüfung („Database unavailable (Wedged)“) und haben gewartet. Das gilt genauso für den
+Ausgangsstand, er erreicht den Zustand bei dieser Last nur nicht.
+
+Warum der Ausgangsstand hier fehlerfrei bleibt: Jeder Prozessstart wartet (Defender-Abfrage,
+Starts nacheinander), statt zu rechnen. Die CPU bleibt frei, eingebaute Aktivitäten brauchen
+Millisekunden, der Heap wächst langsam. Der SQL Server wird dort genauso verdrängt, bei 32
+gleichzeitigen Abfragen fällt das nicht auf.
+
+Nach der Last (Endstand): fünf bis sechs Minuten lang 3,2–4,0 GB, auch nach einer erzwungenen
+Speicherbereinigung; nach neun Minuten 1,6 GB, nach 13 bis 20 Minuten gleichbleibend 1,5 GB bei
+wieder rund 40 Threads. Erreichbar sind 0,8 GB. Die Stichprobe von drei der 145 übrig
+gebliebenen 1-MB-Puffer hatte im Heap-Abbild keine Wurzel; es sind also noch nicht abgeräumte
+Reste, niemand hält sie fest. Ob der Rest über Stunden weiter fällt, ist nicht gemessen.
+
+Gegenproben: Mit `Engine:MaxScriptProcesses` 6 statt 16 änderten sich Dauer (608 s) und
+Spitze (7,2 GB) nicht. Mit automatischer Bemessung (20 Läufe gleichzeitig) treten weder die
+Timeouts noch der Speicherdruck auf (Spitze 1,5 GB), siehe Abschnitt davor.
+
+Nicht gemessen: die Zahl der Runspaces im Pool (aus der Thread-Zahl geschlossen) und die
+CPU-Last des Ausgangsstands getrennt nach Dienst und Defender.
+
+### Stand mit drei Folgeänderungen und Gegenprobe zur GC-Einstellung (2026-11-20/21)
+
+Folgeänderungen aus der Analyse oben, auf CM1 als ein Stand gemessen (Engine-Hash `3A33DD123AE2`):
+Schreibvorgänge des Laufs warten und wiederholen bei ausgelasteter Datenbank
+(`CapacityBackpressure`), die Junction kürzt Werte über 2.000 Zeichen in ihrem Ausgabetext, und
+eine von Hand gesetzte Step-Grenze über dem Vierfachen des automatischen Werts wird beim Start
+und in den Admin-Einstellungen gewarnt. Je ein Lauf, 8 GB, 4 Kerne.
+
+| Grenzen von Hand (600 Steps) | Endstand davor | mit Folgeänderungen | zusätzlich `DOTNET_GCConserveMemory=7` |
+|---|---:|---:|---:|
+| 30 Läufe gleichzeitig | 15,5 s | 19,2 s | 17,2 s |
+| `Verify-TestSuite.ps1 -Once` | 188 s, 32 / 0 | 182 s, 32 / 0 | 182 s, 32 / 0 |
+| Tech-Demo XL, 1 Lauf / 50 Läufe | 10,2 s / 55 s | 10,2 s / 60 s | 10,2 s / 61 s |
+| 500 Läufe, Timeouts 30 s | 481 s, 641 Steps im Timeout | 511 s, 941 | 513 s, 1.009 |
+| 500 Läufe, ohne Timeouts | 559 s, 53.713 Steps, 63 Läufe abgebrochen | 550 s, 59.000 Steps | 541 s, 59.000 Steps |
+| Dienst, Spitze mit / ohne Timeouts | 3,0 / 6,4–7,2 GB | 2,4 / 4,7 GB | 2,0 / 4,1 GB |
+| Dienst fünf Minuten danach, mit / ohne Timeouts | 1,7 / 3,3 GB | 1,6 / 2,9 GB | 1,5 / 1,4 GB |
+| Schreibvorgänge auf vollen Pool, ohne Timeouts | 265 Fehler | 1, wiederholt | 104, alle wiederholt |
+
+| Automatische Bemessung (128 Steps), mit Folgeänderungen | Timeouts 30 s | ohne Timeouts |
+|---|---:|---:|
+| 500 Läufe | 474 s, 59.000 Steps | 467 s, 59.000 Steps |
+| Dienst, Spitze / fünf Minuten danach | 1,3 GB / 0,35 GB | 1,3 GB / 0,72 GB |
+
+- Die Wiederholung hat im Lab gegriffen: 1 und 104 Schreibvorgänge trafen auf einen vollen Pool,
+  alle gingen danach durch, kein Lauf endete deshalb.
+- Die gekürzte Junction-Ausgabe senkt die Spitze ohne Timeouts um rund 2,4 GB.
+- Die Step-Timeouts der eingebauten Aktivitäten bei 600 Steps bleiben; die Zahl schwankt zwischen
+  den Läufen (641 bis 1.009).
+- `DOTNET_GCConserveMemory=7` senkt die Spitze um rund 0,6 GB und halbiert den Speicher fünf
+  Minuten nach der Last, ohne messbaren Einfluss auf die Zeiten. In beiden Läufen mit der
+  Einstellung (dieser und einer mit dem Endstand davor: Spitze 5,3 statt 7,0 GB, 128 Läufe
+  abgebrochen) lief der Verbindungspool voll, ohne sie in drei von acht Läufen. Ob das an den
+  Pausen der Speicherbereinigung liegt oder Zufall ist, ist bei zwei Läufen offen. Der Standard
+  bleibt unverändert.
+
+### Wiederholung zur GC-Einstellung: je vier Läufe (2026-11-21)
+
+Frage aus dem Abschnitt davor: Läuft der Verbindungspool mit `DOTNET_GCConserveMemory=7` öfter
+voll? Acht Läufe mit je 500 XL-Workflows ohne Step-Timeouts auf CM1 (8 GB, 4 Kerne, Grenzen von
+Hand, Engine-Hash `3A33DD123AE2`), abwechselnd in der Reihenfolge ohne/mit, mit/ohne, jeweils auf
+frisch gestartetem Dienst. Spitze und Verbindungen aus 5-Sekunden-Proben, Pausenzeit aus
+`dotnet.gc.pause.time`, Logzahlen als Einträge im Zeitfenster des Laufs.
+
+| Lauf | Zeit | Spitze | 5 min danach | Verbindungen max. | längste Abfrage | SQL min. | Pool-Meldungen / Wiederholungen | GC-Pausen | Gen-2 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 ohne | 554 s | 4,40 GB | 1,49 GB | 491 | 6,3 s | 862 MB | 0 / 0 | 25,4 s | 188 |
+| 1 mit | 531 s | 3,80 GB | 1,36 GB | 440 | 4,8 s | 1069 MB | 0 / 0 | 24,6 s | 314 |
+| 2 mit | 530 s | 3,99 GB | 1,46 GB | 492 | 5,3 s | 1393 MB | 0 / 0 | 22,8 s | 305 |
+| 2 ohne | 526 s | 4,72 GB | 3,24 GB | 523 | 9,0 s | 496 MB | 0 / 0 | 24,6 s | 171 |
+| 3 ohne | 537 s | 4,73 GB | 3,05 GB | 523 | 14,8 s | 505 MB | 0 / 0 | 21,8 s | 187 |
+| 3 mit | 535 s | 3,88 GB | 1,37 GB | 472 | 3,3 s | 894 MB | 0 / 0 | 28,5 s | 289 |
+| 4 mit | 533 s | 4,16 GB | 1,36 GB | 477 | 3,2 s | 615 MB | 166 / 81 | 25,2 s | 316 |
+| 4 ohne | 532 s | 4,64 GB | 1,46 GB | 519 | 10,3 s | 523 MB | 226 / 112 | 24,4 s | 205 |
+
+- Alle acht Läufe: 59.000 Steps, kein Lauf abgebrochen, kein Ausfall gemeldet.
+- Der Pool lief in je einem von vier Läufen voll, mit und ohne Einstellung. Der Verdacht aus den
+  zwei Läufen davor ist damit nicht bestätigt. Die beiden betroffenen Läufe liefen direkt
+  nacheinander (00:11 bis 00:37 Gastzeit); was sie von den anderen unterscheidet, ist offen.
+- Die Pausenzeit der Speicherbereinigung ist gleich (22 bis 29 s je Lauf), obwohl mit der
+  Einstellung rund 300 statt 190 Gen-2-Sammlungen laufen.
+- Die Proben sahen nie mehr als 523 von 800 Verbindungen, auch nicht in den Läufen mit
+  Pool-Meldungen. Proben alle 5 s können eine kurze Spitze verpassen; ob die 800 erreicht waren,
+  ist damit nicht belegt.
+- Nutzen der Einstellung: Spitze im Mittel 3,96 statt 4,62 GB, fünf Minuten danach in allen vier
+  Läufen 1,4 bis 1,5 GB (ohne: zweimal 1,5 und zweimal über 3 GB), dem SQL Server bleibt mehr
+  Speicher, die längste Abfrage ist kürzer.
+- Nicht gemessen: die Einstellung mit automatischer Bemessung und im Dauerbetrieb.
+- Der Standard bleibt unverändert; die Einstellung steht als Option in der Performance-Doku
+  („Speicher früher zurückgeben“).
+
+### 500er-Lauf auf 8 Kernen (2026-11-21)
+
+CM1 mit 8 statt 4 virtuellen Kernen, weiter 8 GB fest. Nur der 500er-Lauf (Tech-Demo XL, 118
+Steps), mit 30-s-Step-Timeouts und ohne, je ein Lauf auf frisch gestartetem Dienst. Kandidat =
+Engine-Hash `3A33DD123AE2`, main = `45475EA2836A`. Automatische Bemessung auf 8 Kernen: 256 Steps,
+Runspaces 1-32, 24 Dispatch-Worker, beim Kandidaten 32 Skriptprozesse.
+
+| | main, automatisch | Kandidat, automatisch | main, von Hand (600) | Kandidat, von Hand (600) |
+|---|---:|---:|---:|---:|
+| Zeit mit Step-Timeouts | 1380 s | 349 s | 1323 s | 327 s |
+| Zeit ohne Step-Timeouts | 1354 s | 346 s | 1384 s | 354 s |
+| Steps im Timeout | 0 | 0 | 0 | 553 |
+| Spitze mit / ohne Timeouts | 1,22 / 1,24 GB | 1,67 / 1,65 GB | 4,48 / 4,33 GB | 3,08 / 6,30 GB |
+| 5 min danach mit / ohne Timeouts | 0,81 / 0,80 GB | 1,08 / 0,94 GB | 2,45 / 0,68 GB | 1,96 / 2,02 GB |
+| Pool-Meldungen / Wiederholungen | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Skripte, die auf einen Prozess warteten | - | 0 | - | 4062 |
+
+- Alle acht Läufe: 59.000 Steps.
+- main gewinnt durch die zusätzlichen Kerne kaum (4 Kerne: 1463 bis 1759 s), der Kandidat
+  deutlich (4 Kerne: 467 bis 554 s). Der Kandidat ist auf 8 Kernen rund viermal so schnell wie
+  main.
+- Mit automatischer Bemessung braucht der Kandidat in der Spitze rund 0,45 GB mehr als main.
+- Die Warnung zur Step-Grenze erscheint hier nicht (600 liegt unter dem Vierfachen von 256), die
+  Step-Timeouts treten aber schon beim 2,3-Fachen auf.
+- Die höhere Spitze des Kandidaten ohne Step-Timeouts (6,3 GB, auf 4 Kernen 4,4 bis 4,7 GB) ist
+  nicht untersucht.
+
+### Antwortzeiten der API unter Last (2026-11-21)
+
+Frage: Bleibt die Oberfläche bedienbar, wenn die CPU voll ausgelastet ist? CM1 mit 8 Kernen und
+8 GB, automatische Bemessung, 500 Läufe des XL-Workflows mit Step-Timeouts. Gemessen vom
+Hyper-V-Host aus, also von außerhalb der VM: alle rund 3,5 s je eine Anfrage an sechs Adressen,
+jede mit neuer TLS-Verbindung. Leerlauf = 60 s vor dem Start, Last = Start bis Ende der Läufe.
+Zeiten in Millisekunden, Median / 95 %-Wert / Maximum.
+
+| Adresse | Leerlauf | 4 Skriptprozesse pro Kern (Stand) | 3 pro Kern | 4 pro Kern, Skriptprozesse mit niedriger Priorität (2 Läufe) |
+|---|---|---|---|---|
+| `/healthz/ready` | 10 / 30 / 31 | 28 / 78 / 224 | 27 / 100 / 146 | 14 / 27-30 / 41-99 |
+| Startseite `/` | 11 / 31 / 35 | 29 / 115 / 185 | 31 / 146 / 214 | 15 / 28-35 / 62-369 |
+| Ausführungsliste | 52 / 76 / 87 | 189 / 1090 / 1696 | 227 / 1042 / 1552 | 75-79 / 121-136 / 222-699 |
+| Workflow-Namen | 12 / 36 / 36 | 33 / 172 / 341 | 35 / 180 / 272 | 15 / 32-36 / 38-119 |
+| Dashboard | 71 / 92 / 110 | 187 / 1384 / 2118 | 294 / 1483 / 2238 | 93-94 / 143-199 / 272-321 |
+| Betriebsübersicht | 21 / 46 / 59 | 120 / 1285 / 6774 | 134 / 1031 / 2138 | 49 / 109-155 / 371-2131 |
+
+| | 4 pro Kern | 3 pro Kern | niedrige Priorität |
+|---|---:|---:|---:|
+| Zeit für 500 Läufe | 358 s | 365 s | 322 s, 342 s |
+| CPU in der VM, Mittel / Median | 84 % / 100 % | 84 % / 100 % | 96-97 % / 100 % |
+| Anfragen über 1 s | 43 von 624 | 33 von 631 | 0 von 825, 1 von 853 |
+| fehlgeschlagene Anfragen | 0 | 0 | 0 |
+| Steps über die 1.500 planmäßigen Fehler hinaus fehlgeschlagen | 0 | 0 | 3, 10 |
+
+- Auch mit automatischer Bemessung steht die CPU im Median auf 100 %.
+- Drei statt vier Skriptprozesse pro Kern ändern an den Antwortzeiten nichts.
+- Mit niedriger Priorität der Skriptprozesse (Labor-Build, Engine-Hash `C5C5FE7ABB3B`:
+  `BELOW_NORMAL_PRIORITY_CLASS` beim Prozessstart) bleiben die Antwortzeiten nahe am Leerlauf, und
+  die Läufe wurden nicht langsamer.
+- Kehrseite: In beiden Läufen mit niedriger Priorität scheiterten `waitForCondition`-Steps, die
+  sonst durchlaufen (zweiter Lauf: `r06-waitcond-a` 6, `bot05-waitcond` 4; im ersten Lauf 3, nicht
+  aufgeschlüsselt). Ursache nicht untersucht; naheliegend ist, dass ihre Skriptprüfungen hinter
+  der Arbeit des Dienstes zurückstehen und das Step-Timeout abläuft.
+- Die Prioritätsänderung liegt nur im Wegwerf-Worktree `lab-combined`, nicht in den Branches.
+
+### Warum `waitForCondition` mit niedriger Skript-Priorität scheitert (2026-11-21)
+
+Drei weitere Läufe mit dem Labor-Build (niedrige Priorität) und einer mit normaler Priorität, je
+500 XL-Läufe, 8 Kerne, automatische Bemessung. Vor dem Aufräumen aus `StepExecutions` gelesen:
+Fehlermeldungen und Laufzeiten (Start bis Ende des Steps, Median / 95 % / Maximum in ms).
+
+| Step-Art | normale Priorität | niedrige Priorität (3 Läufe) |
+|---|---|---|
+| `fileOperation` | 3411 / 4379 / 5375 | 104-115 / 208-264 / 405-578 |
+| `registryOperation` | 3346 / 4381 / 5274 | 97-109 / 201-245 / 395-659 |
+| `folderOperation` | 5660 / 7372 / 8223 | 213-231 / 398-504 / 634-1112 |
+| `wmiQuery` | 3580 / 5056 / 6268 | 145-168 / 1159-1191 / 1418-1698 |
+| `runScript` | 1917 / 3774 / 6115 | 2416-2747 / 3873-4414 / 5398-6862 |
+| `waitForCondition` (erfolgreich) | 1253 / 1926 / 2754 | 1726-2035 / 2736-3167 / 4848-5038 |
+
+- Fehlermeldung des gescheiterten Steps (`r06-waitcond-a`, 5021 ms): „The condition could not be
+  evaluated: Script execution timed out after 5s“.
+- Ursache im Code (`WaitForConditionActivity`, unverändert seit 1.5.4): Jede Prüfung bekommt
+  `max(5, 2 x intervalSeconds)` Sekunden. Läuft sie lokal in dieses Limit, gibt es keine
+  Ergebnis-Marke, aber einen Fehlertext, und der Step endet sofort als „nicht auswertbar“, statt
+  bis `timeoutSeconds` (hier 30 s) weiter zu prüfen. Auf dem Remote-Weg wird in derselben Lage
+  weiter geprüft.
+- Mit niedriger Priorität dauert eine Prüfung im Median rund 0,5 s länger und in der Spitze bis
+  an die 5 s; in fünf Läufen scheiterten 3, 10, 0, 0 und 1 von je 1.500 `waitForCondition`-Steps.
+  Mit normaler Priorität lag das Maximum bei 2,8 s.
+- Die niedrige Priorität verschiebt Rechenzeit von den Skriptprozessen zum Dienst: eingebaute
+  Steps rund 30-mal schneller, Skript-Steps im Median 25 bis 45 % langsamer, Gesamtzeit 297 bis
+  342 s statt 358 bis 361 s.
+- Grundlast bei allen Messungen dieses Dokuments seit 2026-11-20: Die Testsuite-Workflows auf CM1
+  laufen über ihre Zeitplan-Trigger dauernd mit, rund 600 Läufe pro Stunde.
+
+### Gegenprüfung: niedrige Skript-Priorität plus Weiterprüfen in `waitForCondition` (2026-11-21)
+
+Stand mit beiden Änderungen (Engine-Hash `1779E52B980A`): Skriptprozesse starten mit
+`BELOW_NORMAL_PRIORITY_CLASS`, und eine lokale `waitForCondition`-Prüfung, die in ihr eigenes
+Zeitlimit läuft, zählt als nicht erfüllt. Vier Läufe mit je 500 XL-Workflows, 8 Kerne,
+automatische Bemessung, Antwortzeiten vom Host aus.
+
+| Lauf | Zeit | zusätzlich fehlgeschlagene Steps | `waitForCondition` Median / Maximum | Ausführungsliste Median / 95 % / Max. | Dashboard Median / 95 % / Max. | Anfragen über 1 s |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 322 s | 0 | 1,9 / 7,7 s | 76 / 142 / 207 ms | 93 / 147 / 229 ms | 0 |
+| 2 | 317 s | 0 | 1,9 / 4,9 s | 75 / 137 / 291 ms | 93 / 141 / 301 ms | 0 |
+| 3 | 340 s | 0 | 2,0 / 7,5 s | 81 / 176 / 563 ms | 104 / 168 / 803 ms | 0 |
+| 4 | 338 s | 0 | 2,1 / 8,9 s | 78 / 148 / 271 ms | 97 / 161 / 324 ms | 0 |
+
+- In drei der vier Läufen dauerte mindestens ein `waitForCondition`-Step länger als 5 s und
+  endete trotzdem erfolgreich: Die langsame Prüfung wurde wiederholt, statt den Step zu beenden.
+- Skript-Steps im Median 2,6 bis 2,9 s (ohne niedrige Priorität 1,9 s), eingebaute Datei- und
+  Registry-Steps 0,10 bis 0,12 s (ohne 3,3 bis 3,4 s).
+- Testsuite (`Verify-TestSuite.ps1 -Once`, Grenzen von Hand, 8 Kerne): Stand davor 194 s, 32 / 0;
+  mit beiden Änderungen 194 s und 197 s, 32 / 0.
+
+### Endgültiger Stand ohne Junction-Kürzung, 8 Kerne (2026-11-21)
+
+Die Junction-Kürzung wurde am 2026-11-21 verworfen. Alle Zahlen weiter oben, die mit dem
+Engine-Hash `3A33DD123AE2` oder `1779E52B980A` entstanden sind, enthalten sie noch. Stand hier:
+Engine-Hash `2F1D04F49CD5` = konstante Kommandozeile, Skriptprozess-Grenze, niedrige
+Skript-Priorität, Weiterprüfen in `waitForCondition`, Step-Zustand und Warten bei ausgelasteter
+Datenbank. CM1 mit 8 Kernen, 8 GB, Internet über GW1, Testsuite-Workflows als Grundlast. Je 500
+XL-Läufe.
+
+| | automatische Bemessung | Grenzen von Hand (600 Steps) |
+|---|---:|---:|
+| Zeit mit Step-Timeouts | 302 s, 317 s, 333 s | 277 s |
+| Zeit ohne Step-Timeouts | 334 s | 279 s, 314 s, 316 s |
+| zusätzlich fehlgeschlagene Steps | 0 in vier Läufen | 57, 62, 100, 96 (nur `waitForCondition`) |
+| Spitze des Dienstes | 1,0 bis 1,5 GB | 5,0 bis 5,6 GB |
+| 5 min danach | 0,47 bis 0,83 GB | 0,60 bis 0,96 GB |
+| Pool-Meldungen / Wiederholungen | 0 / 0 | 0 / 0 |
+| Skripte, die auf einen Prozess warteten | 2 | 5168 (zwei Läufe) |
+
+- Antwortzeiten mit automatischer Bemessung (zwei Läufe, vom Host aus): Ausführungsliste Median
+  75 und 77 ms, 95 % 137 und 117 ms; Dashboard Median 94 und 97 ms, 95 % 158 und 163 ms; keine
+  Anfrage über 1 s.
+- Mit Grenzen von Hand scheitern jetzt keine eingebauten Steps mehr an ihrem 30-s-Timeout (Stand
+  davor auf 8 Kernen: 553), dafür `waitForCondition`-Steps (`r06-waitcond-a`, `bot05-waitcond`).
+  In einem der Läufe meldete das Log 29-mal „paused until database recovery“.
+- `DOTNET_GCConserveMemory=7`, Grenzen von Hand, ohne Step-Timeouts, je zwei Läufe: Spitze 4,19 und
+  4,55 GB statt 5,37 und 5,25 GB; fünf Minuten danach 0,53 und 0,65 GB statt 0,87 und 0,60 GB;
+  Zeit 324 und 369 s statt 314 und 316 s; zusätzlich fehlgeschlagene Steps 145 und 129 statt 100
+  und 96; GC-Pausen 6,0 s statt 4,8 bis 5,1 s. Der frühere Hauptnutzen (halber Speicher nach der
+  Last) zeigt sich auf diesem Stand nicht mehr, weil der Dienst den Speicher auch ohne die
+  Einstellung zurückgibt.
+- Testsuite (Grenzen von Hand): 201 s, 32 / 0.
+
+### Niedrige Skript-Priorität: Überlastfall und fremde CPU-Last (2026-11-21)
+
+**Überlastfall** (Grenzen von Hand, 600 Steps, endgültiger Stand `2F1D04F49CD5`, 500 XL-Läufe mit
+Step-Timeouts, ein Lauf mit Fehlertexten aus `StepExecutions`): 384 s, 194 gescheiterte
+`waitForCondition`-Steps (`r06-waitcond-a` 120, `bot05-waitcond` 74). Meldungen: 178-mal „Timeout
+after 30s (1 attempts) ... No script process became free within 23s“, 16-mal „... Script execution
+timed out after 5s“. Laufzeit der Steps (Median / 95 % / Maximum): `runScript` 77,8 / 85,2 /
+88,5 s, `waitForCondition` (erfolgreich) 72,6 / 83,4 / 89,7 s, `fileOperation` 0,03 / 0,21 /
+0,81 s, `registryOperation` 0,02 / 0,20 / 0,72 s. Die Skripte kommen also kaum noch zum Zug,
+während die eingebauten Steps schnell bleiben.
+
+**Fremde CPU-Last mit normaler Priorität** (Stellvertreter für Agenten und Scans): Endlosschleifen
+in eigenen Prozessen, dazu 50 gleichzeitige Läufe eines Workflows mit einem kurzen Skript.
+Automatische Bemessung, 8 Kerne. Gemessen ist die Zeit für alle 50 und die Lebensdauer eines
+Skriptprozesses (Median / Maximum).
+
+| fremde Last | Skripte niedriger als normal (`2F1D04F49CD5`) | Skripte normal (`1682C2530924`) |
+|---|---:|---:|
+| keine | 6,6 s; 2,0 / 3,3 s | 3,9 s; 0,8 / 1,1 s |
+| 4 von 8 Kernen | 11,9 s; 3,6 / 6,3 s | 6,4 s; 1,4 / 1,9 s |
+| alle 8 Kerne | 235 s; 82 / 231 s | 13,3 s; 2,5 / 3,6 s |
+
+- Bei voller fremder Last liefen die Skripte mit niedriger Priorität praktisch erst, als die
+  fremde Last nach 240 s endete; 31 von 50 Skriptprozessen lebten länger als 30 s.
+- Auch ohne fremde Last und bei halber Last war der Stoß mit niedriger Priorität 1,7- bis 1,9-mal
+  langsamer.
+- Je ein Lauf pro Zelle; die Testsuite-Workflows liefen als Grundlast mit.
+
+### Variante „Dienst mit höherer Priorität, Skripte normal“ (2026-11-21/22)
+
+Die niedrige Skript-Priorität wurde wegen des Fremdlast-Tests wieder herausgenommen. Gegenprobe
+mit der umgekehrten Idee: Stand ohne Prioritätsänderung (Engine-Hash `1682C2530924`), der
+Dienstprozess wird nach dem Start von außen auf `AboveNormal` gesetzt. 8 Kerne, automatische
+Bemessung, 500 XL-Läufe, Antwortzeiten vom Host aus (Median / 95 % / Maximum in ms).
+
+| | beide normal (1 Lauf) | Dienst höher (2 Läufe) | zum Vergleich: Skripte niedriger |
+|---|---:|---:|---:|
+| Ausführungsliste | 239 / 1367 / 1757 | 233-239 / 1080-1216 / 1741-2331 | 72-81 / 117-176 / 168-699 |
+| Dashboard | 349 / 1551 / 1786 | 183-199 / 1110-1528 / 2059-2428 | 90-104 / 136-199 / 229-887 |
+| Betriebsübersicht | 140 / 574 / 1134 | 115-125 / 963-1122 / 4861-8318 | 46-66 / 109-171 / 256-2131 |
+| eingebauter Datei-/Registry-Step, Median | 3,7 s | 3,4 bis 3,6 s | 0,10 bis 0,12 s |
+| Skript-Step, Median | 2,2 s | 2,0 bis 2,1 s | 2,4 bis 2,9 s |
+| Zeit für 500 Läufe | 392 s | 367 s, 394 s | 297 bis 342 s |
+| längste Datenbankabfrage | 0,9 s | 0,9 bis 1,2 s | nicht erfasst |
+| zusätzlich fehlgeschlagene Steps | 0 | 0 | 0 |
+
+- Die höhere Dienst-Priorität bringt für die Oberfläche und die eingebauten Steps praktisch
+  nichts. Naheliegende Erklärung, nicht belegt: Was die Anfragen bremst, ist nicht der Dienst
+  selbst, sondern alles, wovon er abhängt und was weiter mit normaler Priorität gegen die
+  Skriptprozesse antritt, vor allem der SQL Server auf derselben Maschine. Nur das Absenken der
+  Skripte gibt all dem Vorrang.
+- Fremdlast mit Dienst höher (50 Skripte, 0 / 4 / 8 belegte Kerne): 4,5 / 5,8 / 12,8 s; ohne
+  höhere Dienst-Priorität 3,9 / 6,4-6,8 / 13,3-14,7 s. Die Fremdlast behielt in beiden Fällen 75
+  bis 82 % ihrer Kerne.
+- Testsuite mit Dienst höher (Grenzen von Hand): 188 s, 32 / 0.
+- Ergebnis: Variante verworfen.
+
+### Vierervergleich: 1.5.4, jetziger Stand, niedrige Skript-Priorität, 6 Skriptprozesse (2026-11-22)
+
+CM1, 8 Kerne, 8 GB, automatische Bemessung, Internet, Testsuite-Workflows als Grundlast. 1.5.4 =
+unverändertes main (`45475EA2836A`); jetzt = `1682C2530924` (neuer Skriptstart, Grenze 32, normale
+Priorität); niedrige Priorität = `2F1D04F49CD5`; 6 Prozesse = jetzt mit
+`Engine__MaxScriptProcesses=6`. Je ein Lauf.
+
+| | 1.5.4 | jetzt | Skripte niedriger | 6 Skriptprozesse |
+|---|---:|---:|---:|---:|
+| 50 XL-Läufe | 136 s | 36,9 s | 35,8 s | 35,8 s |
+| 500 XL-Läufe | 1259 s | 342 s | 292 s | 290 s |
+| CPU während der 500 Läufe, Mittel | 24 % | 78 % | 97 % | 93 % |
+| Ausführungsliste, Median / 95 % / Max. (500) | 55 / 80 / 471 ms | 120 / 1157 / 3755 ms | 71 / 113 / 402 ms | 179 / 396 / 906 ms |
+| Dashboard, Median / 95 % / Max. (500) | 71 / 95 / 316 ms | 151 / 1365 / 1885 ms | 93 / 144 / 256 ms | 209 / 427 / 638 ms |
+| Anfragen über 1 s (drei Adressen, 500) | 0 von 1638 | 29 von 318 | 0 von 381 | 0 von 330 |
+| eingebauter Datei-Step, Median (500) | 0,09 s | 3,05 s | 0,10 s | 0,35 s |
+| Skript-Step, Median (500) | 15,5 s | 1,9 s | 2,4 s | 2,0 s |
+| längste Datenbankabfrage (500) | 28 ms | 2829 ms | 32 ms | 240 ms |
+| Spitze des Dienstes (500) | 1,25 GB | 1,68 GB | 1,68 GB | 1,56 GB |
+| zusätzlich fehlgeschlagene Steps | 0 | 0 | 0 | 0 |
+| 50 Skripte, keine Fremdlast | 30,6 s | 5,1 s | 3,9 s | 4,1 s |
+| 50 Skripte, 4 Kerne fremd belegt | 24,5 s | 6,7 s | 7,0 s | 6,4 s |
+| 50 Skripte, 8 Kerne fremd belegt | 35,8 s | 17,5 s | 236 s | 20,4 s |
+| Fremdlast behielt (4 / 8 Kerne) | 99 / 89 % | 81 / 80 % | 99 % / - | 89 / 86 % |
+| Testsuite | 251 s, 32 / 0 | 188 s, 32 / 0 | 182 s, 32 / 0 | 209 s, 32 / 0 |
+
+Ergänzung: 100 gleichzeitige Läufe eines Workflows mit einem Skript, das 30 s wartet
+(`Start-Sleep`), keine Fremdlast.
+
+| | 1.5.4 | jetzt | Skripte niedriger | 6 Skriptprozesse |
+|---|---:|---:|---:|---:|
+| Zeit für alle 100 | 156 s | 153 s | 154 s | 517 s |
+| Skriptprozesse gleichzeitig, Spitze | 25 | 25 | 25 | 7 |
+
+- Bei den ersten drei Ständen begrenzen die 24 Dispatch-Worker der automatischen Bemessung, wie
+  viele Läufe gleichzeitig offen sind; die Grenze von 32 Skriptprozessen greift hier gar nicht.
+- Mit 6 Skriptprozessen dauert dieselbe Last 3,4-mal so lang. Eine feste Grenze unterhalb der
+  Kernzahl hilft also der Oberfläche bei rechnenden Skripten und kostet bei wartenden Skripten.
+
+### Variante „nur die gleichzeitigen Starts begrenzen“ (2026-11-22)
+
+Labor-Build `A76FF46E3E83`: wie der jetzige Stand, zusätzlich dürfen höchstens 6 Skriptprozesse
+(Kerne minus zwei) gleichzeitig starten; ein Prozess gibt seinen Startplatz frei, sobald sein
+Skript die erste Ausgabe schreibt. Bis zu 32 Prozesse dürfen weiter gleichzeitig laufen.
+Dieselben Tests wie im Vierervergleich, 8 Kerne, automatische Bemessung.
+
+| | jetzt (32) | Starts begrenzt (2 Läufe) | 6 Skriptprozesse |
+|---|---:|---:|---:|
+| 50 XL-Läufe | 36,9 s | 41,7 s | 35,8 s |
+| 500 XL-Läufe | 342 s | 430 s, 338 s | 290 s |
+| Ausführungsliste, Median / 95 % / Max. (500) | 120 / 1157 / 3755 ms | 241-275 / 692-916 / 980-2122 ms | 179 / 396 / 906 ms |
+| Dashboard, Median / 95 % / Max. (500) | 151 / 1365 / 1885 ms | 271-309 / 732-993 / 1024-2104 ms | 209 / 427 / 638 ms |
+| eingebauter Datei-Step, Median (500) | 3,05 s | 1,9 bis 2,6 s | 0,35 s |
+| längste Datenbankabfrage (500) | 2,8 s | 0,4 bis 2,0 s | 0,24 s |
+| 50 Skripte, 0 / 4 / 8 Kerne fremd belegt | 5,1 / 6,7 / 17,5 s | 4,3 / 6,7 / 18,7 s | 4,1 / 6,4 / 20,4 s |
+| 100 wartende Skripte | 153 s | 153 s | 517 s |
+| Testsuite | 188 s | 188 s | 209 s |
+
+- Die Vermutung, vor allem die gleichzeitigen Starts bremsten die Oberfläche, stimmt nur zum
+  kleineren Teil: Die 95-%-Werte sinken von 1,2-1,4 s auf 0,7-1,0 s, nicht auf die 0,4 s der
+  festen Grenze von 6. Die Skripte des XL-Workflows rechnen auch nach dem Start weiter; es liefen
+  bis zu 21 Prozesse gleichzeitig, und die CPU blieb im Median bei 100 %.
+- Wartende Skripte, Fremdlast und Testsuite verhalten sich wie beim jetzigen Stand.
+- Ein 500er-Lauf war mit 430 s deutlich langsamer als der jetzige Stand.
+- Ergebnis: bringt zu wenig für einen zusätzlichen Mechanismus; nicht in die Branches übernommen.
+
+### Jetziger Stand mit Grenzen von Hand, und Nachweis des Schalters (2026-11-22)
+
+**Jetziger Stand** (`1682C2530924`: neuer Skriptstart, Grenze 32, normale Priorität, ohne
+Junction-Kürzung), 8 Kerne, 500 XL-Läufe, je ein Lauf:
+
+| | automatische Bemessung | Grenzen von Hand (600 Steps) |
+|---|---:|---:|
+| Zeit mit / ohne Step-Timeouts | 370 s / 344 s | 330 s / 354 s |
+| Steps im Timeout | 0 | 568 |
+| Spitze des Dienstes mit / ohne Timeouts | 1,65 / 1,61 GB | 4,07 / 9,04 GB |
+| 5 min danach mit / ohne Timeouts | 1,00 / 0,84 GB | 2,62 / 5,11 GB |
+| SQL Server, kleinster Arbeitsspeicher | 1720 MB | 310 MB |
+| Steps insgesamt ohne Timeouts | 59.000 | 58.932 (sechs Läufe endeten vorzeitig) |
+| „paused until database recovery“ im Log | 0 | 320 |
+
+- Ohne Junction-Kürzung und ohne Step-Timeouts wollte der Dienst mit Grenzen von Hand 9 GB auf
+  einer Maschine mit 8 GB.
+- Die Warnschwelle für die Step-Grenze wurde deshalb vom Vierfachen auf das Doppelte des
+  automatischen Werts gesenkt; die Messung hier liegt beim 2,3-Fachen.
+
+**Schalter `Engine:ExperimentalMode`** (Laborpaket `B5214D3CA168`), automatische Bemessung:
+
+| | aus | ein | Referenz 1.5.4 / Stand davor |
+|---|---:|---:|---:|
+| 50 XL-Läufe | 161 s | 42 s | 136 s / 37 s |
+| 50 Skripte gleichzeitig | 32,9 s | 4,6 s | 30,6 s / 5,1 s |
+| Testsuite | 257 s, 32 / 0 | 188 s, 32 / 0 | 251 s / 188 s |
+| 500 XL-Läufe | - | 365 s | 1259 s / 342 s |
+| Ausführungsliste, 95 % (50 / 500 Läufe) | 89 ms / - | 1059 / 1359 ms | 90 ms / 1157 ms |
+| Skriptprozesse gleichzeitig, Spitze (50 Läufe) | 8 | 26 | 7 / 26 |
+
+- Startlog aus: „script processes not limited (experimental mode off)“, ein: „script processes 32
+  (Cpu, experimental mode)“.
+- „Aus“ verhält sich wie 1.5.4, „ein“ wie der Stand vor dem Schalter.
+
+### Variante „CPU-Obergrenze für alle Skriptprozesse“ (2026-11-22)
+
+Labor-Build `58B454E90B8A` (nur im Wegwerf-Worktree): ein Job-Objekt mit hartem CPU-Limit
+(`JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP`) für alle Skriptprozesse zusammen, 80 % und 70 % der
+Maschine. Experimental mode, 8 Kerne, automatische Bemessung. Kein Fehler beim Zuordnen der
+Prozesse im Log.
+
+| | ohne Obergrenze | 80 % (2 Läufe) | 70 % (2 Läufe) |
+|---|---:|---:|---:|
+| 500 XL-Läufe | 342 bis 365 s | 373 s, 356 s | 356 s, 354 s |
+| Ausführungsliste, 95 % (500) | 1089 bis 1359 ms | 1338, 1191 ms | 1167, 1101 ms |
+| Dashboard, 95 % (500) | 1365 bis 1446 ms | 1440, 1241 ms | 1235, 1039 ms |
+| eingebauter Datei-Step, Median (500) | 3,05 bis 3,36 s | 3,30 s, 3,26 s | 3,27 s |
+| 50 Skripte, 0 / 4 / 8 Kerne fremd belegt | 5,1 / 6,7 / 17,5 s | 3,8 / 6,6 / 14,1 s | - |
+| 100 wartende Skripte | 153 s | 154 s | - |
+| Testsuite | 188 s | 212 s | - |
+
+- Die Obergrenze ändert an Antwortzeiten und Step-Laufzeiten nichts.
+- Grobe Aufschlüsselung der CPU nach Prozessgruppen während des 500er-Laufs (`Get-Counter`, je
+  rund 115 Proben über zwei Minuten; kurzlebige Skriptprozesse erfasst diese Methode nicht, ihr
+  Anteil ergibt sich nur als Rest, und der Sampler selbst kostet 5 bis 17 %):
+
+| Anteil an allen 8 Kernen | ohne Obergrenze | 70 % | 6 Skriptprozesse | Skripte niedriger |
+|---|---:|---:|---:|---:|
+| Dienst | 11,7 % | 12,2 % | 12,8 % | 11,0 % |
+| Virenscanner | 10,3 % | 9,8 % | 13,3 % | 14,3 % |
+| SQL Server | 2,6 % | 2,8 % | 4,0 % | 3,9 % |
+| System, WMI, Konsolen-Hosts, Sonstiges | 9,8 % | 9,9 % | 10,9 % | 12,5 % |
+| Sampler | 11,5 % | 10,5 % | 5,2 % | 17,0 % |
+| Leerlauf | 18,7 % | 17,2 % | 0,8 % | 0 % |
+| Rest, im Wesentlichen Skriptprozesse | rund 35 % | rund 38 % | rund 53 % | rund 41 % |
+
+- Die Skriptprozesse liegen im Mittel weit unter 70 %, die Obergrenze greift also gar nicht.
+  Das Problem ist nicht ihr mittlerer Anteil, sondern das Gedränge in den Momenten, in denen
+  viele gleichzeitig starten.
+- Rund ein Viertel der CPU verbrauchen Dienst und Virenscanner.
+- Ergebnis: Variante verworfen, nicht in die Branches übernommen.

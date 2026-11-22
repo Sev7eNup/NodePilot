@@ -227,6 +227,33 @@ public class PerformanceSizingTests
         plan.MaxRunspaces.Bound.Should().Be(SizingBound.Manual);
     }
 
+    [Theory]
+    [InlineData(4, 600, true)]    // automatic 128: 600 is more than twice that
+    [InlineData(4, 256, false)]   // exactly twice is not reported
+    [InlineData(8, 600, true)]    // automatic 256: the measured case, 2.3 times
+    [InlineData(20, 600, false)]  // the documented high-load profile on the hardware it was measured on
+    public void Create_Manual_StepLimitFarAboveAutomatic_IsFlagged(int cores, int configuredSteps, bool expected)
+    {
+        var configured = new Dictionary<string, int?> { [PerformanceSizing.ConfigKeys.MaxConcurrentSteps] = configuredSteps };
+
+        var plan = PerformanceSizing.Create(
+            new DetectedResources(cores, 64 * GB, IsDesktop: false), manualTuning: true, configured);
+
+        plan.AutomaticMaxConcurrentSteps.Should().Be(Math.Min(cores * 32, PerformanceSizing.StepsCeiling));
+        plan.StepLimitFarAboveAutomatic.Should().Be(expected);
+    }
+
+    [Fact]
+    public void Create_Auto_StepLimit_IsNeverFlagged()
+    {
+        var configured = new Dictionary<string, int?> { [PerformanceSizing.ConfigKeys.MaxConcurrentSteps] = 600 };
+
+        var plan = PerformanceSizing.Create(
+            new DetectedResources(4, 8 * GB, IsDesktop: false), manualTuning: false, configured);
+
+        plan.StepLimitFarAboveAutomatic.Should().BeFalse("the stored value is not in force under automatic sizing");
+    }
+
     [Fact]
     public void Create_Manual_MissingKey_FallsBackToAutoValue()
     {
@@ -256,6 +283,104 @@ public class PerformanceSizingTests
             new DetectedResources(8, 16 * GB, IsDesktop: false), manualTuning: true, configured);
 
         plan.MaxRunspaces.Value.Should().Be(32, "a zero would disable the pool entirely");
+    }
+
+    // --- Script processes: four per core, a share of the memory, never more than the steps --
+
+    [Theory]
+    [InlineData(4, 5, 16)]
+    [InlineData(8, 16, 32)]
+    [InlineData(16, 64, 64)]
+    public void Create_Auto_ScriptProcesses_FollowTheCores(int cores, double ramGb, int expected)
+    {
+        var plan = Auto(cores, ramGb);
+
+        plan.MaxScriptProcesses.Value.Should().Be(expected);
+        plan.MaxScriptProcesses.Bound.Should().Be(SizingBound.Cpu);
+    }
+
+    [Theory]
+    [InlineData(16, 8, 40)]
+    [InlineData(32, 16, 81)]
+    public void Create_Auto_ScriptProcesses_WithLittleMemory_FollowTheMemoryShare(int cores, double ramGb, int expected)
+    {
+        var plan = Auto(cores, ramGb);
+
+        plan.MaxScriptProcesses.Value.Should().Be(expected);
+        plan.MaxScriptProcesses.Bound.Should().Be(SizingBound.Ram);
+    }
+
+    [Fact]
+    public void Create_ScriptProcesses_NeverExceedTheStepLimit()
+    {
+        var configured = new Dictionary<string, int?> { [PerformanceSizing.ConfigKeys.MaxConcurrentSteps] = 10 };
+
+        var plan = PerformanceSizing.Create(
+            new DetectedResources(8, 64 * GB, IsDesktop: false), manualTuning: true, configured);
+
+        plan.MaxScriptProcesses.Value.Should().Be(10);
+        plan.MaxScriptProcesses.Bound.Should().Be(SizingBound.Ceiling, "the value was derived and capped, not configured");
+    }
+
+    [Fact]
+    public void Create_Auto_ScriptProcesses_OnADesktop_TakeASmallerShare()
+    {
+        Auto(cores: 8, ramGb: 16, desktop: true).MaxScriptProcesses.Value.Should().Be(30);
+    }
+
+    [Fact]
+    public void Create_Auto_ScriptProcesses_OnATinyHost_KeepTheFloor()
+    {
+        var plan = Auto(cores: 4, ramGb: 1);
+
+        plan.MaxScriptProcesses.Value.Should().Be(PerformanceSizing.ScriptProcessesFloor);
+        plan.MaxScriptProcesses.Bound.Should().Be(SizingBound.Floor);
+    }
+
+    [Fact]
+    public void Create_ScriptProcesses_WithoutAMemoryReading_FollowTheCores()
+    {
+        var plan = PerformanceSizing.Create(
+            new DetectedResources(8, UsableMemoryBytes: null, IsDesktop: false), manualTuning: false, NoConfig);
+
+        plan.MaxScriptProcesses.Value.Should().Be(32);
+        plan.MaxScriptProcesses.Bound.Should().Be(SizingBound.Cpu);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    public void Create_Manual_ScriptProcesses_WithoutAValue_StayDerived(int? configuredValue)
+    {
+        // A manually raised step limit alone must not raise the script process limit.
+        var configured = new Dictionary<string, int?>
+        {
+            [PerformanceSizing.ConfigKeys.MaxConcurrentSteps] = 600,
+            [PerformanceSizing.ConfigKeys.MaxScriptProcesses] = configuredValue,
+        };
+
+        var plan = PerformanceSizing.Create(
+            new DetectedResources(4, 5 * GB, IsDesktop: false), manualTuning: true, configured);
+
+        plan.MaxConcurrentSteps.Value.Should().Be(600);
+        plan.MaxScriptProcesses.Value.Should().Be(16);
+        plan.MaxScriptProcesses.Bound.Should().Be(SizingBound.Cpu);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Create_ScriptProcesses_TakeAConfiguredValueInBothModes(bool manualTuning)
+    {
+        // Unlike the other knobs this one is not part of the manual preset: raising it must not
+        // require taking over every other value by hand.
+        var configured = new Dictionary<string, int?> { [PerformanceSizing.ConfigKeys.MaxScriptProcesses] = 60 };
+
+        var plan = PerformanceSizing.Create(
+            new DetectedResources(4, 5 * GB, IsDesktop: false), manualTuning, configured);
+
+        plan.MaxScriptProcesses.Value.Should().Be(60);
+        plan.MaxScriptProcesses.Bound.Should().Be(SizingBound.Manual);
     }
 
     [Fact]

@@ -151,10 +151,14 @@ public sealed record SystemInfoResponse(
 // Mirrors Api/Dtos/Settings/EffectiveSizingDto.cs. Under automatic tuning the numbers in the
 // Engine/Threading/ExecutionDispatch sections are inert, so `np settings get Engine` reports a
 // preset rather than what the process runs on — this is the only honest read of the sizing.
-// DesiredManualTuning differs from ManualTuning after a save until the process restarts.
+// DesiredManualTuning differs from ManualTuning after a save until the process restarts, and
+// so does DesiredExperimentalMode from ExperimentalMode. The script process limit is in force
+// only in experimental mode.
 public sealed record EffectiveSizingResponse(
     bool ManualTuning,
     bool DesiredManualTuning,
+    bool ExperimentalMode,
+    bool DesiredExperimentalMode,
     int ProcessorCount,
     long? UsableMemoryBytes,
     bool IsDesktop,

@@ -64,15 +64,21 @@ internal static class ChildProcessEnvironment
     }
 
     /// <summary>
-    /// The current environment with the module path replaced, as a CreateProcessW Unicode
-    /// environment block: <c>NAME=value\0</c> entries sorted by name, closed by an extra <c>\0</c>.
+    /// The current environment with the module path replaced and <paramref name="additional"/>
+    /// added, as a CreateProcessW Unicode environment block: <c>NAME=value\0</c> entries sorted by
+    /// name, closed by an extra <c>\0</c>.
     /// </summary>
-    internal static string BuildBlock()
+    internal static string BuildBlock(IReadOnlyDictionary<string, string>? additional = null)
     {
         var variables = new SortedDictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
             variables[(string)entry.Key] = (string?)entry.Value;
         Apply(variables);
+        if (additional is not null)
+        {
+            foreach (var (name, value) in additional)
+                variables[name] = value;
+        }
 
         var block = new StringBuilder();
         foreach (var (name, value) in variables)

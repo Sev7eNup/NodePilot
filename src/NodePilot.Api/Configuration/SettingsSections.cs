@@ -1256,7 +1256,7 @@ public static class SettingsSectionAdapters
     [
         "Engine:Debug:MaxPauseMinutes",
         "Engine:MaxConcurrentExecutions:Global", "Engine:MaxConcurrentExecutions:PerUser",
-        "Engine:MaxConcurrentSteps",
+        "Engine:MaxConcurrentSteps", "Engine:MaxScriptProcesses", "Engine:ExperimentalMode",
         "Engine:Runspace:MinRunspaces", "Engine:Runspace:MaxRunspaces",
     ];
 
@@ -1272,6 +1272,8 @@ public static class SettingsSectionAdapters
             PerUser = IntOr(configRoot["Engine:MaxConcurrentExecutions:PerUser"], 2000),
         },
         MaxConcurrentSteps = IntOr(configRoot["Engine:MaxConcurrentSteps"], 600),
+        MaxScriptProcesses = IntOr(configRoot["Engine:MaxScriptProcesses"], 0),
+        ExperimentalMode = BoolDefaultFalse(configRoot["Engine:ExperimentalMode"]),
         Runspace = new RunspaceSettingsDto
         {
             MinRunspaces = IntOr(configRoot["Engine:Runspace:MinRunspaces"], 256),
@@ -1288,6 +1290,8 @@ public static class SettingsSectionAdapters
             ["PerUser"] = dto.MaxConcurrentExecutions.PerUser,
         },
         ["MaxConcurrentSteps"] = dto.MaxConcurrentSteps,
+        ["MaxScriptProcesses"] = dto.MaxScriptProcesses,
+        ["ExperimentalMode"] = dto.ExperimentalMode,
         ["Runspace"] = new JsonObject
         {
             ["MinRunspaces"] = dto.Runspace.MinRunspaces,
@@ -1310,6 +1314,8 @@ public static class SettingsSectionAdapters
                 PerUser = mce["PerUser"]?.GetValue<int>() ?? 2000,
             },
             MaxConcurrentSteps = section["MaxConcurrentSteps"]?.GetValue<int>() ?? 600,
+            MaxScriptProcesses = section["MaxScriptProcesses"]?.GetValue<int>() ?? 0,
+            ExperimentalMode = section["ExperimentalMode"]?.GetValue<bool>() ?? false,
             Runspace = new RunspaceSettingsDto
             {
                 MinRunspaces = rs["MinRunspaces"]?.GetValue<int>() ?? 256,

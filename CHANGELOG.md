@@ -14,6 +14,37 @@ exhaustive.
 
 Planned version: **1.5.5**.
 
+### Added
+
+- **Experimental mode** for local script steps (`Engine:ExperimentalMode`, admin settings under
+  Performance, off by default, takes effect after a restart). Off, local scripts run as they did
+  in 1.5.4. On, two things change together:
+  - The PowerShell host starts with the same command line for every script; the path of the
+    script file is passed in the environment variable `NODEPILOT_SCRIPT_PATH`. Antivirus products
+    that look up each new command line no longer delay every step, and the starts no longer
+    queue behind one another. Measured on one server with Microsoft Defender: 50 scripts at once
+    in 5 instead of 31 seconds, 500 runs of a 118-step workflow in 342 instead of 1259 seconds.
+  - The number of PowerShell processes for local script steps is limited: four per core, and as
+    many as 40% of the detected memory holds at 80 MB each (15% in the desktop app); the smaller
+    value wins, at least 8 and never more than `Engine:MaxConcurrentSteps`. A script step beyond
+    the limit waits for a free place, and the wait does not count towards its `timeoutSeconds`.
+    `Engine:MaxScriptProcesses` sets the limit by hand, with and without manual tuning; `0`
+    keeps the derived value. `np settings effective-sizing` shows the limit in force.
+
+  The mode uses the whole CPU during a burst of scripts, so the web interface and the built-in
+  activities answer more slowly while it lasts. The performance documentation has the
+  measurements and the rule for `Engine:MaxScriptProcesses` under "Experimental mode". The
+  switch is meant for a transition period.
+- A warning in the server log and in the admin settings when `Engine:MaxConcurrentSteps` is set
+  by hand to more than twice the value automatic sizing would use. The performance
+  documentation has a new section, "Raising the limits by hand", with the measurements behind it.
+
+### Fixed
+
+- `waitForCondition` in script mode on the local machine no longer ends as failed when a single
+  check takes longer than its own time limit (twice `intervalSeconds`, at least 5 seconds). It
+  checks again until `timeoutSeconds` is over, as it already did against a remote machine.
+
 ## [1.5.4] - 2026-11-10
 
 ### Changed

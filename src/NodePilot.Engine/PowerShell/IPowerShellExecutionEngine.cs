@@ -1,5 +1,9 @@
 namespace NodePilot.Engine.PowerShell;
 
+/// <summary>No script process became free within the time a request allowed for the wait.</summary>
+public sealed class ScriptProcessWaitTimeoutException(TimeSpan waited)
+    : TimeoutException($"No script process became free within {waited.TotalSeconds:0}s.");
+
 public sealed class PowerShellExecutionRequest
 {
     public string ScriptText { get; init; } = "";
@@ -14,6 +18,13 @@ public sealed class PowerShellExecutionRequest
     /// EndInvoke when it was still waiting for a runspace; its terminal state must also be checked.
     /// </summary>
     public TimeSpan? Timeout { get; init; }
+
+    /// <summary>
+    /// How long the request may wait for a free script process before it starts. Null waits
+    /// without a limit. When it runs out, the process engines throw
+    /// <see cref="ScriptProcessWaitTimeoutException"/>; the in-process engine ignores it.
+    /// </summary>
+    public TimeSpan? ProcessWaitTimeout { get; init; }
 
     /// <summary>
     /// Opt-in process isolation (Windows only). When true the script is launched in a
@@ -71,6 +82,9 @@ public sealed class PowerShellExecutionResult
     public string Verbose { get; init; } = "";
     public bool TimedOut { get; init; }
     public TimeSpan Duration { get; init; }
+
+    /// <summary>How long the request waited for a free script process before it started.</summary>
+    public TimeSpan ProcessWait { get; set; }
 }
 
 public interface IPowerShellExecutionEngine
