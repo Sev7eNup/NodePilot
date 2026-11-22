@@ -39,8 +39,21 @@ Planned version: **1.5.5**.
   by hand to more than twice the value automatic sizing would use. The performance
   documentation has a new section, "Raising the limits by hand", with the measurements behind it.
 
+### Changed
+
+- `startProgram` has no default timeout any more. Until now a step without `timeoutSeconds`
+  ended the program after 300 seconds; now it waits until the program ends. Set
+  `timeoutSeconds` on steps whose program must not run longer than a given time.
+
 ### Fixed
 
+- A step whose result could only be saved after a database outage no longer ends as `Failed`
+  with "Nullable object must have a value". The step keeps the result it had, and the run follows
+  the edges that belong to it.
+- A run no longer fails when the database is busy while the state of a step or of the run is
+  saved: every pooled connection in use, or the server out of memory, locks or log space. The
+  write is tried again until it gets through. Until now only a confirmed outage was waited out,
+  and a full connection pool under a burst of load ended the affected runs.
 - `waitForCondition` in script mode on the local machine no longer ends as failed when a single
   check takes longer than its own time limit (twice `intervalSeconds`, at least 5 seconds). It
   checks again until `timeoutSeconds` is over, as it already did against a remote machine.

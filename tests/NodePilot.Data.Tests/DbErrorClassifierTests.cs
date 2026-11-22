@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using NodePilot.Data;
 using System.Reflection;
@@ -22,6 +23,17 @@ public sealed class DbErrorClassifierTests
         // Npgsql surfaces a client-side command timeout as exactly this.
         DbErrorClassifier.IsCommandTimeout(new TimeoutException("Timeout during reading attempt"))
             .Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsCapacityBackpressure_FullConnectionPool_IsBackpressure()
+    {
+        var poolFull = new InvalidOperationException(
+            "Timeout expired. The timeout period elapsed prior to obtaining a connection from the pool.");
+
+        DbErrorClassifier.IsCapacityBackpressure(new DbUpdateException("save failed", poolFull)).Should().BeTrue();
+        DbErrorClassifier.IsCapacityBackpressure(new InvalidOperationException("some other bug")).Should().BeFalse();
+        DbErrorClassifier.IsCapacityBackpressure(new IOException("connection reset")).Should().BeFalse();
     }
 
     [Fact]

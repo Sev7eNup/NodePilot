@@ -140,10 +140,25 @@
       }
     },
     {
-      "id": "log-kickoff",
+      "id": "trg-junction",
       "type": "activity",
       "position": {
         "x": 360,
+        "y": 300
+      },
+      "data": {
+        "label": "Junction: waitAny (6 triggers)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "log-kickoff",
+      "type": "activity",
+      "position": {
+        "x": 540,
         "y": 300
       },
       "data": {
@@ -340,7 +355,7 @@
         "activityType": "startProgram",
         "targetMachineId": "localhost",
         "config": {
-          "filePath": "cmd.exe",
+          "filePath": "C:\\Windows\\System32\\cmd.exe",
           "arguments": "/c echo Hello from {{host.param.userName}}@{{host.param.hostName}}",
           "waitForExit": true,
           "timeoutSeconds": 30,
@@ -458,7 +473,7 @@
         "activityType": "startProgram",
         "targetMachineId": "localhost",
         "config": {
-          "filePath": "powershell.exe",
+          "filePath": "C:\\Windows\\System32\\WindowsPowerShell\u000b1.0\\powershell.exe",
           "arguments": "-NoProfile -Command \"Write-Output 'ps-ok'\"",
           "waitForExit": true,
           "timeoutSeconds": 30,
@@ -1084,10 +1099,25 @@
       }
     },
     {
-      "id": "m11-sw-fire",
+      "id": "m-jchild",
       "type": "activity",
       "position": {
         "x": 6220,
+        "y": 900
+      },
+      "data": {
+        "label": "Junction: waitAny (child ok/failed)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "m11-sw-fire",
+      "type": "activity",
+      "position": {
+        "x": 6500,
         "y": 900
       },
       "data": {
@@ -1110,7 +1140,7 @@
       "id": "m12-return-mid",
       "type": "activity",
       "position": {
-        "x": 6540,
+        "x": 6780,
         "y": 900
       },
       "data": {
@@ -1705,10 +1735,25 @@
       }
     },
     {
+      "id": "bot-jnotify",
+      "type": "activity",
+      "position": {
+        "x": 5900,
+        "y": 1500
+      },
+      "data": {
+        "label": "Junction: waitAll (4 notify)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAll"
+        }
+      }
+    },
+    {
       "id": "bot18-log-notify",
       "type": "activity",
       "position": {
-        "x": 5580,
+        "x": 6220,
         "y": 1500
       },
       "data": {
@@ -1793,10 +1838,25 @@
       }
     },
     {
-      "id": "bot-d1",
+      "id": "bot-jdebug",
       "type": "activity",
       "position": {
         "x": 7460,
+        "y": 1500
+      },
+      "data": {
+        "label": "Junction: waitAll (4 debug)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAll"
+        }
+      }
+    },
+    {
+      "id": "bot-d1",
+      "type": "activity",
+      "position": {
+        "x": 7820,
         "y": 1320
       },
       "data": {
@@ -1812,7 +1872,7 @@
       "id": "bot-d2",
       "type": "activity",
       "position": {
-        "x": 7460,
+        "x": 7820,
         "y": 1500
       },
       "data": {
@@ -1828,7 +1888,7 @@
       "id": "bot-d3",
       "type": "activity",
       "position": {
-        "x": 7460,
+        "x": 7820,
         "y": 1680
       },
       "data": {
@@ -1844,7 +1904,7 @@
       "id": "bot-d4",
       "type": "activity",
       "position": {
-        "x": 7460,
+        "x": 7820,
         "y": 1860
       },
       "data": {
@@ -1860,7 +1920,7 @@
       "id": "bot-d5",
       "type": "activity",
       "position": {
-        "x": 7820,
+        "x": 8180,
         "y": 1320
       },
       "data": {
@@ -1876,7 +1936,7 @@
       "id": "bot-d6",
       "type": "activity",
       "position": {
-        "x": 7820,
+        "x": 8180,
         "y": 1500
       },
       "data": {
@@ -1892,7 +1952,7 @@
       "id": "bot-d7",
       "type": "activity",
       "position": {
-        "x": 7820,
+        "x": 8180,
         "y": 1680
       },
       "data": {
@@ -1908,7 +1968,7 @@
       "id": "bot-d8",
       "type": "activity",
       "position": {
-        "x": 7820,
+        "x": 8180,
         "y": 1860
       },
       "data": {
@@ -1924,7 +1984,7 @@
       "id": "bot-jdeep",
       "type": "activity",
       "position": {
-        "x": 8180,
+        "x": 8540,
         "y": 1500
       },
       "data": {
@@ -1939,7 +1999,7 @@
       "id": "bot-log-cleanup",
       "type": "activity",
       "position": {
-        "x": 8540,
+        "x": 8900,
         "y": 1500
       },
       "data": {
@@ -1955,7 +2015,7 @@
       "id": "bot-delay-final",
       "type": "activity",
       "position": {
-        "x": 8900,
+        "x": 9260,
         "y": 1500
       },
       "data": {
@@ -1970,7 +2030,7 @@
       "id": "bot-log-end",
       "type": "activity",
       "position": {
-        "x": 9260,
+        "x": 9620,
         "y": 1500
       },
       "data": {
@@ -2077,7 +2137,7 @@
     {
       "id": "e001",
       "source": "trg-manual",
-      "target": "log-kickoff",
+      "target": "trg-junction",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -2086,7 +2146,7 @@
     {
       "id": "e002",
       "source": "trg-schedule",
-      "target": "log-kickoff",
+      "target": "trg-junction",
       "type": "labeled",
       "data": {
         "label": "DISABLED trigger",
@@ -2096,7 +2156,7 @@
     {
       "id": "e003",
       "source": "trg-webhook",
-      "target": "log-kickoff",
+      "target": "trg-junction",
       "type": "labeled",
       "data": {
         "label": "DISABLED trigger",
@@ -2106,7 +2166,7 @@
     {
       "id": "e004",
       "source": "trg-filewatch",
-      "target": "log-kickoff",
+      "target": "trg-junction",
       "type": "labeled",
       "data": {
         "label": "DISABLED trigger",
@@ -2116,7 +2176,7 @@
     {
       "id": "e005",
       "source": "trg-database",
-      "target": "log-kickoff",
+      "target": "trg-junction",
       "type": "labeled",
       "data": {
         "label": "DISABLED trigger",
@@ -2126,7 +2186,7 @@
     {
       "id": "e006",
       "source": "trg-eventlog",
-      "target": "log-kickoff",
+      "target": "trg-junction",
       "type": "labeled",
       "data": {
         "label": "DISABLED trigger",
@@ -2135,6 +2195,15 @@
     },
     {
       "id": "e007",
+      "source": "trg-junction",
+      "target": "log-kickoff",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e008",
       "source": "log-kickoff",
       "target": "delay-init",
       "type": "labeled",
@@ -2144,7 +2213,7 @@
       }
     },
     {
-      "id": "e008",
+      "id": "e009",
       "source": "delay-init",
       "target": "collect-host",
       "type": "labeled",
@@ -2153,7 +2222,7 @@
       }
     },
     {
-      "id": "e009",
+      "id": "e010",
       "source": "collect-host",
       "target": "collect-net",
       "type": "labeled",
@@ -2172,7 +2241,7 @@
       }
     },
     {
-      "id": "e010",
+      "id": "e011",
       "source": "collect-net",
       "target": "process-data",
       "type": "labeled",
@@ -2182,7 +2251,7 @@
       }
     },
     {
-      "id": "e011",
+      "id": "e012",
       "source": "process-data",
       "target": "sync1",
       "type": "labeled",
@@ -2191,7 +2260,7 @@
       }
     },
     {
-      "id": "e012",
+      "id": "e013",
       "source": "sync1",
       "target": "r01-file-exists",
       "type": "labeled",
@@ -2200,7 +2269,7 @@
       }
     },
     {
-      "id": "e013",
+      "id": "e014",
       "source": "sync1",
       "target": "r02-svc-status",
       "type": "labeled",
@@ -2209,7 +2278,7 @@
       }
     },
     {
-      "id": "e014",
+      "id": "e015",
       "source": "sync1",
       "target": "r03-reg-read",
       "type": "labeled",
@@ -2218,7 +2287,7 @@
       }
     },
     {
-      "id": "e015",
+      "id": "e016",
       "source": "sync1",
       "target": "r04-wmi-os",
       "type": "labeled",
@@ -2227,7 +2296,7 @@
       }
     },
     {
-      "id": "e016",
+      "id": "e017",
       "source": "sync1",
       "target": "r05-prog-cmd",
       "type": "labeled",
@@ -2236,7 +2305,7 @@
       }
     },
     {
-      "id": "e017",
+      "id": "e018",
       "source": "sync1",
       "target": "r06-waitcond-a",
       "type": "labeled",
@@ -2245,7 +2314,7 @@
       }
     },
     {
-      "id": "e018",
+      "id": "e019",
       "source": "sync1",
       "target": "r07-file-list",
       "type": "labeled",
@@ -2254,7 +2323,7 @@
       }
     },
     {
-      "id": "e019",
+      "id": "e020",
       "source": "sync1",
       "target": "r08-svc-list",
       "type": "labeled",
@@ -2263,7 +2332,7 @@
       }
     },
     {
-      "id": "e020",
+      "id": "e021",
       "source": "sync1",
       "target": "r09-reg-write",
       "type": "labeled",
@@ -2272,7 +2341,7 @@
       }
     },
     {
-      "id": "e021",
+      "id": "e022",
       "source": "sync1",
       "target": "r10-wmi-cpu",
       "type": "labeled",
@@ -2281,7 +2350,7 @@
       }
     },
     {
-      "id": "e022",
+      "id": "e023",
       "source": "sync1",
       "target": "r11-prog-ps",
       "type": "labeled",
@@ -2290,7 +2359,7 @@
       }
     },
     {
-      "id": "e023",
+      "id": "e024",
       "source": "sync1",
       "target": "r12-wmi-disk",
       "type": "labeled",
@@ -2299,7 +2368,7 @@
       }
     },
     {
-      "id": "e024",
+      "id": "e025",
       "source": "sync1",
       "target": "m01-rest-get",
       "type": "labeled",
@@ -2308,7 +2377,7 @@
       }
     },
     {
-      "id": "e025",
+      "id": "e026",
       "source": "sync1",
       "target": "bot01-delay-fast",
       "type": "labeled",
@@ -2317,7 +2386,7 @@
       }
     },
     {
-      "id": "e026",
+      "id": "e027",
       "source": "sync1",
       "target": "bot02-delay-med",
       "type": "labeled",
@@ -2326,7 +2395,7 @@
       }
     },
     {
-      "id": "e027",
+      "id": "e028",
       "source": "sync1",
       "target": "bot03-delay-slow",
       "type": "labeled",
@@ -2335,7 +2404,7 @@
       }
     },
     {
-      "id": "e028",
+      "id": "e029",
       "source": "r01-file-exists",
       "target": "jall-top",
       "type": "labeled",
@@ -2344,7 +2413,7 @@
       }
     },
     {
-      "id": "e029",
+      "id": "e030",
       "source": "r02-svc-status",
       "target": "jall-top",
       "type": "labeled",
@@ -2353,7 +2422,7 @@
       }
     },
     {
-      "id": "e030",
+      "id": "e031",
       "source": "r03-reg-read",
       "target": "jall-top",
       "type": "labeled",
@@ -2362,7 +2431,7 @@
       }
     },
     {
-      "id": "e031",
+      "id": "e032",
       "source": "r04-wmi-os",
       "target": "jall-top",
       "type": "labeled",
@@ -2371,7 +2440,7 @@
       }
     },
     {
-      "id": "e032",
+      "id": "e033",
       "source": "r05-prog-cmd",
       "target": "jall-top",
       "type": "labeled",
@@ -2380,7 +2449,7 @@
       }
     },
     {
-      "id": "e033",
+      "id": "e034",
       "source": "r06-waitcond-a",
       "target": "jall-top",
       "type": "labeled",
@@ -2389,7 +2458,7 @@
       }
     },
     {
-      "id": "e034",
+      "id": "e035",
       "source": "r07-file-list",
       "target": "jall-top",
       "type": "labeled",
@@ -2398,7 +2467,7 @@
       }
     },
     {
-      "id": "e035",
+      "id": "e036",
       "source": "r08-svc-list",
       "target": "jall-top",
       "type": "labeled",
@@ -2407,7 +2476,7 @@
       }
     },
     {
-      "id": "e036",
+      "id": "e037",
       "source": "r09-reg-write",
       "target": "jall-top",
       "type": "labeled",
@@ -2416,7 +2485,7 @@
       }
     },
     {
-      "id": "e037",
+      "id": "e038",
       "source": "r10-wmi-cpu",
       "target": "jall-top",
       "type": "labeled",
@@ -2425,7 +2494,7 @@
       }
     },
     {
-      "id": "e038",
+      "id": "e039",
       "source": "r11-prog-ps",
       "target": "jall-top",
       "type": "labeled",
@@ -2434,7 +2503,7 @@
       }
     },
     {
-      "id": "e039",
+      "id": "e040",
       "source": "r12-wmi-disk",
       "target": "jall-top",
       "type": "labeled",
@@ -2443,7 +2512,7 @@
       }
     },
     {
-      "id": "e040",
+      "id": "e041",
       "source": "jall-top",
       "target": "d01-log-eqneq",
       "type": "labeled",
@@ -2486,7 +2555,7 @@
       }
     },
     {
-      "id": "e041",
+      "id": "e042",
       "source": "jall-top",
       "target": "d02-log-range",
       "type": "labeled",
@@ -2529,7 +2598,7 @@
       }
     },
     {
-      "id": "e042",
+      "id": "e043",
       "source": "jall-top",
       "target": "d03-log-disk",
       "type": "labeled",
@@ -2574,7 +2643,7 @@
       }
     },
     {
-      "id": "e043",
+      "id": "e044",
       "source": "jall-top",
       "target": "d04-log-strings",
       "type": "labeled",
@@ -2645,7 +2714,7 @@
       }
     },
     {
-      "id": "e044",
+      "id": "e045",
       "source": "jall-top",
       "target": "d05-log-unarypos",
       "type": "labeled",
@@ -2679,7 +2748,7 @@
       }
     },
     {
-      "id": "e045",
+      "id": "e046",
       "source": "jall-top",
       "target": "d06-log-unaryneg",
       "type": "labeled",
@@ -2714,7 +2783,7 @@
       }
     },
     {
-      "id": "e046",
+      "id": "e047",
       "source": "jall-top",
       "target": "d07-log-notpanic",
       "type": "labeled",
@@ -2739,7 +2808,7 @@
       }
     },
     {
-      "id": "e047",
+      "id": "e048",
       "source": "jall-top",
       "target": "d08-log-build",
       "type": "labeled",
@@ -2785,7 +2854,7 @@
       }
     },
     {
-      "id": "e048",
+      "id": "e049",
       "source": "jall-top",
       "target": "d09-log-netup",
       "type": "labeled",
@@ -2820,7 +2889,7 @@
       }
     },
     {
-      "id": "e049",
+      "id": "e050",
       "source": "jall-top",
       "target": "d10-log-startsor",
       "type": "labeled",
@@ -2863,7 +2932,7 @@
       }
     },
     {
-      "id": "e050",
+      "id": "e051",
       "source": "d01-log-eqneq",
       "target": "jmatch-top",
       "type": "labeled",
@@ -2872,7 +2941,7 @@
       }
     },
     {
-      "id": "e051",
+      "id": "e052",
       "source": "d02-log-range",
       "target": "jmatch-top",
       "type": "labeled",
@@ -2881,7 +2950,7 @@
       }
     },
     {
-      "id": "e052",
+      "id": "e053",
       "source": "d03-log-disk",
       "target": "jmatch-top",
       "type": "labeled",
@@ -2890,7 +2959,7 @@
       }
     },
     {
-      "id": "e053",
+      "id": "e054",
       "source": "d04-log-strings",
       "target": "jmatch-top",
       "type": "labeled",
@@ -2899,7 +2968,7 @@
       }
     },
     {
-      "id": "e054",
+      "id": "e055",
       "source": "d05-log-unarypos",
       "target": "jmatch-top",
       "type": "labeled",
@@ -2908,7 +2977,7 @@
       }
     },
     {
-      "id": "e055",
+      "id": "e056",
       "source": "d06-log-unaryneg",
       "target": "jmatch-top",
       "type": "labeled",
@@ -2917,7 +2986,7 @@
       }
     },
     {
-      "id": "e056",
+      "id": "e057",
       "source": "d07-log-notpanic",
       "target": "jmatch-top",
       "type": "labeled",
@@ -2926,7 +2995,7 @@
       }
     },
     {
-      "id": "e057",
+      "id": "e058",
       "source": "d08-log-build",
       "target": "jmatch-top",
       "type": "labeled",
@@ -2935,7 +3004,7 @@
       }
     },
     {
-      "id": "e058",
+      "id": "e059",
       "source": "d09-log-netup",
       "target": "jmatch-top",
       "type": "labeled",
@@ -2944,7 +3013,7 @@
       }
     },
     {
-      "id": "e059",
+      "id": "e060",
       "source": "d10-log-startsor",
       "target": "jmatch-top",
       "type": "labeled",
@@ -2953,7 +3022,7 @@
       }
     },
     {
-      "id": "e060",
+      "id": "e061",
       "source": "jmatch-top",
       "target": "top-log-phase2done",
       "type": "labeled",
@@ -2962,7 +3031,7 @@
       }
     },
     {
-      "id": "e061",
+      "id": "e062",
       "source": "top-log-phase2done",
       "target": "top-delay-bridge",
       "type": "labeled",
@@ -2971,7 +3040,7 @@
       }
     },
     {
-      "id": "e062",
+      "id": "e063",
       "source": "top-delay-bridge",
       "target": "top-log-phase3",
       "type": "labeled",
@@ -2980,7 +3049,7 @@
       }
     },
     {
-      "id": "e063",
+      "id": "e064",
       "source": "top-log-phase3",
       "target": "top-delay-phase3",
       "type": "labeled",
@@ -2989,7 +3058,7 @@
       }
     },
     {
-      "id": "e064",
+      "id": "e065",
       "source": "m01-rest-get",
       "target": "m03-sql-select",
       "type": "labeled",
@@ -2999,7 +3068,7 @@
       }
     },
     {
-      "id": "e065",
+      "id": "e066",
       "source": "m01-rest-get",
       "target": "m02-log-restfail",
       "type": "labeled",
@@ -3009,7 +3078,7 @@
       }
     },
     {
-      "id": "e066",
+      "id": "e067",
       "source": "m03-sql-select",
       "target": "m04-sql-params",
       "type": "labeled",
@@ -3018,7 +3087,7 @@
       }
     },
     {
-      "id": "e067",
+      "id": "e068",
       "source": "m04-sql-params",
       "target": "mid-jrest",
       "type": "labeled",
@@ -3027,7 +3096,7 @@
       }
     },
     {
-      "id": "e068",
+      "id": "e069",
       "source": "m02-log-restfail",
       "target": "mid-jrest",
       "type": "labeled",
@@ -3036,7 +3105,7 @@
       }
     },
     {
-      "id": "e069",
+      "id": "e070",
       "source": "mid-jrest",
       "target": "mid-log-phase2done",
       "type": "labeled",
@@ -3045,7 +3114,7 @@
       }
     },
     {
-      "id": "e070",
+      "id": "e071",
       "source": "bot01-delay-fast",
       "target": "bot04-jany",
       "type": "labeled",
@@ -3054,7 +3123,7 @@
       }
     },
     {
-      "id": "e071",
+      "id": "e072",
       "source": "bot02-delay-med",
       "target": "bot04-jany",
       "type": "labeled",
@@ -3063,7 +3132,7 @@
       }
     },
     {
-      "id": "e072",
+      "id": "e073",
       "source": "bot03-delay-slow",
       "target": "bot04-jany",
       "type": "labeled",
@@ -3072,7 +3141,7 @@
       }
     },
     {
-      "id": "e073",
+      "id": "e074",
       "source": "bot04-jany",
       "target": "bot05-waitcond",
       "type": "labeled",
@@ -3081,7 +3150,7 @@
       }
     },
     {
-      "id": "e074",
+      "id": "e075",
       "source": "bot05-waitcond",
       "target": "bot06-log-timing",
       "type": "labeled",
@@ -3090,7 +3159,7 @@
       }
     },
     {
-      "id": "e075",
+      "id": "e076",
       "source": "bot06-log-timing",
       "target": "bot07-delay-disabled",
       "type": "labeled",
@@ -3099,7 +3168,7 @@
       }
     },
     {
-      "id": "e076",
+      "id": "e077",
       "source": "bot07-delay-disabled",
       "target": "bot08-log-afterdis",
       "type": "labeled",
@@ -3108,7 +3177,7 @@
       }
     },
     {
-      "id": "e077",
+      "id": "e078",
       "source": "mid-log-phase2done",
       "target": "m05-xml",
       "type": "labeled",
@@ -3117,7 +3186,7 @@
       }
     },
     {
-      "id": "e078",
+      "id": "e079",
       "source": "bot08-log-afterdis",
       "target": "bot09-file-copy",
       "type": "labeled",
@@ -3126,7 +3195,7 @@
       }
     },
     {
-      "id": "e079",
+      "id": "e080",
       "source": "bot08-log-afterdis",
       "target": "bot10-svc-restart",
       "type": "labeled",
@@ -3135,7 +3204,7 @@
       }
     },
     {
-      "id": "e080",
+      "id": "e081",
       "source": "bot08-log-afterdis",
       "target": "bot11-reg-read2",
       "type": "labeled",
@@ -3144,7 +3213,7 @@
       }
     },
     {
-      "id": "e081",
+      "id": "e082",
       "source": "bot08-log-afterdis",
       "target": "bot12-wmi-bios",
       "type": "labeled",
@@ -3153,7 +3222,7 @@
       }
     },
     {
-      "id": "e082",
+      "id": "e083",
       "source": "m05-xml",
       "target": "m06-json",
       "type": "labeled",
@@ -3163,7 +3232,7 @@
       }
     },
     {
-      "id": "e083",
+      "id": "e084",
       "source": "m06-json",
       "target": "m07-rest-post",
       "type": "labeled",
@@ -3172,7 +3241,7 @@
       }
     },
     {
-      "id": "e084",
+      "id": "e085",
       "source": "m07-rest-post",
       "target": "m08-foreach",
       "type": "labeled",
@@ -3182,7 +3251,7 @@
       }
     },
     {
-      "id": "e085",
+      "id": "e086",
       "source": "m08-foreach",
       "target": "m09-sw-sync",
       "type": "labeled",
@@ -3191,9 +3260,9 @@
       }
     },
     {
-      "id": "e086",
+      "id": "e087",
       "source": "m09-sw-sync",
-      "target": "m11-sw-fire",
+      "target": "m-jchild",
       "type": "labeled",
       "data": {
         "label": "On Success",
@@ -3201,7 +3270,7 @@
       }
     },
     {
-      "id": "e087",
+      "id": "e088",
       "source": "m09-sw-sync",
       "target": "m10-log-childfail",
       "type": "labeled",
@@ -3211,8 +3280,17 @@
       }
     },
     {
-      "id": "e088",
+      "id": "e089",
       "source": "m10-log-childfail",
+      "target": "m-jchild",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e090",
+      "source": "m-jchild",
       "target": "m11-sw-fire",
       "type": "labeled",
       "data": {
@@ -3220,7 +3298,7 @@
       }
     },
     {
-      "id": "e089",
+      "id": "e091",
       "source": "m11-sw-fire",
       "target": "m12-return-mid",
       "type": "labeled",
@@ -3229,7 +3307,7 @@
       }
     },
     {
-      "id": "e090",
+      "id": "e092",
       "source": "bot09-file-copy",
       "target": "bot13-jallremote",
       "type": "labeled",
@@ -3238,7 +3316,7 @@
       }
     },
     {
-      "id": "e091",
+      "id": "e093",
       "source": "bot10-svc-restart",
       "target": "bot13-jallremote",
       "type": "labeled",
@@ -3247,7 +3325,7 @@
       }
     },
     {
-      "id": "e092",
+      "id": "e094",
       "source": "bot11-reg-read2",
       "target": "bot13-jallremote",
       "type": "labeled",
@@ -3256,7 +3334,7 @@
       }
     },
     {
-      "id": "e093",
+      "id": "e095",
       "source": "bot12-wmi-bios",
       "target": "bot13-jallremote",
       "type": "labeled",
@@ -3265,7 +3343,7 @@
       }
     },
     {
-      "id": "e094",
+      "id": "e096",
       "source": "bot13-jallremote",
       "target": "bot14-email",
       "type": "labeled",
@@ -3274,7 +3352,7 @@
       }
     },
     {
-      "id": "e095",
+      "id": "e097",
       "source": "bot13-jallremote",
       "target": "bot15-power",
       "type": "labeled",
@@ -3283,7 +3361,7 @@
       }
     },
     {
-      "id": "e096",
+      "id": "e098",
       "source": "bot13-jallremote",
       "target": "bot16-log-disnode",
       "type": "labeled",
@@ -3292,7 +3370,7 @@
       }
     },
     {
-      "id": "e097",
+      "id": "e099",
       "source": "bot14-email",
       "target": "bot17-log-ghost",
       "type": "labeled",
@@ -3302,45 +3380,27 @@
       }
     },
     {
-      "id": "e098",
+      "id": "e100",
       "source": "bot14-email",
-      "target": "bot18-log-notify",
+      "target": "bot-jnotify",
       "type": "labeled",
       "data": {
         "label": "Always (even on fail)"
       }
     },
     {
-      "id": "e099",
-      "source": "bot15-power",
-      "target": "bot18-log-notify",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e100",
-      "source": "bot16-log-disnode",
-      "target": "bot18-log-notify",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
       "id": "e101",
-      "source": "bot17-log-ghost",
-      "target": "bot18-log-notify",
+      "source": "bot15-power",
+      "target": "bot-jnotify",
       "type": "labeled",
       "data": {
-        "label": "Always (ghost)"
+        "label": "Always"
       }
     },
     {
       "id": "e102",
-      "source": "top-delay-phase3",
-      "target": "top-deep-01",
+      "source": "bot16-log-disnode",
+      "target": "bot-jnotify",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3348,17 +3408,17 @@
     },
     {
       "id": "e103",
-      "source": "top-delay-phase3",
-      "target": "top-deep-02",
+      "source": "bot17-log-ghost",
+      "target": "bot-jnotify",
       "type": "labeled",
       "data": {
-        "label": "Always"
+        "label": "Always (ghost)"
       }
     },
     {
       "id": "e104",
-      "source": "top-delay-phase3",
-      "target": "top-deep-03",
+      "source": "bot-jnotify",
+      "target": "bot18-log-notify",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3367,7 +3427,7 @@
     {
       "id": "e105",
       "source": "top-delay-phase3",
-      "target": "top-deep-04",
+      "target": "top-deep-01",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3375,6 +3435,33 @@
     },
     {
       "id": "e106",
+      "source": "top-delay-phase3",
+      "target": "top-deep-02",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e107",
+      "source": "top-delay-phase3",
+      "target": "top-deep-03",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e108",
+      "source": "top-delay-phase3",
+      "target": "top-deep-04",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e109",
       "source": "top-deep-01",
       "target": "top-j-combo",
       "type": "labeled",
@@ -3383,7 +3470,7 @@
       }
     },
     {
-      "id": "e107",
+      "id": "e110",
       "source": "top-deep-02",
       "target": "top-j-combo",
       "type": "labeled",
@@ -3392,7 +3479,7 @@
       }
     },
     {
-      "id": "e108",
+      "id": "e111",
       "source": "top-deep-03",
       "target": "top-j-combo",
       "type": "labeled",
@@ -3401,7 +3488,7 @@
       }
     },
     {
-      "id": "e109",
+      "id": "e112",
       "source": "top-deep-04",
       "target": "top-j-combo",
       "type": "labeled",
@@ -3410,7 +3497,7 @@
       }
     },
     {
-      "id": "e110",
+      "id": "e113",
       "source": "top-j-combo",
       "target": "top-log-end",
       "type": "labeled",
@@ -3419,7 +3506,7 @@
       }
     },
     {
-      "id": "e111",
+      "id": "e114",
       "source": "m12-return-mid",
       "target": "m13-delay-a",
       "type": "labeled",
@@ -3428,7 +3515,7 @@
       }
     },
     {
-      "id": "e112",
+      "id": "e115",
       "source": "m12-return-mid",
       "target": "m14-delay-b",
       "type": "labeled",
@@ -3437,7 +3524,7 @@
       }
     },
     {
-      "id": "e113",
+      "id": "e116",
       "source": "m12-return-mid",
       "target": "m15-delay-c",
       "type": "labeled",
@@ -3446,7 +3533,7 @@
       }
     },
     {
-      "id": "e114",
+      "id": "e117",
       "source": "m13-delay-a",
       "target": "m16-jnofm",
       "type": "labeled",
@@ -3455,7 +3542,7 @@
       }
     },
     {
-      "id": "e115",
+      "id": "e118",
       "source": "m14-delay-b",
       "target": "m16-jnofm",
       "type": "labeled",
@@ -3464,7 +3551,7 @@
       }
     },
     {
-      "id": "e116",
+      "id": "e119",
       "source": "m15-delay-c",
       "target": "m16-jnofm",
       "type": "labeled",
@@ -3473,7 +3560,7 @@
       }
     },
     {
-      "id": "e117",
+      "id": "e120",
       "source": "m16-jnofm",
       "target": "m17-waitcond",
       "type": "labeled",
@@ -3482,7 +3569,7 @@
       }
     },
     {
-      "id": "e118",
+      "id": "e121",
       "source": "m17-waitcond",
       "target": "m-d1",
       "type": "labeled",
@@ -3491,7 +3578,7 @@
       }
     },
     {
-      "id": "e119",
+      "id": "e122",
       "source": "m-d1",
       "target": "m-jdeep",
       "type": "labeled",
@@ -3500,7 +3587,7 @@
       }
     },
     {
-      "id": "e120",
+      "id": "e123",
       "source": "m17-waitcond",
       "target": "m-d2",
       "type": "labeled",
@@ -3509,7 +3596,7 @@
       }
     },
     {
-      "id": "e121",
+      "id": "e124",
       "source": "m-d2",
       "target": "m-jdeep",
       "type": "labeled",
@@ -3518,7 +3605,7 @@
       }
     },
     {
-      "id": "e122",
+      "id": "e125",
       "source": "m17-waitcond",
       "target": "m-d3",
       "type": "labeled",
@@ -3527,7 +3614,7 @@
       }
     },
     {
-      "id": "e123",
+      "id": "e126",
       "source": "m-d3",
       "target": "m-jdeep",
       "type": "labeled",
@@ -3536,7 +3623,7 @@
       }
     },
     {
-      "id": "e124",
+      "id": "e127",
       "source": "m17-waitcond",
       "target": "m-d4",
       "type": "labeled",
@@ -3545,7 +3632,7 @@
       }
     },
     {
-      "id": "e125",
+      "id": "e128",
       "source": "m-d4",
       "target": "m-jdeep",
       "type": "labeled",
@@ -3554,7 +3641,7 @@
       }
     },
     {
-      "id": "e126",
+      "id": "e129",
       "source": "m17-waitcond",
       "target": "m-d5",
       "type": "labeled",
@@ -3563,7 +3650,7 @@
       }
     },
     {
-      "id": "e127",
+      "id": "e130",
       "source": "m-d5",
       "target": "m-jdeep",
       "type": "labeled",
@@ -3572,7 +3659,7 @@
       }
     },
     {
-      "id": "e128",
+      "id": "e131",
       "source": "m17-waitcond",
       "target": "m-d6",
       "type": "labeled",
@@ -3581,7 +3668,7 @@
       }
     },
     {
-      "id": "e129",
+      "id": "e132",
       "source": "m-d6",
       "target": "m-jdeep",
       "type": "labeled",
@@ -3590,7 +3677,7 @@
       }
     },
     {
-      "id": "e130",
+      "id": "e133",
       "source": "m17-waitcond",
       "target": "m-d7",
       "type": "labeled",
@@ -3599,7 +3686,7 @@
       }
     },
     {
-      "id": "e131",
+      "id": "e134",
       "source": "m-d7",
       "target": "m-jdeep",
       "type": "labeled",
@@ -3608,7 +3695,7 @@
       }
     },
     {
-      "id": "e132",
+      "id": "e135",
       "source": "m17-waitcond",
       "target": "m-d8",
       "type": "labeled",
@@ -3617,7 +3704,7 @@
       }
     },
     {
-      "id": "e133",
+      "id": "e136",
       "source": "m-d8",
       "target": "m-jdeep",
       "type": "labeled",
@@ -3626,7 +3713,7 @@
       }
     },
     {
-      "id": "e134",
+      "id": "e137",
       "source": "m17-waitcond",
       "target": "m-d9",
       "type": "labeled",
@@ -3635,7 +3722,7 @@
       }
     },
     {
-      "id": "e135",
+      "id": "e138",
       "source": "m-d9",
       "target": "m-jdeep",
       "type": "labeled",
@@ -3644,7 +3731,7 @@
       }
     },
     {
-      "id": "e136",
+      "id": "e139",
       "source": "m17-waitcond",
       "target": "m-d10",
       "type": "labeled",
@@ -3653,7 +3740,7 @@
       }
     },
     {
-      "id": "e137",
+      "id": "e140",
       "source": "m-d10",
       "target": "m-jdeep",
       "type": "labeled",
@@ -3662,7 +3749,7 @@
       }
     },
     {
-      "id": "e138",
+      "id": "e141",
       "source": "m-jdeep",
       "target": "m-log-end",
       "type": "labeled",
@@ -3671,7 +3758,7 @@
       }
     },
     {
-      "id": "e139",
+      "id": "e142",
       "source": "bot18-log-notify",
       "target": "bot19-log-bp1",
       "type": "labeled",
@@ -3680,7 +3767,7 @@
       }
     },
     {
-      "id": "e140",
+      "id": "e143",
       "source": "bot18-log-notify",
       "target": "bot20-runscript-bp",
       "type": "labeled",
@@ -3689,7 +3776,7 @@
       }
     },
     {
-      "id": "e141",
+      "id": "e144",
       "source": "bot18-log-notify",
       "target": "bot21-log-disnode2",
       "type": "labeled",
@@ -3698,7 +3785,7 @@
       }
     },
     {
-      "id": "e142",
+      "id": "e145",
       "source": "bot18-log-notify",
       "target": "bot22-file-del",
       "type": "labeled",
@@ -3707,36 +3794,9 @@
       }
     },
     {
-      "id": "e143",
-      "source": "bot19-log-bp1",
-      "target": "bot-d1",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e144",
-      "source": "bot19-log-bp1",
-      "target": "bot-d2",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e145",
-      "source": "bot19-log-bp1",
-      "target": "bot-d3",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
       "id": "e146",
       "source": "bot19-log-bp1",
-      "target": "bot-d4",
+      "target": "bot-jdebug",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3745,7 +3805,7 @@
     {
       "id": "e147",
       "source": "bot20-runscript-bp",
-      "target": "bot-d1",
+      "target": "bot-jdebug",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3753,8 +3813,8 @@
     },
     {
       "id": "e148",
-      "source": "bot20-runscript-bp",
-      "target": "bot-d2",
+      "source": "bot21-log-disnode2",
+      "target": "bot-jdebug",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3762,8 +3822,8 @@
     },
     {
       "id": "e149",
-      "source": "bot20-runscript-bp",
-      "target": "bot-d3",
+      "source": "bot22-file-del",
+      "target": "bot-jdebug",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3771,8 +3831,8 @@
     },
     {
       "id": "e150",
-      "source": "bot20-runscript-bp",
-      "target": "bot-d4",
+      "source": "bot-jdebug",
+      "target": "bot-d1",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3780,8 +3840,8 @@
     },
     {
       "id": "e151",
-      "source": "bot21-log-disnode2",
-      "target": "bot-d1",
+      "source": "bot-jdebug",
+      "target": "bot-d2",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3789,8 +3849,8 @@
     },
     {
       "id": "e152",
-      "source": "bot21-log-disnode2",
-      "target": "bot-d2",
+      "source": "bot-jdebug",
+      "target": "bot-d3",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3798,8 +3858,8 @@
     },
     {
       "id": "e153",
-      "source": "bot21-log-disnode2",
-      "target": "bot-d3",
+      "source": "bot-jdebug",
+      "target": "bot-d4",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3807,8 +3867,8 @@
     },
     {
       "id": "e154",
-      "source": "bot21-log-disnode2",
-      "target": "bot-d4",
+      "source": "bot-jdebug",
+      "target": "bot-d5",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3816,8 +3876,8 @@
     },
     {
       "id": "e155",
-      "source": "bot22-file-del",
-      "target": "bot-d1",
+      "source": "bot-jdebug",
+      "target": "bot-d6",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3825,8 +3885,8 @@
     },
     {
       "id": "e156",
-      "source": "bot22-file-del",
-      "target": "bot-d2",
+      "source": "bot-jdebug",
+      "target": "bot-d7",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3834,8 +3894,8 @@
     },
     {
       "id": "e157",
-      "source": "bot22-file-del",
-      "target": "bot-d3",
+      "source": "bot-jdebug",
+      "target": "bot-d8",
       "type": "labeled",
       "data": {
         "label": "Always"
@@ -3843,159 +3903,6 @@
     },
     {
       "id": "e158",
-      "source": "bot22-file-del",
-      "target": "bot-d4",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e159",
-      "source": "bot19-log-bp1",
-      "target": "bot-d5",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e160",
-      "source": "bot19-log-bp1",
-      "target": "bot-d6",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e161",
-      "source": "bot19-log-bp1",
-      "target": "bot-d7",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e162",
-      "source": "bot19-log-bp1",
-      "target": "bot-d8",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e163",
-      "source": "bot20-runscript-bp",
-      "target": "bot-d5",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e164",
-      "source": "bot20-runscript-bp",
-      "target": "bot-d6",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e165",
-      "source": "bot20-runscript-bp",
-      "target": "bot-d7",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e166",
-      "source": "bot20-runscript-bp",
-      "target": "bot-d8",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e167",
-      "source": "bot21-log-disnode2",
-      "target": "bot-d5",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e168",
-      "source": "bot21-log-disnode2",
-      "target": "bot-d6",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e169",
-      "source": "bot21-log-disnode2",
-      "target": "bot-d7",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e170",
-      "source": "bot21-log-disnode2",
-      "target": "bot-d8",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e171",
-      "source": "bot22-file-del",
-      "target": "bot-d5",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e172",
-      "source": "bot22-file-del",
-      "target": "bot-d6",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e173",
-      "source": "bot22-file-del",
-      "target": "bot-d7",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e174",
-      "source": "bot22-file-del",
-      "target": "bot-d8",
-      "type": "labeled",
-      "data": {
-        "label": "Always"
-      }
-    },
-    {
-      "id": "e175",
       "source": "bot-d1",
       "target": "bot-jdeep",
       "type": "labeled",
@@ -4004,7 +3911,7 @@
       }
     },
     {
-      "id": "e176",
+      "id": "e159",
       "source": "bot-d2",
       "target": "bot-jdeep",
       "type": "labeled",
@@ -4013,7 +3920,7 @@
       }
     },
     {
-      "id": "e177",
+      "id": "e160",
       "source": "bot-d3",
       "target": "bot-jdeep",
       "type": "labeled",
@@ -4022,7 +3929,7 @@
       }
     },
     {
-      "id": "e178",
+      "id": "e161",
       "source": "bot-d4",
       "target": "bot-jdeep",
       "type": "labeled",
@@ -4031,7 +3938,7 @@
       }
     },
     {
-      "id": "e179",
+      "id": "e162",
       "source": "bot-d5",
       "target": "bot-jdeep",
       "type": "labeled",
@@ -4040,7 +3947,7 @@
       }
     },
     {
-      "id": "e180",
+      "id": "e163",
       "source": "bot-d6",
       "target": "bot-jdeep",
       "type": "labeled",
@@ -4049,7 +3956,7 @@
       }
     },
     {
-      "id": "e181",
+      "id": "e164",
       "source": "bot-d7",
       "target": "bot-jdeep",
       "type": "labeled",
@@ -4058,7 +3965,7 @@
       }
     },
     {
-      "id": "e182",
+      "id": "e165",
       "source": "bot-d8",
       "target": "bot-jdeep",
       "type": "labeled",
@@ -4067,7 +3974,7 @@
       }
     },
     {
-      "id": "e183",
+      "id": "e166",
       "source": "bot-jdeep",
       "target": "bot-log-cleanup",
       "type": "labeled",
@@ -4076,7 +3983,7 @@
       }
     },
     {
-      "id": "e184",
+      "id": "e167",
       "source": "bot-log-cleanup",
       "target": "bot-delay-final",
       "type": "labeled",
@@ -4085,7 +3992,7 @@
       }
     },
     {
-      "id": "e185",
+      "id": "e168",
       "source": "bot-delay-final",
       "target": "bot-log-end",
       "type": "labeled",
@@ -4094,7 +4001,7 @@
       }
     },
     {
-      "id": "e186",
+      "id": "e169",
       "source": "top-log-end",
       "target": "final-junction",
       "type": "labeled",
@@ -4103,7 +4010,7 @@
       }
     },
     {
-      "id": "e187",
+      "id": "e170",
       "source": "m-log-end",
       "target": "final-junction",
       "type": "labeled",
@@ -4112,7 +4019,7 @@
       }
     },
     {
-      "id": "e188",
+      "id": "e171",
       "source": "bot-log-end",
       "target": "final-junction",
       "type": "labeled",
@@ -4121,7 +4028,7 @@
       }
     },
     {
-      "id": "e189",
+      "id": "e172",
       "source": "final-junction",
       "target": "final-invoke",
       "type": "labeled",
@@ -4130,7 +4037,7 @@
       }
     },
     {
-      "id": "e190",
+      "id": "e173",
       "source": "final-invoke",
       "target": "final-return",
       "type": "labeled",

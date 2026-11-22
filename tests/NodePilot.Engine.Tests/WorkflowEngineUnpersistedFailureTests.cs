@@ -34,21 +34,25 @@ public class WorkflowEngineUnpersistedFailureTests
     /// <summary>
     /// Simulates a failure exactly at the terminal write. The Running insert is deliberately
     /// allowed
-    /// through, then the first Failed update throws. A fresh context can commit after recovery.
+    /// through, then the first update to the given status throws. A fresh context can commit
+    /// after recovery.
     /// </summary>
-    private sealed class FailOnceOnFailedStepSaveInterceptor : SaveChangesInterceptor
+    private sealed class FailOnceOnStepSaveInterceptor : SaveChangesInterceptor
     {
         private readonly Exception _exception;
         private readonly DatabaseAvailabilityTracker? _availability;
+        private readonly ExecutionStatus _status;
         private int _fired;
         internal TaskCompletionSource Fired { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        internal FailOnceOnFailedStepSaveInterceptor(
+        internal FailOnceOnStepSaveInterceptor(
             Exception exception,
-            DatabaseAvailabilityTracker? availability = null)
+            DatabaseAvailabilityTracker? availability = null,
+            ExecutionStatus status = ExecutionStatus.Failed)
         {
             _exception = exception;
             _availability = availability;
+            _status = status;
         }
 
         public override InterceptionResult<int> SavingChanges(
@@ -68,9 +72,9 @@ public class WorkflowEngineUnpersistedFailureTests
         private void MaybeThrow(DbContextEventData eventData)
         {
             if (_fired > 0) return;
-            var savingFailedStep = eventData.Context?.ChangeTracker.Entries<StepExecution>()
-                .Any(e => e.Entity.Status == ExecutionStatus.Failed) == true;
-            if (!savingFailedStep) return;
+            var savingStep = eventData.Context?.ChangeTracker.Entries<StepExecution>()
+                .Any(e => e.Entity.Status == _status) == true;
+            if (!savingStep) return;
             if (Interlocked.Exchange(ref _fired, 1) != 0) return;
             _availability?.ReportUnreachable(DatabaseOutageReason.Unreachable);
             Fired.TrySetResult();
@@ -235,6 +239,78 @@ public class WorkflowEngineUnpersistedFailureTests
             _availability.ReportUnreachable(DatabaseOutageReason.Unreachable);
             Fired.TrySetResult();
             throw new IOException("simulated outage at the terminal verdict read");
+        }
+    }
+
+    // What SqlClient throws when every pooled connection is in use. The breaker stays closed.
+    private static InvalidOperationException PoolExhausted() => new(
+        "Timeout expired. The timeout period elapsed prior to obtaining a connection from the pool. "
+        + "This may have occurred because all pooled connections were in use and max pool size was reached.");
+
+    /// <summary>
+    /// Answers the first terminal execution updates and the first verdict reads with a full
+    /// connection pool, then lets them through.
+    /// </summary>
+    private sealed class BusyAtRunEndInterceptor(int busyUpdates, int busyVerdictReads) : DbCommandInterceptor
+    {
+        private int _updates;
+        private int _verdictReads;
+        internal int Updates => Volatile.Read(ref _updates);
+        internal int VerdictReads => Volatile.Read(ref _verdictReads);
+
+        public override InterceptionResult<int> NonQueryExecuting(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result)
+        {
+            MaybeThrowOnUpdate(command);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            MaybeThrowOnUpdate(command);
+            return ValueTask.FromResult(result);
+        }
+
+        public override InterceptionResult<DbDataReader> ReaderExecuting(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
+        {
+            MaybeThrowOnVerdictRead(command);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            MaybeThrowOnVerdictRead(command);
+            return ValueTask.FromResult(result);
+        }
+
+        private void MaybeThrowOnUpdate(DbCommand command)
+        {
+            var text = command.CommandText;
+            if (!text.Contains("UPDATE", StringComparison.OrdinalIgnoreCase)
+                || !text.Contains("WorkflowExecutions", StringComparison.Ordinal)
+                || !text.Contains("CompletedAt", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (Interlocked.Increment(ref _updates) <= busyUpdates) throw PoolExhausted();
+        }
+
+        private void MaybeThrowOnVerdictRead(DbCommand command)
+        {
+            var text = command.CommandText;
+            if (!text.Contains("COUNT", StringComparison.OrdinalIgnoreCase)
+                || !text.Contains("StepExecutions", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (Interlocked.Increment(ref _verdictReads) <= busyVerdictReads) throw PoolExhausted();
         }
     }
 
@@ -537,7 +613,7 @@ public class WorkflowEngineUnpersistedFailureTests
             NullLogger<DatabaseAvailabilityTracker>.Instance,
             probeSuccessesToRecover: 1);
         availability.MarkBootComplete();
-        var terminalFailure = new FailOnceOnFailedStepSaveInterceptor(
+        var terminalFailure = new FailOnceOnStepSaveInterceptor(
             new IOException("simulated database transport failure"), availability);
 
         var services = new ServiceCollection();
@@ -590,6 +666,180 @@ public class WorkflowEngineUnpersistedFailureTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_DatabaseOutageAtSucceededStepWrite_KeepsTheStepSucceeded()
+    {
+        // Recovery saves the row through a fresh context. The step's own context has to keep the
+        // saved values afterwards, or the succeeded step ends as a failed one.
+        var registry = new ActivityRegistry(
+        [
+            MockExecutor("manualTrigger", new ActivityResult { Success = true, Output = "{}" }),
+            MockExecutor("runScript", new ActivityResult { Success = true, Output = "done" }),
+        ]);
+
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+
+        var availability = new DatabaseAvailabilityTracker(
+            NullLogger<DatabaseAvailabilityTracker>.Instance,
+            probeSuccessesToRecover: 1);
+        availability.MarkBootComplete();
+        var terminalFailure = new FailOnceOnStepSaveInterceptor(
+            new IOException("simulated database transport failure"), availability, ExecutionStatus.Succeeded);
+
+        var services = new ServiceCollection();
+        services.AddDbContext<NodePilotDbContext>(opts =>
+            opts.UseSqlite(connection).AddInterceptors(terminalFailure));
+        services.AddScoped(_ => registry);
+        services.AddSingleton<IDatabaseAvailability>(availability);
+        await using var stepScopeProvider = services.BuildServiceProvider();
+
+        await using var db = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+
+        var notifier = new Mock<IExecutionNotifier>();
+        var engine = new WorkflowEngine(
+            db,
+            NullLogger<WorkflowEngine>.Instance,
+            stepScopeProvider,
+            notifier.Object);
+
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "Outage during the write of a succeeded step",
+            DefinitionJson = "{\"nodes\":[" + TriggerNodeJson +
+                ",{\"id\":\"step-1\",\"type\":\"activity\",\"data\":{\"activityType\":\"runScript\",\"config\":{}}}]," +
+                "\"edges\":[{\"id\":\"te\",\"source\":\"trigger-1\",\"target\":\"step-1\"}]}",
+        };
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var executionTask = engine.ExecuteAsync(workflow, "test-user", CancellationToken.None);
+        await terminalFailure.Fired.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        availability.ReportProbeSucceeded();
+        var execution = await executionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        var steps = await db.StepExecutions.AsNoTracking()
+            .Where(s => s.WorkflowExecutionId == execution.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        steps.Should().HaveCount(2);
+        steps.Should().OnlyContain(s => s.Status == ExecutionStatus.Succeeded && s.ErrorOutput == null && s.CompletedAt != null);
+        execution.Status.Should().Be(ExecutionStatus.Succeeded);
+        notifier.Verify(n => n.StepCompletedAsync(
+            execution.Id, workflow.Id, "trigger-1", It.IsAny<string?>(), ExecutionStatus.Succeeded,
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DateTime>(),
+            It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<string?>(), It.IsAny<string?>(),
+            It.IsAny<DateTime?>(), It.IsAny<string?>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(ExecutionStatus.Running)]
+    [InlineData(ExecutionStatus.Succeeded)]
+    public async Task ExecuteAsync_FullConnectionPoolAtStepWrite_RetriesInsteadOfFailingTheRun(
+        ExecutionStatus failingWrite)
+    {
+        // A full pool is not an outage, so the breaker never opens. The write still has to get
+        // through; before, it failed and took the whole run with it.
+        var registry = new ActivityRegistry(
+        [
+            MockExecutor("manualTrigger", new ActivityResult { Success = true, Output = "{}" }),
+            MockExecutor("runScript", new ActivityResult { Success = true, Output = "done" }),
+        ]);
+
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+
+        var busy = new FailOnceOnStepSaveInterceptor(PoolExhausted(), status: failingWrite);
+        var services = new ServiceCollection();
+        services.AddDbContext<NodePilotDbContext>(opts => opts.UseSqlite(connection).AddInterceptors(busy));
+        services.AddScoped(_ => registry);
+        await using var stepScopeProvider = services.BuildServiceProvider();
+
+        await using var db = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+
+        var logger = new CapturingLogger<WorkflowEngine>();
+        var engine = new WorkflowEngine(db, logger, stepScopeProvider, Mock.Of<IExecutionNotifier>());
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "Full pool during a step write",
+            DefinitionJson = "{\"nodes\":[" + TriggerNodeJson +
+                ",{\"id\":\"step-1\",\"type\":\"activity\",\"data\":{\"activityType\":\"runScript\",\"config\":{}}}]," +
+                "\"edges\":[{\"id\":\"te\",\"source\":\"trigger-1\",\"target\":\"step-1\"}]}",
+        };
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var execution = await engine.ExecuteAsync(workflow, "test-user", CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        busy.Fired.Task.IsCompleted.Should().BeTrue("the write must actually have met the full pool");
+        execution.Status.Should().Be(ExecutionStatus.Succeeded);
+        var steps = await db.StepExecutions.AsNoTracking()
+            .Where(s => s.WorkflowExecutionId == execution.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        steps.Should().HaveCount(2);
+        steps.Should().OnlyContain(s => s.Status == ExecutionStatus.Succeeded && s.CompletedAt != null);
+        logger.Entries.Should().ContainSingle(entry =>
+            entry.Level == LogLevel.Warning
+            && entry.Message.Contains("found the database busy", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_FullConnectionPoolAtRunEnd_RetriesVerdictAndTerminalWrite()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+
+        // Two busy updates: the run's own context and the first attempt on a fresh one.
+        var busy = new BusyAtRunEndInterceptor(busyUpdates: 2, busyVerdictReads: 1);
+        var registry = new ActivityRegistry(
+        [
+            MockExecutor("manualTrigger", new ActivityResult { Success = true, Output = "{}" }),
+            MockExecutor("runScript", new ActivityResult { Success = true, Output = "done" }),
+        ]);
+
+        var services = new ServiceCollection();
+        services.AddDbContext<NodePilotDbContext>(opts => opts.UseSqlite(connection).AddInterceptors(busy));
+        services.AddScoped(_ => registry);
+        await using var serviceProvider = services.BuildServiceProvider();
+
+        await using var db = new NodePilotDbContext(
+            new DbContextOptionsBuilder<NodePilotDbContext>()
+                .UseSqlite(connection)
+                .AddInterceptors(busy)
+                .Options);
+        await db.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+        var engine = new WorkflowEngine(
+            db, NullLogger<WorkflowEngine>.Instance, serviceProvider, Mock.Of<IExecutionNotifier>());
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "Full pool at the end of the run",
+            DefinitionJson = "{\"nodes\":[" + TriggerNodeJson
+                + ",{\"id\":\"step-1\",\"type\":\"activity\",\"data\":{\"activityType\":\"runScript\",\"config\":{}}}],"
+                + "\"edges\":[{\"id\":\"te\",\"source\":\"trigger-1\",\"target\":\"step-1\"}]}",
+        };
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var execution = await engine.ExecuteAsync(workflow, "test-user", CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        busy.VerdictReads.Should().BeGreaterThanOrEqualTo(2, "the verdict must be read again, not guessed");
+        busy.Updates.Should().BeGreaterThanOrEqualTo(3, "the terminal write must be tried until it gets through");
+        execution.Status.Should().Be(ExecutionStatus.Succeeded,
+            "every step succeeded; a busy database must not turn that into a failure");
+        await using var observer = new NodePilotDbContext(
+            new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(connection).Options);
+        (await observer.WorkflowExecutions.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken)).Status
+            .Should().Be(ExecutionStatus.Succeeded);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_NonDatabaseTerminalPersistenceFailure_AbortsGraphAndSurfacesFailure()
     {
         var successorCalls = 0;
@@ -617,7 +867,7 @@ public class WorkflowEngineUnpersistedFailureTests
         using var connection = new SqliteConnection("DataSource=:memory:");
         connection.Open();
         const string persistenceError = "simulated non-database persistence bug";
-        var terminalFailure = new FailOnceOnFailedStepSaveInterceptor(
+        var terminalFailure = new FailOnceOnStepSaveInterceptor(
             new InvalidOperationException(persistenceError));
 
         var services = new ServiceCollection();

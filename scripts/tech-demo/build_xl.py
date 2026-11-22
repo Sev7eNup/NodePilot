@@ -73,7 +73,10 @@ N("trg-eventlog", 0, 660, "EventLog Trigger (disabled)", "eventLogTrigger",
   config={"logName": "Application", "source": "", "entryType": "Error",
           "messagePattern": ".*CRITICAL.*"})
 
-N("log-kickoff", 360, 300, "Log: XL kickoff", "log",
+N("trg-junction", 360, 300, "Junction: waitAny (6 triggers)", "junction",
+  config={"mode": "waitAny"})
+
+N("log-kickoff", 540, 300, "Log: XL kickoff", "log",
   config={"level": "info",
           "message": "Tech-Demo XL started: env={{trg-manual.param.environment}} iter={{trg-manual.param.iteration}} dryRun={{trg-manual.param.dryRun}}"})
 
@@ -186,7 +189,7 @@ N("r04-wmi-os", 2460, 60, "wmiQuery: Win32_OperatingSystem", "wmiQuery",
   config={"className": "Win32_OperatingSystem", "namespace": "root\\cimv2", "timeoutSeconds": 30})
 N("r05-prog-cmd", 2460, 240, "startProgram: cmd /c echo", "startProgram",
   targetMachineId="localhost",
-  config={"filePath": "cmd.exe",
+  config={"filePath": "C:\Windows\System32\cmd.exe",
           "arguments": "/c echo Hello from {{host.param.userName}}@{{host.param.hostName}}",
           "waitForExit": True, "timeoutSeconds": 30, "successExitCodes": "0",
           "retry": {"maxAttempts": 3, "backoff": "linear", "initialDelayMs": 1000, "maxDelayMs": 5000}})
@@ -214,7 +217,7 @@ N("r10-wmi-cpu", 3180, 60, "wmiQuery: Win32_Processor", "wmiQuery",
   config={"className": "Win32_Processor", "namespace": "root\\cimv2", "timeoutSeconds": 30})
 N("r11-prog-ps", 3180, 240, "startProgram: powershell -c", "startProgram",
   targetMachineId="localhost",
-  config={"filePath": "powershell.exe",
+  config={"filePath": "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
           "arguments": "-NoProfile -Command \"Write-Output 'ps-ok'\"",
           "waitForExit": True, "timeoutSeconds": 30, "successExitCodes": "0"})
 N("r12-wmi-disk", 3180, 420, "wmiQuery: Win32_LogicalDisk", "wmiQuery",
@@ -391,7 +394,10 @@ N("m09-sw-sync", 5900, 900, "startWorkflow: Child (sync)", "startWorkflow",
 N("m10-log-childfail", 5900, 1080, "Log: child failed", "log",
   config={"level": "warning", "message": "Child workflow returned failure — continuing with sync=null"})
 
-N("m11-sw-fire", 6220, 900, "startWorkflow: Child (fire&forget)", "startWorkflow",
+N("m-jchild", 6220, 900, "Junction: waitAny (child ok/failed)", "junction",
+  config={"mode": "waitAny"})
+
+N("m11-sw-fire", 6500, 900, "startWorkflow: Child (fire&forget)", "startWorkflow",
   outputVariable="childFire",
   config={"workflowNameOrId": "NodePilot Tech-Demo - Child",
           "parameters": {"fromHost": "{{host.param.hostName}}",
@@ -400,7 +406,7 @@ N("m11-sw-fire", 6220, 900, "startWorkflow: Child (fire&forget)", "startWorkflow
           "waitForCompletion": False,
           "timeoutSeconds": 10})
 
-N("m12-return-mid", 6540, 900, "returnData: MID collector", "returnData",
+N("m12-return-mid", 6780, 900, "returnData: MID collector", "returnData",
   outputVariable="midCollect",
   config={"data": {"restStatus": "{{rest.param.statusCode}}",
                    "sql1Ok": "{{sql1.param.rowCount}}",
@@ -529,7 +535,10 @@ N("bot16-log-disnode", 5260, 1680, "Log: node DISABLED", "log",
 N("bot17-log-ghost", 5580, 1680, "Log: ghost (disabled edge target)", "log",
   config={"level": "info", "message": "If you see this, the disabled-edge fired (should NOT happen)"})
 
-N("bot18-log-notify", 5580, 1500, "Log: notify done", "log",
+N("bot-jnotify", 5900, 1500, "Junction: waitAll (4 notify)", "junction",
+  config={"mode": "waitAll"})
+
+N("bot18-log-notify", 6220, 1500, "Log: notify done", "log",
   config={"level": "info", "message": "Notification fan complete"})
 
 # ---- Phase 4-BOT: Debug Zone + Deep Ops Round 2 + Cleanup (x=7100..9800) ----
@@ -554,30 +563,33 @@ N("bot22-file-del", 7100, 1860, "fileOperation: delete (cleanup)", "fileOperatio
   config={"operation": "delete",
           "path": "{{host.param.userName}}-hosts-copy.txt", "timeoutSeconds": 30})
 
-# Deep operator combos round 2 — 8 nodes, 2 cols x 4 rows (x=7460, 7820)
+N("bot-jdebug", 7460, 1500, "Junction: waitAll (4 debug)", "junction",
+  config={"mode": "waitAll"})
+
+# Deep operator combos round 2 — 8 nodes, 2 cols x 4 rows (x=7820, 8180)
 def deep_bot(id_, x, y, suffix, level="info"):
     N(id_, x, y, f"Log: bot-deep-{suffix}", "log",
       config={"level": level, "message": f"BOT deep combo {suffix}"})
 
-deep_bot("bot-d1", 7460, 1320, "matches ^Win.*Pro$")
-deep_bot("bot-d2", 7460, 1500, "matches ^10\\.0\\.\\d+")
-deep_bot("bot-d3", 7460, 1680, "contains OR starts OR ends")
-deep_bot("bot-d4", 7460, 1860, "NOT isEmpty AND NOT isFalse")
-deep_bot("bot-d5", 7820, 1320, "env != empty AND != null")
-deep_bot("bot-d6", 7820, 1500, "iter>=1 & iter<=10")
-deep_bot("bot-d7", 7820, 1680, "mem<8192 OR disk<100")
-deep_bot("bot-d8", 7820, 1860, "ALWAYS (bot fallback)")
+deep_bot("bot-d1", 7820, 1320, "matches ^Win.*Pro$")
+deep_bot("bot-d2", 7820, 1500, "matches ^10\\.0\\.\\d+")
+deep_bot("bot-d3", 7820, 1680, "contains OR starts OR ends")
+deep_bot("bot-d4", 7820, 1860, "NOT isEmpty AND NOT isFalse")
+deep_bot("bot-d5", 8180, 1320, "env != empty AND != null")
+deep_bot("bot-d6", 8180, 1500, "iter>=1 & iter<=10")
+deep_bot("bot-d7", 8180, 1680, "mem<8192 OR disk<100")
+deep_bot("bot-d8", 8180, 1860, "ALWAYS (bot fallback)")
 
-N("bot-jdeep", 8180, 1500, "Junction: waitAny (8 bot deep)", "junction",
+N("bot-jdeep", 8540, 1500, "Junction: waitAny (8 bot deep)", "junction",
   config={"mode": "waitAny"})
 
-N("bot-log-cleanup", 8540, 1500, "Log: cleanup", "log",
+N("bot-log-cleanup", 8900, 1500, "Log: cleanup", "log",
   config={"level": "info", "message": "BOT cleanup complete"})
 
-N("bot-delay-final", 8900, 1500, "Delay 1s (BOT settle)", "delay",
+N("bot-delay-final", 9260, 1500, "Delay 1s (BOT settle)", "delay",
   config={"seconds": 1})
 
-N("bot-log-end", 9260, 1500, "Log: BOT lane complete", "log",
+N("bot-log-end", 9620, 1500, "Log: BOT lane complete", "log",
   config={"level": "info", "message": "Lane BOT work complete, forwarding to finale"})
 
 # ============================================================================
@@ -647,13 +659,14 @@ def ne(src, tgt, label="Always", **extra):
 
 
 # Phase A-TOP: triggers -> kickoff
-ne("trg-manual", "log-kickoff", "Always")
-# 5 disabled triggers also fan into log-kickoff (visual "all triggers route here")
-ne("trg-schedule", "log-kickoff", "DISABLED trigger", disabled=True)
-ne("trg-webhook", "log-kickoff", "DISABLED trigger", disabled=True)
-ne("trg-filewatch", "log-kickoff", "DISABLED trigger", disabled=True)
-ne("trg-database", "log-kickoff", "DISABLED trigger", disabled=True)
-ne("trg-eventlog", "log-kickoff", "DISABLED trigger", disabled=True)
+ne("trg-manual", "trg-junction", "Always")
+# 5 disabled triggers also fan into the junction (visual "all triggers route here")
+ne("trg-schedule", "trg-junction", "DISABLED trigger", disabled=True)
+ne("trg-webhook", "trg-junction", "DISABLED trigger", disabled=True)
+ne("trg-filewatch", "trg-junction", "DISABLED trigger", disabled=True)
+ne("trg-database", "trg-junction", "DISABLED trigger", disabled=True)
+ne("trg-eventlog", "trg-junction", "DISABLED trigger", disabled=True)
+ne("trg-junction", "log-kickoff", "Always")
 
 # Boot chain
 ne("log-kickoff", "delay-init", "On Success", condition="log-kickoff.success")
@@ -863,9 +876,10 @@ ne("m05-xml", "m06-json", "On Success", condition="m05-xml.success")
 ne("m06-json", "m07-rest-post", "Always")
 ne("m07-rest-post", "m08-foreach", "On Success", condition="m07-rest-post.success")
 ne("m08-foreach", "m09-sw-sync", "Always")
-ne("m09-sw-sync", "m11-sw-fire", "On Success", condition="m09-sw-sync.success")
+ne("m09-sw-sync", "m-jchild", "On Success", condition="m09-sw-sync.success")
 ne("m09-sw-sync", "m10-log-childfail", "On Failure", condition="m09-sw-sync.failed")
-ne("m10-log-childfail", "m11-sw-fire", "Always")
+ne("m10-log-childfail", "m-jchild", "Always")
+ne("m-jchild", "m11-sw-fire", "Always")
 ne("m11-sw-fire", "m12-return-mid", "Always")
 
 # ---- BOT: Phase 3 chain ----
@@ -875,10 +889,11 @@ ne("bot13-jallremote", "bot14-email", "Always")
 ne("bot13-jallremote", "bot15-power", "Always")
 ne("bot13-jallremote", "bot16-log-disnode", "Always (target disabled)")
 ne("bot14-email", "bot17-log-ghost", "DISABLED edge", disabled=True)
-ne("bot14-email", "bot18-log-notify", "Always (even on fail)")
-ne("bot15-power", "bot18-log-notify", "Always")
-ne("bot16-log-disnode", "bot18-log-notify", "Always")
-ne("bot17-log-ghost", "bot18-log-notify", "Always (ghost)")
+ne("bot14-email", "bot-jnotify", "Always (even on fail)")
+ne("bot15-power", "bot-jnotify", "Always")
+ne("bot16-log-disnode", "bot-jnotify", "Always")
+ne("bot17-log-ghost", "bot-jnotify", "Always (ghost)")
+ne("bot-jnotify", "bot18-log-notify", "Always")
 
 # ---- SYNC 3 (x=7000): MID Phase 3 end + BOT Phase 3 end -> Phase 4 ----
 
@@ -925,11 +940,9 @@ ne("bot18-log-notify", "bot22-file-del", "Always")
 
 # BOT debug zone -> deep combos
 for bid_src in ["bot19-log-bp1", "bot20-runscript-bp", "bot21-log-disnode2", "bot22-file-del"]:
-    for bid_deep in ["bot-d1", "bot-d2", "bot-d3", "bot-d4"]:
-        ne(bid_src, bid_deep, "Always")
-for bid_src in ["bot19-log-bp1", "bot20-runscript-bp", "bot21-log-disnode2", "bot22-file-del"]:
-    for bid_deep in ["bot-d5", "bot-d6", "bot-d7", "bot-d8"]:
-        ne(bid_src, bid_deep, "Always")
+    ne(bid_src, "bot-jdebug", "Always")
+for bid_deep in ["bot-d1", "bot-d2", "bot-d3", "bot-d4", "bot-d5", "bot-d6", "bot-d7", "bot-d8"]:
+    ne("bot-jdebug", bid_deep, "Always")
 
 for bid_deep in ["bot-d1", "bot-d2", "bot-d3", "bot-d4", "bot-d5", "bot-d6", "bot-d7", "bot-d8"]:
     ne(bid_deep, "bot-jdeep", "Always")
@@ -1074,6 +1087,15 @@ def validate():
             bad_pos.append(n["id"])
     if bad_pos:
         errors.append(f"Non-grid-aligned positions: {bad_pos[:10]}")
+
+    # 13. Only a junction has more than one incoming edge (disabled edges count)
+    id_to_type = {n["id"]: n["data"]["activityType"] for n in nodes}
+    incoming = {}
+    for e in edges:
+        incoming[e["target"]] = incoming.get(e["target"], 0) + 1
+    fan_in = sorted(t for t, c in incoming.items() if c > 1 and id_to_type.get(t) != "junction")
+    if fan_in:
+        errors.append(f"Fan-in without a junction: {fan_in}")
 
     return errors, warnings
 
