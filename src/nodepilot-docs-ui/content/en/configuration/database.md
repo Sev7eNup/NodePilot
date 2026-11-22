@@ -21,6 +21,26 @@ That state needs an administrator and cannot be resolved by waiting. After a ser
 probe picks it up automatically; changed NodePilot connection details need a restart.
 Individual slow queries return `DATABASE_TIMEOUT` and do not immediately open the global outage breaker.
 
+## A busy database
+
+A database that answers but has nothing free right now is not an outage: every connection of the
+pool is in use (`Max Pool Size`, 800 as installed), or the server reports that it is out of memory,
+locks or log space. NodePilot does not show an outage for this. A running workflow that has to
+save the state of a step or of the run waits one second and tries again, until the write gets
+through or the service stops. The run continues afterwards; nothing is lost.
+
+The server log has one of these lines for each write that had to wait:
+
+```
+Lifecycle write for step <id> found the database busy; retrying until it gets through.
+Terminal write for execution <id> found the database busy; retrying
+```
+
+They mean that the database could not keep up with the load at that moment. If they appear often,
+the database server needs more memory or a machine of its own, or fewer steps should run at once;
+see "Raising the limits by hand" under Performance sizing. Up to version 1.5.4 a run ended as
+failed when such a write found no free connection.
+
 | Setting | Default | Purpose |
 |---|---:|---|
 | `Database:ConnectTimeoutSeconds` | `5` | The application's connection budget |

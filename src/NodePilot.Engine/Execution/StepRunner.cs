@@ -480,11 +480,12 @@ internal sealed class StepRunner
     }
 
     /// <summary>
-    /// Commits a step lifecycle state before control advances. Only a
-    /// database-shaped failure accompanied by the process-wide open breaker is retried: this avoids
-    /// hiding programming/model errors behind an outage wait. Recovery always uses a fresh context,
-    /// and the stable Guid is loaded before update so an unknown first-commit outcome is
-    /// idempotent.
+    /// Commits a step lifecycle state before control advances. Two failures are retried: a
+    /// database-shaped failure accompanied by the process-wide open breaker (an outage), and a
+    /// busy database (no free pooled connection, out of a server resource). Everything else
+    /// propagates, so programming/model errors are not hidden behind a wait. Recovery always
+    /// uses a fresh context, and the stable Guid is loaded before update so an unknown
+    /// first-commit outcome is idempotent.
     /// </summary>
     private async Task PersistStepStateDurablyAsync(
         NodePilotDbContext primaryDb,
@@ -502,12 +503,20 @@ internal sealed class StepRunner
             _logger.LogWarning(ex,
                 "Lifecycle write for step {StepId} paused until database recovery.", snapshot.StepId);
         }
+        catch (Exception ex) when (DbErrorClassifier.IsCapacityBackpressure(ex))
+        {
+            // Busy, not gone. Failing here would end the whole run over a moment of load.
+            _logger.LogWarning(ex,
+                "Lifecycle write for step {StepId} found the database busy; retrying until it gets through.",
+                snapshot.StepId);
+            await Task.Delay(BusyRetryDelay, durabilityCancellation);
+        }
 
         var uniqueCollisionRetries = 0;
         while (true)
         {
-            if (_availability is null
-                || !await _availability.WaitUntilServableAsync(durabilityCancellation))
+            if (_availability is not null
+                && !await _availability.WaitUntilServableAsync(durabilityCancellation))
             {
                 throw new OperationCanceledException(
                     "Host stopped while waiting to make step lifecycle state durable.",
@@ -533,10 +542,13 @@ internal sealed class StepRunner
                 }
 
                 await SaveTrackedStepStateAsync(recoveryDb, operation);
-                // A failed INSERT leaves the original context's entity Added even if a recovery
-                // scope has now inserted (or discovered) the stable Guid. Reset it so the later
-                // terminal write becomes an UPDATE instead of reissuing a duplicate INSERT.
-                primaryDb.Entry(snapshot).State = EntityState.Unchanged;
+                // The recovery scope saved the row, so the step's own context has to treat it as
+                // saved too; an entity left Added would be inserted a second time by the next
+                // write. Unchanged alone puts a modified entity's old values back, so the saved
+                // values become the original ones first.
+                var entry = primaryDb.Entry(snapshot);
+                entry.OriginalValues.SetValues(entry.CurrentValues);
+                entry.State = EntityState.Unchanged;
                 return;
             }
             catch (DbUpdateException ex)
@@ -551,8 +563,16 @@ internal sealed class StepRunner
                 // The database may fail again immediately after the probe closes the breaker.
                 // Loop through the shared recovery gate and never spin on Armed.
             }
+            catch (Exception ex) when (DbErrorClassifier.IsCapacityBackpressure(ex))
+            {
+                await Task.Delay(BusyRetryDelay, durabilityCancellation);
+            }
         }
     }
+
+    // Pause between attempts while the database is busy. A full connection pool already makes
+    // each attempt wait for its own timeout; this only keeps a fast-failing provider from spinning.
+    internal static readonly TimeSpan BusyRetryDelay = TimeSpan.FromSeconds(1);
 
     private bool IsConfirmedDatabaseOutage(Exception exception)
         => _availability is { IsServable: false }

@@ -183,7 +183,7 @@
         "activityType": "startProgram",
         "targetMachineId": "localhost",
         "config": {
-          "filePath": "cmd.exe",
+          "filePath": "C:\\Windows\\System32\\cmd.exe",
           "arguments": "/c echo Hello from {{host.param.userName}}@{{host.param.hostName}} (cpu={{host.param.cpuCount}})",
           "waitForExit": true,
           "timeoutSeconds": 30,
