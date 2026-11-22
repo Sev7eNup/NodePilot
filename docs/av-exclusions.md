@@ -37,7 +37,11 @@ starting processes. Five behaviours that follow from that regularly collide with
    `nodepilot_<32-hex>.ps1` into the temp directory, hardens its ACL to owner-full-control (all
    inherited rights are removed) and starts the host with
    `-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand <bootstrap>`. The bootstrap
-   reads the file, deletes it and runs its text. File creation, ACL hardening, an encoded command
+   reads the file, deletes it and runs its text. The encoded bootstrap carries the path of the
+   script file, so every step has a command line of its own. With `Engine:ExperimentalMode` the
+   command line is the same for every step and the path is passed in the environment variable
+   `NODEPILOT_SCRIPT_PATH`, so a product that looks up each new command line does that once and
+   not per step. File creation, ACL hardening, an encoded command
    line and immediate deletion in the temp directory is the strongest heuristic signature in the
    entire product.
 

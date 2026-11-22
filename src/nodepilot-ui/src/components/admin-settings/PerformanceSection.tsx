@@ -143,6 +143,38 @@ function effectiveHint(
   return base ? `${active} — ${base}` : active;
 }
 
+/**
+ * The script process limit applies in both sizing modes, so its hint names the value in force:
+ * the stored 0 only says "derive it". Without experimental mode there is no limit, and the hint
+ * says that instead of a number that governs nothing.
+ */
+function scriptProcessesHint(
+  sizing: EffectiveSizing | undefined,
+  t: (k: string, o?: Record<string, unknown>) => string,
+): string {
+  const base = t('perf.maxScriptProcessesHint');
+  if (sizing && !sizing.experimentalMode) return `${t('perf.maxScriptProcessesOff')} — ${base}`;
+  const entry = sizing?.values.find((v) => v.key === 'Engine:MaxScriptProcesses');
+  if (!entry) return base;
+  return `${t('perf.activeValue', { value: entry.value, bound: t(`perf.bound.${entry.bound}`) })} — ${base}`;
+}
+
+/**
+ * Warns while manual tuning is chosen and the typed step limit is far above what automatic
+ * sizing would use. It follows the typed value, so the operator sees it before saving.
+ */
+function stepLimitWarning(
+  sizing: EffectiveSizing | undefined,
+  mode: SizingMode,
+  value: number,
+  t: (k: string, o?: Record<string, unknown>) => string,
+): string | undefined {
+  if (!mode.chosen) return undefined;
+  const entry = sizing?.values.find((v) => v.key === 'Engine:MaxConcurrentSteps');
+  if (entry?.automatic == null || entry.warnAbove == null || value <= entry.warnAbove) return undefined;
+  return t('perf.stepLimitFarAboveAutomatic', { automatic: entry.automatic });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Engine
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,6 +183,8 @@ type EngineDto = {
   debug: { maxPauseMinutes: number };
   maxConcurrentExecutions: { global: number; perUser: number };
   maxConcurrentSteps: number;
+  maxScriptProcesses: number;
+  experimentalMode: boolean;
   runspace: { minRunspaces: number; maxRunspaces: number };
 };
 
@@ -160,6 +194,8 @@ function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: Effe
     debug: { maxPauseMinutes: 10 },
     maxConcurrentExecutions: { global: 5000, perUser: 2000 },
     maxConcurrentSteps: 600,
+    maxScriptProcesses: 0,
+    experimentalMode: false,
     runspace: { minRunspaces: 256, maxRunspaces: 768 },
   });
   if (ui.loading) return <Card icon={Chip} title={t('perf.engineCardTitle')}><p className="text-sm">{t('loading')}</p></Card>;
@@ -170,9 +206,19 @@ function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: Effe
   const planGoverns = (k: string) =>
     k.startsWith('Engine:Runspace:') || k === 'Engine:MaxConcurrentSteps';
   const isEnvLocked = (k: string) => ui.isEnvLocked(k) || (planGovernsFields(mode) && planGoverns(k));
+  // Like the sizing mode, experimental mode is read once at startup.
+  const experimentalPendingRestart = sizing !== undefined && sizing.experimentalMode !== sizing.desiredExperimentalMode;
 
   return (
     <Card icon={Chip} title={t('perf.engineCardTitle')}>
+      <Toggle label={t('perf.experimentalMode')} checked={form.experimentalMode}
+        onChange={(v) => set({ ...form, experimentalMode: v })}
+        configKey="Engine:ExperimentalMode" effectiveSource={data.effectiveSource} isEnvLocked={ui.isEnvLocked}
+        hint={t('perf.experimentalModeHint')}>
+        {experimentalPendingRestart && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">{t('perf.experimentalModePendingRestart')}</p>
+        )}
+      </Toggle>
       <SizingModeNote mode={mode} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <NumberInput label={t('perf.debugMaxPause')} value={form.debug.maxPauseMinutes} min={1} max={1440}
@@ -181,7 +227,12 @@ function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: Effe
         <NumberInput label={t('perf.maxConcurrentStepsGlobal')} value={form.maxConcurrentSteps} min={1} max={10000}
           onChange={(v) => set({ ...form, maxConcurrentSteps: v })}
           configKey="Engine:MaxConcurrentSteps" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
-          hint={effectiveHint(sizing, 'Engine:MaxConcurrentSteps', t, t('perf.maxConcurrentStepsHint'))} />
+          hint={effectiveHint(sizing, 'Engine:MaxConcurrentSteps', t, t('perf.maxConcurrentStepsHint'))}
+          warning={stepLimitWarning(sizing, mode, form.maxConcurrentSteps, t)} />
+        <NumberInput label={t('perf.maxScriptProcesses')} value={form.maxScriptProcesses} min={0} max={10000}
+          onChange={(v) => set({ ...form, maxScriptProcesses: v })}
+          configKey="Engine:MaxScriptProcesses" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
+          hint={scriptProcessesHint(sizing, t)} />
         <NumberInput label={t('perf.maxConcurrentExecutionsGlobal')} value={form.maxConcurrentExecutions.global} min={1} max={100000}
           onChange={(v) => set({ ...form, maxConcurrentExecutions: { ...form.maxConcurrentExecutions, global: v } })}
           configKey="Engine:MaxConcurrentExecutions:Global" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
@@ -203,6 +254,8 @@ function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: Effe
         Debug: { MaxPauseMinutes: form.debug.maxPauseMinutes },
         MaxConcurrentExecutions: { Global: form.maxConcurrentExecutions.global, PerUser: form.maxConcurrentExecutions.perUser },
         MaxConcurrentSteps: form.maxConcurrentSteps,
+        MaxScriptProcesses: form.maxScriptProcesses,
+        ExperimentalMode: form.experimentalMode,
         Runspace: { MinRunspaces: form.runspace.minRunspaces, MaxRunspaces: form.runspace.maxRunspaces },
       })} />
       {ui.dialog}

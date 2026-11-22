@@ -125,6 +125,8 @@
       "PerUser": 2000
     },
     "MaxConcurrentSteps": 600,
+    "MaxScriptProcesses": 0,
+    "ExperimentalMode": false,
     "Runspace": {
       "MinRunspaces": 256,
       "MaxRunspaces": 768

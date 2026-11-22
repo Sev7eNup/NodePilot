@@ -84,7 +84,7 @@ Opt out via `Retention:*:Enabled: false`. Idempotency keys (24 h, fixed TTL) run
 
 ## Performance
 
-`Performance:ManualTuning` (default `false`, requires a restart). With `false`, NodePilot derives `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` and `ExecutionDispatch:*` from the detected CPU + RAM — the numbers of those sections in the configuration are then an **inert preset**. What is actually in force: `GET /api/admin/settings/effective-sizing` or `np settings effective-sizing`. Details: [Performance sizing](./performance).
+`Performance:ManualTuning` (default `false`, requires a restart). With `false`, NodePilot derives `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` and `ExecutionDispatch:*` from the detected CPU + RAM — the numbers of those sections in the configuration are then an **inert preset**. The exception is `Engine:MaxScriptProcesses`: a value there applies in both modes (`0` = derive it), but the limit is in force only in experimental mode. `Engine:ExperimentalMode` (default `false`, requires a restart) gives local scripts the faster start and limits the number of script processes; with `false` local scripts run as they did up to 1.5.4. What is actually in force: `GET /api/admin/settings/effective-sizing` or `np settings effective-sizing`. Details: [Performance sizing](./performance).
 
 ## Hardening
 

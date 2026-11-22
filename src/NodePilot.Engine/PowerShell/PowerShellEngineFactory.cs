@@ -44,24 +44,33 @@ public class PowerShellEngineFactory
         var drainGraceSeconds = configuration?.GetValue<int?>("Engine:IsolatedDrainGraceSeconds") ?? 5;
         var isolatedDrainGrace = drainGraceSeconds > 0 ? TimeSpan.FromSeconds(drainGraceSeconds) : (TimeSpan?)null;
 
-        var outputLimit = configuration?.GetValue<int?>(ScriptOutputBudget.ConfigurationKey) ?? ScriptOutputBudget.DefaultLimit;
-        _pwsh = ProcessExecutionEngine.CreatePwsh(logger, isolatedDrainGrace, outputLimit);
-        _windowsPowerShell = ProcessExecutionEngine.CreateWindowsPowerShell(logger, isolatedDrainGrace, outputLimit);
-        ProcessExecutionEngine.DeleteOrphanedTempScripts(logger);
-
-        // Runspace pool sizing belongs to the process-wide PerformancePlan (hardware-derived,
-        // or operator-set under manual tuning). The fallback here covers only hosts that build
-        // the factory without a plan (tests, CLI tooling) and mirrors the plan's auto formula.
+        // Runspace pool and script process sizing belong to the process-wide PerformancePlan
+        // (hardware-derived, or operator-set under manual tuning). The fallback here covers only
+        // hosts that build the factory without a plan (tests, CLI tooling) and mirrors the
+        // plan's auto formula.
         var plan = performancePlan ?? PerformanceSizing.Create(
             new DetectedResources(Environment.ProcessorCount, null, IsDesktop: false),
             manualTuning: false,
             new Dictionary<string, int?>());
+
+        var outputLimit = configuration?.GetValue<int?>(ScriptOutputBudget.ConfigurationKey) ?? ScriptOutputBudget.DefaultLimit;
+        // Experimental mode brings the new script start and the script process limit together;
+        // off, local scripts run as they did up to 1.5.4. One set of slots for both hosts: the
+        // limit is about memory, not about which host runs.
+        var experimentalMode = plan.ExperimentalMode;
+        var processSlots = experimentalMode ? new SemaphoreSlim(plan.MaxScriptProcesses.Value) : null;
+        _pwsh = ProcessExecutionEngine.CreatePwsh(logger, isolatedDrainGrace, outputLimit, processSlots, experimentalMode);
+        _windowsPowerShell = ProcessExecutionEngine.CreateWindowsPowerShell(logger, isolatedDrainGrace, outputLimit, processSlots, experimentalMode);
+        ProcessExecutionEngine.DeleteOrphanedTempScripts(logger);
+
         var minRunspaces = plan.MinRunspaces.Value;
         var maxRunspaces = plan.MaxRunspaces.Value;
         _runspace = new RunspaceExecutionEngine(logger, minRunspaces, maxRunspaces, outputLimit);
 
-        logger.LogInformation("PowerShell engines: pwsh={PwshAvailable}, powershell={PSAvailable}, runspace=true (min={Min}, max={Max})",
-            _pwsh.IsAvailable, _windowsPowerShell.IsAvailable, minRunspaces, maxRunspaces);
+        logger.LogInformation("PowerShell engines: pwsh={PwshAvailable}, powershell={PSAvailable} ({ScriptProcesses}), runspace=true (min={Min}, max={Max})",
+            _pwsh.IsAvailable, _windowsPowerShell.IsAvailable,
+            experimentalMode ? $"experimental mode, at most {plan.MaxScriptProcesses.Value} script processes" : "experimental mode off",
+            minRunspaces, maxRunspaces);
     }
 
     public IPowerShellExecutionEngine GetEngine(string engineType)

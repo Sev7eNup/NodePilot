@@ -262,6 +262,8 @@ public sealed class AdminSettingsController : ControllerBase
             // Read live, not from the plan: after a save the desired mode differs from the booted
             // one until the operator restarts, and that difference is what the UI must surface.
             DesiredManualTuning = _configRoot.GetValue(PerfKeys.ManualTuning, false),
+            ExperimentalMode = plan.ExperimentalMode,
+            DesiredExperimentalMode = _configRoot.GetValue(PerfKeys.ExperimentalMode, false),
             ProcessorCount = plan.Resources.ProcessorCount,
             UsableMemoryBytes = plan.Resources.UsableMemoryBytes,
             IsDesktop = plan.Resources.IsDesktop,
@@ -269,7 +271,15 @@ public sealed class AdminSettingsController : ControllerBase
             [
                 V(PerfKeys.MinRunspaces, plan.MinRunspaces),
                 V(PerfKeys.MaxRunspaces, plan.MaxRunspaces),
-                V(PerfKeys.MaxConcurrentSteps, plan.MaxConcurrentSteps),
+                new()
+                {
+                    Key = PerfKeys.MaxConcurrentSteps,
+                    Value = plan.MaxConcurrentSteps.Value,
+                    Bound = plan.MaxConcurrentSteps.Bound.ToString(),
+                    Automatic = plan.AutomaticMaxConcurrentSteps,
+                    WarnAbove = plan.AutomaticMaxConcurrentSteps * NodePilot.Core.Configuration.PerformanceSizing.ManualStepWarningFactor,
+                },
+                V(PerfKeys.MaxScriptProcesses, plan.MaxScriptProcesses),
                 V(PerfKeys.MinWorkerThreads, plan.MinWorkerThreads),
                 V(PerfKeys.MinIoCompletionThreads, plan.MinIoCompletionThreads),
                 V(PerfKeys.DispatchWorkerCount, plan.DispatchWorkerCount),

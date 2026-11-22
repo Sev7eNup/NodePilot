@@ -123,6 +123,7 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         {
             attempts++;
             RemoteExecutionResult result;
+            var checkTimedOut = false;
             if (runTarget.RunsLocally)
             {
                 IPowerShellExecutionEngine localEngine;
@@ -137,11 +138,33 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
                     // e.g. engine "pwsh" without PowerShell 7 installed.
                     return new ActivityResult { Success = false, ErrorOutput = ex.Message };
                 }
-                var psRes = await localEngine.ExecuteAsync(new PowerShellExecutionRequest
+                // The wait for a script process before the first check is not part of this step's
+                // timeout, as for a script step. A later check waits only as long as the timeout
+                // allows.
+                TimeSpan? processWait = null;
+                if (attempts > 1)
                 {
-                    ScriptText = wrapped,
-                    Timeout = TimeSpan.FromSeconds(Math.Max(5, interval * 2)),
-                }, ct);
+                    var left = deadline - Clock.GetUtcNow();
+                    processWait = left > TimeSpan.Zero ? left : TimeSpan.Zero;
+                }
+                PowerShellExecutionResult psRes;
+                try
+                {
+                    psRes = await localEngine.ExecuteAsync(new PowerShellExecutionRequest
+                    {
+                        ScriptText = wrapped,
+                        Timeout = TimeSpan.FromSeconds(Math.Max(5, interval * 2)),
+                        ProcessWaitTimeout = processWait,
+                    }, ct);
+                }
+                catch (ScriptProcessWaitTimeoutException ex)
+                {
+                    attempts--;
+                    lastError = ex.Message;
+                    break;
+                }
+                if (attempts == 1) deadline += psRes.ProcessWait;
+                checkTimedOut = psRes.TimedOut;
                 result = new RemoteExecutionResult
                 {
                     Success = psRes.Success,
@@ -159,9 +182,10 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
             lastError = string.IsNullOrWhiteSpace(result.ErrorOutput) ? lastError : result.ErrorOutput;
 
             // Locally, a missing marker with an error means the condition cannot run at all
-            // (parse error, missing engine), so waiting longer changes nothing. Remotely the same
-            // shape can be a passing connection problem, so the loop keeps polling.
-            if (runTarget.RunsLocally && !HasConditionMarker(result.Output) && !string.IsNullOrWhiteSpace(result.ErrorOutput))
+            // (parse error, missing engine), so waiting longer changes nothing. A check that ran
+            // out of its own time is different: the machine was busy, so the loop polls again.
+            // Remotely the same shape can be a passing connection problem, so it keeps polling too.
+            if (runTarget.RunsLocally && !checkTimedOut && !HasConditionMarker(result.Output) && !string.IsNullOrWhiteSpace(result.ErrorOutput))
             {
                 sw.Stop();
                 return new ActivityResult
