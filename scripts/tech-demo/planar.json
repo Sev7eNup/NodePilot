@@ -1,5 +1,5 @@
 {
-  "_comment": "NodePilot Tech-Demo - Planar Showcase. 50 nodes, 63 edges, 8380x1200 px. Strictly planar layout: every edge spans exactly one x-column (x=N -> x=N+1), no skip-edges, no same-column edges, no backward edges. Fan-outs from a single source and fan-ins to a single target are crossing-free by construction. Parallel multi-rank branches preserve their y-lane. Covers 19 activity types, all 14 edge operators + AND/OR/NOT, all 3 junction modes, retry policies, step timeouts, node-level disabled, breakpoint, disabled edge, sub-workflow (both waitForCompletion true and false), forEach, powerManagement. References the same child workflow as main.json / xl.json ('NodePilot Tech-Demo - Child'). Main lane y=480.",
+  "_comment": "NodePilot Tech-Demo - Planar Showcase. 51 nodes, 71 edges, 8680x1200 px. Strictly planar layout: every edge spans exactly one x-column (x=N -> x=N+1), no skip-edges, no same-column edges, no backward edges. Fan-outs from a single source and fan-ins to a single target are crossing-free by construction. Parallel multi-rank branches preserve their y-lane. Covers 19 activity types, all 14 edge operators + AND/OR/NOT, all 3 junction modes, retry policies, step timeouts, node-level disabled, breakpoint, disabled edge, sub-workflow (both waitForCompletion true and false), forEach, powerManagement. References the same child workflow as main.json / xl.json ('NodePilot Tech-Demo - Child'). Main lane y=480.",
   "nodes": [
     {
       "id": "trigger-manual",
@@ -140,7 +140,7 @@
         "activityType": "startProgram",
         "targetMachineId": "localhost",
         "config": {
-          "filePath": "cmd.exe",
+          "filePath": "C:\\Windows\\System32\\cmd.exe",
           "arguments": "/c echo Planar demo on {{host.param.userName}}@{{host.param.hostName}} (cpu={{host.param.cpuCount}})",
           "waitForExit": true,
           "timeoutSeconds": 30,
@@ -636,9 +636,20 @@
     },
 
     {
-      "id": "log-completion",
+      "id": "junction-complete",
       "type": "activity",
       "position": { "x": 8000, "y": 480 },
+      "data": {
+        "label": "Junction: waitAll (wrap-up)",
+        "activityType": "junction",
+        "config": { "mode": "waitAll" }
+      }
+    },
+
+    {
+      "id": "log-completion",
+      "type": "activity",
+      "position": { "x": 8300, "y": 480 },
       "data": {
         "label": "Log: aggregating results",
         "activityType": "log",
@@ -652,7 +663,7 @@
     {
       "id": "return-final",
       "type": "activity",
-      "position": { "x": 8300, "y": 480 },
+      "position": { "x": 8600, "y": 480 },
       "data": {
         "label": "returnData (aggregate)",
         "activityType": "returnData",
@@ -882,8 +893,9 @@
     { "id": "e-child-power",     "source": "invoke-child", "target": "power-abort",    "type": "labeled", "data": { "label": "On Success", "condition": "invoke-child.success" } },
     { "id": "e-child-fire",      "source": "invoke-child", "target": "fire-and-forget","type": "labeled", "data": { "label": "Always" } },
 
-    { "id": "e-power-complete",  "source": "power-abort",     "target": "log-completion", "type": "labeled", "data": { "label": "Always" } },
-    { "id": "e-fire-complete",   "source": "fire-and-forget", "target": "log-completion", "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-power-complete",  "source": "power-abort",     "target": "junction-complete", "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-fire-complete",   "source": "fire-and-forget", "target": "junction-complete", "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-jcomplete-log",   "source": "junction-complete", "target": "log-completion", "type": "labeled", "data": { "label": "Always" } },
 
     { "id": "e-complete-return", "source": "log-completion", "target": "return-final", "type": "labeled", "data": { "label": "Always" } }
   ]
