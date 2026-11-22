@@ -357,12 +357,21 @@ public sealed class ActivityHardening2026_05_17Tests
         SqlActivity.DefaultCommandTimeoutSeconds.Should().Be(60);
     }
 
-    // ----- C2: StartProgram default timeout is 300s -----
+    // ----- C2: StartProgram has no default timeout; only a timeout the step sets applies -----
 
     [Fact]
-    public void C2_StartProgram_DefaultTimeoutIs300()
+    public void C2_StartProgram_WithoutATimeout_WaitsUntilTheProgramEnds()
     {
-        StartProgramActivity.DefaultTimeoutSeconds.Should().Be(300);
+        var script = new StartProgramScript().Build(Cfg("{\"filePath\":\"C:\\\\Windows\\\\System32\\\\cmd.exe\"}"));
+
+        script.Should().Contain("$__timeoutMs = -1");
+    }
+
+    private sealed class StartProgramScript()
+        : StartProgramActivity(null!, null!, null!, null!, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build())
+    {
+        public string Build(JsonElement config) => BuildScript(config,
+            new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "program" });
     }
 
     // ----- C3: StartWorkflow default child timeout is 3600s -----

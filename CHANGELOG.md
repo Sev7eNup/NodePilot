@@ -14,6 +14,12 @@ exhaustive.
 
 Planned version: **1.5.5**.
 
+### Changed
+
+- `startProgram` has no default timeout any more. Until now a step without `timeoutSeconds`
+  ended the program after 300 seconds; now it waits until the program ends. Set
+  `timeoutSeconds` on steps whose program must not run longer than a given time.
+
 ### Fixed
 
 - A step whose result could only be saved after a database outage no longer ends as `Failed`

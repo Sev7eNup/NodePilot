@@ -21,7 +21,8 @@ namespace NodePilot.Engine.Activities;
 ///                                             associations, UI apps); false = launch directly
 ///                                             with stdout/stderr capture.
 ///   waitForExit        bool,   default true  — false = fire-and-forget, only the PID is returned.
-///   timeoutSeconds     int,    default 300   — kill timeout for wait mode.
+///   timeoutSeconds     int,    optional      — kill timeout for wait mode. Without it the step
+///                                             waits until the program ends.
 ///   successExitCodes   string, default "0"   — comma-separated list of accepted exit codes,
 ///                                             e.g. "0,1,2". Success=false on a mismatch.
 ///
@@ -37,9 +38,6 @@ public class StartProgramActivity : BaseRemoteActivity
     public override string ActivityType => "startProgram";
 
     private static readonly PowerShellOperationMarkers ResultMarkers = PowerShellOperation.Markers("PROGRAM");
-
-    // Default kill timeout for wait mode, matching the documented catalog default.
-    internal const int DefaultTimeoutSeconds = 300;
 
     // Cap stdout/stderr at 1,048,576 bytes each. Beyond this the buffers stop growing
     // but the pipes keep draining, so the producer doesn't block. Callers learn via
@@ -89,11 +87,9 @@ public class StartProgramActivity : BaseRemoteActivity
                     "to permit shell-mediated launches.");
         }
         var wait = config.GetBool("waitForExit", true);
-        // Default is 300s, matching the documented default and the activity-catalog UI hint.
-        // PowerShellOperation.TimeoutSecondsFromConfig returns null for missing or non-positive
-        // values, so a wait-mode step never ends up waiting forever with no bound.
-        // Explicit per-step values still override.
-        var timeoutSeconds = PowerShellOperation.TimeoutSecondsFromConfig(config) ?? DefaultTimeoutSeconds;
+        // No timeout unless the step sets one; a missing or non-positive value waits until the
+        // program ends.
+        var timeoutSeconds = PowerShellOperation.TimeoutSecondsFromConfig(config);
 
         // Script is embedded with single-quoted PS strings. Uses the shared PowerShell Operation
         // module
@@ -101,11 +97,11 @@ public class StartProgramActivity : BaseRemoteActivity
         var pFile = PowerShellOperation.Literal(filePath);
         var pArgs = PowerShellOperation.Literal(arguments);
         var pDir = PowerShellOperation.Literal(workingDir);
-        // Process.WaitForExit(int) accepts -1 (Timeout.Infinite) as "wait indefinitely",
-        // so a missing user-timeout maps cleanly to that without a separate code path.
+        // -1 means no timeout: Process.WaitForExit(int) waits indefinitely, and the capture
+        // loop below skips its timeout checks.
         var timeoutMs = PowerShellOperation.ToWaitForExitMilliseconds(timeoutSeconds);
         // After exit, allow buffered output to drain while bounding idle pipes inherited by
-        // grandchildren. Captured bytes renew the grace; the overall timeout remains bounded.
+        // grandchildren. Captured bytes renew the grace; with a timeout the total stays bounded.
         // 0 or negative falls back to the default: no bound would restore the hang, and a zero
         // grace would cut output short on every call.
         var configuredGrace = _configuration.GetValue<int?>("Engine:IsolatedDrainGraceSeconds");
@@ -228,11 +224,11 @@ public class StartProgramActivity : BaseRemoteActivity
                                     $exitObservedMs = $drainClock.ElapsedMilliseconds
                                 }
                                 if (($drainClock.ElapsedMilliseconds - $exitObservedMs) -ge $__drainGraceMs -or
-                                    $drainClock.ElapsedMilliseconds -ge ($__timeoutMs + $__drainGraceMs)) {
+                                    ($__timeoutMs -ge 0 -and $drainClock.ElapsedMilliseconds -ge ($__timeoutMs + $__drainGraceMs))) {
                                     $drainIncomplete = $true
                                     break
                                 }
-                            } elseif ($drainClock.ElapsedMilliseconds -ge $__timeoutMs) {
+                            } elseif ($__timeoutMs -ge 0 -and $drainClock.ElapsedMilliseconds -ge $__timeoutMs) {
                                 $timedOut = $true
                                 break
                             }
@@ -299,11 +295,12 @@ public class StartProgramActivity : BaseRemoteActivity
     /// <summary>
     /// The script enforces the program timeout itself (kill, then the drain grace), so the run
     /// gets that much more time. Otherwise the transport stops the script before it can report
-    /// the timeout with the program's partial output.
+    /// the timeout with the program's partial output. Without a program timeout the transport
+    /// has none either.
     /// </summary>
     protected override int? TransportTimeoutSeconds(JsonElement config)
     {
-        var programTimeout = PowerShellOperation.TimeoutSecondsFromConfig(config) ?? DefaultTimeoutSeconds;
+        if (PowerShellOperation.TimeoutSecondsFromConfig(config) is not { } programTimeout) return null;
         var configuredGrace = _configuration.GetValue<int?>("Engine:IsolatedDrainGraceSeconds");
         var grace = configuredGrace > 0 ? configuredGrace.Value : DefaultDrainGraceSeconds;
         return programTimeout + grace + TransportTimeoutMarginSeconds;
