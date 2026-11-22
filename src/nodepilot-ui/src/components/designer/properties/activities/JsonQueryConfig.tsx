@@ -1,7 +1,7 @@
 import { Code, DataBase } from '@carbon/icons-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ConfigProps } from '../shared';
+import { Hint, type ConfigProps } from '../shared';
 import { StructuredQueryConfig } from './structuredQueryShared';
 import { JsonPathTree } from '../JsonPathTree';
 import { tryParseJson } from '../../../../lib/jsonPathBuilder';
@@ -96,9 +96,7 @@ function JsonPathPicker({
         </select>
       </div>
       {selected && <JsonPathTree value={selected.parsed} onPick={pickPath} />}
-      <p className="text-[10px] font-label text-on-surface-variant">
-        {t('config.structuredQuery.jsonPickerHint')}
-      </p>
+      <Hint>{t('config.structuredQuery.jsonPickerHint')}</Hint>
     </div>
   );
 }

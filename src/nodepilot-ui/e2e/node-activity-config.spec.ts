@@ -211,6 +211,10 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     const iso = page.getByRole('checkbox', { name: 'Process isolation' });
     await expect(iso).toBeVisible();
     await expect(iso).toBeDisabled();
+    // The hint sits behind the info button next to the label.
+    await expect(page.getByText(/only applies to local execution/i)).toBeHidden();
+    await page.getByText('Process isolation', { exact: true }).locator('..')
+      .getByRole('button', { name: 'Show or hide hint' }).click();
     await expect(page.getByText(/only applies to local execution/i)).toBeVisible();
   });
 

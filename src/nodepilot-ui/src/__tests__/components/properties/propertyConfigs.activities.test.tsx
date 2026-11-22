@@ -124,15 +124,15 @@ describe('WaitForConditionConfig', () => {
     const onUpdate = vi.fn();
     wrap(<WaitForConditionConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
 
-    const engine = screen.getByDisplayValue('Default – Windows PowerShell 5.1 (same as remote)') as HTMLSelectElement;
-    expect(Array.from(engine.options).map((o) => o.value)).toEqual(['auto', 'pwsh', 'powershell', 'runspace']);
+    const engine = screen.getByDisplayValue('PowerShell 5.1 (default)') as HTMLSelectElement;
+    expect(Array.from(engine.options).map((o) => o.value)).toEqual(['auto', 'pwsh', 'runspace']);
     fireEvent.change(engine, { target: { value: 'runspace' } });
     expect(onUpdate).toHaveBeenCalledWith({ engine: 'runspace' });
   });
 
   it('typedMode_hasNoEngineChoice', () => {
     wrap(<WaitForConditionConfig config={{ conditionType: 'pathExists' }} onUpdate={vi.fn()} upstreamVars={[]} />);
-    expect(screen.queryByDisplayValue('Default – Windows PowerShell 5.1 (same as remote)')).toBeNull();
+    expect(screen.queryByDisplayValue('PowerShell 5.1 (default)')).toBeNull();
   });
 
   it('intervalSeconds_negativeInput_clampedToOneMinimum', () => {

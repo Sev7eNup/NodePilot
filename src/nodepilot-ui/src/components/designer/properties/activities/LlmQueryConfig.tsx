@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Field, VariableInsertField, type ConfigProps } from '../shared';
+import { Field, Hint, VariableInsertField, type ConfigProps } from '../shared';
 
 /**
  * Config editor for the `llmQuery` activity. Prompt and optional system prompt support
@@ -46,7 +46,7 @@ export function LlmQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
       </Field>
 
       <div className="pt-2 mt-1 border-t border-outline-variant/40 space-y-3">
-        <p className="text-[11px] text-on-surface-variant leading-snug">{t('config.llmQuery.overrideHint')}</p>
+        <Hint>{t('config.llmQuery.overrideHint')}</Hint>
 
         <Field label={t('config.llmQuery.baseUrl')}>
           <input

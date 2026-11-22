@@ -127,15 +127,15 @@ function ScriptModeFields({ config, onUpdate, upstreamVars = [] }: Readonly<Conf
   return (
     <>
       {/* Same engines as runScript; only a local step uses it, a remote one runs in Windows PowerShell 5.1. */}
-      <Field label={t('config.runScript.engineLabel')}>
+      <Field label={t('config.runScript.engineLabel')} hint={t('config.runScript.engineHint')}>
         <select
-          value={(config.engine as string) || 'auto'}
+          // A stored "powershell" runs the same engine as "auto", so it shows as the default.
+          value={(config.engine === 'powershell' ? 'auto' : config.engine as string) || 'auto'}
           onChange={(e) => onUpdate({ engine: e.target.value })}
           className="input-field"
         >
           <option value="auto">{t('config.runScript.engineAuto')}</option>
           <option value="pwsh">{t('config.runScript.enginePwsh')}</option>
-          <option value="powershell">{t('config.runScript.enginePowerShell')}</option>
           <option value="runspace">{t('config.runScript.engineRunspace')}</option>
         </select>
       </Field>

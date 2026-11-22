@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Field, VariableInsertField, type ConfigProps } from '../shared';
+import { Field, Hint, VariableInsertField, type ConfigProps } from '../shared';
 import { FieldGrid } from '../panelChrome';
 
 export function DatabaseTriggerConfig({ config, onUpdate, upstreamVars = [] }: Readonly<ConfigProps>) {
@@ -41,7 +41,7 @@ export function DatabaseTriggerConfig({ config, onUpdate, upstreamVars = [] }: R
         placeholder="SELECT MAX(Id) FROM Orders WHERE ProcessedAt IS NULL"
         mono
       />
-      <p className="font-body text-xs text-on-surface-variant">{t('databaseTrigger.sentinelHint')}</p>
+      <Hint>{t('databaseTrigger.sentinelHint')}</Hint>
     </>
   );
 }
