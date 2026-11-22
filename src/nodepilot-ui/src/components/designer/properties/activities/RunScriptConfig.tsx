@@ -27,6 +27,12 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
     .filter(v => v.expression.includes('.param.'))
     .map(v => ({ name: '$' + v.variable.split('.').pop(), label: v.label }));
 
+  // One hint for the isolation switch; which text applies depends on where and how the step runs.
+  let isolatedHint: string | undefined;
+  if (!isLocalTarget) isolatedHint = t('config.runScript.remoteIsolatedHint');
+  else if (inProcess) isolatedHint = t('config.runScript.runspaceIsolatedHint');
+  else if (isolated) isolatedHint = t('config.runScript.isolatedHint');
+
   const upstreamRefs = upstreamVars.map(v => ({ expression: v.expression, label: v.label }));
 
   const canRun = !!workflowId && !!stepId && !!liveStep;
@@ -44,39 +50,39 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
 
   return (
     <>
-      <FieldGrid>
-        <Field label={t('config.runScript.engineLabel')}>
-          <select
-            value={engine}
-            onChange={(e) => onUpdate(e.target.value === 'runspace' && isolated
-              ? { engine: 'runspace', isolated: false }
-              : { engine: e.target.value })}
-            className="input-field"
-          >
-            <option value="auto">{t('config.runScript.engineAuto')}</option>
-            <option value="pwsh">{t('config.runScript.enginePwsh')}</option>
-            <option value="powershell">{t('config.runScript.enginePowerShell')}</option>
-            <option value="runspace">{t('config.runScript.engineRunspace')}</option>
-          </select>
-        </Field>
-        <SwitchField
-          label={t('config.runScript.autoLogging')}
-          ariaLabel={t('config.runScript.autoLogging')}
-          checked={transcript}
-          onChange={(checked) => onUpdate({ transcript: checked })}
-          stateText={transcript ? t('config.runScript.autoLoggingOn') : t('config.runScript.autoLoggingOff')}
-        />
-      </FieldGrid>
-
-      <Field label={t('config.runScript.successExitCodes')}>
-        <input
-          type="text"
-          value={(config.successExitCodes as string) || ''}
-          onChange={(e) => onUpdate({ successExitCodes: e.target.value || undefined })}
+      <Field label={t('config.runScript.engineLabel')} hint={t('config.runScript.engineHint')}>
+        {/* A stored "powershell" resolves to the same engine as "auto" (Windows PowerShell 5.1),
+            so it is shown as the default instead of getting an entry of its own. */}
+        <select
+          value={engine === 'powershell' ? 'auto' : engine}
+          onChange={(e) => onUpdate(e.target.value === 'runspace' && isolated
+            ? { engine: 'runspace', isolated: false }
+            : { engine: e.target.value })}
           className="input-field"
-          placeholder={t('config.runScript.successExitCodesPlaceholder')}
-        />
-        <p className="text-[10px] font-label text-on-surface-variant leading-snug">
+        >
+          <option value="auto">{t('config.runScript.engineAuto')}</option>
+          <option value="pwsh">{t('config.runScript.enginePwsh')}</option>
+          <option value="runspace">{t('config.runScript.engineRunspace')}</option>
+        </select>
+      </Field>
+      <SwitchField
+        label={t('config.runScript.autoLogging')}
+        hint={transcript ? (
+          <Trans
+            i18nKey="config.runScript.transcriptHint"
+            ns="properties"
+            components={[<code key={0} />]}
+          />
+        ) : undefined}
+        ariaLabel={t('config.runScript.autoLogging')}
+        checked={transcript}
+        onChange={(checked) => onUpdate({ transcript: checked })}
+        stateText={transcript ? t('config.runScript.autoLoggingOn') : t('config.runScript.autoLoggingOff')}
+      />
+
+      <Field
+        label={t('config.runScript.successExitCodes')}
+        hint={(
           <Trans
             i18nKey="config.runScript.successExitCodesHint"
             ns="properties"
@@ -87,10 +93,33 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
               <code key={3} />,
             ]}
           />
-        </p>
+        )}
+      >
+        <input
+          type="text"
+          value={(config.successExitCodes as string) || ''}
+          onChange={(e) => onUpdate({ successExitCodes: e.target.value || undefined })}
+          className="input-field"
+          placeholder={t('config.runScript.successExitCodesPlaceholder')}
+        />
       </Field>
 
-      <Field label={t('config.runScript.scriptLabel')}>
+      <Field
+        label={t('config.runScript.scriptLabel')}
+        hint={(
+          <Trans
+            i18nKey="config.runScript.quotingHint"
+            ns="properties"
+            components={[
+              <strong key={0} className="font-semibold" />,
+              <code key={1} className={CODE_HINT}>{`{{step.output}}`}</code>,
+              <code key={2} className={CODE_HINT}>{'…'}</code>,
+              <code key={3} className={CODE_HINT}>{`$x = {{step.output}}`}</code>,
+              <code key={4} className={CODE_HINT}>{`$x = '{{step.output}}'`}</code>,
+            ]}
+          />
+        )}
+      >
         <CodeField
           language="powershell"
           value={script}
@@ -103,32 +132,9 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
         />
       </Field>
 
-      <p className="text-[10px] font-label text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/40 rounded-md px-2 py-1.5 leading-snug">
-        <Trans
-          i18nKey="config.runScript.quotingHint"
-          ns="properties"
-          components={[
-            <strong key={0} className="font-semibold" />,
-            <code key={1} className={CODE_HINT}>{`{{step.output}}`}</code>,
-            <code key={2} className={CODE_HINT}>{'…'}</code>,
-            <code key={3} className={CODE_HINT}>{`$x = {{step.output}}`}</code>,
-            <code key={4} className={CODE_HINT}>{`$x = '{{step.output}}'`}</code>,
-          ]}
-        />
-      </p>
-
-      {transcript && (
-        <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-          <Trans
-            i18nKey="config.runScript.transcriptHint"
-            ns="properties"
-            components={[<code key={0} />]}
-          />
-        </p>
-      )}
-
       <SwitchField
         label={t('config.runScript.isolated')}
+        hint={isolatedHint}
         ariaLabel={t('config.runScript.isolated')}
         checked={isolated}
         disabled={!isLocalTarget || inProcess}
@@ -136,25 +142,10 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
         stateText={isolated ? t('config.runScript.isolatedOn') : t('config.runScript.isolatedOff')}
       />
 
-      {!isLocalTarget && (
-        <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-          {t('config.runScript.remoteIsolatedHint')}
-        </p>
-      )}
-
-      {inProcess && isLocalTarget && (
-        <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-          {t('config.runScript.runspaceIsolatedHint')}
-        </p>
-      )}
-
       {isolated && isLocalTarget && (
         <>
-          <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-            {t('config.runScript.isolatedHint')}
-          </p>
           <FieldGrid>
-            <Field label={t('config.runScript.memoryLimit')}>
+            <Field label={t('config.runScript.memoryLimit')} hint={t('config.runScript.memoryLimitHint')}>
               <input
                 type="number"
                 min={0}
@@ -181,9 +172,6 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
               />
             </Field>
           </FieldGrid>
-          <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-            {t('config.runScript.memoryLimitHint')}
-          </p>
         </>
       )}
 

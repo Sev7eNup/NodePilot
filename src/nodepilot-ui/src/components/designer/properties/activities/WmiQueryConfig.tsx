@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import i18n from '../../../../i18n';
-import { Field, VariableInsertField, type ConfigProps } from '../shared';
+import { Field, Hint, VariableInsertField, type ConfigProps } from '../shared';
 import { FieldGrid } from '../panelChrome';
 
 type WmiMode = 'query' | 'wql' | 'invokeMethod';
@@ -155,9 +155,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
             {argumentsError ? (
               <p className="text-[11px] font-label text-error mt-1">{argumentsError}</p>
             ) : (
-              <p className="text-[11px] font-label text-on-surface-variant mt-1">
-                {t('config.wmiQuery.argumentsHint')}
-              </p>
+              <Hint>{t('config.wmiQuery.argumentsHint')}</Hint>
             )}
           </Field>
         </>

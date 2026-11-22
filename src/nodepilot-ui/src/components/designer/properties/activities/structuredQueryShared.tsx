@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Field, VariableInsertField, type ConfigProps } from '../shared';
+import { Field, Hint, VariableInsertField, type ConfigProps } from '../shared';
 import { CodeField, FieldGrid } from '../panelChrome';
 
 export interface StructuredQueryConfigProps extends ConfigProps {
@@ -34,7 +34,7 @@ export function StructuredQueryConfig({
   const source = (config.source as string) || 'inline';
   return (
     <>
-      <p className="text-xs text-on-surface-variant">{t('config.structuredQuery.executionHint')}</p>
+      <Hint>{t('config.structuredQuery.executionHint')}</Hint>
       <FieldGrid>
         <Field label={t('config.structuredQuery.source')}>
           <select value={source} onChange={(e) => onUpdate({ source: e.target.value })} className="input-field">

@@ -111,7 +111,7 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
   };
 
   return (
-    <div className="np-anim-panel bg-surface-low flex flex-col h-full overflow-hidden shrink-0 z-10 shadow-[-20px_0_40px_rgba(0,0,0,0.02)]" style={{ width: width ?? 320 }}>
+    <div className="np-anim-panel np-props bg-surface-low flex flex-col h-full overflow-hidden shrink-0 z-10 shadow-[-20px_0_40px_rgba(0,0,0,0.02)]" style={{ width: width ?? 320 }}>
       <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant/50">
         <h2 className="font-headline text-base font-bold text-on-surface">{t('edgePanel.connection')}</h2>
         <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface transition-colors">

@@ -167,7 +167,7 @@ function PropertiesPanelImpl({
 
   return (
     <div
-      className="np-anim-panel bg-surface-low flex flex-col h-full overflow-hidden shrink-0 z-10 shadow-[-20px_0_40px_rgba(0,0,0,0.02)]"
+      className="np-anim-panel np-props bg-surface-low flex flex-col h-full overflow-hidden shrink-0 z-10 shadow-[-20px_0_40px_rgba(0,0,0,0.02)]"
       style={{ width: width ?? 450 }}
     >
       <div

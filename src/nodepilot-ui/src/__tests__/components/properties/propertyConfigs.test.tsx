@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { RunScriptConfig } from '../../../components/designer/properties/activities/RunScriptConfig';
@@ -24,6 +24,12 @@ beforeEach(() => {
   );
 });
 
+/** Hints sit behind an info button next to their label; this opens the one of the labelled field. */
+function openHintOf(label: string) {
+  const row = screen.getByText(label).parentElement as HTMLElement;
+  fireEvent.click(within(row).getByRole('button', { name: 'Show or hide hint' }));
+}
+
 function wrap(ui: React.ReactElement) {
   // retry:false stops React Query from re-fetching after a failed request in jsdom.
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -36,14 +42,21 @@ describe('RunScriptConfig', () => {
     wrap(<RunScriptConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
 
     // Engine select defaults to "auto" — visible label as option text.
-    expect(screen.getByText('Default – Windows PowerShell 5.1 (same as remote)')).toBeInTheDocument();
+    expect(screen.getByText('PowerShell 5.1 (default)')).toBeInTheDocument();
+  });
+
+  it('engineSelect_showsAStoredPowershellEngineAsTheDefault', () => {
+    // "powershell" runs the same engine as "auto" and has no entry of its own.
+    wrap(<RunScriptConfig config={{ engine: 'powershell' }} onUpdate={vi.fn()} upstreamVars={[]} />);
+
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('auto');
   });
 
   it('engineSelect_offersTheInProcessEngine', () => {
     wrap(<RunScriptConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
 
     const values = Array.from((screen.getByRole('combobox') as HTMLSelectElement).options).map((o) => o.value);
-    expect(values).toEqual(['auto', 'pwsh', 'powershell', 'runspace']);
+    expect(values).toEqual(['auto', 'pwsh', 'runspace']);
   });
 
   it('engineSelect_runspaceWhileIsolated_turnsIsolationOffInTheSamePatch', () => {
@@ -60,6 +73,8 @@ describe('RunScriptConfig', () => {
 
     const checkbox = screen.getByRole('checkbox', { name: 'Process isolation' }) as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
+    expect(screen.queryByText('In-process runs inside the NodePilot process itself and cannot be isolated.')).not.toBeInTheDocument();
+    openHintOf('Process isolation');
     expect(screen.getByText('In-process runs inside the NodePilot process itself and cannot be isolated.')).toBeInTheDocument();
   });
 
@@ -106,7 +121,9 @@ describe('RunScriptConfig', () => {
 
     const checkbox = screen.getByRole('checkbox', { name: 'Process isolation' }) as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
-    // Remote-only hint is shown.
+    // The remote-only hint is behind the info button and appears on click.
+    expect(screen.queryByText(/only applies to local execution/i)).not.toBeInTheDocument();
+    openHintOf('Process isolation');
     expect(screen.getByText(/only applies to local execution/i)).toBeInTheDocument();
   });
 

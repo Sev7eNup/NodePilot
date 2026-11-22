@@ -1,6 +1,7 @@
 import {
   FlashFilled,
   FlashOff,
+  Information,
   Locked,
   Password,
   Search,
@@ -92,7 +93,7 @@ export function TimeoutField({ value, onChange }: Readonly<{ value: number | und
   const { t } = useTranslation(['properties']);
   const display = value ?? 0;
   return (
-    <Field label={t('properties:timeout')}>
+    <Field label={t('properties:timeout')} hint={t('properties:timeoutHint')}>
       <input
         type="number"
         value={display}
@@ -105,9 +106,6 @@ export function TimeoutField({ value, onChange }: Readonly<{ value: number | und
         className="input-field"
         min={0}
       />
-      <p className="text-[10px] text-on-surface-variant">
-        {t('properties:timeoutHint')}
-      </p>
     </Field>
   );
 }
@@ -176,17 +174,55 @@ export function RetryField({ value, onChange }: Readonly<{
               />
             </Field>
           </div>
-          <p className="text-[10px] text-on-surface-variant">{t('properties:retry.hint')}</p>
+          <Hint>{t('properties:retry.hint')}</Hint>
         </>
       )}
     </div>
   );
 }
 
-export function Field({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
+const hintTextClass = 'rounded-md bg-surface-high/60 px-2 py-1.5 text-[11px] font-label leading-snug text-on-surface-variant';
+
+function HintButton({ open, onToggle }: Readonly<{ open: boolean; onToggle: () => void }>) {
+  const { t } = useTranslation(['properties']);
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label={t('properties:panel.showHint')}
+      title={t('properties:panel.showHint')}
+      className={`inline-flex shrink-0 items-center rounded-full cursor-pointer transition-colors ${open ? 'text-primary' : 'text-outline hover:text-primary'}`}
+    >
+      <Information size={14} aria-hidden="true" />
+    </button>
+  );
+}
+
+/** Explanatory text behind an info button, so it only takes space when the user asks for it.
+ *  Use it for hints that have no label of their own; a labelled field passes `hint` to Field. */
+export function Hint({ children }: Readonly<{ children: React.ReactNode }>) {
+  const [open, setOpen] = useState(false);
   return (
     <div className="space-y-1.5">
-      {label && <label className="block font-label text-xs font-semibold text-on-surface-variant">{label}</label>}
+      <HintButton open={open} onToggle={() => setOpen((o) => !o)} />
+      {open && <div className={hintTextClass}>{children}</div>}
+    </div>
+  );
+}
+
+export function Field({ label, hint, children }: Readonly<{ label: string; hint?: React.ReactNode; children: React.ReactNode }>) {
+  const [hintOpen, setHintOpen] = useState(false);
+  const labelEl = label && <label className="block font-label text-xs font-semibold text-on-surface-variant">{label}</label>;
+  return (
+    <div className="space-y-1.5">
+      {hint ? (
+        <div className="flex items-center gap-1.5">
+          {labelEl}
+          <HintButton open={hintOpen} onToggle={() => setHintOpen((o) => !o)} />
+        </div>
+      ) : labelEl}
+      {hint && hintOpen && <div className={hintTextClass}>{hint}</div>}
       {children}
     </div>
   );
@@ -197,10 +233,12 @@ export function Field({ label, children }: Readonly<{ label: string; children: R
  * (checkbox role, aria-label, keyboard behavior); only the visual is a switch, since
  * `.np-switch` in index.css hides the native box and paints track and knob.
  */
-export function SwitchField({ label, stateText, checked, onChange, disabled = false, ariaLabel }: Readonly<{
+export function SwitchField({ label, hint, stateText, checked, onChange, disabled = false, ariaLabel }: Readonly<{
   /** Optional inline text right of the switch (e.g. current-state wording). */
   stateText?: string;
   label?: string;
+  /** Shown behind an info button next to the label; needs `label`. */
+  hint?: React.ReactNode;
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
@@ -219,7 +257,7 @@ export function SwitchField({ label, stateText, checked, onChange, disabled = fa
       {stateText && <span className="text-sm text-on-surface">{stateText}</span>}
     </label>
   );
-  return label !== undefined ? <Field label={label}>{body}</Field> : body;
+  return label !== undefined ? <Field label={label} hint={hint}>{body}</Field> : body;
 }
 
 export function VariableInsertField({

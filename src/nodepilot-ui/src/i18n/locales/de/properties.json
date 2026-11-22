@@ -95,10 +95,10 @@
       "scriptPlaceholder": "Get-PSDrive C",
       "scriptEditorPlaceholder": "# Write-Output 'hello'",
       "engineLabel": "Engine",
-      "engineAuto": "Standard – Windows PowerShell 5.1 (wie remote)",
-      "enginePwsh": "PowerShell 7 (pwsh.exe)",
-      "enginePowerShell": "Windows PowerShell 5.1",
-      "engineRunspace": "In-Process PS 7 (schnell, nur Core-Module)",
+      "engineAuto": "PowerShell 5.1 (Standard)",
+      "enginePwsh": "PowerShell 7",
+      "engineRunspace": "PowerShell 7 im Prozess (nur Core-Module)",
+      "engineHint": "PowerShell 5.1 ist der Standard und nutzt dieselben Module wie die Remote-Ausführung. PowerShell 7 läuft über pwsh.exe: neuere Sprachfunktionen, andere Module. Im Prozess läuft im NodePilot-Prozess selbst: schnellster Start, nur Core-Module, keine Prozess-Isolation.",
       "autoLogging": "Auto-Logging",
       "autoLoggingOn": "Transcript an",
       "autoLoggingOff": "Aus",
@@ -819,6 +819,7 @@
     "nodeName": "Node-Name",
     "closePanel": "Eigenschaften-Panel schließen",
     "openEditor": "Editor öffnen",
+    "showHint": "Hinweis ein- oder ausblenden",
     "sqlTemplateWarning": "SQL-Templates werden vor der Ausführung als literaler Text aufgelöst. Bevorzuge wenn möglich Datenbank-Parameter."
   },
   "parameterTable": {

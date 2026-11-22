@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { Field, VariableInsertField, type ConfigProps } from '../shared';
+import { Field, Hint, VariableInsertField, type ConfigProps } from '../shared';
 import { FieldGrid } from '../panelChrome';
 
 /**
@@ -72,9 +72,7 @@ export function PowerManagementConfig({ config, onUpdate, upstreamVars = [] }: R
 
       {supportsDelay && (
         <>
-          <p className="text-[11px] text-on-surface-variant leading-snug">
-            {t('config.powerManagement.delayHint')}
-          </p>
+          <Hint>{t('config.powerManagement.delayHint')}</Hint>
 
           <Field label={t('config.powerManagement.forceClose')}>
             <label className="flex items-center gap-2 text-sm">

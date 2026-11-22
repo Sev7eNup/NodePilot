@@ -71,7 +71,7 @@ export function Section({
         )}
       </header>
       {isOpen && (
-        <div className={`pb-3 pt-0.5 space-y-3 ${nested ? 'pl-3 border-l border-outline-variant/30' : ''}`}>
+        <div className={`pb-4 pt-1 space-y-4 ${nested ? 'pl-3 border-l border-outline-variant/30' : ''}`}>
           {children}
         </div>
       )}
@@ -86,7 +86,7 @@ export function Section({
  *  `container-type: inline-size` (PropertiesPanel does this). */
 export function FieldGrid({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <div className="grid grid-cols-1 @[340px]:grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 @[340px]:grid-cols-2 gap-4">
       {children}
     </div>
   );

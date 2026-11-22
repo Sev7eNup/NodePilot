@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Field, type ConfigProps } from '../shared';
+import { Field, Hint, type ConfigProps } from '../shared';
 import { FieldGrid } from '../panelChrome';
 
 export function EventLogTriggerConfig({ config, onUpdate }: Readonly<ConfigProps>) {
@@ -63,7 +63,7 @@ export function EventLogTriggerConfig({ config, onUpdate }: Readonly<ConfigProps
           />
         </Field>
       </FieldGrid>
-      <p className="font-body text-xs text-on-surface-variant">{t('eventLogTrigger.lookbackHint')}</p>
+      <Hint>{t('eventLogTrigger.lookbackHint')}</Hint>
       <Field label={t('eventLogTrigger.messagePattern')}>
         <input
           type="text"

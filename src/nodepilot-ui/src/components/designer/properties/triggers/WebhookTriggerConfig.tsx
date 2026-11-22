@@ -1,6 +1,6 @@
 import { Add, TrashCan } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
-import { Field, VariableInsertField, type ConfigProps } from '../shared';
+import { Field, Hint, VariableInsertField, type ConfigProps } from '../shared';
 import { FieldGrid } from '../panelChrome';
 
 interface FieldMapping {
@@ -103,12 +103,12 @@ export function WebhookTriggerConfig({ config, onUpdate, upstreamVars = [] }: Re
               />
             </Field>
           </FieldGrid>
-          <p className={isLegacyHmac ? 'text-xs text-error' : 'text-xs text-on-surface-variant'}>
-            {t(isLegacyHmac ? 'webhookTrigger.legacyHmacHint' : 'webhookTrigger.hmacHint')}
-          </p>
+          {isLegacyHmac
+            ? <p className="text-xs text-error">{t('webhookTrigger.legacyHmacHint')}</p>
+            : <Hint>{t('webhookTrigger.hmacHint')}</Hint>}
         </>
       )}
-      <Field label={t('webhookTrigger.fieldMappings')}>
+      <Field label={t('webhookTrigger.fieldMappings')} hint={t('webhookTrigger.fieldMappingsHint')}>
         <div className="flex flex-col gap-1.5">
           {mappings.map((m, i) => (
             // Positional keys are correct here: rows are edited in place by index.
@@ -147,7 +147,6 @@ export function WebhookTriggerConfig({ config, onUpdate, upstreamVars = [] }: Re
           >
             <Add size={13} /> {t('webhookTrigger.addMapping')}
           </button>
-          <p className="text-xs text-on-surface-variant">{t('webhookTrigger.fieldMappingsHint')}</p>
         </div>
       </Field>
     </>

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Field, type ConfigProps } from '../shared';
+import { Field, Hint, type ConfigProps } from '../shared';
 
 const MODES = ['alphanumeric', 'alphabetic', 'numeric', 'hex', 'guid', 'password', 'custom'] as const;
 
@@ -65,11 +65,7 @@ export function GenerateTextConfig({ config, onUpdate }: Readonly<ConfigProps>) 
         </Field>
       )}
 
-      {mode === 'password' && (
-        <div className="text-[11px] text-on-surface-variant leading-snug">
-          {t('config.generateText.passwordHint')}
-        </div>
-      )}
+      {mode === 'password' && <Hint>{t('config.generateText.passwordHint')}</Hint>}
     </>
   );
 }

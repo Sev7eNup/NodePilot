@@ -1436,6 +1436,21 @@ textarea.input-field {
   resize: vertical;
 }
 
+/* Properties panels (node + edge): denser fields and a readable size floor for hint text.
+   Dialogs and pages keep the roomy .input-field above. The `.input-field` base rule is
+   unlayered, so it beats Tailwind's `text-xs` on mono fields; the mono override restores
+   that intended 12px. The hint rules are unlayered too, so they win over the utilities. */
+.np-props .input-field {
+  padding-block: 0.3rem;
+  font-size: 0.8125rem;
+}
+.np-props .input-field.font-mono {
+  font-size: 0.75rem;
+}
+.np-props :is(.text-\[9px\], .text-\[10px\]) {
+  font-size: 11px;
+}
+
 /* ── Toolbar proximity glow (designer EditorHeader) ─────────────────────────────
    Each toolbar cluster (<ToolbarSection>) blooms a soft, diffuse colored halo at its
    BOTTOM edge as the cursor approaches. Intensity rides the `--np-glow` custom property
