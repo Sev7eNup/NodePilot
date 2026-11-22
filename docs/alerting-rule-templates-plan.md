@@ -133,11 +133,10 @@ Enable-Gate bei [:135-136](../src/NodePilot.Api/Controllers/SystemAlertingContro
   `form.routes.length === 0` gilt unbedingt als invalid. Aufteilen: leere Routenliste blockiert nur bei
   `form.isEnabled`; eine halb getippte Route (`!r.target.trim()`) bleibt in beiden Fällen invalid.
   Dazu ein Hinweis unter der Enabled-Checkbox, analog `alerts:system.editor.enabledHint`.
-- [AlertingPage.tsx:47](../src/nodepilot-ui/src/pages/AlertingPage.tsx#L47) — `toggleMutation` hat
-  **kein** `onError`; ein 400 vom Enable-Gate würde spurlos verpuffen. Zwei Dinge: bei
+- [AlertingPage.tsx:51](../src/nodepilot-ui/src/pages/AlertingPage.tsx#L51) — `toggleMutation` hat
+  inzwischen einen `onError`-Toast (`common:updateFailed`) als Auffangnetz. Offen bleibt: bei
   `routes.length === 0` gar nicht erst mutieren, sondern den Editor öffnen (der Operator soll den
-  Empfänger eintragen, nicht eine Fehlermeldung lesen), **und** ein `onError`-Toast als Auffangnetz —
-  ein stumm scheiternder Toggle ist der eigentliche Bug.
+  Empfänger eintragen, nicht eine Fehlermeldung lesen).
 - [AlertingCommands.cs](../src/NodePilot.Cli/Commands/Alerting/AlertingCommands.cs) — „mindestens ein
   `--email`/`--webhook`" nur noch prüfen, wenn die Regel aktiviert angelegt wird.
 

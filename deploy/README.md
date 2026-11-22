@@ -54,7 +54,7 @@ would tolerate it when loading. Explanations belong here or in `docs/`, not in t
 
 ### Sizing in the templates
 
-Both templates ship `"Performance": { "ManualTuning": false }` — NodePilot then derives the runspace
+The production template ships `"Performance": { "ManualTuning": false }` — NodePilot then derives the runspace
 pool, the step cap, the ThreadPool floor and the dispatch worker count from the detected CPU and memory. That
 is deliberate: `Install-NodePilot.ps1` rolls the production template onto *arbitrary* hardware, and the
 numbers stored there are the profile measured for **20 cores / 500 concurrent workflows**. On a smaller
@@ -161,7 +161,7 @@ ALTER ROLE db_owner ADD MEMBER [CONTOSO\NPSRV01$];
 > nothing at all without `sysadmin` or `CREATE ANY DATABASE` — then the SQL above is left for the DBA.
 
 **RCSI (read-committed snapshot isolation)** is enabled automatically by the installer
-(`Enable-SqlReadCommittedSnapshot` in the pre-flight). This is the SQL Server counterpart to Postgres
+(`Enable-SqlReadCommittedSnapshot`, right after a passed pre-flight). This is the SQL Server counterpart to Postgres
 MVCC: without RCSI, long-running readers (stats refresh, retention sweeps) block every concurrent
 `INSERT` into `WorkflowExecutions`/`StepExecutions` under the default 2PL locking. If the installer
 step fails the permission check (the login has no `ALTER DATABASE`), it prints the T-SQL statement for
@@ -634,7 +634,7 @@ overwritten. Settings are written last (a service restart may be needed for them
 | 503 on `/healthz/ready` | The database is not ready. State and reason are available without signing in at `/healthz/database` (always HTTP 200) or via `np health`. On SQL Server also check as the gMSA with `sqlcmd -S sql01 -E -d NodePilot -Q "SELECT 1"`. |
 | Database outage **during operation** | Expected: the service stays up, `/api` answers `503 DATABASE_UNAVAILABLE`, the UI shows the outage, and NodePilot resumes automatically after successful probes. Workflows wait at the durability boundary; triggers observed during the outage are counted and discarded without catch-up. Details: [ADR 0011](../docs/adr/0011-database-availability-breaker.md). |
 | `/healthz/database`: `RejectedByServer` | Fix the credentials, the database/catalog or TLS; waiting or a restart alone does not clear this state. After a server-side correction the probe picks it up automatically; changed NodePilot connection details need a service restart. |
-| WinRM remote calls fail with "Access denied" | The gMSA has no Kerberos delegation to the target. See section 5 (resource-based constrained delegation). |
+| WinRM remote calls fail with "Access denied" | The NodePilot process identity (the gMSA, or the host computer account under LocalSystem) has no permission on the target's WinRM endpoint. See section 5. |
 | SPA loads, API calls return 401 | Sign-in via the setup token has not happened yet — the login page reveals the field on the first attempt; read the token via `robocopy <DataPath> $env:TEMP admin-setup.token /B` (the file is owner-only for the service account). |
 | Service boot loop, log shows TDS error 8005 "The parameter name is invalid" | SQL Server 2022 RTM without a CU — the TDS 8.0 RPC bug, fixed from CU1 (`16.0.4003.1`). Install a current 2022 CU. Newer installers catch this in the pre-flight. |
 | DPAPI decrypt failed for credentials after a service-account change | The template sets `Credentials:DpapiScope=LocalMachine`. For existing `CurrentUser`-encrypted credentials: re-enter the credentials (there is no migration helper). |

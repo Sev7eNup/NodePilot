@@ -49,8 +49,8 @@ checkable in the `.iss`, the adapter, the runtime fetch and the build — every 
   `ISCC /Qp /O- /DStageDir=<stage> /DOutputDir=<out> NodePilotServer.iss`; that this really compiles the
   `[Code]` section can be demonstrated with a deliberately wrong identifier in a copy. Does **not** run
   in CI (no ISCC on the runner).
-- **Positions of computed controls.** That the certificate list lands *inside* the area is enforced by
-  the clamp in `CompactNetworkPage` and a contract on it. How the page then looks — whether the spacing
+- **Positions of computed controls.** The certificate picker sits on its own page (`CertificatePage`);
+  its contracts in `Test-DeploymentTemplates.ps1` check behaviour, not layout. How the page then looks — whether the spacing
   is right or it feels cramped — is only visible in the running wizard. That is exactly how the list
   shipped cut off the first time.
 - **Native GUI coverage is outside CI.** The October 2026 GW1 review exercised real dialogs,

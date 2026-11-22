@@ -72,7 +72,7 @@ Schema and locking changes also have to pass against real PostgreSQL and SQL Ser
 ./scripts/Test-DatabaseProviders.ps1
 ```
 
-The script starts disposable PostgreSQL 16 and SQL Server 2022 containers, runs the `DatabaseIntegration` tests and removes the containers afterwards. Existing servers can be used by setting `NODEPILOT_TEST_POSTGRES` and `NODEPILOT_TEST_SQLSERVER` to administrative connection strings outside tracked files. A provider without a connection string is skipped. Since CI only covers PostgreSQL, the SQL Server part stays a local step.
+The script starts disposable PostgreSQL 16 and SQL Server 2022 containers, runs the `DatabaseIntegration` tests and removes the containers afterwards. Existing servers can be used by setting both `NODEPILOT_TEST_POSTGRES` and `NODEPILOT_TEST_SQLSERVER` to administrative connection strings outside tracked files; the script refuses to run with only one of them set. When `dotnet test` is run directly, a provider without a connection string is skipped. Since CI only covers PostgreSQL, the SQL Server part stays a local step.
 
 ### Documentation website
 
