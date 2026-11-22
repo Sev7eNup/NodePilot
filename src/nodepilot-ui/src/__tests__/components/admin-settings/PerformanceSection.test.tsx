@@ -16,6 +16,8 @@ const engine = {
     debug: { maxPauseMinutes: 10 },
     maxConcurrentExecutions: { global: 5000, perUser: 2000 },
     maxConcurrentSteps: 600,
+    maxScriptProcesses: 0,
+    experimentalMode: false,
     runspace: { minRunspaces: 256, maxRunspaces: 768 },
   },
   etag: '"e-1"', isHotReloadable: false, effectiveSource: {},
@@ -43,7 +45,8 @@ const remote = {
 const sizingValues = [
   { key: 'Engine:Runspace:MinRunspaces', value: 4, bound: 'Cpu' },
   { key: 'Engine:Runspace:MaxRunspaces', value: 32, bound: 'Cpu' },
-  { key: 'Engine:MaxConcurrentSteps', value: 256, bound: 'Cpu' },
+  { key: 'Engine:MaxConcurrentSteps', value: 256, bound: 'Cpu', automatic: 128, warnAbove: 512 },
+  { key: 'Engine:MaxScriptProcesses', value: 41, bound: 'Cpu' },
   { key: 'Threading:MinWorkerThreads', value: 200, bound: 'Cpu' },
   { key: 'Threading:MinIoCompletionThreads', value: 200, bound: 'Cpu' },
   { key: 'ExecutionDispatch:WorkerCount', value: 24, bound: 'Cpu' },
@@ -57,8 +60,13 @@ const sizingValues = [
  */
 function renderAll(sizing: Partial<{
   manualTuning: boolean; desiredManualTuning: boolean; usableMemoryBytes: number | null;
+  experimentalMode: boolean; desiredExperimentalMode: boolean;
 }> = {}, remoteSection = remote) {
   const manualTuning = sizing.manualTuning ?? true;
+  // Booted with experimental mode on unless a case says otherwise, so the script process limit
+  // is in force for the assertions about it.
+  const experimentalMode = sizing.experimentalMode ?? true;
+  const desiredExperimentalMode = sizing.desiredExperimentalMode ?? experimentalMode;
   // The Performance section stores the desired mode — that is what the checkbox shows, and it is
   // `desiredManualTuning` in the sizing plan, not the mode the process booted in.
   const desiredManualTuning = sizing.desiredManualTuning ?? manualTuning;
@@ -70,12 +78,15 @@ function renderAll(sizing: Partial<{
     http.get('/api/admin/settings/effective-sizing', () => HttpResponse.json({
       manualTuning,
       desiredManualTuning,
+      experimentalMode,
+      desiredExperimentalMode,
       processorCount: 8,
       usableMemoryBytes: sizing.usableMemoryBytes === undefined ? 16 * 1024 ** 3 : sizing.usableMemoryBytes,
       isDesktop: false,
       values: sizingValues,
     })),
-    http.get('/api/admin/settings/Engine', () => HttpResponse.json(engine)),
+    http.get('/api/admin/settings/Engine', () => HttpResponse.json(
+      { ...engine, payload: { ...engine.payload, experimentalMode: desiredExperimentalMode } })),
     http.get('/api/admin/settings/ExecutionDispatch', () => HttpResponse.json(dispatch)),
     http.get('/api/admin/settings/Threading', () => HttpResponse.json(threading)),
     http.get('/api/admin/settings/Remote', () => HttpResponse.json(remoteSection)),
@@ -128,6 +139,45 @@ describe('PerformanceSection', () => {
     await waitFor(() => expect(screen.getByText(/Aktiv: 32|Active: 32/)).toBeInTheDocument());
     // The detected hardware is stated explicitly, so the derived numbers can be sanity-checked.
     expect(screen.getByText(/Erkannt: 8 Kerne|Detected: 8 cores/)).toBeInTheDocument();
+  });
+
+  it.each([false, true])('shows the script process limit in force and keeps it editable (manual tuning: %s)', async (manualTuning) => {
+    renderAll({ manualTuning });
+    // The stored 0 means "derive it"; the number the process runs on is in the hint. The field
+    // is not part of the manual preset, so it stays editable under automatic sizing too.
+    await waitFor(() => expect(screen.getByText(/Aktiv: 41|Active: 41/)).toBeInTheDocument());
+    expect(screen.getByDisplayValue('0')).not.toBeDisabled();
+  });
+
+  it('says the script process limit is not in force while experimental mode is off', async () => {
+    renderAll({ experimentalMode: false });
+    await waitFor(() => expect(
+      screen.getByText(/Nicht in Kraft: Der Experimental mode ist aus|Not in force: experimental mode is off/),
+    ).toBeInTheDocument());
+    expect(screen.queryByText(/Aktiv: 41|Active: 41/)).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Experimental mode/ })).not.toBeChecked();
+  });
+
+  it('flags a saved experimental mode that has not taken effect yet', async () => {
+    renderAll({ experimentalMode: false, desiredExperimentalMode: true });
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /Experimental mode/ })).toBeChecked());
+    expect(screen.getByText(/Experimental mode.*(Neustart|restart)/i)).toBeInTheDocument();
+  });
+
+  it('warns while the hand-set step limit is far above automatic sizing', async () => {
+    renderAll({ manualTuning: true });
+    // The stored 600 is above the limit of 512 the server reports for this machine.
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/128/));
+    // Typing a value within the range clears it before any save.
+    const steps = screen.getAllByDisplayValue('600')[0];
+    fireEvent.change(steps, { target: { value: '400' } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('does not warn about the stored step limit under automatic sizing', async () => {
+    renderAll({ manualTuning: false });
+    await waitFor(() => expect(screen.getAllByDisplayValue('600')).toHaveLength(2));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('keeps the fields editable under manual tuning', async () => {

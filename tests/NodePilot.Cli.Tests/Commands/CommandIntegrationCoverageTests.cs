@@ -536,6 +536,26 @@ public class CommandIntegrationCoverageTests
     }
 
     [Fact]
+    public void SettingsEffectiveSizing_Table_ShowsExperimentalModeAndItsPendingChange()
+    {
+        // Without experimental mode the script process value in the table is not in force, so the
+        // header has to say which mode the process runs in and what a restart will change.
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/admin/settings/effective-sizing").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                manualTuning = false, desiredManualTuning = false,
+                experimentalMode = false, desiredExperimentalMode = true,
+                processorCount = 8, usableMemoryBytes = 8589934592L, isDesktop = false,
+                values = new[] { new { key = "Engine:MaxScriptProcesses", value = 32, bound = "Cpu" } },
+            }));
+
+        var result = h.Run("settings", "effective-sizing", "-o", "table");
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        result.Output.Should().Contain("Experimental Mode").And.Contain("not limited").And.Contain("on after restart");
+    }
+
+    [Fact]
     public void WorkflowStepTest_Table_RendersGridOutputAndParams()
     {
         using var h = new CommandTestHarness();

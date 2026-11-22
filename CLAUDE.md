@@ -402,7 +402,7 @@ Admin settings saves persist atomically to `appsettings.runtime.json` (`reloadOn
 
 **Consumer rule:** read hot-reloadable values via `IOptionsMonitor<T>.CurrentValue` or raw `IConfiguration` per use/pass — **never** an `IOptions<T>.Value` snapshot.
 
-**Sizing:** `Performance:ManualTuning` (default **`false`**) decides whether runspace, step, threading and dispatch worker counts are derived from the detected CPU+RAM or taken verbatim from config; restart-required. **`Engine:MaxConcurrentExecutions:*` is excluded** (a safety cap, not tuning). Details: `docs/performance-improvements.md`.
+**Sizing:** `Performance:ManualTuning` (default **`false`**) decides whether runspace, step, threading and dispatch worker counts are derived from the detected CPU+RAM or taken verbatim from config; restart-required. **`Engine:MaxConcurrentExecutions:*` is excluded** (a safety cap, not tuning), and `Engine:MaxScriptProcesses` applies in both modes (`0` = derived) but only with `Engine:ExperimentalMode` (default off = local scripts start as in 1.5.4). Details: `docs/performance-improvements.md`.
 
 ## AuditLog
 

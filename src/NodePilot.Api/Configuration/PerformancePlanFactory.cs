@@ -21,7 +21,10 @@ public static class PerformancePlanFactory
         => PerformanceSizing.Create(
             Detect(configuration),
             configuration.GetValue(PerformanceSizing.ConfigKeys.ManualTuning, false),
-            ReadConfigured(configuration));
+            ReadConfigured(configuration)) with
+        {
+            ExperimentalMode = configuration.GetValue(PerformanceSizing.ConfigKeys.ExperimentalMode, false),
+        };
 
     /// <summary>
     /// Hardware limits as this process can actually use them: both APIs honor container and
@@ -74,8 +77,24 @@ public static class PerformancePlanFactory
                $"{(plan.Resources.IsDesktop ? "Desktop" : "Server")} posture → " +
                $"runspaces {plan.MinRunspaces.Value}-{plan.MaxRunspaces.Value} ({plan.MaxRunspaces.Bound}), " +
                $"steps {plan.MaxConcurrentSteps.Value} ({plan.MaxConcurrentSteps.Bound}), " +
+               (plan.ExperimentalMode
+                   ? $"script processes {plan.MaxScriptProcesses.Value} ({plan.MaxScriptProcesses.Bound}, experimental mode), "
+                   : "script processes not limited (experimental mode off), ") +
                $"threads {plan.MinWorkerThreads.Value} ({plan.MinWorkerThreads.Bound}), " +
                $"dispatch workers {plan.DispatchWorkerCount.Value} " +
                $"({plan.DispatchWorkerCount.Bound})";
     }
+
+    /// <summary>
+    /// Warning for the startup log when the hand-set step limit is far above the automatic one,
+    /// otherwise <c>null</c>.
+    /// </summary>
+    public static string? DescribeStepLimitWarning(PerformancePlan plan)
+        => plan.StepLimitFarAboveAutomatic
+            ? $"{PerformanceSizing.ConfigKeys.MaxConcurrentSteps} is set to {plan.MaxConcurrentSteps.Value}; " +
+              $"automatic sizing would use {plan.AutomaticMaxConcurrentSteps} on this machine. " +
+              "Starting more work than the CPU can run does not finish it sooner: steps slow each other " +
+              "down, step timeouts can expire and the service needs more memory. " +
+              "See \"Raising the limits by hand\" in the performance documentation."
+            : null;
 }

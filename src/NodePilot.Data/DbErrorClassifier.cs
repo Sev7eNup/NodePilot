@@ -188,6 +188,13 @@ public static class DbErrorClassifier
     /// </summary>
     public static bool IsCommandTimeout(Exception? exception) => Classify(exception) is DbFailureKind.CommandTimeout;
 
+    /// <summary>
+    /// True when the server answered but had no free connection or resource for the operation.
+    /// The condition clears on its own, so a write that must not be lost can wait and try again.
+    /// </summary>
+    public static bool IsCapacityBackpressure(Exception? exception)
+        => Classify(exception) is DbFailureKind.CapacityBackpressure;
+
     private static DbFailureKind ClassifyOne(Exception exception)
     {
         // Pool exhaustion is checked before anything else about the exception, because both

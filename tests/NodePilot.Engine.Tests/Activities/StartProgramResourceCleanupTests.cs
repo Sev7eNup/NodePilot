@@ -151,6 +151,20 @@ public class StartProgramResourceCleanupTests
     }
 
     [Fact]
+    public async Task WithoutATimeout_WaitsForTheProgramAndCapturesItsOutput()
+    {
+        using var engine = CreateEngine();
+        var result = await Execute(engine, new {
+            filePath = CmdPath, arguments = "/c ping -n 3 127.0.0.1 >nul & echo late-out"
+        }, CaptureBudgetSeconds);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        result.OutputParameters["stdout"].Should().Contain("late-out");
+        result.OutputParameters["waited"].Should().Be("true");
+        await AssertResources(engine);
+    }
+
+    [Fact]
     public async Task WindowsPowerShell51_ReleasesJobsAcrossSuccessfulAndFailedCalls()
     {
         var activity = new Accessor();

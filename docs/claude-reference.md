@@ -113,6 +113,18 @@ synchronous child calls wait. `PUT /concurrency-limit` requires the field
 `maxConcurrentExecutions`, even when it is `null`. The limit is part of neither
 the graph save nor versioning, and a graph rollback does not change it.
 
+Local scripts run one PowerShell process each. `Engine:ExperimentalMode` (default off, read at
+startup, `PerformancePlan.ExperimentalMode`) switches two things together: the host starts with
+the same command line for every script (script path in `NODEPILOT_SCRIPT_PATH`), and the
+processes are bounded by the script process limit (`PerformancePlan.MaxScriptProcesses`,
+`Engine:MaxScriptProcesses`). Off, local scripts start as they did up to 1.5.4 and there is no
+limit. A script beyond the limit waits inside its step: the step stays `Running`, keeps its
+place in the step limit, and its own `timeoutSeconds` starts with the process.
+`waitForCondition` in script mode does not charge the wait before its first check to its
+timeout. In both modes a local check that runs out of its own time limit is polled again
+instead of failing the step. Operator view: `docs/performance-improvements.md` § Experimental
+mode, § When the script process limit is reached.
+
 A step row is persisted before the activity executes. Terminal executions
 end any remaining running or paused steps. `StepsTotal` counts the rows
 materialised so far and is not a reliable progress denominator while a workflow

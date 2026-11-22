@@ -26,8 +26,9 @@ public class StartProgramActivityTests
     [Theory]
     [InlineData(3, null, 3 + 5 + StartProgramActivity.TransportTimeoutMarginSeconds)]
     [InlineData(3, "10", 3 + 10 + StartProgramActivity.TransportTimeoutMarginSeconds)]
-    [InlineData(null, null, StartProgramActivity.DefaultTimeoutSeconds + 5 + StartProgramActivity.TransportTimeoutMarginSeconds)]
-    public void TransportTimeout_OutlastsTheScriptsOwnTimeoutAndDrain(int? timeoutSeconds, string? grace, int expected)
+    [InlineData(null, null, null)]
+    [InlineData(0, null, null)]
+    public void TransportTimeout_OutlastsTheScriptsOwnTimeoutAndDrain(int? timeoutSeconds, string? grace, int? expected)
     {
         // The script kills the program and reports the timeout itself; the transport must not stop it first.
         var config = new ConfigurationBuilder()
@@ -110,10 +111,8 @@ public class StartProgramActivityTests
         var script = new Accessor().CallBuildScript(Cfg(new { filePath = CmdPath }), Ctx());
         script.Should().Contain("$__useShell = $false");
         script.Should().Contain("$__wait = $true");
-        // C2: missing timeoutSeconds falls back to the documented 300s default
-        // (= 300_000 ms) instead of Process.WaitForExit's "wait forever" sentinel.
-        // A stuck wait-mode process no longer pins the step indefinitely.
-        script.Should().Contain($"$__timeoutMs = {StartProgramActivity.DefaultTimeoutSeconds * 1000}");
+        // No timeout unless the step sets one: -1 makes the script wait until the program ends.
+        script.Should().Contain("$__timeoutMs = -1");
     }
 
     [Fact]

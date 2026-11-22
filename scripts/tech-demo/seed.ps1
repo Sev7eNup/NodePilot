@@ -268,7 +268,7 @@ if ($includePlanar) {
     } else {
         $planarReq = @{
             name           = $PlanarName
-            description    = "Planar showcase: 50 nodes, 70 edges, strictly crossing-free layout (every edge spans exactly one x-column). Covers 19 activity types, all 14 edge operators, all 3 junction modes, retry, breakpoints, disabled node, disabled edge, forEach, fire-and-forget sub-workflow."
+            description    = "Planar showcase: 51 nodes, 71 edges, strictly crossing-free layout (every edge spans exactly one x-column). Covers 19 activity types, all 14 edge operators, all 3 junction modes, retry, breakpoints, disabled node, disabled edge, forEach, fire-and-forget sub-workflow."
             definitionJson = $planarDefString
         }
         $planarResp = Invoke-JsonApi -Method POST -Url "$BaseUrl/api/workflows" -Headers $authHeaders -Body $planarReq

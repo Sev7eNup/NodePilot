@@ -317,8 +317,8 @@ export function TextInput({
 }
 
 export function NumberInput({
-  label, value, onChange, min, max, configKey, effectiveSource, isEnvLocked, hint,
-}: Readonly<{ label: string; value: number; onChange: (v: number) => void; min: number; max: number; configKey: string; effectiveSource: Record<string, string>; isEnvLocked: (k: string) => boolean; hint?: string }>) {
+  label, value, onChange, min, max, configKey, effectiveSource, isEnvLocked, hint, warning,
+}: Readonly<{ label: string; value: number; onChange: (v: number) => void; min: number; max: number; configKey: string; effectiveSource: Record<string, string>; isEnvLocked: (k: string) => boolean; hint?: string; warning?: string }>) {
   const locked = isEnvLocked(configKey);
   return (
     <div>
@@ -330,6 +330,7 @@ export function NumberInput({
         onChange={(e) => onChange(Number.parseInt(e.target.value, 10) || 0)}
         className="w-full px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-surface-low disabled:text-on-surface-variant" />
       {hint && <p className="text-[11px] text-on-surface-variant/80 mt-1.5 leading-relaxed">{hint}</p>}
+      {warning && <p role="alert" className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5 leading-relaxed">{warning}</p>}
     </div>
   );
 }

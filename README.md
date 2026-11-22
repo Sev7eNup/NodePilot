@@ -328,7 +328,7 @@ src/
   NodePilot.Data/         EF Core DbContext, CredentialStore (DPAPI), provider-agnostic migrations
   NodePilot.Remote/       WinRM session factory + PowerShell SDK session
   NodePilot.Engine/       WorkflowEngine, 29 activities, RetryPolicy, DebugCoordinator
-  NodePilot.Scheduler/    TriggerOrchestrator (Quartz.NET), 4 polling trigger sources + retention/cluster services
+  NodePilot.Scheduler/    TriggerOrchestrator (Quartz.NET), 4 background trigger sources + retention/cluster services
   NodePilot.Telemetry/    OpenTelemetry setup, Prometheus client, metric constants
   NodePilot.Api/          ASP.NET Core host, controllers, SignalR hub, security middleware
   NodePilot.Cli/          `np`: operations CLI (Spectre.Console.Cli), shipped in both installers under tools\np
@@ -345,7 +345,7 @@ tests/
   NodePilot.Api.Tests/      xUnit: controllers, auth, telemetry, validation
   NodePilot.Cli.Tests/      xUnit + WireMock.Net: CLI ApiClient + DPAPI TokenStore
   NodePilot.Mcp.Tests/      xUnit + WireMock.Net: MCP tools + stdio-process smoke test
-  NodePilot.LoadTests/      Standalone load harness (Console EXE, HdrHistogram)
+  NodePilot.LoadTests/      Standalone load harness (Console EXE, NBomber)
   NodePilot.Switcher.Tests/ xUnit - discovery, state machine, fail-closed switching
   NodePilot.TestCommons/    Shared test infrastructure (TestDbFactory, FakeLlmClient, fixtures)
 
@@ -358,14 +358,14 @@ samples/                  Example workflows for the importer
 **Dependency graph:**
 `Api → Ai, Engine, Scheduler, Data, Remote, Core, Telemetry`
 `Engine → Ai, Data, Remote, Core, Telemetry`
-`Ai → Core` · `Data → Core` · `Remote → Core` · `Telemetry → Core`
+`Scheduler → Engine, Data, Core` · `Ai → Core` · `Data → Core` · `Remote → Core` · `Telemetry → Core`
 `Cli → Core` · `Mcp → Core` *(HTTP-only, no backend project references)*
 
 ---
 
 ## Testing
 
-Six CI jobs gate every pull request and every push to `main`: backend build and tests with an enforced **85 % line / 70 % branch** coverage gate, frontend lint/build/vitest, docs-site lint/tests/build, desktop-shell typecheck and tests, as well as hermetic Playwright E2E.
+Six CI jobs gate every pull request and every push to `main`: backend build and tests with an enforced **85 % line / 70 % branch** coverage gate, database-provider integration tests, frontend lint/build/vitest, docs-site lint/tests/build, desktop-shell typecheck and tests, as well as hermetic Playwright E2E.
 
 **Tests are mandatory.** Every behaviour change ships with tests in the same change. Which tests you run locally is scoped to what you touched. The full suite is CI's responsibility, not yours. Commands, the scoping rules and the guard-test mapping are documented in [CONTRIBUTING.md](CONTRIBUTING.md#build--test) and [CLAUDE.md](CLAUDE.md).
 
@@ -410,7 +410,7 @@ NodePilot is licensed under the [Apache License 2.0](LICENSE). Use, modification
 ## Further Reading
 
 - **[📚 www.nodepilot.run/docs](https://www.nodepilot.run/docs/)**, the documentation website. 45 pages in English and German, with search, sidebar navigation and light/dark themes. Start at [Introduction](https://www.nodepilot.run/docs/en/getting-started/introduction/) or jump to [Installation](https://www.nodepilot.run/docs/en/getting-started/installation/). **The same site ships with the product**, every installation serves it at `/docs`, without a login and without internet access, at the version actually installed.
-- **[CLAUDE.md](CLAUDE.md)**: architecture conventions, full activity/trigger reference, variable resolution details, edge-condition grammar, test guidelines, and the complete API endpoint table.
+- **[CLAUDE.md](CLAUDE.md)**: architecture conventions, full activity/trigger reference, variable resolution details, edge-condition grammar, test guidelines, the guard-test mapping, and the role matrix.
 - **[src/nodepilot-docs-ui/](src/nodepilot-docs-ui/)**: standalone documentation website (Vite + React SPA) with client-side search, sidebar navigation, light/dark theme, and **English/German** via i18next (the language lives in the path: `/docs/en/…`, `/docs/de/…`). Note: it ships its own curated markdown corpus under `content/en/` and `content/de/`, changes to `docs/` must be mirrored there deliberately, since it is not a 1:1 render, and both languages must be kept in step or the parity test fails. It has two deployments: the public webspace at `www.nodepilot.run/docs/`, published by `deploy/Publish-Site.ps1`, and `wwwroot/docs` inside the server artifact and desktop package, which the API serves at `/docs`. The project website (`src/site/`, English and German) is a separate build published only to the webspace. GitHub Pages forwards old links to the matching public pages. The product ships the documentation alone.
 - **[docs/workflow-designer-features.md](docs/workflow-designer-features.md)**: overview of the workflow designer: modes, editing and publishing, canvas, properties and variables, running and debugging, navigation, versions/export/AI, and common shortcuts.
 - **[docs/workflow-styleguide.md](docs/workflow-styleguide.md)**: layout rules, edge-label conventions, and engine gotchas for hand-built workflow JSON.

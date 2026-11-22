@@ -51,6 +51,8 @@ Log.Logger = LoggingSetup.BuildBootstrapLogger(bootstrapConfig);
 // wondering why two hosts behave differently needs to see what was detected, what was chosen, and
 // which constraint bound each value.
 Log.Information("{PerformanceSizing}", NodePilot.Api.Configuration.PerformancePlanFactory.Describe(performancePlan));
+if (NodePilot.Api.Configuration.PerformancePlanFactory.DescribeStepLimitWarning(performancePlan) is { } stepLimitWarning)
+    Log.Warning("{PerformanceSizingWarning}", stepLimitWarning);
 
 var builder = WebApplication.CreateBuilder(args);
 

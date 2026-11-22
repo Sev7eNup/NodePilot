@@ -66,14 +66,16 @@ internal static partial class IsolatedProcessLauncher
 
     /// <summary>
     /// Creates the job, opens the pipes, and starts <paramref name="executable"/> with
-    /// <paramref name="arguments"/> already inside the job. Throws <see cref="Win32Exception"/> on
-    /// any native failure (caller turns it into a failed step result).
+    /// <paramref name="arguments"/> already inside the job. <paramref name="environment"/> adds
+    /// variables to the child's environment. Throws <see cref="Win32Exception"/> on any native
+    /// failure (caller turns it into a failed step result).
     /// </summary>
     public static LaunchedIsolatedProcess Launch(
         string executable,
         string arguments,
         string? workingDirectory,
-        ProcessIsolationLimits? limits)
+        ProcessIsolationLimits? limits,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         // Serialize against every other inheritable-handle spawn in this process (see
         // ProcessSpawnCoordinator): while this launch has its inheritable pipe write-handles open,
@@ -81,7 +83,7 @@ internal static partial class IsolatedProcessLauncher
         // synchronous (native CreateProcess), so the monitor lock is never held across an await.
         lock (ProcessSpawnCoordinator.Gate)
         {
-            return LaunchCore(executable, arguments, workingDirectory, limits);
+            return LaunchCore(executable, arguments, workingDirectory, limits, environment);
         }
     }
 
@@ -89,7 +91,8 @@ internal static partial class IsolatedProcessLauncher
         string executable,
         string arguments,
         string? workingDirectory,
-        ProcessIsolationLimits? limits)
+        ProcessIsolationLimits? limits,
+        IReadOnlyDictionary<string, string>? environment)
     {
         SafeJobHandle? job = null;
         AnonymousPipeServerStream? outPipe = null;
@@ -156,7 +159,7 @@ internal static partial class IsolatedProcessLauncher
             lpCommandLine = Marshal.StringToHGlobalUni(commandLine);
 
             // Own environment block instead of inheriting ours, see ChildProcessEnvironment.
-            lpEnvironment = Marshal.StringToHGlobalUni(ChildProcessEnvironment.BuildBlock());
+            lpEnvironment = Marshal.StringToHGlobalUni(ChildProcessEnvironment.BuildBlock(environment));
 
             var created = CreateProcess(
                 lpApplicationName: null,

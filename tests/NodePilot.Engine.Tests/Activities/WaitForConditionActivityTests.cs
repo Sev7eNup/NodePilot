@@ -290,6 +290,98 @@ public sealed class WaitForConditionActivityTests : IDisposable
         used.Should().Equal(expectedEngine);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_Local_WaitForAProcessBeforeTheFirstCheck_IsNotPartOfTheTimeout()
+    {
+        // The first check waited ten minutes for a script process and found the condition false.
+        // The step's five seconds start after that wait, so a second check still happens.
+        var engine = new QueueingEngine(firstWait: TimeSpan.FromMinutes(10), noProcessFromCall: int.MaxValue);
+        var result = await RunScriptCondition(engine, timeoutSeconds: 5);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        engine.Requests.Should().HaveCount(2);
+        engine.Requests[0].ProcessWaitTimeout.Should().BeNull("the first check waits for a process without a limit");
+        engine.Requests[1].ProcessWaitTimeout!.Value.Should().BeGreaterThan(TimeSpan.FromMinutes(9));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Local_LaterCheckThatGetsNoProcessInTime_EndsAsTheStepsTimeout()
+    {
+        var engine = new QueueingEngine(firstWait: TimeSpan.Zero, noProcessFromCall: 2);
+        var result = await RunScriptCondition(engine, timeoutSeconds: 30);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("No script process became free").And.NotContain("could not be evaluated");
+        result.OutputParameters!["attempts"].Should().Be("1", "the check that got no process is not an attempt");
+        engine.Requests[1].ProcessWaitTimeout!.Value.Should().BePositive().And.BeLessThanOrEqualTo(TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Local_CheckThatRunsOutOfItsOwnTime_IsPolledAgain()
+    {
+        // Under load one check needed longer than its own limit. The step has 30 seconds, so the
+        // next check decides, not the slow one.
+        var engine = new SlowCheckEngine(slowChecks: 1);
+        var result = await RunScriptCondition(engine, timeoutSeconds: 30);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        result.OutputParameters!["attempts"].Should().Be("2");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Local_EveryCheckRunsOutOfItsOwnTime_EndsAsTheStepsTimeout()
+    {
+        var engine = new SlowCheckEngine(slowChecks: int.MaxValue);
+        var result = await RunScriptCondition(engine, timeoutSeconds: 1);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("Timeout after 1s").And.Contain("Last error: Script execution timed out after 5s")
+            .And.NotContain("could not be evaluated");
+    }
+
+    /// <summary>The first <c>slowChecks</c> checks run into their time limit, later ones find the condition true.</summary>
+    private sealed class SlowCheckEngine(int slowChecks) : IPowerShellExecutionEngine
+    {
+        private int _calls;
+        public string EngineType => "powershell";
+        public bool IsAvailable => true;
+
+        public Task<PowerShellExecutionResult> ExecuteAsync(PowerShellExecutionRequest request, CancellationToken ct)
+            => Task.FromResult(++_calls <= slowChecks
+                ? new PowerShellExecutionResult { Success = false, TimedOut = true, Error = "Script execution timed out after 5s" }
+                : new PowerShellExecutionResult { Success = true, Output = "###NODEPILOT_COND:True###" });
+    }
+
+    private Task<ActivityResult> RunScriptCondition(IPowerShellExecutionEngine engine, int timeoutSeconds)
+    {
+        var factory = new PowerShellEngineFactory(engine, engine, engine);
+        var activity = new WaitForConditionActivity(_sessionFactory.Object, _credentialStore.Object, _db, factory, _configuration);
+        var ctx = new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "wait-step" };
+        return activity.ExecuteAsync(
+            ctx, ParseConfig("{\"script\":\"$x\",\"intervalSeconds\":1,\"timeoutSeconds\":" + timeoutSeconds + "}"), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// First check: condition false after <c>firstWait</c> in the process queue. Later checks:
+    /// condition true, or no process in time from call <c>noProcessFromCall</c> on.
+    /// </summary>
+    private sealed class QueueingEngine(TimeSpan firstWait, int noProcessFromCall) : IPowerShellExecutionEngine
+    {
+        public string EngineType => "powershell";
+        public bool IsAvailable => true;
+        public List<PowerShellExecutionRequest> Requests { get; } = [];
+
+        public Task<PowerShellExecutionResult> ExecuteAsync(PowerShellExecutionRequest request, CancellationToken ct)
+        {
+            Requests.Add(request);
+            if (Requests.Count >= noProcessFromCall)
+                throw new ScriptProcessWaitTimeoutException(request.ProcessWaitTimeout!.Value);
+            return Task.FromResult(Requests.Count == 1
+                ? new PowerShellExecutionResult { Success = true, Output = "###NODEPILOT_COND:False###", ProcessWait = firstWait }
+                : new PowerShellExecutionResult { Success = true, Output = "###NODEPILOT_COND:True###" });
+        }
+    }
+
     private sealed class RecordingEngine(string engineType, List<string> used) : IPowerShellExecutionEngine
     {
         public string EngineType => engineType;

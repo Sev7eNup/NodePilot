@@ -30,6 +30,20 @@ public sealed class EngineSettingsDto : IValidatableObject
     [Range(1, 10_000)]
     public int MaxConcurrentSteps { get; set; } = 600;
 
+    /// <summary>
+    /// 0 derives the limit from the detected CPU and memory. A value applies with and without
+    /// manual tuning, but only in experimental mode.
+    /// </summary>
+    [Range(0, 10_000)]
+    public int MaxScriptProcesses { get; set; }
+
+    /// <summary>
+    /// On: local scripts start with the same command line every time and their processes are
+    /// limited. Off (the default): local scripts run as they did up to 1.5.4. Takes effect on
+    /// restart.
+    /// </summary>
+    public bool ExperimentalMode { get; set; }
+
     [Required] public RunspaceSettingsDto Runspace { get; set; } = new();
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)

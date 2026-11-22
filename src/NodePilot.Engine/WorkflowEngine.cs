@@ -733,8 +733,10 @@ public class WorkflowEngine : IWorkflowEngine
     ///  2) if the run's own <see cref="_db"/> is unusable (a prior write was cancelled/faulted and
     ///     poisoned the pooled connection, or the scope is torn down at host shutdown), the CAS is
     ///     retried on a FRESH DI scope + fresh <see cref="NodePilotDbContext"/>.
-    ///  3) a confirmed outage waits and retries until probe recovery; only host shutdown releases
-    ///     that wait. Non-outage failures propagate to the caller instead of silently leaving Running.
+    ///  3) a confirmed outage waits and retries until probe recovery, and a busy database (no free
+    ///     pooled connection, out of a server resource) is retried until it gets through; only host
+    ///     shutdown releases either wait. Other failures propagate to the caller instead of
+    ///     silently leaving Running.
     /// The single-node CAS predicate and cluster write-fence are preserved on every attempt, so
     /// this
     /// never clobbers a row a new leader legitimately owns.
@@ -820,6 +822,14 @@ public class WorkflowEngine : IWorkflowEngine
                 if (!await WaitForTerminalWriteRecoveryAsync(run))
                     return;
             }
+            catch (Exception ex) when (DbErrorClassifier.IsCapacityBackpressure(ex))
+            {
+                _logger.LogWarning(ex,
+                    "Terminal write for execution {ExecutionId} found the database busy; retrying",
+                    run.Execution.Id);
+                if (!await WaitBeforeBusyRetryAsync(run))
+                    return;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex,
@@ -893,6 +903,13 @@ public class WorkflowEngine : IWorkflowEngine
                     run.Execution.Id);
                 if (!await WaitForTerminalWriteRecoveryAsync(run)) return null;
             }
+            catch (Exception ex) when (DbErrorClassifier.IsCapacityBackpressure(ex))
+            {
+                _logger.LogWarning(ex,
+                    "Terminal verdict for execution {ExecutionId} found the database busy; retrying",
+                    run.Execution.Id);
+                if (!await WaitBeforeBusyRetryAsync(run)) return null;
+            }
         }
     }
 
@@ -910,6 +927,24 @@ public class WorkflowEngine : IWorkflowEngine
         }
 
         return recovered;
+    }
+
+    // False only when the host stops; the execution then stays non-terminal for startup recovery,
+    // exactly as after an outage wait.
+    private async Task<bool> WaitBeforeBusyRetryAsync(ExecutionRun run)
+    {
+        try
+        {
+            await Task.Delay(StepRunner.BusyRetryDelay, run.DurabilityCancellation);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation(
+                "Host stopped while execution {ExecutionId} was retrying against a busy database; startup recovery will reconcile it",
+                run.Execution.Id);
+            return false;
+        }
     }
 
     private static IQueryable<WorkflowExecution> ApplyExecutionWriteFence(

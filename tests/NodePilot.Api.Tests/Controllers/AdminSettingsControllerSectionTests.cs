@@ -1677,12 +1677,16 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             ""Debug"": { ""MaxPauseMinutes"": 30 },
             ""MaxConcurrentExecutions"": { ""Global"": 10000, ""PerUser"": 3000 },
             ""MaxConcurrentSteps"": 1200,
+            ""MaxScriptProcesses"": 48,
+            ""ExperimentalMode"": true,
             ""Runspace"": { ""MinRunspaces"": 512, ""MaxRunspaces"": 1024 }
         }").RootElement;
         var result = await controller.PutSection("Engine", body, CancellationToken.None);
         result.Should().BeOfType<OkObjectResult>();
         var file = File.ReadAllText(writer.OverridesPath);
         file.Should().Contain("\"Global\": 10000");
+        file.Should().Contain("\"MaxScriptProcesses\": 48");
+        file.Should().Contain("\"ExperimentalMode\": true");
         file.Should().Contain("\"MaxRunspaces\": 1024");
         audit.Calls.Should().ContainSingle(c => c.Action == "SETTINGS_ENGINE_UPDATED");
     }

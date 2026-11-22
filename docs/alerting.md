@@ -33,11 +33,6 @@ and matches this optional `Filter`, deliver via these `Routes` — unless suppre
   - `NotificationDeliveryAttempt` — the per-occurrence, per-route ledger **and** the idempotency
     guard, unique on `(RuleId, RouteId, EventKey)`. `IsTest` marks test-fires (they never touch
     suppression).
-  - `NotificationSignalState` — last-seen health state per non-execution signal source
-    (`service:{name}`, `backlog`, …): `healthy`, `unhealthy` (an observed degradation → alertable
-    episode), or `unhealthy-seeded` (already unhealthy at first sight → silent, never alerts). The
-    gauge collector tracks transitions here and uses the episode-start timestamp as the per-occurrence
-    idempotency key.
   - `NotificationDispatcherState` — initialization timestamp for terminal collection.
     `WorkflowExecution.TerminalNotificationCollected` records each consumed execution durably.
 - Store `INotificationRuleStore` → `NotificationRuleStore` (`NodePilot.Data`). Route secrets are
@@ -45,7 +40,7 @@ and matches this optional `Filter`, deliver via these `Routes` — unless suppre
   secret without re-sending it. `UpdateAsync` **diffs** routes (matched-by-id updated in place, new
   added via the `DbSet`, dropped removed) so the EF ChangeTracker never sees a duplicate key, and
   `DeleteAsync` also clears occurrence, suppression and attempt rows (no FK from those to the rule).
-- Migration: `AddNotificationRules` (provider-agnostic; `type:` annotations stripped per repo rule).
+- Migration: part of `InitialBaseline` (provider-agnostic; `type:` annotations stripped per repo rule).
 
 ## Matching + dispatch
 
@@ -91,7 +86,7 @@ State-degradation alerts (backlog/pending depth, cancel rate, machine reachabili
 staleness, credential expiry, schedule-missed, no-recent-success) are **no longer** a gauge collector. The
 legacy `GaugeSignalCollector` + eight `IGaugeSignalProvider`s were **removed** once the modular
 `ISystemAlertSource` catalog covered them; those signals are now **system policies** — see the
-[System alerts](#system-alerts--modular-sources-adr-0008-in-progress) section below, which lists the 14
+[System alerts](#system-alerts--modular-sources-adr-0008) section below, which lists the 14
 sources and how a policy sets its own threshold/duration/severity/scope. Their `NotificationEventType`
 values (`ServiceStale`, `BacklogHigh`, …) remain as an append-only persisted contract but were dropped from
 `SupportedEventTypes`, so a **custom** rule no longer reacts to them (only execution-family events do).
@@ -136,8 +131,8 @@ machine name; terminal execution events carry the resolved machine name of the *
 host-shutdown / bare-token cancel). The `*-pending` values identify accepted work that never
 crossed engine ownership. A rule targeting **manual** cancels filters `cancelledBy == "user"`.
 
-Implementation: the value is persisted in `WorkflowExecution.CancelledBy` (migration
-`AddExecutionCancelledBy`), set in every cancel path. For a live cancel the engine thread writes the
+Implementation: the value is persisted in `WorkflowExecution.CancelledBy` (schema in
+`InitialBaseline`), set in every cancel path. For a live cancel the engine thread writes the
 terminal status inside its `catch (OperationCanceledException)` — attribution is threaded in via
 `IWorkflowEngine.CancelAsync(id, cancelledBy)` → an internal `_cancelReasons` dictionary that the
 catch block reads.
@@ -216,9 +211,9 @@ Routes are given with `--email` / `--webhook` (repeatable); scope targets with `
 gated `DestructiveTools` (only registered when `NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true`; listed in
 `get_safety_status`). Route secrets are never surfaced in tool output.
 
-## System alerts — modular sources (ADR 0008, in progress)
+## System alerts — modular sources (ADR 0008)
 
-A second alerting generation is being built alongside the rules above: a **catalog-driven** system-alert
+A second alerting generation runs alongside the rules above: a **catalog-driven** system-alert
 area where each built-in producer (backlog, machine health, execution results, …) is a self-describing
 **source**, and one source can carry several independent **policies** with their own threshold, sustain
 window, scope, and routes. See [ADR 0008](adr/0008-modular-system-alert-sources.md) for the model
@@ -255,7 +250,7 @@ second event-style source after `execution-result` and follows the same stateles
 each pass reads the `AuditLog` rows of the last `lookbackSeconds` (default 300), one observation per
 row, `InstanceKey` = row id, `OccurredAt` = the row's timestamp, so the per-policy activation watermark
 and the delivery ledger keep a row from alerting twice. Fields: `action` (the `AuditActions` code — a
-free string, not an enum, so the 166 codes are not duplicated into the descriptor), `outcome`
+free string, not an enum, so the 169 codes are not duplicated into the descriptor), `outcome`
 (`success`/`failure`/`unknown`) and `category` (`iam`/`process`/`configuration`) via the same
 `AuditEventClassification` the SIEM forwarder uses, `username`, `ipAddress`, `resourceType`, and
 `details` — the write-side redacted details JSON, which lets a condition match what a code alone
@@ -310,8 +305,8 @@ Delivered so far (foundation phase, non-destructive — the custom rules above a
   yields raw `SystemAlertObservation`s without deciding health.
 - `SystemAlertCatalog` aggregates the DI-registered sources and enforces unique/consistent source ids at boot.
 - Read-only endpoint `GET /api/alerting/system/catalog` (Admin/Operator) — the single server-owned source of
-  truth the UI will localize and render from (i18n stays a frontend concern; descriptors carry keys, not text).
-- Additive schema (migration `AddSystemAlertPolicies`): `NotificationRule` gains `Kind` (existing rows
+  truth the UI localizes and renders from (i18n stays a frontend concern; descriptors carry keys, not text).
+- Schema (part of `InitialBaseline`): `NotificationRule` gains `Kind` (existing rows
   backfilled `Kind=Custom` — nothing is wiped), `SystemSourceId`, `SystemPresetId`, `SourceParametersJson`,
   `SustainForSeconds`, `SeverityOverride`, `ActivatedAt`, plus the `SystemAlertPolicyStates` /
   `SystemAlertSourceStates` tables.
@@ -350,14 +345,13 @@ Delivered so far (foundation phase, non-destructive — the custom rules above a
 
 All phases are delivered: REST/UI split + strict AST validator, CLI (`np system-alert`) + MCP tools, backup
 format v2 (the `alerting` section), and the one-pipeline end state — the legacy gauge collector/providers
-were removed once the sources covered them (see the "Signal events → system policies" note above). The only
-deliberately-kept vestige is the now-unused `NotificationSignalState` table (dropping it would need a
-destructive migration).
+were removed once the sources covered them (see the "Signal events → system policies" note above). No legacy
+gauge state remains; the `NotificationSignalState` table is gone.
 
 ## Follow-ups
 
 Tracked in [`roadmap.md`](roadmap.md) (PagerDuty/Opsgenie sinks, "resolved" recovery notifications,
-escalation policies, per-rule dedup-key templates, `sourceKey` for execution events — `targetMachine`
+escalation policies, `sourceKey` for execution events — `targetMachine`
 is already populated since v1c, joined from the last-failing step). The routing of a matched alert
 into a **workflow** is a committed roadmap item, not a follow-up.
 
