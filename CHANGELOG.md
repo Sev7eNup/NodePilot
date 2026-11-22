@@ -14,6 +14,16 @@ exhaustive.
 
 Planned version: **1.5.5**.
 
+### Fixed
+
+- A step whose result could only be saved after a database outage no longer ends as `Failed`
+  with "Nullable object must have a value". The step keeps the result it had, and the run follows
+  the edges that belong to it.
+- A run no longer fails when the database is busy while the state of a step or of the run is
+  saved: every pooled connection in use, or the server out of memory, locks or log space. The
+  write is tried again until it gets through. Until now only a confirmed outage was waited out,
+  and a full connection pool under a burst of load ended the affected runs.
+
 ## [1.5.4] - 2026-11-10
 
 ### Changed

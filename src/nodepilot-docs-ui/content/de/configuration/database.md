@@ -21,6 +21,28 @@ Dieser Zustand benötigt einen Administrator und ist nicht durch Warten behebbar
 Korrektur greift die Sonde automatisch; geänderte NodePilot-Verbindungsdaten benötigen einen Neustart.
 Einzelne langsame Abfragen liefern `DATABASE_TIMEOUT` und öffnen den globalen Ausfall-Breaker nicht sofort.
 
+## Ausgelastete Datenbank
+
+Eine Datenbank, die antwortet, aber gerade nichts frei hat, ist kein Ausfall: Alle Verbindungen
+des Pools sind belegt (`Max Pool Size`, 800 nach der Installation), oder der Server meldet, dass
+ihm Speicher, Sperren oder Platz im Transaktionslog fehlen. NodePilot zeigt dafür keinen Ausfall
+an. Ein laufender Workflow, der den Zustand eines Steps oder des Laufs speichern muss, wartet eine
+Sekunde und versucht es erneut, bis der Schreibvorgang durchgeht oder der Dienst stoppt. Der Lauf
+geht danach weiter; es geht nichts verloren.
+
+Das Server-Log enthält für jeden Schreibvorgang, der warten musste, eine dieser Zeilen:
+
+```
+Lifecycle write for step <id> found the database busy; retrying until it gets through.
+Terminal write for execution <id> found the database busy; retrying
+```
+
+Sie bedeuten, dass die Datenbank die Last in diesem Moment nicht geschafft hat. Treten sie oft
+auf, braucht der Datenbankserver mehr Speicher oder eine eigene Maschine, oder es sollten weniger
+Steps gleichzeitig laufen; siehe „Grenzen von Hand anheben“ unter Performance-Dimensionierung. Bis
+Version 1.5.4 endete ein Lauf als fehlgeschlagen, wenn ein solcher Schreibvorgang keine freie
+Verbindung fand.
+
 | Einstellung | Default | Zweck |
 |---|---:|---|
 | `Database:ConnectTimeoutSeconds` | `5` | Verbindungsbudget der Anwendung |
