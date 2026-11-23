@@ -556,5 +556,5 @@ h1,h2,h3{text-wrap:balance}p,li,figcaption{text-wrap:pretty}
 @media(max-width:1060px) and (min-width:761px) and (max-height:820px){.main-nav,.resource-nav{gap:3px}.nav-item{height:38px}.sidebar-bottom{padding-top:20px}}
 /* Touch targets on phones: 44px for the header controls and the main actions. */
 @media(max-width:760px){.site-header .icon-button,.stage-heading .icon-button{width:44px;height:44px}.header-download{min-height:44px}.hero-actions .button,.hero-links>.button{min-height:44px}}
-/* At 320px the header keeps the menu on screen: the download button shows its icon and keeps its name for screen readers. */
-@media(max-width:350px){.header-download{padding-inline:12px}.header-download>span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}
+/* Below 420px the header keeps the menu on screen: the download button shows its icon and keeps its name for screen readers. */
+@media(max-width:420px){.header-download{padding-inline:12px}.header-download>span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}
