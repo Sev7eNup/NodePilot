@@ -2,7 +2,7 @@
 
 PowerShell `try/catch` catches terminating errors. Many cmdlets initially report non-terminating errors: a red message appears while the script continues. Use `-ErrorAction Stop` to route such an error from a particular call into `catch`. The handler then needs to decide whether the job can recover or must fail.
 
-This matters for scheduled tasks. An input file is missing, the next command still prints “Done”, and someone has to reconcile those statements the next morning. The examples below reproduce the behavior without changing services, accounts or system settings.
+This matters for scheduled tasks. An input file is missing, the next command still prints “Done”, and the conflicting results need investigation the next morning. The examples below reproduce the behavior without changing services, accounts or system settings.
 
 ## Why catch does not run despite an error message
 

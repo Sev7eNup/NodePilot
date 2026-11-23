@@ -87,7 +87,7 @@ Für den Test vier getrennte Eingaben verwenden:
 | Vorhandene Datei mit ungültigem JSON | Parserfehler, Prozesscode 1 |
 | Vorhandene Datei mit `{"state":"blocked"}` | Meldung zur Vorbedingung, Prozesscode 1 |
 
-Die Fälle wurden mit dem Artikelcode unter Windows PowerShell 5.1 ausgeführt. Eine PowerShell-7-Ausführung oder ein Lauf unter eurem Dienstkonto ist damit nicht belegt. Die gewünschte Laufzeit lässt sich mit dem [Vergleich von PowerShell 5.1 und 7](https://www.nodepilot.run/blog/powershell-51-and-7/) gezielt prüfen.
+Die Fälle wurden mit dem Artikelcode unter Windows PowerShell 5.1 ausgeführt. Eine PowerShell-7-Ausführung oder ein Lauf unter dem vorgesehenen Dienstkonto ist damit nicht belegt. Die gewünschte Laufzeit lässt sich mit dem [Vergleich von PowerShell 5.1 und 7](https://www.nodepilot.run/blog/powershell-51-and-7/) gezielt prüfen.
 
 ## Ein catch-Block darf den Fehler nicht versehentlich verschlucken
 
