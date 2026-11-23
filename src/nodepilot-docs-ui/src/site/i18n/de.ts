@@ -10,18 +10,15 @@ export const de = {
   experience: {
     "nav": "Tour",
     "title": "NodePilot ausprobieren",
-    "kicker": "SELBST AUSPROBIEREN · 2 BIS 4 MINUTEN PRO AUFGABE",
     "headline": "NodePilot selbst ausprobieren.",
     "intro": "Zehn kurze Aufgaben führen direkt durch die Produktoberfläche: vom ersten Lauf über Entscheidungen und Live Ops bis zur Wartungsplanung.",
     "moreAction": "Aufgabe starten",
-    "firstKicker": "KONFIGURATIONSDATEI BEREITSTELLEN",
     "firstTitle": "Eine Konfigurationsdatei bereitstellen.",
     "firstText": "Ein Konfigurationswert wird geändert. PowerShell erzeugt die Datei, File Copy bringt sie ins Ziel und Return Data zeigt das Ergebnis.",
     "firstStep": "Einen Wert im Startdialog ändern",
     "secondStep": "Den Workflow starten und verfolgen",
     "thirdStep": "Dateiinhalt und Zielpfad prüfen",
     "firstAction": "Geführten Einstieg starten",
-    "secondKicker": "FEHLER ANALYSIEREN",
     "secondTitle": "Fehler verstehen.",
     "secondText": "Eine Datei wurde erzeugt, aber nicht kopiert. Der vorbereitete Lauf zeigt, an welcher Stelle es scheitert.",
     "clue": "Welche Activity ist betroffen, und was verrät ihr Protokoll?",
@@ -107,7 +104,6 @@ export const de = {
     notfound: 'Seite nicht gefunden',
   } satisfies Record<Exclude<SitePage, 'article'>, string>,
   home: {
-    eyebrow: 'WINDOWS WORKFLOW ORCHESTRATION',
     title: 'Windows-Automatisierung,<br><span>die man sieht.</span>',
     lead: 'Windows-Automatisierung verdient mehr als einen Ordner voller Skripte.',
     description:
@@ -125,7 +121,6 @@ export const de = {
     capabilitySso: 'LDAP & SSO',
     capabilityAi: 'KI-Automatisierung',
     capabilityEnterprise: 'Enterprise ready',
-    archKicker: 'EIN DIENST, KEIN AGENT',
     archTitle: 'Im eigenen Netz läuft ein Dienst. Auf den Zielsystemen nichts.',
     archCanvasLabel:
       'Architekturdiagramm: Trigger starten NodePilot, einen einzelnen Windows-Dienst aus API, Engine und Scheduler mit PostgreSQL oder SQL Server. Er führt über WinRM auf den Zielsystemen aus, die keinen Agenten benötigen, und meldet Live-Updates über SignalR an Browser oder Desktop-App.',
@@ -142,7 +137,6 @@ export const de = {
     archTargets: 'Zielsysteme',
     archTargetsNote: 'Kein Agent installiert',
     archCaption: 'Agentenlos über WinRM. Live-Updates über SignalR.',
-    resourcesKicker: 'DIREKT INS PROJEKT',
     resourcesTitle: 'Alles für den Einstieg.',
     sourceTitle: 'Ein Repository,<br>keine Beschränkungen',
     sourceText: 'Ansehen, selbst hosten, verändern.<br>NodePilot ist unter Apache 2.0 lizenziert.',
@@ -224,7 +218,6 @@ export const de = {
     datenschutz: 'Datenschutz',
   },
   product: {
-    kicker: 'FUNKTIONEN',
     title: 'Ein Ablauf. <br>Von der Idee bis zum Log.',
     intro: 'Designer, Debugger und Live Ops gehören in denselben Arbeitsbereich statt in drei verschiedene Werkzeuge.',
     designerTitle: 'Workflows entwerfen',
@@ -238,7 +231,6 @@ export const de = {
     caption: 'Original-Screenshot aus dem NodePilot-Repository',
     captionTagDark: 'Dunkles Design',
     captionTagLight: 'Helles Design',
-    detailKicker: 'ORCHESTRIERUNG',
     detailTitle: 'Ein Workflow hält den Ablauf zusammen.',
     detailText:
       'NodePilot führt PowerShell und Windows-Aktivitäten agentenlos über WinRM aus. REST-Aufrufe, SQL-Abfragen und E-Mails laufen direkt in der Engine. Dazwischen entscheiden Bedingungen, laufen Zweige parallel, wiederholen sich fehlgeschlagene Schritte und reichen ihr Ergebnis an den nächsten weiter. Gestartet wird per Zeitplan, Datei, Ereignisprotokoll, Datenbank oder Webhook; hinterher steht Schritt für Schritt im Protokoll, was passiert ist. Vorhandene SCOrch-Runbooks lassen sich als <code>.ois_export</code> importieren. Importprotokoll und Konfiguration sollten vor dem Aktivieren eines Workflows geprüft werden.',
@@ -247,7 +239,6 @@ export const de = {
     codeComment: '# Zugewiesene Variablen werden zu Ausgaben des Schritts',
     codeNext: '# Die nächste Kante prüft {{diskCheck.param.critical}}',
     features: {
-      kicker: 'FUNKTIONSUMFANG',
       title: 'Was NodePilot kann',
       docs: 'Dokumentation',
       design: {
@@ -327,7 +318,6 @@ export const de = {
     openOnGithub: 'Bild auf GitHub öffnen',
   },
   videos: {
-    kicker: 'MEDIA',
     title: 'NodePilot Media: Videos und Tutorials.',
     intro: 'Die Reihe „NodePilot in 2 Minuten“: 27 kurze Folgen zu Oberfläche, Workflows, Rechten, Kommandozeile und KI.',
     episode: 'Folge {number}',
@@ -362,7 +352,6 @@ export const de = {
     sourceLink: 'Quellcode auf GitHub',
   },
   blog: {
-    kicker: 'NODEPILOT / BLOG',
     title: 'Notizen aus der Entwicklung.',
     intro: 'Warum bestimmte Entscheidungen getroffen wurden, wie Dinge funktionieren und was beim Automatisieren hilft.',
     filterLabel: 'Blog nach Kategorie filtern',
@@ -391,7 +380,6 @@ export const de = {
     home: 'Zur Übersicht',
   },
   legal: {
-    kicker: 'RECHTLICHES',
     impressum: 'Impressum',
     datenschutz: 'Datenschutz',
     germanOnly: 'Die Rechtstexte liegen nur auf Deutsch vor.',

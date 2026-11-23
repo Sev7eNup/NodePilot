@@ -7,7 +7,8 @@ export function imageAttributes(key: ImageKey, base: string, fullSize = false) {
   return {
     src: url(fullSize ? image.width : image.widths.find(width => width >= 1600) ?? image.width),
     srcset: image.widths.map(width => `${url(width)} ${width}w`).join(', '),
-    sizes: '(max-width: 700px) calc(100vw - 40px), (max-width: 1200px) calc(100vw - 300px), 1000px',
+    // Follows the layout breakpoints: no rail, icon rail (70px), narrow rail (184px), full rail (212px).
+    sizes: '(max-width: 760px) calc(100vw - 40px), (max-width: 1060px) calc(100vw - 130px), (max-width: 1270px) calc(100vw - 280px), 1000px',
     width: String(image.width), height: String(image.height), loading: 'lazy', decoding: 'async',
   }
 }

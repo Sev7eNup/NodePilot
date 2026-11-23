@@ -73,3 +73,5 @@ If NodePilot triggers the export, its execution identity and that of the export 
 The NodePilot service itself can also run under a gMSA. Setup adds a dependency on the Netlogon service so that the managed password can already be retrieved at system start.
 
 For a concrete unattended job, the [gMSA scheduled task guide](/en/blog/gmsa-scheduled-task/) shows how to verify the account, task configuration and actual destination access together.
+
+If the account test returns `False` or the job fails despite `True`, the [gMSA troubleshooting guide](/en/blog/gmsa-troubleshooting/) walks through the relevant checks on the execution host.

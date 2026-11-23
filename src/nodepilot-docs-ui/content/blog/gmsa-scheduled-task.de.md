@@ -14,7 +14,7 @@ Install-ADServiceAccount -Identity 'gmsaExport'
 Test-ADServiceAccount -Identity 'gmsaExport'
 ```
 
-Erst bei `True` fortfahren. Bei einem Fehler zunächst die Hostfreigabe und die Voraussetzungen aus den [gMSA-Grundlagen](/blog/gmsa-service-accounts/) prüfen. Microsoft beschreibt den Test des Kontos auf dem lokalen Computer; die Exportfreigabe wird damit nicht geprüft: [Test-ADServiceAccount](https://learn.microsoft.com/en-us/powershell/module/activedirectory/test-adserviceaccount?view=windowsserver2025-ps).
+Erst bei `True` fortfahren. Bei einem Fehler zunächst die Hostfreigabe und die Voraussetzungen anhand der [gMSA-Fehlerdiagnose](/blog/gmsa-troubleshooting/) prüfen. Microsoft beschreibt den Test des Kontos auf dem lokalen Computer; die Exportfreigabe wird damit nicht geprüft: [Test-ADServiceAccount](https://learn.microsoft.com/en-us/powershell/module/activedirectory/test-adserviceaccount?view=windowsserver2025-ps).
 
 | Berechtigung | Empfänger | Zweck |
 |---|---|---|
@@ -119,6 +119,8 @@ $info | Select-Object LastRunTime, LastTaskResult
 ```
 
 Die 45-Sekunden-Grenze beendet nur diese Beobachtung; sie bricht die Aufgabe nicht ab. Im entstandenen lokalen JSON `identity`, `executable`, `success` und `error` prüfen. Die `runId` muss zur Datei auf der Freigabe passen. Dort den Inhalt und auf dem Dateiserver den Eigentümer kontrollieren. Ein Ergebnis von `0` hat hier Aussagekraft, weil die Probe es erst nach Schreiben und Zurücklesen ihrer eigenen Datei liefert.
+
+Wie ein Skript Fehler mit `-ErrorAction Stop` abfängt und als fehlgeschlagenen Prozess meldet, zeigt der [Praxisartikel zu PowerShell try/catch](https://www.nodepilot.run/blog/powershell-try-catch/).
 
 Im Labor entstanden diese gegensätzlichen Ergebnisse:
 

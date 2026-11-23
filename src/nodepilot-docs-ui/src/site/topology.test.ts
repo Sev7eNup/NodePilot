@@ -93,6 +93,21 @@ describe('architecture diagram geometry', () => {
     }
   })
 
+  it('keeps the WinRM and SignalR pills clear of every box', () => {
+    // main.ts sizes the pills to their text at runtime; 68 x 18 covers the longer one, "SignalR",
+    // at the compact layout's 13px. Each half adds 4 units of clearance so a pill never sits flush on a box edge.
+    const pill = { halfWidth: 38, halfHeight: 13 }
+    for (const name of LAYOUT_NAMES) {
+      for (const key of ['winrm', 'live'] as const) {
+        const { labelX, labelY } = linkGeometry(LAYOUTS[name], LINKS[key][name])
+        const label = { x: labelX - pill.halfWidth, y: labelY - pill.halfHeight, width: 2 * pill.halfWidth, height: 2 * pill.halfHeight }
+        for (const box of BOX_KEYS) {
+          expect(overlaps(label, LAYOUTS[name].boxes[box]), `${name} ${key} label/${box}`).toBe(false)
+        }
+      }
+    }
+  })
+
   it('keeps the boxes clear of each other', () => {
     for (const name of LAYOUT_NAMES) {
       const boxes = LAYOUTS[name].boxes

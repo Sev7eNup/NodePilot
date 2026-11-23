@@ -1,5 +1,6 @@
 import { configureImage, type ImageKey } from './media'
 import { articleBySlug, blogAuthor, isBlogPreview, visibleArticles } from './blog'
+import { articleIcon } from './blog-icons'
 import type { Lang } from '../i18n/languages'
 import { format, messages, lookup } from './i18n'
 import { localizedPath, resolveRoute, SOLUTION_SLUGS, type SiteRoute } from './router'
@@ -23,6 +24,11 @@ export function siteMeta(route: SiteRoute, lang: Lang) {
     return { title: `${solution.title} | NodePilot`, description: solution.summary }
   }
   return { title: route.page === 'home' ? `NodePilot – ${copy.titles.home}` : `${copy.titles[route.page]} | NodePilot`, description: copy.meta.descriptions[route.page] }
+}
+
+/** "PRAXIS" → "Praxis": catalog categories are stored in capitals, the page shows them as words. */
+function sentenceCase(text: string): string {
+  return text.charAt(0) + text.slice(1).toLocaleLowerCase()
 }
 
 /** Same content and links during the build and in the browser. No crawler-only copy. */
@@ -56,7 +62,6 @@ export function renderSiteContent(doc: Document, route: SiteRoute, lang: Lang, b
   }
   if (route.page === 'article') {
     const article = copy.articles[route.slug]
-    fill('article-category', article.category)
     fill('article-title', article.title)
     fill('article-lead', article.lead)
     if (articleBody !== undefined) fill('article-body', articleBody, true)
@@ -65,6 +70,11 @@ export function renderSiteContent(doc: Document, route: SiteRoute, lang: Lang, b
       meta.innerHTML = `<a href="${blogAuthor.url}" rel="author">${blogAuthor.name}</a>` +
         (entry.publishedAt ? ` · <time datetime="${entry.publishedAt}">${lang === 'de' ? 'Veröffentlicht am' : 'Published'} ${entry.publishedAt}</time>` : ` · ${lang === 'de' ? 'Lokale Vorschau · noch nicht veröffentlicht' : 'Local preview · unpublished'}`) +
         (entry.modifiedAt ? ` · <time datetime="${entry.modifiedAt}">${lang === 'de' ? 'Aktualisiert am' : 'Updated'} ${entry.modifiedAt}</time>` : '')
+      // The category leads the byline instead of standing as a label above the title.
+      const category = doc.createElement('span')
+      category.className = 'article-category'
+      category.textContent = sentenceCase(article.category)
+      meta.prepend(category, ' · ')
     }
   }
   if (route.page === 'solution') {
@@ -124,15 +134,15 @@ export function renderSiteContent(doc: Document, route: SiteRoute, lang: Lang, b
   const index = doc.querySelector('.blog-index')
   if (index) {
     index.replaceChildren()
-    for (const [i, article] of available.entries()) {
+    for (const article of available) {
       const text = article.text[lang]
       const row = doc.createElement('a')
       row.className = 'blog-index-row'
       row.setAttribute('data-site-path', `blog/${article.slug}`)
       row.setAttribute('data-category', article.text.de.category === 'HINTERGRUND' ? 'hintergrund' : 'praxis')
       row.setAttribute('data-search', `${text.title} ${text.summary} ${article.question[lang]} ${article.slug}`)
-      row.innerHTML = `<div class="blog-index-symbol" aria-hidden="true">${String(i + 1).padStart(2, '0')}</div><div><div class="article-category"></div><h2></h2><p></p><span class="read-more"></span></div>`
-      row.querySelector('.article-category')!.textContent = text.category + (article.status === 'draft' ? (lang === 'de' ? ' · VORSCHAU' : ' · PREVIEW') : '')
+      row.innerHTML = `<div class="blog-index-symbol">${articleIcon(article.slug, article.text.de.category)}</div><div><h2></h2><p></p><div class="blog-index-meta"><span class="article-category"></span><span class="read-more"></span></div></div>`
+      row.querySelector('.article-category')!.textContent = sentenceCase(text.category) + (article.status === 'draft' ? (lang === 'de' ? ' · Vorschau' : ' · Preview') : '')
       row.querySelector('h2')!.textContent = text.title
       row.querySelector('p')!.textContent = text.teaser
       row.querySelector('.read-more')!.textContent = copy.blog.readMore

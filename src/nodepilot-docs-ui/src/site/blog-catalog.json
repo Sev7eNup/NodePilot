@@ -233,7 +233,7 @@
       "winrm-https"
     ],
     "publishedAt": "2026-10-18",
-    "modifiedAt": "2026-11-02",
+    "modifiedAt": "2026-11-08",
     "text": {
       "de": {
         "title": "gMSA: Dienstkonten ohne manuell verteilte Kennwörter",
@@ -738,7 +738,7 @@
   {
     "slug": "gmsa-scheduled-task",
     "status": "published",
-    "next": true,
+    "next": false,
     "source": "gmsa-scheduled-task",
     "solution": "powershell-automation",
     "docs": "configuration/remote-execution",
@@ -755,7 +755,7 @@
       "powershell-execution-policy"
     ],
     "publishedAt": "2026-11-02",
-    "modifiedAt": null,
+    "modifiedAt": "2026-11-20",
     "text": {
       "de": {
         "title": "Ein PowerShell-Skript als geplante Aufgabe mit gMSA ausführen",
@@ -783,7 +783,7 @@
   },
   {
     "slug": "gmsa-troubleshooting",
-    "status": "draft",
+    "status": "published",
     "next": false,
     "source": "gmsa-troubleshooting",
     "solution": "self-hosted-automation",
@@ -798,7 +798,7 @@
       "gmsa-scheduled-task",
       "winrm"
     ],
-    "publishedAt": null,
+    "publishedAt": "2026-11-08",
     "modifiedAt": null,
     "text": {
       "de": {
@@ -827,8 +827,8 @@
   },
   {
     "slug": "powershell-try-catch",
-    "status": "draft",
-    "next": false,
+    "status": "published",
+    "next": true,
     "source": "powershell-try-catch",
     "solution": "powershell-automation",
     "docs": "activities-reference",
@@ -842,7 +842,7 @@
       "powershell-execution-policy",
       "ai-workflows"
     ],
-    "publishedAt": null,
+    "publishedAt": "2026-11-20",
     "modifiedAt": null,
     "text": {
       "de": {
