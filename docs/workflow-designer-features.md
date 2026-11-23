@@ -50,6 +50,7 @@ does not turn its target into an entry point.
 
 The properties panel contains the selected activity's configuration, target machine,
 credential and supported timeout or retry settings. Required fields are marked.
+Explanatory field hints open from an info button next to the label.
 Remote activities provide a connection test. Double-clicking a node opens quick editing,
 while script activities open the script editor with variable selection and step testing.
 
