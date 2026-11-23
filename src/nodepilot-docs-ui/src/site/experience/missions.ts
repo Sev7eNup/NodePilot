@@ -9,7 +9,7 @@ export const additionalMissions = {
     { id: 'live', title: 'Greife live in einen Lauf ein.', text: 'Eine laufende Ausführung in Live Ops finden und gezielt abbrechen.', steps: ['Lauf starten', 'In Live Ops öffnen', 'Abbruch prüfen'], duration: '2 Minuten' },
     { id: 'versions', title: 'Zwei Workflow-Versionen vergleichen.', text: 'Im Vergleich erkennen, welcher Schritt der früheren Version fehlt.', steps: ['Versionsvergleich öffnen', 'Ältere Version wählen', 'Unterschied benennen'], duration: '2 Minuten' },
     { id: 'machine', title: 'Eine Zielmaschine prüfen.', text: 'LAB01 finden und den unbekannten Status sowie die Workflow-Nutzung einordnen.', steps: ['LAB01 filtern', 'Status und Nutzung lesen', 'Aussage einordnen'], duration: '2 Minuten' },
-    { id: 'maintenance', title: 'Plane ein Wartungsfenster', text: 'Patch night zeitlich ändern und den Geltungsbereich prüfen.', steps: ['Patch night bearbeiten', '23:00–02:00 speichern', 'Geltungsbereich prüfen'], duration: '3 Minuten' },
+    { id: 'maintenance', title: 'Plane ein Wartungsfenster.', text: 'Patch night zeitlich ändern und den Geltungsbereich prüfen.', steps: ['Patch night bearbeiten', '23:00–02:00 speichern', 'Geltungsbereich prüfen'], duration: '3 Minuten' },
   ],
   en: [
     { id: 'build', title: 'Build a workflow.', text: 'Connect three activities, publish the workflow and check your execution.', steps: ['Connect the activities', 'Publish the workflow', 'Check the result'], duration: '4 minutes' },

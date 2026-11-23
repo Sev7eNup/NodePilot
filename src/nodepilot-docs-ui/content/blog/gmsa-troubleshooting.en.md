@@ -4,7 +4,7 @@ When `Test-ADServiceAccount` returns `False`, the managed account is not ready f
 
 First distinguish a returned `False` from a command error. A missing ActiveDirectory module, a misspelled account and an unreachable directory are different failures. Once the account test returns `True`, task or service startup and access to files still need their own checks.
 
-This guide accompanies the [gMSA setup article](/en/blog/gmsa-service-accounts/). Commands use example names. In a Windows Server 2025 lab with Windows PowerShell 5.1.26100.1591 on 25 October 2026, we reproduced a host without retrieval authorization, corrected that authorization, and then ran a scheduled task with both allowed and denied destination access. Other diagnostic branches below are checks to investigate, not claims that every fault was reproduced.
+This guide accompanies the [gMSA setup article](/en/blog/gmsa-service-accounts/). Commands use example names.
 
 ## 1. Capture the failure on the execution host
 

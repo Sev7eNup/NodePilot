@@ -6,18 +6,15 @@ export const en = {
   experience: {
     "nav": "Walkthrough",
     "title": "Try NodePilot",
-    "kicker": "TRY IT YOURSELF · 2 TO 4 MINUTES PER TASK",
     "headline": "Try NodePilot yourself.",
     "intro": "Ten short tasks guide you through the product interface, from your first run to decisions, Live Ops and maintenance planning.",
     "moreAction": "Start task",
-    "firstKicker": "DELIVER A CONFIGURATION FILE",
     "firstTitle": "Deliver a file.",
     "firstText": "Change a configuration value. PowerShell creates your file, File Copy delivers it and Return Data shows you the result.",
     "firstStep": "Change a value in the start dialog",
     "secondStep": "Start and follow the workflow",
     "thirdStep": "Check file content and destination",
     "firstAction": "Start guided walkthrough",
-    "secondKicker": "INVESTIGATE A FAILURE",
     "secondTitle": "Understand a failure.",
     "secondText": "A file was created but not copied. Inspect a prepared execution and discover where it failed.",
     "clue": "Which activity is affected, and what does its log tell you?",
@@ -101,7 +98,6 @@ export const en = {
     notfound: 'Page not found',
   },
   home: {
-    eyebrow: 'WINDOWS WORKFLOW ORCHESTRATION',
     title: 'PowerShell automation.<br><span>See your workflows run.</span>',
     lead: 'Your Windows automation deserves more than a folder full of scripts.',
     description:
@@ -119,8 +115,7 @@ export const en = {
     capabilitySso: 'LDAP & SSO',
     capabilityAi: 'AI automation',
     capabilityEnterprise: 'Enterprise ready',
-    archKicker: 'ONE SERVICE, NO AGENT',
-    archTitle: 'One service on your side. Nothing on the targets.',
+    archTitle: 'One service on your side, nothing on the targets.',
     archCanvasLabel:
       'Architecture diagram: triggers start NodePilot, a single Windows service made of API, engine and scheduler with PostgreSQL or SQL Server. It runs on the target systems over WinRM, which need no agent, and reports live updates over SignalR to the browser or desktop app.',
     archClient: 'Browser or desktop app',
@@ -136,7 +131,6 @@ export const en = {
     archTargets: 'Target systems',
     archTargetsNote: 'No agent installed',
     archCaption: 'Agentless over WinRM. Live updates over SignalR.',
-    resourcesKicker: 'STRAIGHT TO THE PROJECT',
     resourcesTitle: 'Everything you need to get started.',
     sourceTitle: 'One repository,<br>no restrictions',
     sourceText: 'Read it, host it, change it.<br>NodePilot is licensed under Apache 2.0.',
@@ -218,7 +212,6 @@ export const en = {
     datenschutz: 'Privacy',
   },
   product: {
-    kicker: 'FEATURES',
     title: 'One workflow. <br>From idea to log.',
     intro: 'Designer, debugger and Live Ops belong in the same workspace instead of three separate tools.',
     designerTitle: 'Design workflows',
@@ -232,7 +225,6 @@ export const en = {
     caption: 'Original screenshot from the NodePilot repository',
     captionTagDark: 'Dark theme',
     captionTagLight: 'Light theme',
-    detailKicker: 'ORCHESTRATION',
     detailTitle: 'One workflow holds the run together.',
     detailText:
       'NodePilot runs PowerShell and Windows activities agentless over WinRM. REST calls, SQL queries and mails run inside the engine itself. In between, conditions decide, branches run in parallel, failed steps repeat and every step hands its result to the next one. A run starts on a schedule, a file, an event-log entry, a database change or a webhook; afterwards the log shows step by step what happened. Existing SCOrch runbooks can be imported as <code>.ois_export</code> files. Review the import log and the configuration before you enable a workflow.',
@@ -241,7 +233,6 @@ export const en = {
     codeComment: '# Assigned variables become the step\'s outputs',
     codeNext: '# The next edge checks {{diskCheck.param.critical}}',
     features: {
-      kicker: 'WHAT IT DOES',
       title: 'What NodePilot can do',
       docs: 'Documentation',
       design: {
@@ -321,7 +312,6 @@ export const en = {
     openOnGithub: 'Open image on GitHub',
   },
   videos: {
-    kicker: 'MEDIA',
     title: 'NodePilot Media: Videos and tutorials.',
     intro: 'The “NodePilot in 2 minutes” series: 27 short episodes about the interface, workflows, permissions, the command line and AI.',
     episode: 'Episode {number}',
@@ -356,7 +346,6 @@ export const en = {
     sourceLink: 'Source code on GitHub',
   },
   blog: {
-    kicker: 'NODEPILOT / BLOG',
     title: 'Notes from development.',
     intro: 'Why certain decisions were made, how things work and what helps when automating.',
     filterLabel: 'Filter posts by category',
@@ -385,7 +374,6 @@ export const en = {
     home: 'Back to the overview',
   },
   legal: {
-    kicker: 'LEGAL',
     impressum: 'Legal notice',
     datenschutz: 'Privacy policy',
     germanOnly: 'The legal texts are only available in German.',

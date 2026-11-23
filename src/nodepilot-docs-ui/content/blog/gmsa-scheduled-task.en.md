@@ -14,7 +14,7 @@ Install-ADServiceAccount -Identity 'gmsaExport'
 Test-ADServiceAccount -Identity 'gmsaExport'
 ```
 
-Continue when the test returns `True`. If it fails, first check host authorization and the prerequisites in the [gMSA setup guide](/en/blog/gmsa-service-accounts/). Microsoft documents this as a test of the account on the local computer, not of the export destination: [Test-ADServiceAccount](https://learn.microsoft.com/en-us/powershell/module/activedirectory/test-adserviceaccount?view=windowsserver2025-ps).
+Continue when the test returns `True`. If it fails, first check host authorization and the prerequisites using the [gMSA troubleshooting guide](/en/blog/gmsa-troubleshooting/). Microsoft documents this as a test of the account on the local computer, not of the export destination: [Test-ADServiceAccount](https://learn.microsoft.com/en-us/powershell/module/activedirectory/test-adserviceaccount?view=windowsserver2025-ps).
 
 | Permission | Identity receiving it | Purpose |
 |---|---|---|
@@ -119,6 +119,8 @@ $info | Select-Object LastRunTime, LastTaskResult
 ```
 
 The 45-second timeout only stops this observation; it does not cancel the task. In the resulting local JSON, check `identity`, `executable`, `success` and `error`. Match its `runId` to the file on the share, inspect that file's content and check its owner on the file server. A result of `0` is meaningful here because the probe returns it only after writing and reading back its own file.
+
+The [PowerShell try/catch tutorial](https://www.nodepilot.run/en/blog/powershell-try-catch/) shows how a script catches errors with `-ErrorAction Stop` and reports a failed process.
 
 The lab produced these contrasting results:
 

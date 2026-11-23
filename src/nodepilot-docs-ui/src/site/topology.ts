@@ -104,13 +104,13 @@ export const LAYOUTS: { wide: TopologyLayout; compact: TopologyLayout } = {
   },
   compact: {
     width: 400,
-    height: 820,
+    height: 830,
     boxes: {
       client: { x: 24, y: 8, width: 352, height: 46 },
       triggers: { x: 80, y: 86, width: 240, height: 200 },
       service: { x: 44, y: 330, width: 312, height: 124 },
-      database: { x: 56, y: 502, width: 288, height: 52 },
-      targets: { x: 24, y: 602, width: 352, height: 200 },
+      database: { x: 70, y: 514, width: 260, height: 52 },
+      targets: { x: 24, y: 612, width: 352, height: 200 },
     },
     metrics: COMPACT_METRICS,
   },

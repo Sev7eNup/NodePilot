@@ -4,7 +4,7 @@ Liefert `Test-ADServiceAccount` den Wert `False`, ist das verwaltete Konto auf d
 
 Ein zurückgegebenes `False` ist von einem Befehlsfehler zu unterscheiden. Ein fehlendes ActiveDirectory-Modul, ein falsch geschriebener Kontoname und ein unerreichbares Verzeichnis sind verschiedene Fehler. Sobald der Kontotest `True` liefert, bleiben Aufgaben- beziehungsweise Dienststart und Dateizugriffe gesondert zu prüfen.
 
-Diese Anleitung ergänzt die [gMSA-Grundlagen](/blog/gmsa-service-accounts/). Die Befehle verwenden Beispielnamen. Am 25. Oktober 2026 haben wir im Labor auf Windows Server 2025 mit Windows PowerShell 5.1.26100.1591 einen Host ohne Abrufberechtigung geprüft, die Berechtigung korrigiert und danach eine geplante Aufgabe mit erlaubtem und verweigertem Zielzugriff ausgeführt. Die übrigen Diagnosezweige sind Prüfschritte, keine Behauptung, dass jeder Fehler nachgestellt wurde.
+Diese Anleitung ergänzt die [gMSA-Grundlagen](/blog/gmsa-service-accounts/). Die Befehle verwenden Beispielnamen.
 
 ## 1. Den Fehler auf dem Ausführungshost erfassen
 
