@@ -15,7 +15,7 @@ After selecting a node, the panel shows the fields available for that activity t
 - **Disabled:** skips the step during execution
 - **Breakpoint:** pauses a debug run before this step; expert mode only
 
-Mandatory fields are marked in the panel. The available fields differ per activity. A complete overview is in the [Activity reference](../activities-reference).
+Mandatory fields are marked in the panel. Explanatory hints for a field open from the info button next to its label. The available fields differ per activity. A complete overview is in the [Activity reference](../activities-reference).
 
 After selecting a connection, you can change the label, condition and appearance among other things. Further information is in [Edge conditions](../concepts/edge-conditions).
 

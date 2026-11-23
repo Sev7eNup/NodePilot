@@ -15,7 +15,7 @@ Nach Auswahl eines Nodes zeigt das Panel die für diesen Activity-Typ verfügbar
 - **Deaktiviert:** überspringt den Schritt bei der Ausführung
 - **Breakpoint:** pausiert einen Debug-Lauf vor diesem Schritt; nur im Expertenmodus
 
-Pflichtfelder sind im Panel gekennzeichnet. Die verfügbaren Felder unterscheiden sich je nach Activity. Eine vollständige Übersicht enthält die [Activity-Referenz](../activities-reference).
+Pflichtfelder sind im Panel gekennzeichnet. Erläuternde Hinweise zu einem Feld öffnen sich über die Info-Schaltfläche neben seiner Bezeichnung. Die verfügbaren Felder unterscheiden sich je nach Activity. Eine vollständige Übersicht enthält die [Activity-Referenz](../activities-reference).
 
 Nach Auswahl einer Verbindung können unter anderem Bezeichnung, Bedingung und Darstellung geändert werden. Weitere Informationen enthält [Edge-Bedingungen](../concepts/edge-conditions).
 
