@@ -1,10 +1,44 @@
 # Artikelplan für die lokale SEO-Vorschau
 
-## Publication update: 2026-11-02
+## Current publication state: 2026-11-20
 
-The user requested publication of only the gMSA scheduled-task article originally planned for 1 November. Both languages are now live with the actual publication date **2026-11-02**. The catalog contains nine published articles and twelve drafts. The gMSA troubleshooting article remains planned for **2026-11-08**; try/catch, AI workflows and Execution Policy remain drafts without a new publication date.
+The try/catch article (`powershell-try-catch`), originally planned for November 15,
+was published in German and English on **2026-11-20** at the user's request. It is
+the featured article. The catalog now contains eleven published articles and ten
+drafts. Both gMSA publications remain available with their original publication
+dates. The scheduled-task guide links to the new article and has a modification
+date of 2026-11-20.
 
-The older worktree references and eight-article counts below describe the historical preparation. The four-article patch must not be applied unchanged after this partial publication. See the [publication record](testing/gmsa-publication-2026-11-02.md).
+Execution Policy remains planned for **2026-11-22**, followed by AI Workflow
+Automation on **2026-11-29**. Both remain drafts; no automatic deployment is set up.
+
+The publication changes are committed together with this note. The verified build, previous live files,
+source patch and checks are backed up in
+`E:/NodePilot/out/website-publications/2026-11-20/`.
+See the [publication record](testing/try-catch-publication-2026-11-20.md).
+The older state and worktree notes below are historical.
+
+## Confirmed publication sequence: 2026-11-09
+
+The user accepted the following weekly sequence on 9 November 2026. Dates use Europe/Berlin; each release includes German and English together.
+
+| Planned date | Article | Slug |
+| --- | --- | --- |
+| 2026-11-15 | PowerShell try/catch: Fehler erkennen und Aufträge zuverlässig abbrechen | `powershell-try-catch` |
+| 2026-11-22 | PowerShell Execution Policy: warum ein Skript nicht startet | `powershell-execution-policy` |
+| 2026-11-29 | AI Workflow Automation für Windows: vom Prompt zum geprüften PowerShell-Ablauf | `ai-workflows` |
+
+All three bilingual articles and their example validation were prepared before this sequence was agreed. Try/catch was published first on November 20 because both later articles link to it. Before each remaining publication, review the current source and live state, check the article's examples and links, set the actual publication date, and run the production website checks. Before the AI article, recheck the described features against the current product. Preserve the user's preference for concise prose and omission of the introductory lab-date/environment paragraph.
+
+The dates are the agreed editorial plan. Articles remain drafts until their publication step; no automatic deployment or reminder has been configured. Use the publication worktree identified below and preserve the 2 and 8 November changes. The suggested follow-up topics `verify-results` and `scorch-migration` have no confirmed dates.
+
+## Publication state: 2026-11-08
+
+The gMSA diagnosis (`gmsa-troubleshooting`) is published in German and English with the actual date **2026-11-08**. The scheduled-task guide (`gmsa-scheduled-task`) remains published with its original date **2026-11-02** and the introductory lab paragraph removed at the user's request. Both the foundation article and the scheduled-task guide now link to the diagnosis and carry an update date of 2026-11-08. The catalog contains ten published articles and eleven drafts; try/catch, AI workflows and Execution Policy remain drafts without a new publication date.
+
+The current publication source is in `E:/NodePilot-worktrees/publish-gmsa-diagnosis-2026-11-08`, branch `docs/publish-gmsa-diagnosis-2026-11-08`, uncommitted and unpushed. This includes restoration of the 2 November changes, which were missing from the primary worktree. The restored baseline was verified against the live website before the new publication. Incorporate these changes before any future deployment from another checkout. A recovery patch and the publication record are also saved under `E:/NodePilot/out/website-publications/2026-11-08/`.
+
+The worktree references, draft statuses and counts below describe the historical preparation. The original four-article patch must not be applied unchanged. See the [8 November publication record](testing/gmsa-publication-2026-11-08.md).
 
 ## Wiederaufnahme am 01.11. und 08.11.2026
 
