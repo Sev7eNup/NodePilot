@@ -1,664 +1,220 @@
-# NodePilot — Windows Server Deployment
+# Windows Server deployment scripts
 
-Turnkey installer for NodePilot as a Windows service on a domain-joined Windows Server 2022/2025. TLS is terminated directly by Kestrel (certificate from `LocalMachine\My`), and the database runs on **SQL Server 2022 CU1 or later** (trusted connection, build ≥ `16.0.4003.1` — the runtime connects with `Encrypt=Strict`/TDS 8.0; 2019 cannot speak TDS 8.0, and 2022 RTM has a TDS 8.0 RPC bug, error 8005) or **PostgreSQL 16+** (user/password) — switchable via `-DbProvider`.
+Install NodePilot as a Windows service with Kestrel HTTPS and an external database.
+Use the [server wizard](server/README.md) for interactive or answer-file installation,
+or the scripts below for automation. For a single local machine, see the
+[desktop installer](desktop/README.md).
 
-> **Step-by-step guide** (lab-validated, including certificate recipes and troubleshooting): [`docs/deployment-guide.md`](../docs/deployment-guide.md).
+- [Installation walkthrough](../src/nodepilot-docs-ui/content/en/deployment/production.md): service identity, database, certificates and first login.
+- [Artifact verification and local builds](../docs/deployment-guide.md).
+- [Troubleshooting](../docs/deployment-troubleshooting.md): logs, startup failures, permissions and recovery.
 
-> **Prefer clicking to typing?** There is a GUI installer for exactly this server installation:
-> `NodePilot-Server-Setup-<version>.exe`, see [`server/README.md`](server/README.md). It calls the
-> same scripts described here — the ZIP route remains the reference and is still the more direct one
-> for automation. What the setup mainly takes off your hands is the trust ceremony (one asset instead
-> of five, no manual thumbprint comparison), and it checks the prerequisites before it changes
-> anything. `/VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=` covers SCCM/GPO.
+## Prerequisites
 
-> **Only one machine, no team access needed?** Then the **desktop app** is considerably faster: an `.exe` installer that brings PostgreSQL and the .NET runtime with it, with no certificate, database or AD preparation — see [`desktop/README.md`](desktop/README.md). In exchange it binds loopback only: **no network access, no inbound webhooks, no SSO, no HA**.
-
-The service runs under one of:
-
-- **LocalSystem** (`-UseLocalSystem`) — no gMSA needed. On the network the service then authenticates as the **computer account** `DOMAIN\<host>$`: SQL Server trusted connections and integrated WinRM use that account. The simplest option for a single server.
-- **gMSA** (`-ServiceAccount 'CONTOSO\svc-nodepilot$'`) — a dedicated, AD-managed identity. Least privilege, and the clean choice in HA clusters because all nodes share one identity (with LocalSystem each node has its own computer account, which has to be authorized individually on the SQL Server and on the WinRM targets).
-
-## Files
-
-| File | Purpose |
+| Requirement | Details |
 |---|---|
-| [Build-Artifact.ps1](Build-Artifact.ps1) | Builds `out\NodePilot-<version>.zip` from the repository (dotnet publish + PowerShell module staging into `<stage>\Modules` + operator clients into `<stage>\tools\{np,mcp}` + npm build + template) and signs the manifest (detached CMS) |
-| [MachinePath.ps1](MachinePath.ps1) | Pure PATH string helpers, shared by install/update/uninstall — idempotently appends `<install>\tools\np` to the machine PATH and removes it again. Tests: `Test-MachinePath.ps1` |
-| [SwitcherConfig.ps1](SwitcherConfig.ps1) | Reads and writes the Switcher's `serverUrl` in `switcher.json`, shared by install and update — an in-place text rewrite, not a `ConvertTo-Json` round-trip, so the rest of the template survives untouched. An update carries an existing file across byte for byte and never fails on its content; the URL is only filled in when Windows PowerShell can parse the file. Tests: `Test-SwitcherConfig.ps1` |
-| [Install-NodePilot.ps1](Install-NodePilot.ps1) | The main installer — service, ACLs, firewall, certificate key access |
-| [ArtifactSecurity.ps1](ArtifactSecurity.ps1) | Shared signing/verification logic (manifest + `.p7s`); dot-sourced by build/install/update |
-| [Preflight.ps1](Preflight.ps1) | Shared **side-effect-free** readiness checks (runtime, certificate, **HTTP/HTTPS ports bindable**, gMSA, database reachability, TDS 8.0 version, service identity, domain membership); dot-sourced by install |
-| [ServiceControl.ps1](ServiceControl.ps1) | After stopping the service, waits for the processes in the install directory to exit and terminates stragglers; dot-sourced by install and update |
-| [SetupContract.ps1](SetupContract.ps1) | The GUI setup's answer-file contract: schema, splat mapping onto `Install-NodePilot.ps1`, SecureString construction, INI result file |
-| [Invoke-NodePilotSetup.ps1](Invoke-NodePilotSetup.ps1) | Adapter between the wizard and the scripts (`InitSession`/`Probe`/`Provision`/`Apply`/`Cleanup`) |
-| [Provision-NodePilotDatabase.ps1](Provision-NodePilotDatabase.ps1) | Opt-in: create the SQL login + database. Permission gate **before** any mutation, otherwise DDL output only. SQL Server only |
-| [Provision-NodePilotPostgres.ps1](Provision-NodePilotPostgres.ps1) | The same for PostgreSQL: role + database through the bundled `psql`. Needs superuser credentials (Postgres has no `Trusted_Connection`). Does **not** reset the password of an existing role and does **not** change a database owner |
-| [New-NodePilotSelfSignedCertificate.ps1](New-NodePilotSelfSignedCertificate.ps1) | Opt-in: self-signed Kestrel certificate, two years, **no** automatic root import. Prints the SHA-256 pin the `np` CLI and the MCP server accept via `--tls-thumbprint` / `NODEPILOT_MCP_TLS_THUMBPRINT`, as the alternative to trusting it machine-wide |
-| [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Build time: fetch the .NET and ASP.NET Core runtimes, verify each against the published SHA512 + the checked-in pin + Authenticode |
-| [Test-SetupAdapter.ps1](Test-SetupAdapter.ps1) | Behavioural test of the answer-file contract (non-admin, offline, no database) |
-| [Publish-Site.ps1](Publish-Site.ps1) | Publishes the **public website** (project site + `/docs/` + `/demo/`) to a web host over SFTP or FTPS. Nothing to do with a NodePilot installation — the full website deployment; GitHub Pages publishes only redirects. Settings and credentials in `site-publish.local.json` (gitignored, shape in [site-publish.example.json](site-publish.example.json)); `-DryRun` lists without transferring |
-| [server/](server/README.md) | GUI installer for the server installation (Inno Setup 6) |
-| [desktop/](desktop/README.md) | Desktop app installer (Electron, offline Win 11 x64; everything as boot-start services) — full documentation in the folder README |
-| [Test-ArtifactSecurity.ps1](Test-ArtifactSecurity.ps1) | Self-test of the artifact signature chain (tamper detection, signer pinning) |
-| [Update-NodePilot.ps1](Update-NodePilot.ps1) | In-place upgrade, preserves appsettings + the SQL database, rolls back on failure |
-| [Uninstall-NodePilot.ps1](Uninstall-NodePilot.ps1) | Stops the service, removes binaries, firewall rules and the installation marker. The database is left untouched |
-| [Test-Failover.ps1](Test-Failover.ps1) | HA failover smoke test against two nodes (kills the leader, measures RTO until `/healthz/leader` turns green on the standby) |
-| [Test-DeploymentTemplates.ps1](Test-DeploymentTemplates.ps1) | Static security/contract check for the HAProxy and appsettings templates |
-| [templates/appsettings.Production.json.template](templates/appsettings.Production.json.template) | Production configuration template (single node) |
-| [templates/appsettings.Cluster.json.template](templates/appsettings.Cluster.json.template) | Configuration template for active/passive HA (`Cluster:Enabled=true`, `Secrets:Provider=AesGcm`) — see `docs/ha-active-passive.md` |
-| [templates/haproxy.cfg.template](templates/haproxy.cfg.template) | Example HAProxy configuration with a `GET /healthz/leader` probe for the HA setup |
+| Host | Windows Server 2022/2025, PowerShell 5.1+, administrator rights. Domain membership is required for gMSA. |
+| Runtime | Both x64 .NET and ASP.NET Core runtimes, 10.0.11+ within the 10.x line, satisfying the artifact's declared versions. Use standalone runtimes; the Hosting Bundle changes IIS. The GUI setup can install its bundled runtimes. |
+| Identity | An installed gMSA, or `-UseLocalSystem`. For network access, LocalSystem uses `DOMAIN\HOST$`; same-host SQL Server sees `NT AUTHORITY\SYSTEM`. Grant database and target-machine access to the actual identity. |
+| Database | SQL Server 2022 CU1+ (build `16.0.4003.1`) with a login, database user and `db_owner`; or PostgreSQL 16+ with a role and owned database. |
+| HTTPS | Certificate and private key in `Cert:\LocalMachine\My`, covering the public hostname and trusted by clients. The installer grants the service access to the key. |
 
-**Note: the templates are strict JSON, no comments.** `Test-DeploymentTemplates.ps1` parses them with
-`ConvertFrom-Json` (Windows PowerShell 5.1) — a `//` comment breaks the check even though ASP.NET Core
-would tolerate it when loading. Explanations belong here or in `docs/`, not in the template file.
+Database TLS is required: SQL Server uses `Encrypt=Strict;TrustServerCertificate=False`;
+PostgreSQL uses `SSL Mode=VerifyFull` with `-PostgresRootCertificate`. Follow the
+[database certificate guide](../src/nodepilot-docs-ui/content/en/deployment/database-tls.md).
+On SQL Server, setup enables read-committed snapshot isolation when permitted; otherwise
+it prints the statement for the DBA. The console PostgreSQL pre-flight checks reachability;
+authentication failures appear during the readiness check. The wizard also checks with `psql`.
 
-### Sizing in the templates
+An expired, not-yet-valid or hostname-mismatched **HTTPS** certificate produces a
+pre-flight warning; clients may still reject it. Publisher-signature validation is a
+separate check and rejects an unacceptable artifact.
 
-The production template ships `"Performance": { "ManualTuning": false }` — NodePilot then derives the runspace
-pool, the step cap, the ThreadPool floor and the dispatch worker count from the detected CPU and memory. That
-is deliberate: `Install-NodePilot.ps1` rolls the production template onto *arbitrary* hardware, and the
-numbers stored there are the profile measured for **20 cores / 500 concurrent workflows**. On a smaller
-machine they over-provision considerably (768 minimum ThreadPool threads already measured a 28 %
-regression on a 20-core box).
+Prepare WinRM access and review [antivirus guidance](../docs/av-exclusions.md) before rollout.
+The integrated (credential-less) WinRM path authenticates as the NodePilot process identity:
+the gMSA, or the host computer account under LocalSystem. Grant that identity permission on
+each target's WinRM endpoint; this first hop needs no constrained delegation.
+For Windows SSO, configure the service's HTTP SPN, browser intranet policy and NTLM denial
+as described in the [authentication guide](../docs/ldap-windows-sso.md).
 
-The numbers remain as an **inert, immediately activatable preset**: anyone actually running a machine
-at that load sets `ManualTuning: true` (configuration or settings UI) and gets exactly the measured
-profile. The switch requires a restart. Formulas, limits and measurement evidence:
-`docs/performance-improvements.md`.
+## Install
 
-## Prerequisites (once, by hand, before the first install)
+Obtain the artifact, adjacent manifest/signature files and the separate deployment-scripts ZIP
+from a [release](https://github.com/Sev7eNup/NodePilot/releases/latest).
+Verify `NodePilot-<version>.SHA256SUMS.txt` and the publisher thumbprint using the
+[verification guide](../docs/deployment-guide.md#verify-a-release). The installer requires
+that trusted thumbprint and refuses unsigned or tampered artifacts. Retrieve scripts from
+the separate scripts archive, without extracting the unverified application ZIP.
 
-### 1. Server host
-
-- Windows Server 2022 or 2025, domain-joined
-- PowerShell ≥ 5.1 (Windows PowerShell) or 7+ (recommended)
-- **.NET Runtime and ASP.NET Core Runtime, 10.0.11 or newer in the 10.x line, both x64** — two downloads, and both are needed: the ASP.NET Core package carries only `Microsoft.AspNetCore.App` and no `dotnet.exe`, so on a machine without .NET it leaves a framework nothing can load. **Not** the Hosting Bundle — download both at <https://dotnet.microsoft.com/download>. The **Hosting Bundle only if IIS is deliberately involved** — it wires up IIS and restarts W3SVC, which is undesirable on shared hosts (SCCM/WSUS). The `(x64)` is not a recommendation: NodePilot is published as `win-x64`, and a 32-bit or older vulnerable 10.x runtime is explicitly rejected by the pre-flight
-- The target server can reach the SQL Server on port 1433
-- Antivirus exclusions have been agreed with the security team — the list is in [`docs/av-exclusions.md`](../docs/av-exclusions.md)
-
-### 2. Service identity
-
-> **With LocalSystem (`-UseLocalSystem`) only:** this entire section does not apply. No gMSA has to be created or installed — Windows supplies the identity (the computer account) inherently. Continue with section 3 (database); note the computer-account variant of the SQL login there.
-
-#### Group Managed Service Account (gMSA) — for the gMSA path only
-
-On a domain controller (or from a host with RSAT AD PowerShell):
+Run examples in **elevated PowerShell from the repository root**. Adjust script paths when
+using the separate deployment-scripts archive; replace example hosts, paths and thumbprints.
 
 ```powershell
-# Once per domain:
-Add-KdsRootKey -EffectiveTime ((Get-Date).AddHours(-10))
-
-# Security group holding the NodePilot hosts:
-New-ADGroup -Name 'NodePilot-Servers' -GroupScope Global -GroupCategory Security
-Add-ADGroupMember -Identity 'NodePilot-Servers' -Members (Get-ADComputer -Identity $targetServer)
-
-# Create the gMSA:
-New-ADServiceAccount -Name svc-nodepilot `
-    -DNSHostName "svc-nodepilot.$((Get-ADDomain).DNSRoot)" `
-    -PrincipalsAllowedToRetrieveManagedPassword 'NodePilot-Servers'
-```
-
-On the target server:
-
-```powershell
-Install-ADServiceAccount -Identity svc-nodepilot
-Test-ADServiceAccount -Identity svc-nodepilot    # → True
-```
-
-### 3. Database
-
-#### Variant A: SQL Server 2022 CU1 or later (default)
-
-Check the patch level first — the installer aborts in the pre-flight below `16.0.4003.1` (CU1),
-because 2022 RTM corrupts `Encrypt=Strict` connections (TDS 8.0) with error 8005:
-
-```sql
-SELECT SERVERPROPERTY('ProductVersion') AS Version, SERVERPROPERTY('ProductUpdateLevel') AS CU;
--- 16.0.1000.x = RTM (unpatched) → install a current SQL 2022 CU first.
-```
-
-On the SQL Server as `sysadmin`. The Windows login is the service's **network identity**:
-
-- **gMSA path** → the gMSA: `CONTOSO\svc-nodepilot$`
-- **LocalSystem path** → the **computer account** of the NodePilot server: `CONTOSO\NPSRV01$` (NetBIOS domain + host name + `$`). With several nodes, create each server individually. **Exception:** if SQL Server runs on the NodePilot server itself, it sees the service as `NT AUTHORITY\SYSTEM`, not as the computer account — that login (it exists by default) needs the database user and `db_owner` instead. The installer picks the right one.
-
-```sql
-USE master;
--- gMSA:        CREATE LOGIN [CONTOSO\svc-nodepilot$] FROM WINDOWS;
--- LocalSystem: CREATE LOGIN [CONTOSO\NPSRV01$]       FROM WINDOWS;
-CREATE LOGIN [CONTOSO\NPSRV01$] FROM WINDOWS;
-
-CREATE DATABASE NodePilot;
-USE NodePilot;
-CREATE USER [CONTOSO\NPSRV01$] FOR LOGIN [CONTOSO\NPSRV01$];
-ALTER ROLE db_owner ADD MEMBER [CONTOSO\NPSRV01$];
-```
-
-`db_owner` is required so the migration bootstrapper can apply the EF migration set on first start.
-
-> **Set `max server memory` if SQL Server shares the machine.** The default is unlimited; on a host
-> with little RAM alongside other services this makes queries wait for their memory grant instead of
-> computing. Measured in the lab: the workflow list needed 85 ms of CPU and 2,585 logical reads, but
-> waited 55 seconds for a 22 MB grant (`RESOURCE_SEMAPHORE`, longest single wait 119 s) — on a 4 GB VM
-> next to an SCCM site server. NodePilot now answers that with `503 DATABASE_TIMEOUT` instead of
-> hanging, but the cause is in the SQL Server configuration. Check with:
->
-> ```sql
-> SELECT name, value_in_use FROM sys.configurations WHERE name = 'max server memory (MB)';
-> SELECT wait_type, waiting_tasks_count, wait_time_ms, max_wait_time_ms
-> FROM sys.dm_os_wait_stats WHERE wait_type = 'RESOURCE_SEMAPHORE';
-> ```
-
-> The installer's pre-flight checks SQL reachability using the identity of the **installing
-> administrator**, not the service identity. Behind it there is therefore a second check that looks up
-> exactly the service identity — the computer account under LocalSystem, otherwise the gMSA: login
-> present? user in the target database? `db_owner`? If any of those is missing, the service starts and
-> fails `/healthz/ready` (503), and the pre-flight says so beforehand instead of afterwards.
->
-> The setup program creates it on request (readiness page; the row comes pre-ticked, unattended via
-> `provisioning.createDatabaseAndLogin` in the answer file). On the console path,
-> `Provision-NodePilotDatabase.ps1` does the same in one call. Both are existence-checked and do
-> nothing at all without `sysadmin` or `CREATE ANY DATABASE` — then the SQL above is left for the DBA.
-
-**RCSI (read-committed snapshot isolation)** is enabled automatically by the installer
-(`Enable-SqlReadCommittedSnapshot`, right after a passed pre-flight). This is the SQL Server counterpart to Postgres
-MVCC: without RCSI, long-running readers (stats refresh, retention sweeps) block every concurrent
-`INSERT` into `WorkflowExecutions`/`StepExecutions` under the default 2PL locking. If the installer
-step fails the permission check (the login has no `ALTER DATABASE`), it prints the T-SQL statement for
-the DBA. Manual activation:
-
-```sql
-ALTER DATABASE [NodePilot] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;
-SELECT name, is_read_committed_snapshot_on FROM sys.databases WHERE name = 'NodePilot';  -- → 1
-```
-
-#### Variant B: PostgreSQL 16+
-
-On the Postgres server as superuser:
-
-```sql
-CREATE ROLE nodepilot WITH LOGIN PASSWORD '<choose-strong-secret>';
-CREATE DATABASE nodepilot OWNER nodepilot;
-```
-
-The **console path** only polls TCP reachability (port 5432) — it brings no PG client with it.
-Authentication problems (wrong password, a `pg_hba` block) only surface there at the
-`/healthz/ready` poll after the service starts, and then with the exact Npgsql error message in the
-Serilog rolling file under `C:\ProgramData\NodePilot\logs`.
-
-The **setup program** can do more: it ships `psql`, uses it to sign in as the NodePilot role during
-the pre-flight already (`sslmode=verify-full`, i.e. exactly as the runtime does), and creates the role
-and database on request. For that it needs superuser credentials — on SQL Server the installer's
-Windows identity *is* the authorization, whereas PostgreSQL has nothing comparable. See
-[`server/README.md`](server/README.md).
-
-> **Database TLS is mandatory in production.** The `DatabaseTlsBootValidator` aborts the boot if the
-> database connection does not verify the server — SQL Server is forced to
-> `Encrypt=Strict;TrustServerCertificate=False` (the installer sets `-SqlCertificateHostName` if
-> needed), Postgres to `SSL Mode=VerifyFull` against the root CA (PEM) supplied via
-> `-PostgresRootCertificate`. The database server therefore has to present a server certificate issued
-> by that CA for the connect host name. Creating both certificates without an internal CA:
-> [Database certificates](../src/nodepilot-docs-ui/content/en/deployment/database-tls.md).
-> `Database:AllowInsecureTls=true` is a pure development
-> loopback escape and is prohibited in production.
-
-### 4. TLS certificate
-
-Import the certificate (PFX) into the **LocalMachine\My** store on the target server — with its
-private key:
-
-```powershell
-Import-PfxCertificate -FilePath C:\Certs\nodepilot.pfx `
-    -CertStoreLocation Cert:\LocalMachine\My `
-    -Password (Read-Host -AsSecureString 'PFX password') `
-    -Exportable
-```
-
-Note the thumbprint:
-
-```powershell
-Get-ChildItem Cert:\LocalMachine\My |
-    Where-Object { $_.Subject -like '*nodepilot*' } |
-    Select-Object Subject, Thumbprint, NotAfter
-```
-
-The installer automatically grants the gMSA read access to the private key file.
-
-**Changing the service identity (LocalSystem ⇄ gMSA):** simply reinstall, the data directory is
-preserved. `jwt-secret.key` and `admin-setup.token` are written by the **service** for itself — owner
-plus a single ACE belonging to the identity that created them. The installer hands both over to the
-new identity; without that the service no longer started after an identity change ("the file, its
-owner, or its ACL could not be verified"). Nothing is deleted: the JWT key signs live sessions, and
-the setup token is the only way into an instance that has not been provisioned yet. The
-data-protection key ring needs no special treatment — it inherits from the directory.
-
-The pre-flight reports the certificate names and validity dates. An **expired or not-yet-valid
-certificate produces a warning**; installation can continue, but clients normally reject it until
-it is replaced. A SAN (or CN fallback) mismatch with `-PublicHostname` also warns without blocking,
-since a reverse proxy or an alias can make that intentional.
-
-### AD SSO Preview
-
-LDAP, Windows/Kerberos, OIDC and SCIM are opt-in and remain marked **AD SSO Preview** until the real
-AD/Kerberos/LDAPS field test passes. For AD paths, LDAPS with full certificate validation, at least one
-permitted AD group SID, a service bind for the directory reconciliation, and a sync interval of at most
-five minutes are mandatory. Windows SSO additionally requires an effective host/domain policy that
-rejects inbound NTLM.
-
-Windows SSO also needs **two client-side prerequisites** that are easily overlooked:
-
-- **An HTTP SPN on the service identity.** If NodePilot runs under a gMSA or a domain account, the computer account's `HOST/` SPN does **not** cover the service — the ticket is encrypted with the computer account's key and unreadable to the service process. Kerberos then fails and SPNEGO falls back to NTLM **silently**. `setspn -S HTTP/<fqdn> <DOMAIN>\<account>$`, then verify with `setspn -L` and `setspn -X`.
-- **A browser policy for the NodePilot origin.** Without `AuthServerAllowlist` (Edge/Chrome) or assignment to the intranet zone, the browser does not present the existing Kerberos ticket automatically and opens a sign-in dialog instead. A correctly configured client **never** asks for credentials; a dialog is a configuration error. GPO settings and a ready-made script as a template: [`docs/ldap-windows-sso.md`](../docs/ldap-windows-sso.md) and [`scripts/ad-sso-labtest/Set-BrowserSsoPolicy.ps1`](../scripts/ad-sso-labtest/Set-BrowserSsoPolicy.ps1).
-
-> Careful during acceptance testing: a credential manager entry or an enterprise SSO product that fills passwords into dialogs makes the sign-in look seamless **even though the browser policy is missing**. Server-side the two are indistinguishable. The "works without input" test is therefore only meaningful on a client without such tooling, with an empty credential store, and after a full browser restart.
-
-Changes under `Authentication` are validated on save but only take full effect after a service restart.
-The shipped default profile leaves all external providers disabled and sets local sign-in to
-`BreakGlassOnly`. SCIM tokens are rotated without interruption by keeping the old value briefly under
-`Authentication:Scim:PreviousBearerToken` and deleting it after the IdP switch.
-
-### 5. Authorize the WinRM execution identity
-
-The integrated (credential-less) WinRM path authenticates directly as the NodePilot
-process identity: the gMSA, or the host computer account when running as LocalSystem.
-Grant that identity permission to the target's WinRM endpoint and the resources used
-by the workflow. For LocalSystem HA installations, authorize each NodePilot host.
-This first hop needs no resource-based constrained delegation and does not impersonate
-the browser user. Stored per-machine credentials use their own account permissions.
-
-Delegated-user or second-hop access is a separate topology requiring an explicit design;
-do not enable delegation on every target as part of this setup. Existing AD retrieval
-or delegation grants must be preserved when an administrator changes them. The setup's
-gMSA repair snippet reads existing password-retrieval principals before adding this host.
-
-WinRM endpoint on the targets (if not already active):
-
-```powershell
-Enable-PSRemoting -Force
-winrm quickconfig -transport:https   # only for machines using HTTPS
-```
-
-Machines connect over HTTP with Negotiate by default: Kerberos for domain targets entered by
-DNS name, NTLM for workgroup targets (list them in `TrustedHosts` on the NodePilot host).
-HTTPS is optional per machine and needs a certificate the NodePilot host trusts.
-
-## Obtaining the artifact
-
-Two routes — in both cases the installer requires a signed artifact and the thumbprint of the
-publisher to be trusted.
-
-**Download a published release.** The [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest)
-carries `NodePilot-<version>.zip`, `.manifest.json`, `.manifest.json.p7s`,
-`NodePilot-Deploy-Scripts-<version>.zip`, `NodePilot-<version>.SHA256SUMS.txt` and the public signing
-certificate `nodepilot-release-signing.cer`. **The installer scripts are in the deploy-scripts zip** —
-they do travel inside the artifact as well, but only under `knowledge\source\` for the AI assistant,
-and taking them from there would mean extracting the *unverified* archive to obtain the very script
-whose job is to verify it. Compare the checksums and check the thumbprint against the release notes —
-**that comparison is the trust decision**; the installer requires exactly that signer and checks the
-code-signing purpose and validity, but **not** whether the machine trusts the publisher. An import into
-`Cert:\LocalMachine\Root` is optional and only causes Windows to validate the Authenticode signature of
-the installers themselves. Step by step:
-[`docs/deployment-guide.md`](../docs/deployment-guide.md), step 1 option A. The same release carries
-`NodePilot-Server-Setup-<version>.exe` — it already contains this artifact, in which case this section
-does not apply at all.
-
-**Build it yourself.** On a build host with the .NET 10 SDK + Node (versions from `global.json` and the
-`engines` fields respectively):
-
-```powershell
-git clone <repo> NodePilot
-cd NodePilot
-$releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'   # your own code-signing certificate
-.\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $releaseSigner
-# → .\out\NodePilot-<version>.zip + .manifest.json + .p7s + .SHA256SUMS.txt
-#   + NodePilot-Deploy-Scripts-<version>.zip + nodepilot-release-signing.cer
-```
-
-`-Version` is optional and falls back to the product version from `Directory.Build.props`.
-With `-IncludeServerInstaller` the same run additionally produces
-`NodePilot-Server-Setup-<version>.exe`, and with `-IncludeDesktopInstaller -PgBinariesPath <pgsql>`
-also `NodePilot-Desktop-Setup-<version>.exe` — all under the same version.
-`-InstallerSigningCertificateThumbprint <tp>` signs both installers as part of the run; signing them
-afterwards would invalidate their entries in `NodePilot-<version>.SHA256SUMS.txt`. If Inno Setup 6 or
-the PostgreSQL binaries are missing, only the respective installer step is skipped with a warning —
-the server zip is produced regardless.
-
-**The release notes need a paragraph on SmartScreen.** Anyone downloading the installer from the
-release page gets "Windows protected your PC" on launch — the file then carries a Mark of the Web, and
-the release certificate is self-signed and therefore has no reputation. A locally built installer never
-triggers it, which is why the warning goes unnoticed in your own testing and comes as a surprise on
-the first real download. Signing does **not** remove it. Boilerplate text and procedure (checksum +
-thumbprint before dismissing it, `Unblock-File`, the zip special case):
-[docs/deployment-guide.md → First run: the SmartScreen prompt](../docs/deployment-guide.md#first-run-the-smartscreen-prompt).
-
-Copy the zip to the target server.
-
-## Installation
-
-As a local administrator on the target server:
-
-**SQL Server + LocalSystem (no gMSA):**
-
-```powershell
-$releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'
 .\deploy\Install-NodePilot.ps1 `
-    -ArtifactPath   C:\Packages\NodePilot-<version>.zip `
-    -TrustedArtifactSignerThumbprint $releaseSigner `
+    -ArtifactPath 'C:\Packages\NodePilot-<version>.zip' `
+    -TrustedArtifactSignerThumbprint '<publisher thumbprint from release notes>' `
     -UseLocalSystem `
-    -SqlServer      'sql01.contoso.local' `
-    -SqlDatabase    'NodePilot' `
-    -CertThumbprint 'A1B2C3D4E5F6...' `
+    -SqlServer 'sql01.contoso.local' `
+    -SqlDatabase 'NodePilot' `
+    -CertThumbprint '<HTTPS certificate thumbprint>' `
     -PublicHostname 'nodepilot.contoso.local'
 ```
 
-→ The service runs as `LocalSystem`; on the SQL Server the **computer account** `CONTOSO\<host>$` must exist as a `db_owner` login (see section 3) — or `NT AUTHORITY\SYSTEM` when SQL Server runs on the same host.
+For gMSA, replace `-UseLocalSystem` with `-ServiceAccount 'CONTOSO\svc-nodepilot$'`.
+For PostgreSQL, use `-DbProvider postgres` and the parameters below; supply the password
+as a `SecureString` from `Read-Host -AsSecureString`. Complete examples are in the
+[walkthrough](../src/nodepilot-docs-ui/content/en/deployment/production.md#variant-b-the-scripts).
 
-**SQL Server + gMSA:**
-
-```powershell
-$releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'
-.\deploy\Install-NodePilot.ps1 `
-    -ArtifactPath   C:\Packages\NodePilot-<version>.zip `
-    -TrustedArtifactSignerThumbprint $releaseSigner `
-    -ServiceAccount 'CONTOSO\svc-nodepilot$' `
-    -SqlServer      'sql01.contoso.local' `
-    -SqlDatabase    'NodePilot' `
-    -CertThumbprint 'A1B2C3D4E5F6...' `
-    -PublicHostname 'nodepilot.contoso.local'
-```
-
-**PostgreSQL (with a gMSA — for LocalSystem simply replace `-ServiceAccount` with `-UseLocalSystem`):**
-
-```powershell
-$releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'
-$pgPw = Read-Host -Prompt 'Postgres password' -AsSecureString
-
-.\deploy\Install-NodePilot.ps1 `
-    -ArtifactPath  C:\Packages\NodePilot-<version>.zip `
-    -TrustedArtifactSignerThumbprint $releaseSigner `
-    -ServiceAccount 'CONTOSO\svc-nodepilot$' `
-    -DbProvider       postgres `
-    -PostgresHost     'pg01.contoso.local' `
-    -PostgresDatabase 'nodepilot' `
-    -PostgresUser     'nodepilot' `
-    -PostgresPassword $pgPw `
-    -PostgresRootCertificate C:\PKI\postgres-root-ca.pem `
-    -CertThumbprint   'A1B2C3D4E5F6...' `
-    -PublicHostname   'nodepilot.contoso.local'
-```
-
-The installer does everything else:
-
-1. Pre-flight (admin, .NET 10, certificate present with a private key, gMSA available, SQL reachable)
-2. Stop and remove the old service (if present)
-3. Empty and repopulate `C:\Program Files\NodePilot` (including `wwwroot\docs`, the documentation site the API serves at `/docs`). With `-OmitSourceSnapshot` the source snapshot under `knowledge\source` (~27 MB) is deleted again immediately afterwards — after the manifest check, which requires the complete signed contents. An update preserves that choice by going on what it finds on disk.
-4. Create `C:\ProgramData\NodePilot\logs`
-5. Generate `appsettings.Production.json` from the template
-6. Set ACLs (service identity = the gMSA, or `NT AUTHORITY\SYSTEM` under LocalSystem):
-   - InstallPath: service = **ReadAndExecute**, Admins/SYSTEM = Full, inheritance off. The service executes the binaries, it never overwrites them — write access there would be code execution as the service account (H-18). The path is validated beforehand (local, NTFS/ReFS, no reparse points) and re-checked after the copy. An **update** re-checks the same way but repairs once before giving up (`Assert-NodePilotInstallRootHardenedOrRepair`): an ACE granted after the installation was laid down is fixable, and the check runs after the binaries have already been replaced, so refusing outright would cost a rollback and leave the host on the old version. The repair is followed by a second check, which still fails the update if the directory remains writable by an untrusted principal.
-   - DataPath: service = Modify, Admins/SYSTEM = Full, nothing else. Under LocalSystem the SYSTEM Full ACE already covers the service — no additional ACE. **It is verified immediately afterwards**, using the very rule the service is about to apply (`Test-ServiceDirectoryAclTrust` mirrors `RestrictedFileWriter.BuildTrustedSids`): owner trusted, no foreign allow ACE with mutation rights. If that triggers, the installer repairs it once and re-checks; only then does it continue. The reason: an ACE for a service account is only harmless as long as the service runs **under exactly that account** — a leftover from an installation with a different identity would otherwise survive until the first service start and kill it there with "grants mutation rights to an untrusted principal", i.e. only on the rollback path. The check deliberately sits **before** the artifact is extracted, so that giving up costs nothing.
-   - `appsettings.Production.json`: service = Read, Admins/SYSTEM = Full (under LocalSystem likewise covered by SYSTEM Full)
-   - Certificate private key: gMSA = Read; skipped under LocalSystem (SYSTEM has read on MachineKeys by default)
-    - PostgreSQL: `ConnectionStrings:Postgres` stays empty in JSON; the fully quoted connection string
-      lives only in the service-scoped `ConnectionStrings__Postgres` environment value. Before it is
-      written, the service registry key is restricted to SYSTEM/Administrators; a gMSA service
-      account keeps `ReadKey` on its own key (the service probes its SCM recovery actions there).
-7. Firewall rule `NodePilot <name> HTTPS` (domain profile)
-8. Create the service via `Win32_Service.Create` — gMSA (empty password + `sc.exe managedaccount` + a "Log on as a service" grant) or `LocalSystem` (none of those three steps needed), recovery actions, `ASPNETCORE_ENVIRONMENT=Production`
-9. Start the service, poll `https://localhost/healthz/ready`
-10. Write the installation marker `HKLM\SOFTWARE\NodePilot\Server` (`InstallPath`, `DataPath`, `ServiceName`, `Version`, `DbProvider`, `HttpsPort`) — only on the success path, so a rolled-back run leaves no marker
-11. Print the admin bootstrap token + the legacy external-trigger API key to the console. The key is deny-all at first and only takes effect together with explicit workflow GUIDs under `ExternalTrigger:AllowedWorkflowIds`. With `-SuppressSecretOutput` neither value is printed: the server setup passes that switch, because its transcript keeps everything the installer prints, and returns both values in its result file instead.
-
-Step 1 comes from [`Preflight.ps1`](Preflight.ps1) and is deliberately a separate file: the checks only
-collect (`Invoke-NodePilotPreflight`), and aborting is a second step (`Assert-NodePilotPreflight`). That
-lets the same check logic run behind a "check again" button later without changing anything on each
-click. **Nothing in `Preflight.ps1` may mutate** — `Test-DeploymentTemplates.ps1` enforces that through
-the parsed AST, not through a text search, because the file legitimately contains remediation commands
-(`CREATE LOGIN`, `sc.exe`, `New-NetFirewallRule`) as **display text**. The concrete trigger:
-`Enable-SqlReadCommittedSnapshot` sat in the same `try` as the SQL reachability check, and its
-`ALTER DATABASE … WITH ROLLBACK IMMEDIATE` throws every open session out of the target database. RCSI is
-installation work and now runs **after** a passed pre-flight instead of in the middle of it — a run that
-is about to abort therefore does not touch the database at all.
-
-After a successful install the console shows:
-
-- URL: `https://<public-hostname>/`
-- The **admin setup token** (from `C:\ProgramData\NodePilot\admin-setup.token`) → sign in in the browser: on the first attempt the login page reveals a **"Setup token" field**; paste the token there, sign in again → the admin user is created, the token file is deleted, and the bootstrap window closes. If the installer cannot display the token (the file is restricted by an owner-only ACL to the **service account** — by design not directly readable even for admins), read it with backup semantics rather than touching the ACL: `robocopy C:\ProgramData\NodePilot $env:TEMP admin-setup.token /B`, then `Get-Content "$env:TEMP\admin-setup.token"` (delete the temp copy afterwards). Change the ACL only with care: the server validates the file fail-closed; the trusted set contains only the service account, SYSTEM and the **Administrators group** — `takeown /a` + a group grant survives that, whereas taking ownership as your personal admin user invalidates the file.
-- The **legacy external-trigger API key** — save it once, it is not shown again. It authorizes no workflow at first; for new integrations, hashed, GUID-scoped entries under `ExternalTrigger:Keys` are recommended.
+Setup checks prerequisites, installs the files, configures permissions and a domain-profile
+HTTPS firewall rule, registers the service and checks `/healthz/ready`. It prints the URL
+and first-login token. Re-running installation preserves the data directory.
 
 ### Parameter overview
 
-| Parameter | Required | Default |
-|---|---|---|
-| `-ArtifactPath` | ✓ | |
-| `-TrustedArtifactSignerThumbprint` | ✓ | — (**no** default; there is no built-in pinned publisher, the thumbprint always has to be supplied) |
-| `-ServiceAccount` | ✓ on the gMSA path (not used with `-UseLocalSystem`) | |
-| `-UseLocalSystem` | Alternative to `-ServiceAccount` | off |
-| `-CertThumbprint` | ✓ | |
-| `-DbProvider` | | `sqlserver` (alternative: `postgres`) |
-| `-SqlServer` | ✓ (only with `sqlserver`) | |
-| `-SqlDatabase` | | `NodePilot` |
-| `-SqlCertificateHostName` | | Host part of `-SqlServer` |
-| `-PostgresHost` | ✓ (only with `postgres`) | |
-| `-PostgresPort` | | `5432` |
-| `-PostgresDatabase` | | `nodepilot` |
-| `-PostgresUser` | ✓ (only with `postgres`) | |
-| `-PostgresPassword` | ✓ (only with `postgres`, SecureString) | |
-| `-PostgresRootCertificate` | ✓ (only with `postgres`, PEM) | |
-| `-PublicHostname` | | Machine FQDN |
-| `-HttpsPort` | | `443` |
-| `-HttpPort` | | `80` (0 = no HTTP binding) |
-| `-InstallPath` | | `C:\Program Files\NodePilot`. Must be a local, absolute path on **NTFS or ReFS**, without a junction or symlink anywhere in the path (UNC and FAT/exFAT are rejected). The installer applies a protected ACL to it — SYSTEM + Administrators `FullControl`, the service account only `ReadAndExecute` — and verifies after the copy that no other principal has write access. The reason: the binaries there are executed by the service as LocalSystem/gMSA, and a different path would otherwise inherit e.g. `BUILTIN\Users:(M)` from the volume root (H-18) |
-| `-DataPath` | | `C:\ProgramData\NodePilot` |
-| `-ServiceName` | | `NodePilot` |
-| `-ServiceDisplayName` | | `NodePilot Orchestrator` |
-| `-ExternalTriggerApiKey` | | Auto-generated legacy key (48 bytes, Base64); deny-all at first with an empty `AllowedWorkflowIds` list |
-| `-JwtIssuer` | | `nodepilot:prod:<machine>` |
-| `-JwtAudience` | | `nodepilot:prod:<machine>` |
-| `-AllowedHosts` | | Defaults to PublicHostname, the short computer name and `localhost`, matching the generated certificate names. An explicit list is preserved with `localhost` appended for the installer's health probe. Certificate SANs are not imported into this policy |
-| `-KnownProxyIps` | | Empty (only loopback is trusted); with HAProxy, list every direct transport IP |
-| `-SkipSqlConnectivityCheck` | | off |
-| `-SkipGmsaCheck` | | off |
-| `-BootstrapAdminUsername` | | Empty. When set, **only** this account may redeem the one-time setup token (`NodePilot:BootstrapAdminUsername`). For unattended rollouts that know the name in advance. |
-| `-SeedBackupPath` | | Empty. A `.npbackup` applied on **first start** into an empty instance — users, workflows, machines, credentials, settings. The file is copied to `<DataPath>\seed.npbackup` and deleted after being applied. |
-| `-SeedBackupPassphrase` | ✓ if `-SeedBackupPath` is set (SecureString) | Ends up in the `Environment` value of the service key, **never** in `appsettings.Production.json` |
-| `-SuppressSecretOutput` | | off. Prints neither the legacy external-trigger key nor the setup token, for callers that obtain both themselves and log the output (the server setup passes it) |
-
-> **Turnkey without typing a token.** `-BootstrapAdminUsername` and `-SeedBackupPath` are the two ways
-> to end an unattended installation in a usable state — otherwise someone would have to type the setup
-> token into the sign-in form by hand. The seed wins: if it brings users with it, no token is issued at
-> all. A wrong seed makes the service **not** start, instead of leaving behind an apparently
-> provisioned but actually empty instance. In full in
-> [`server/README.md`](server/README.md#turnkey-rollout).
-
-## HAProxy in front of NodePilot
-
-For active/passive HA and Windows Negotiate, use the supplied
-[`haproxy.cfg.template`](templates/haproxy.cfg.template). Before deployment, all `{{...}}` placeholders
-have to be replaced, in particular:
-
-| Placeholder | Meaning |
+| Parameter | Required / default |
 |---|---|
-| `TLS_CERT_PATH` | PEM containing the public HAProxy certificate and private key |
-| `BACKEND_CA_FILE` | PEM CA chain HAProxy uses to validate the Kestrel certificates |
-| `BACKEND_TLS_SERVER_NAME` | Shared SAN/SNI name on both backend certificates and in NodePilot's `AllowedHosts` (usually the public service host name) |
-| `NODE_A_IP`, `NODE_B_IP` | Direct backend addresses; no unvalidated host names |
+| `-ArtifactPath` | Required: signed application ZIP. |
+| `-TrustedArtifactSignerThumbprint` | Required: expected publisher; no built-in default. |
+| `-UseLocalSystem` / `-ServiceAccount` | Choose one. The latter takes a gMSA name including `$`. |
+| `-CertThumbprint` | Required: HTTPS certificate in `LocalMachine\My`. |
+| `-DbProvider` | `sqlserver` or `postgres`; default `sqlserver`. |
+| `-SqlServer` | Required for SQL Server. |
+| `-SqlDatabase` | `NodePilot`. |
+| `-SqlCertificateHostName` | Host portion of `-SqlServer`. |
+| `-PostgresHost` / `-PostgresUser` | Required for PostgreSQL. |
+| `-PostgresPort` / `-PostgresDatabase` | `5432` / `nodepilot`. |
+| `-PostgresPassword` | Required for PostgreSQL; `SecureString`. |
+| `-PostgresRootCertificate` | Required for PostgreSQL; trusted root PEM. |
+| `-PublicHostname` | Machine FQDN. |
+| `-HttpsPort` / `-HttpPort` | `443` / `80`; HTTP `0` disables the redirect listener. |
+| `-InstallPath` | `C:\Program Files\NodePilot`; local absolute path on NTFS/ReFS, with no junctions or symlinks. |
+| `-DataPath` | `C:\ProgramData\NodePilot`. |
+| `-ServiceName` / `-ServiceDisplayName` | `NodePilot` / `NodePilot Orchestrator`. |
+| `-ExternalTriggerApiKey` | Generated legacy key; authorizes nothing until workflow GUIDs are allowed. Prefer scoped `ExternalTrigger:Keys` for new integrations. |
+| `-JwtIssuer` / `-JwtAudience` | `nodepilot:prod:<machine>`. |
+| `-AllowedHosts` | Public hostname, short computer name and `localhost`. Explicit lists are retained with `localhost` appended for health checks. |
+| `-KnownProxyIps` | Empty; only loopback trusted. Specify direct proxy transport IPs. |
+| `-SkipSqlConnectivityCheck` / `-SkipGmsaCheck` | Off; skip the respective pre-flight checks. |
+| `-BootstrapAdminUsername` | Empty; when set, limits who may redeem the setup token. |
+| `-SeedBackupPath` | Optional `.npbackup` applied on first start into an empty instance. |
+| `-SeedBackupPassphrase` | Required with a seed; `SecureString`, stored in the protected service environment. |
+| `-SuppressSecretOutput` | Off; suppresses the setup token and legacy trigger key in console output. |
+| `-OmitSourceSnapshot` | Off; omits the optional `knowledge\source` snapshot after signature verification. |
 
-The backend connection stays persistent and exclusive per client session for Negotiate
-(`option http-keep-alive`, `http-reuse never`). Backend TLS is fail-closed; `verify none` is not
-supported. Forwarded headers injected by clients are deleted and re-set by HAProxy.
+A seed containing users removes the need for first-run bootstrap. An invalid seed stops
+startup. See [turnkey rollout](server/README.md#turnkey-rollout) for unattended setup.
 
-In return, NodePilot must trust only the direct HAProxy senders:
+## First access and protected files
+
+Open the reported URL. On the first sign-in attempt, the form reveals the setup-token
+field. Redeeming the token creates the first administrator and deletes the token file.
+There is no default account or password.
+
+If the console cannot display the owner-protected token, use backup semantics in an
+elevated shell, read the copy and delete it immediately:
 
 ```powershell
-.\deploy\Install-NodePilot.ps1 `
-    <further parameters> `
-    -KnownProxyIps '10.0.1.5','10.0.1.6'
+robocopy 'C:\ProgramData\NodePilot' "$env:TEMP" admin-setup.token /B
+Get-Content "$env:TEMP\admin-setup.token"
+Remove-Item -LiteralPath "$env:TEMP\admin-setup.token"
 ```
 
-Do not enter the public VIP, and do not enter a private network wholesale. Without an explicit proxy
-IP, NodePilot safely ignores forwarded headers; rate limiters then only see the HAProxy IP. After
-rendering, run both checks:
+Use the configured DataPath if it differs. Do not loosen the source token's ACL or take
+ownership as a personal administrator account; bootstrap validates its owner and permissions.
+
+| Location | Contents and protection |
+|---|---|
+| InstallPath | Binaries, configuration, `tools\np`, `tools\mcp`, offline docs in `wwwroot\docs`. Service: ReadAndExecute; Administrators/SYSTEM: FullControl. |
+| DataPath | Logs, JWT key, setup token and Data Protection keys. Restricted to the service and Administrators/SYSTEM; token/key files have stricter ownership. |
+| Service registry environment | PostgreSQL connection string and seed passphrase. Restricted to Administrators/SYSTEM; the DB password is not written to production JSON. |
+
+Reinstall to change LocalSystem/gMSA identity; setup transfers protected JWT/bootstrap
+files. Existing `CurrentUser`-encrypted DPAPI credentials may need re-entry; see
+[identity troubleshooting](../docs/deployment-troubleshooting.md#certificates-identity-and-file-permissions).
+
+## Reverse proxies and HA
+
+Use the [HAProxy template](templates/haproxy.cfg.template) and
+[HA guide](../docs/ha-active-passive.md#haproxy-example). Replace every placeholder:
+`TLS_CERT_PATH`, `BACKEND_CA_FILE`, `BACKEND_TLS_SERVER_NAME`, `NODE_A_IP` and `NODE_B_IP`.
+Backend TLS must validate the CA and shared SAN/SNI name; include that name in `AllowedHosts`.
+
+`-KnownProxyIps` takes each direct proxy transport IP, not the public VIP or a whole subnet.
+Untrusted forwarded headers are ignored. For Negotiate, retain persistent, per-client
+HTTP/1.1 connections and `http-reuse never`; never share an authenticated backend connection
+between clients. The template removes and regenerates forwarded headers.
+Validate the rendered file with `haproxy -c -f /etc/haproxy/haproxy.cfg` before use.
+
+## Updates and removal
+
+Back up the database and production configuration before updating. In elevated PowerShell:
 
 ```powershell
-.\deploy\Test-DeploymentTemplates.ps1
-```
-
-```bash
-haproxy -c -f /etc/haproxy/haproxy.cfg
-```
-
-## Update
-
-For a new artifact:
-
-```powershell
-$releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'
 .\deploy\Update-NodePilot.ps1 `
-    -ArtifactPath C:\Packages\NodePilot-<version>.zip `
-    -TrustedArtifactSignerThumbprint $releaseSigner
+    -ArtifactPath 'C:\Packages\NodePilot-<version>.zip' `
+    -TrustedArtifactSignerThumbprint '<publisher thumbprint from release notes>'
 ```
 
-Preserves `appsettings.Production.json`, the database (SQL Server or Postgres) and the service account.
-The backup under `C:\Program Files\NodePilot.backup.<timestamp>` contains binaries only and never the
-secret-bearing production configuration; automatic rollback on a health-check failure. The backup is
-created with a SYSTEM/Administrators-only DACL before anything is copied into it, so a custom root such
-as `D:\NodePilot` does not pass the volume's `BUILTIN\Users` write access on to it. A rollback copies it
-back only after re-checking that DACL and the file hashes recorded when the backup was made; a backup
-changed in between is refused, and the updater reports the failed rollback instead of restoring it.
+- Update preserves configuration, database and service identity. It stops runtime processes
+  before replacing files and rolls binaries back when the health check fails.
+- **Rollback restores binaries only.** It does not undo schema migrations or back up the
+  secret-bearing production configuration. Restore the database backup if the old binary
+  cannot use the migrated schema. Insecure or modified binary backups are rejected.
+- A successful update starts the service; a failed update restores its previous running state.
+- The health probe reads the installed HTTPS port unless `-HttpsPort` overrides it, and
+  accepts only the certificate named by `Kestrel:Https:CertificateThumbprint`.
+  Supply custom `-InstallPath`, `-DataPath` and `-ServiceName` where applicable.
+- An installation made with the GUI setup keeps its uninstaller: the updater restores the
+  setup's `unins*` files and `<InstallPath>\deploy\` from its backup after a hash check.
+- Downgrades require `-AllowDowngrade`; this does not downgrade the database schema.
+  A missing/unreadable installed version produces a warning and allows the update to continue.
+- Binary backups are stored beside InstallPath; `-KeepBackupCount` defaults to `3`.
+  Missing configuration or locked files require the [recovery guide](../docs/deployment-troubleshooting.md#updates-rollback-and-removal).
 
-- **No silent downgrade:** the updater compares the artifact version with `VERSION.txt` in the install directory and stops before changing anything when the artifact is older (only the numeric part counts, so `1.2.13-audit1` and `1.2.13` are the same version). `-AllowDowngrade` installs the older artifact anyway; the database schema stays at the newer version. If the installed version cannot be read, the updater warns and continues.
-- **`-HttpsPort` does not have to be repeated**: the health probe takes `Kestrel:Https:HttpsPort` from the installed configuration (an explicit `-HttpsPort` still wins). Without that derivation, updating an 8443 installation probed against 443 and rolled back a healthy upgrade.
-- **The health probe pins the configured certificate.** It goes to `localhost` through the same transport as the installer (`LocalServerHttp.ps1`) and accepts only the certificate named by `Kestrel:Https:CertificateThumbprint`. Nothing has to be passed for it. With `Kestrel:Https:Enabled` off the service terminates no TLS itself, and the probe uses plain HTTP on the same port. If Windows PowerShell cannot parse the configuration, or an enabled section names no usable thumbprint, the update warns and checks that one request without the pin; the probe sends no credentials, so this only affects the health verdict.
-- **A GUI-setup installation keeps its uninstaller.** The artifact carries neither the setup's `unins*` files nor `<InstallPath>\deploy\`, so after the binaries are verified the updater copies both back from the backup it just made and checks them against the hashes recorded with it. "Apps & features" and `deploy\Uninstall-NodePilot.ps1` keep working after a manual update; the next GUI setup run refreshes them.
-- **Process guard before the swap:** a stopped service is not enough — an orphaned worker keeps its DLLs image-mapped, and Windows reports that as a plain "Access denied" in the middle of the wipe. But the SCM reports `SERVICE_STOPPED` **before** the process has actually exited (host shutdown, log flush). After the stop it therefore waits up to 30 s, then terminates the remaining processes from the install directory — they are NodePilot binaries whose files are about to be replaced anyway. Only if that does not help either does the updater abort **before the first deletion**, naming the PID and process. Until 2026-08-03 the wait was missing and the run failed on exactly the process it had stopped itself.
-- During the swap, `appsettings.Production.json` deliberately goes **last**, so that an abort does not take the configuration down with it (by design it is not in the backup). If it is missing after all, the updater refuses — then run `Install-NodePilot.ps1`, which re-renders the configuration from its parameters (the database, DataPath and accounts are preserved; the newly generated legacy external-trigger key stays deny-all until GUIDs are permitted again).
-- **A successful update leaves the service RUNNING**, whether or not it was stopped beforehand. Only a failed update restores the original state (a rollback does not start anything that was deliberately stopped before).
-- **A rollback restores binaries only.** The new version migrates the database schema forward on its first start, and the rollback does not undo that. Take a database backup (`pg_dump` / `BACKUP DATABASE`) before updating and restore it if a rolled-back binary refuses the migrated schema. After a rollback the updater probes `/healthz/ready` once more and warns when the restored service does not come up, instead of reporting the rollback as complete on the strength of a service start.
-
-## Uninstall
+Uninstall from an elevated shell; adjust paths and service name for custom installations:
 
 ```powershell
-.\deploy\Uninstall-NodePilot.ps1              # runtime settings, keys + logs preserved; appsettings.Production.json removed
-.\deploy\Uninstall-NodePilot.ps1 -PurgeData   # everything except the database removed
+.\deploy\Uninstall-NodePilot.ps1              # keep runtime settings, keys and logs; appsettings.Production.json is removed
+.\deploy\Uninstall-NodePilot.ps1 -PurgeData   # also delete the data directory
 ```
 
-**The SQL database is never deleted automatically** — drop it with DBA tooling if required.
+**The external database is always retained.** Uninstall removes the service, binaries,
+installation marker, service environment, firewall rules and installation backups.
+It waits for process exit (`-ProcessExitTimeoutSeconds`, default `90`) before deleting the
+service and returns exit code `1` if removal is incomplete. The gMSA's service-logon right
+and certificate private-key read grant remain because other applications may share them.
 
-The script additionally removes the installation marker `HKLM\SOFTWARE\NodePilot\Server` and — if
-`sc.exe delete` only marked the service key `DELETE_PENDING` because of an open SCM handle — its
-`Environment` value, which holds the Postgres connection string **including the password**.
+**A failed uninstall can be repeated.** The installation marker and `<InstallPath>\deploy\`
+are removed last. Any non-zero exit makes the GUI and `/SILENT` uninstaller stop before it
+removes a file or the "Apps & features" entry; fix the cause named in
+`%TEMP%\nodepilot-server-uninstall.log` and uninstall again. With `-PurgeData`, nothing under
+the data directory is deleted if taking ownership of any item fails.
 
-It also deletes the binary backups beside the install directory (`<InstallPath>.backup.*` from updates,
-`<InstallPath>.rollback.*` left by a failed re-install). Only directories named the way the scripts name
-them are touched, never a junction; a backup that cannot be deleted counts as a leftover (exit code 1).
+## Backup and operational responsibilities
 
-**The uninstaller waits before deleting the service.** The SCM reports `Stopped` as soon as the service
-acknowledges the control code; the process keeps running afterwards while ASP.NET Core drains (measured
-in the lab: 31 seconds). If the service is deleted in that window, the process is **orphaned** — no
-longer reachable through the SCM — and the subsequent deletion pulls the DLLs out from under a running
-application. The script therefore waits up to `-ProcessExitTimeoutSeconds` (default 90) for processes
-from `InstallPath` and otherwise aborts **with the service still registered**, so that a supported way
-to stop it remains. A failed `sc.exe delete` stops it the same way, before any file is removed. If files
-are left behind afterwards (virus scanner, search indexer), the script still runs to completion, names
-the leftovers together with the holding process, and exits with code 1.
+Use the encrypted [system configuration backup](../docs/adr/0001-system-configuration-backup-restore.md)
+to move or rebuild an instance. It includes configuration and secrets, **not execution history,
+audit history or statistics**. Keep its passphrase separately; without it, recovery is impossible.
+Maintain native database backups for full recovery. CLI recipes: [backup commands](../src/nodepilot-docs-ui/content/en/cli.md).
 
-**A failed uninstall can be repeated.** The installation marker and `<InstallPath>\deploy\` (which holds
-this script) are removed only after everything else is gone. Any non-zero exit makes the GUI and
-`/SILENT` uninstaller abort before Inno removes a file or the "Apps & features" entry, and the
-uninstaller itself exits non-zero; fix the cause named in `%TEMP%\nodepilot-server-uninstall.log`
-(the script's transcript, deleted after a clean run) and uninstall again.
+AD identities/delegation, database provisioning, IdP/SCIM configuration, certificate renewal,
+monitoring, log forwarding and antivirus policy remain operator responsibilities. The wizard
+can provision database accounts/databases when explicitly requested with sufficient rights.
+Uninstall never deletes the database. The production template uses automatic hardware sizing;
+manual tuning is described in the [performance guide](../docs/performance-improvements.md).
 
-Two things are **deliberately** left in place, because both can be shared with something else on the
-host and blindly revoking them would break exactly that: the gMSA's "Log on as a service" right and the
-read ACE on the TLS certificate's private key. The script **names** both explicitly at the end of its
-run rather than leaving them silently — as it does the database, so that nobody has to guess after the
-uninstall whether it is still there.
+## Script map
 
-**`-PurgeData` takes ownership first.** The installer writes `jwt-secret.key` and `admin-setup.token`
-owner-only to the *service account*; otherwise not even an administrator can delete them and the run
-aborts halfway. The script therefore takes ownership item by item with `takeown /A` (the Administrators
-group, without the localized confirmation answer `takeown /R /D` expects) and grants the well-known SID
-`S-1-5-32-544` with `icacls` — **without** `(OI)(CI)`: those are container inheritance flags that are
-silently discarded on a leaf file while `icacls` still reports success. If either tool fails for any
-item, nothing under the data directory is deleted and the run exits with code 1.
-
-## Backup & disaster recovery
-
-NodePilot ships a **system configuration backup** (admin only, UI under `/backup` or CLI `np backup`).
-It backs up the *configuration* portably and passphrase-encrypted: workflows, folders/shares, machines,
-credentials, global variables, users and runtime settings.
-
-> **Not a substitute for a database backup.** Execution history, audit log and statistics are **not**
-> included. For full protection, keep running the database's own backup (Postgres `pg_dump` / SQL Server
-> backup). The configuration backup is for "rebuild the instance / move it to another host".
-
-**Properties.** The `.npbackup` file is encrypted with a **passphrase** (PBKDF2→AES-GCM) and protected
-against tampering with a whole-file MAC. **Without the passphrase the backup is unrecoverable** — keep
-it safely and separately from the file. Restore is portable (different host, different secret provider
-DPAPI↔AES-GCM), because secrets are re-encrypted with the target provider during the restore.
-
-**Scheduled DR backup (headless, e.g. a scheduled task).** Never pass the passphrase as an argument —
-use an environment variable or a file:
-
-```powershell
-$env:NP_BACKUP_PASS = '<from-secret-store>'
-np backup export --out "D:\backups\nodepilot-$(Get-Date -Format yyyyMMdd).npbackup" --passphrase-env NP_BACKUP_PASS
-# Limit the sections: --sections workflows,credentials,machines
-```
-
-**Restoring onto a fresh instance.**
-
-```powershell
-np backup preview  .\nodepilot-20260529.npbackup --passphrase-env NP_BACKUP_PASS    # dry run: what would land where
-np backup restore  .\nodepilot-20260529.npbackup --passphrase-env NP_BACKUP_PASS --yes
-# Conflict policy when restoring into an existing database: --policy skip|rename|overwrite, or section=policy
-```
-
-The restore runs transactionally in dependency order, validates references up front (aborting on ones
-it cannot resolve), protects the last active admin, and invalidates existing sessions when a user is
-overwritten. Settings are written last (a service restart may be needed for them to take effect).
-
-## Troubleshooting
-
-| Symptom | Check |
+| File | Purpose |
 |---|---|
-| Service starts and stops immediately | Event Viewer → Windows Logs → Application, source `<ServiceName>`. Usually a configuration or ACL problem. Install and update print the same evidence into `%TEMP%\nodepilot-server-setup.log` under `Service-Start-Diagnose` when the start or the health probe fails. |
-| Install or update aborts with "This build needs Microsoft.NETCore.App *x.y.z* or a higher *x*.x" | The artifact is framework-dependent and this host carries an older patch of one of the frameworks it names. Roll-forward never goes backwards, so the apphost refuses to start and the SCM reports only its generic "cannot be started". **Nothing was changed.** Install the ASP.NET Core runtime of that version or newer (x64) — it carries the base .NET runtime of the same version — then re-run. A newer `Microsoft.AspNetCore.App` alone is not enough: every framework the build names is checked separately. |
-| Update aborts with "Access to the path '…\*.dll' is denied" | A process is still running from the install directory (DLLs image-mapped), despite the service being stopped. `tasklist /m <dll>` names the holder; `Get-Process \| Where-Object { $_.Path -like 'C:\Program Files\NodePilot\*' } \| Stop-Process -Force`, then retry. Current builds abort with the PID before anything is deleted. |
-| "Processes are still running from … and could not be ended" | A process from the install directory survived the 30 s grace period **and** could not be terminated — in practice always missing permissions or a hung kernel call. The PID and name are in the message; the service and the files are untouched. Terminate the process or reboot, then retry. |
-| Browser shows `{"message":"Token is no longer valid"}` instead of the app | The session cookie has exceeded the absolute lifetime (`Authentication:SessionAbsoluteLifetimeHours`, 8 h). Artifacts before 2026-08-02 answered SPA navigations including `/login` with that too. Clear the site's cookies; permanently: deploy a current artifact. |
-| Browser shows **Bad Request - Invalid Hostname** (`HTTP Error 400. The request hostname is invalid.`) | ASP.NET Core's host filter rejects names outside `AllowedHosts`. New installs default to the public hostname, short computer name and `localhost`; explicit lists and existing installations retain their configuration. `install-report.txt` names the list. To permit another name, extend `AllowedHosts` semicolon-separated in `appsettings.Production.json`, ensure the HTTPS certificate covers it, and restart the service. `"*"` is refused by `Security:StrictAllowedHosts`; `*.example.com` is accepted. |
-| Certificate not found / no private key | `Get-ChildItem Cert:\LocalMachine\My\<thumb>` — must show HasPrivateKey=True. On re-import use `-KeyStorageFlags MachineKeySet,PersistKeySet,Exportable`. |
-| Service stops right after a certificate swap | The service account has no read ACE on the new key file. The installer grants it (`Grant-CertPrivateKeyAccess`), a manual swap does not. Steps: [Replacing the HTTPS certificate](../src/nodepilot-docs-ui/content/en/deployment/production.md#replacing-the-https-certificate). Under `LocalSystem` this cannot be the cause — SYSTEM already reads `MachineKeys`. |
-| 503 on `/healthz/ready` | The database is not ready. State and reason are available without signing in at `/healthz/database` (always HTTP 200) or via `np health`. On SQL Server also check as the gMSA with `sqlcmd -S sql01 -E -d NodePilot -Q "SELECT 1"`. |
-| Database outage **during operation** | Expected: the service stays up, `/api` answers `503 DATABASE_UNAVAILABLE`, the UI shows the outage, and NodePilot resumes automatically after successful probes. Workflows wait at the durability boundary; triggers observed during the outage are counted and discarded without catch-up. Details: [ADR 0011](../docs/adr/0011-database-availability-breaker.md). |
-| `/healthz/database`: `RejectedByServer` | Fix the credentials, the database/catalog or TLS; waiting or a restart alone does not clear this state. After a server-side correction the probe picks it up automatically; changed NodePilot connection details need a service restart. |
-| WinRM remote calls fail with "Access denied" | The NodePilot process identity (the gMSA, or the host computer account under LocalSystem) has no permission on the target's WinRM endpoint. See section 5. |
-| SPA loads, API calls return 401 | Sign-in via the setup token has not happened yet — the login page reveals the field on the first attempt; read the token via `robocopy <DataPath> $env:TEMP admin-setup.token /B` (the file is owner-only for the service account). |
-| Service boot loop, log shows TDS error 8005 "The parameter name is invalid" | SQL Server 2022 RTM without a CU — the TDS 8.0 RPC bug, fixed from CU1 (`16.0.4003.1`). Install a current 2022 CU. Newer installers catch this in the pre-flight. |
-| DPAPI decrypt failed for credentials after a service-account change | The template sets `Credentials:DpapiScope=LocalMachine`. For existing `CurrentUser`-encrypted credentials: re-enter the credentials (there is no migration helper). |
-| After an update the service does not see the configuration | ACL on `appsettings.Production.json` — the update script re-applies Read for the current service account. After manual intervention: `icacls "<Install>\appsettings.Production.json" /grant "<gMSA$>:(R)"`. |
-| Port 443 already in use | `Get-NetTCPConnection -LocalPort 443` shows the PID. Often the IIS default site or the WinRM HTTPS listener. The installer binds through a Kestrel socket, not http.sys — but a conflict is still a conflict. |
-| A ticket was raised, where do I look? | The **support log** — two sub-sinks from the same filter: (1) the plain-text file `C:\ProgramData\NodePilot\logs\nodepilot-support-*.log` (90-day retention) for RDP/tail diagnosis, (2) the structured database table `SupportEvents` (90-day retention via `Retention:SupportEvents`) for the web viewer with filtering, cursor and export. In the browser: Admin settings → "Support log" tab → toggle "Table (DB) \| Plain text (file)". Full diagnostics remain alongside in `C:\ProgramData\NodePilot\logs\nodepilot-<date>.log`, which keeps only **7 files** (rolling daily and again at 100 MB) — secure it early. Inventory of every log file: [Logs & diagnostics](https://www.nodepilot.run/docs/en/deployment/logs/). |
-| Where is the manual on a machine with no internet? | The installation serves it at `https://<host>/docs` — the same docs as https://www.nodepilot.run/docs/, staged into `wwwroot\docs`, at the version actually installed. No login required, and it stays readable during a database outage. It is gone only if the service itself will not start. |
+| [Build-Artifact.ps1](Build-Artifact.ps1) | Publish, package and sign. Release procedure: [RELEASING.md](../RELEASING.md). |
+| [Install-NodePilot.ps1](Install-NodePilot.ps1) / [Update-NodePilot.ps1](Update-NodePilot.ps1) / [Uninstall-NodePilot.ps1](Uninstall-NodePilot.ps1) | Service lifecycle. |
+| [ArtifactSecurity.ps1](ArtifactSecurity.ps1) / [Preflight.ps1](Preflight.ps1) / [ServiceControl.ps1](ServiceControl.ps1) | Signature checks, read-only readiness checks and process shutdown. |
+| [Invoke-NodePilotSetup.ps1](Invoke-NodePilotSetup.ps1) / [SetupContract.ps1](SetupContract.ps1) | Wizard adapter and answer-file contract. |
+| [Provision-NodePilotDatabase.ps1](Provision-NodePilotDatabase.ps1) / [Provision-NodePilotPostgres.ps1](Provision-NodePilotPostgres.ps1) | Opt-in database provisioning. |
+| [New-NodePilotSelfSignedCertificate.ps1](New-NodePilotSelfSignedCertificate.ps1) | Lab HTTPS certificate; no automatic root trust. |
+| [Production template](templates/appsettings.Production.json.template) / [cluster template](templates/appsettings.Cluster.json.template) | Service configuration. |
+| [Test-DeploymentTemplates.ps1](Test-DeploymentTemplates.ps1) | Deployment contract checks. Release testing: [lab matrix](../scripts/release-lab/README.md). |
 
-## What the installer does NOT do
-
-- It does not install the .NET runtimes — they must be present beforehand. **Exception:** the
-  GUI setup (`server/`) ships the official Microsoft runtime installer and offers it on the readiness
-  page; the ZIP route described here does not. Both install and update do *check* it: once the
-  artifact is extracted, the frameworks its `runtimeconfig.json` names are matched against what the
-  host reports, and a shortfall aborts before anything on the machine is changed. The readiness
-  page's own check is a fixed floor on `Microsoft.AspNetCore.App` and cannot see either the build's
-  exact requirement or the base runtime.
-- **It does not delete the database on uninstall — not even optionally.** It was provisioned
-  separately, often has its own backup and replication regime, and in an active/passive cluster both
-  nodes share it. What the installer never created, it does not remove.
-- It does not create the gMSA, the SQL login or the Kerberos delegation — an AD/DBA task.
-- It does not register the NodePilot HTTP SPN, apply an NTLM blocking policy or set a **browser intranet policy** (`AuthServerAllowlist` / site-to-zone) — all three have to be rolled out and verified by the AD/security team before Windows SSO is enabled. Without the browser policy the sign-in works, but prompts every user for credentials instead of running silently on a ticket.
-- It does not configure an OIDC IdP or a SCIM client — redirect URI, claims, group allow-list and the provisioning bearer token remain an IdP/IAM task.
-- It does not back up the SQL database — set that up separately via SQL Agent/Ola Hallengren/etc.
-- It does not integrate log forwarding or monitoring — logs land under `C:\ProgramData\NodePilot\logs`, collection via Winlogbeat/OTel collector/etc. is your choice.
-- It does not migrate data across providers between SQL Server and Postgres. If needed: export/import via `GET /api/workflows/export` → `POST /api/workflows/import`.
-- It does not set antivirus exclusions. The service starts PowerShell child processes and runs generated scripts out of `%TEMP%` — without appropriate exceptions, endpoint security blocks individual steps or the install-directory swap during an update. A hand-off-ready list including residual risks: [`docs/av-exclusions.md`](../docs/av-exclusions.md).
+Public website publishing is separate: [Publish-Site.ps1](Publish-Site.ps1),
+[website build and preview](../src/nodepilot-docs-ui/README.md).

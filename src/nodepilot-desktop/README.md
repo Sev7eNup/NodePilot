@@ -4,9 +4,9 @@ The window around NodePilot's desktop installation. It is a **thin, hardened vie
 backend, holds no business logic, and has an empty `dependencies` block. Everything it renders is
 the ordinary SPA served by the local API service.
 
-Packaging, service identities, provisioning and the first-run token handoff are documented in
-[`deploy/desktop/README.md`](../../deploy/desktop/README.md). This file covers working on the shell
-itself.
+Build and installation commands are in the [desktop README](../../deploy/desktop/README.md).
+Packaging, service identities and the first-run token handoff are covered in the
+[technical reference](../../docs/desktop-internals.md). This file covers working on the shell itself.
 
 ## What it does
 
