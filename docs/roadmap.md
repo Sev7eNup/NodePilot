@@ -9,6 +9,7 @@ and `docs/alerting.md`, the open GitHub issues, and the session memory. The stat
 was verified against `main` on 2026-08-22 — what is marked done below is in the code.
 On 2026-09-16 the remaining open items from the repository audit (August/September 2026) were added;
 until then it lived as `audit.md` in the repo root; every item was cross-checked against the code beforehand.
+On 2026-11-17 the non-security items of the local audit backlog were merged in; suspected vulnerabilities stay in the unpublished backlog (see `AGENTS.md`).
 
 ## Ground rules
 
@@ -299,7 +300,6 @@ Per-rule dedup key templates are already implemented (`DedupKeyTemplate`, "Group
 |---|---|
 | Backend line coverage 89 % → 90 % | The ratchet in `ci.yml` is at 85 % line / 70 % branch. Raise it when broad testing happens anyway — not an end in itself. |
 | `IWorkflowDefinitionMutator` — one mutation path for workflow definitions | From the audit 2026-08-15 (P1). Version, `UpdatedAt`, computed metadata, history, and trigger sync today sit side by side multiple times in Create/Publish/Duplicate/Restore. Trigger: the next bug that hits only one of these paths. |
-| Enforce custom activity invariants on the DB side | From the audit 2026-08-15 (P2). Today only an app-level `ConcurrencyToken` in `CustomActivityDefinitionStore`; DB-side `IsConcurrencyToken()` and live key uniqueness are missing. Needs an EF migration + a parallel test with two DbContexts. Trigger: the first race observed in practice. |
 | ~~Couple credential rotation to the WinRM pool~~ **Done (2026-09-06)** | From the audit 2026-08-15 (P2). The pool key carries a fingerprint of username, domain, and stored password; an edited credential immediately gets a fresh session, idle sessions under the old key expire via TTL, borrowed sessions finish their step under the identity they were opened with. Pulled forward because the idle TTL restarted on every reuse and an old identity could keep running indefinitely under constant load. |
 | Bundle N+1 queries for notifications, workflow statistics, and folder grants | From the audits 2026-08-15 (P2) and 2026-09-05 (M2). Target scale according to the operator: ~100 parallel runs. Folder grants: `ResourceAuthorizationService.GetAncestryGrantsAsync` queries once per distinct folder — only for non-admins, bounded by the 500 cap; a candidate would be the folder tree endpoint, which scales with the total folder count. Trigger: measured latency, not suspicion — first cross-read `docs/performance-improvements.md`. |
 | Fence step writes DB-side (HA) | From the audit 2026-08-26. Execution terminal writes go through CAS, step writes through a normal `SaveChanges`; `ClusterFencingHost` cancels cooperatively, and orphaned `Running` steps are cleaned up by `ExecutionStateLifecycle.CancelOrphanedStepsAsync`. Trigger: an observed step write from a deposed leader after a failover. |
@@ -307,6 +307,7 @@ Per-rule dedup key templates are already implemented (`DedupKeyTemplate`, "Group
 | Separate the migration identity from the runtime identity | From the audit 2026-08-26. The runtime identity today needs `db_owner` on the NodePilot database because it migrates at boot. Trigger: a customer DBA demands the separation. |
 | Strict E2E fixture: unmocked `/api` calls fail the test | From the audit 2026-09-05 (T1). `e2e/fixtures/mockApi.ts` answers unmocked calls with `200 []` — a documented convention (`e2e/README.md`). The gap affects read-only endpoints whose payload no spec checks; object endpoints visibly fail with `[]`. Trigger: a bug that slipped through the catch-all response. First review all specs for incidental calls. |
 | Implement the tree algorithms of the two folder trees once | From the audit 2026-09-05. `RecomputePathsRecursive`, `IsDescendant`, and `DescendantMaxDepth` exist twice, in `SharedWorkflowFoldersController` and `GlobalVariableFolderStore`. Separate services because of different authorization remain right, duplicate algorithms do not. Trigger: the next bug that hits only one of the two copies. |
+| Keep workflow query keys and cache invalidation in one place | Query keys and invalidation for workflows are spread over `WorkflowsPage`, `WorkflowBrowser`, `useWorkflowPersistence` and `WorkflowQuickSwitcher`. No stale-data bug is demonstrated. Trigger: a concrete cache defect, or a change that has to touch all four. Keep the TanStack Query pattern and consolidate the workflow data contract at one feature seam. |
 | Move the process-wide state of the `WorkflowEngine` into a DI singleton | From the audit 2026-09-05. Static dictionaries (running executions, cancel reasons, user counters, debug handles) force the engine tests into the serial `SerialEngineTestCollection`. Trigger: the engine suite becomes a time factor in CI, or a test flakes on the shared state. |
 | Small remaining items from the audit 2026-09-05 | (a) `GlobalVariableFoldersController.MapError`: `_ => throw ex` resets the stack trace, and `InvalidOperationException` is blanket-treated as an input error (400). (b) Switcher: `ActivityLogger` keeps the history in memory without bound, `MainWindowViewModel` rebuilds the whole list on every entry — ring buffer and incremental update. (c) Done: `Toc.tsx` re-reads the headings on a language change, and `resolveDocLink` in `DocMarkdown.tsx` keeps the fragment. Trigger: take along when working on the respective file anyway. |
 | Real integration boundaries (container migrations, browser↔real API, Electron smoke) | From the audit 2026-08-15 (P2). All existing suites are hermetically mocked. The largest single item on the list; sensible only piece by piece. |
@@ -316,7 +317,7 @@ Per-rule dedup key templates are already implemented (`DedupKeyTemplate`, "Group
 | E2E spec for `/metrics/:section` | The only page without a Playwright spec. Mock-smoke-testable. |
 | `/operations` (Live Ops) beyond the snapshot happy path | RBAC cross-checks, drilldown, and health rail are unasserted; SignalR live remains untestable (404 stub). |
 | MCP Streamable HTTP transport | Deliberately documented as an extension point, not built. First need for a non-stdio connection. |
-| Least-privilege DB login instead of the lexical read-only check | A deployment topic, not a code topic. The authoritative solution for the DbAdmin read path on SQL Server/SQLite. |
+| Least-privilege DB login instead of the lexical read-only check | A deployment topic, not a code topic. The authoritative solution for the DbAdmin read path on SQL Server/SQLite. Hardening of the lexical guard itself is tracked in #860 and #861. |
 
 ---
 
@@ -331,6 +332,7 @@ downloads in the desktop app is decided: same origin with a native Save dialog (
 | **SSH/Linux cross-platform: rebuild or drop?** | The earlier implementation is **no longer in the repo** — `RemoteProtocol` appears nowhere in `NodePilot.Core`, the branch and PR were lost with the public-repo migration. At that time: ~11,000 lines across 107 files, platform-aware backend (bash adapter for runScript/File/Folder/Service/StartProgram), SSH.NET stack with host-key TOFU/strict, verified against Debian bookworm via Docker. The known gap was UI-side only: `RunScriptConfig.tsx` remained PowerShell-centric. Continuing it as "paused" is the only option that is clearly wrong. |
 | **Multi-DC: quorum or all-DC consensus?** | Today strict all-DC consensus, **no** failover: one DC down ⇒ external logins 503. This is pinned by a unit test and is now honestly documented (it used to say "failover" by mistake). Whether it stays that way is a product decision — not a bug. |
 | **Make third-party MCP servers usable in the AI chat?** | An admin configures external MCP servers, the chat may call their read-only tools. That is the actual benefit of an MCP **client** in the backend — connecting third-party tools. The reverse direction (driving the chat over `nodepilot-mcp` onto the *own* tools) was examined and rejected: `nodepilot-mcp` authenticates with *one* DPAPI session, whereas the chat runs per request under the caller's `ClaimsPrincipal` (folder RBAC, SQL only for global admins) — redirecting would put all tool calls under a service identity; plus loopback HTTP per call and ~90 write tools that the chat deliberately doesn't have. The shared analysis logic lives in `NodePilot.Core` instead (`WorkflowAnalyzer`, `WorkflowDataBusAnalyzer`), consumed by both surfaces. Open for the client case: trust model against prompt injection from third-party tool results, RBAC gate, process lifecycle. |
+| **Memory for the AI chat: what should it remember across sessions?** | Today the chat history lives per browser tab in `sessionStorage` (`aiChatStore`) and is gone after closing the tab or logging out; nothing is stored server-side. Open: full conversations or distilled facts and preferences, per user only, storage with retention and user-side deletion, secret redaction before persisting. Also: content from docs, DB, and execution logs must not become a persistent instruction (prompt injection), and anything learned from an admin-only source (DB/text2sql) must not resurface for a user without that role. |
 
 ---
 
@@ -415,6 +417,15 @@ Not our problem, but documented so it isn't tried again:
 - **Workflow definition rewrites** (e.g. replacing `Get-CimInstance Win32_*` with cached calls) —
   would be the only lever with a double-digit perf gain in the demo workload, but is
   workflow-specific and outside the engine scope. A starting point for future Designer lints.
+
+### Deferred by the maintainer (informational)
+
+- **SCOrch import capacity** (`WorkflowImportExportController.ImportScorch`, `ScorchImporter`) — a request may buffer up to
+  300 MiB and load the whole XML tree before the 500-item cap is checked, and the controller comment's "one at a time per
+  caller" is not enforced on the server. No capacity test or outage was reproduced. The Admin/Operator-only endpoint and the
+  size cap stay as decided (H-16); on 2026-11-06 the maintainer decided not to change limits, add a concurrency gate or
+  investigate further unless asked. A SonarQube hotspot review closed the same way: its configuration checks, regex
+  candidates and remaining hotspots get no follow-up work.
 
 ---
 

@@ -1,6 +1,6 @@
 # Artikelpaket für den 01.11.2026
 
-**Update 2026-11-02:** Only `gmsa-scheduled-task` has been published, in German and English, with the actual date 2026-11-02. The other three articles remain drafts. The original four-article patch below is now historical and must not be applied unchanged: publication status, dates, featured article, counts and cross-links need to reflect the next explicitly requested scope. See the [publication record](testing/gmsa-publication-2026-11-02.md) and the current update at the top of the [editorial plan](seo-editorial-plan.md).
+**Update 2026-11-20:** The scheduled-task guide was published on 2026-11-02, the gMSA diagnosis on 2026-11-08, and try/catch on 2026-11-20, all DE/EN. AI workflows and Execution Policy remain drafts. The original patch below is historical and must not be applied unchanged; future publication dates, scope, links and article counts must reflect the next explicit request. See the current [editorial plan](seo-editorial-plan.md) and [latest publication record](testing/try-catch-publication-2026-11-20.md).
 
 Termin und vorbereiteter Umfang am 25.10.2026 vom Nutzer bestätigt. Die gemeinsame Wiederaufnahme am 01.11. und 08.11. ist im [Redaktionsplan](seo-editorial-plan.md#wiederaufnahme-am-0111-und-08112026) mit Arbeitsbaum, Nachweisen und offenen Veröffentlichungsschritten festgehalten.
 

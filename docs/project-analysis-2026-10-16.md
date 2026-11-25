@@ -7,7 +7,7 @@
 
 **Vorgehen:** 33 Prüfbereiche haben je Bereich Stärken und Befunde mit Datei, Zeile und wörtlichem Zitat erhoben. Jeder Befund wurde von mindestens einem unabhängigen, auf Widerlegung angesetzten Prüfer gegen den aktuellen Code geprüft, jeder Medium-Befund von zwei. Dokumentierte Entscheidungen aus `docs/roadmap.md`, den ADRs, `CLAUDE.md` und den bisherigen Audit-Runden sind berücksichtigt; bewusst zurückgestellte Schulden stehen gesammelt in Abschnitt 7.5. Einzelheiten stehen in Anhang A, alle Befunde in Anhang B.
 
-Befund-IDs (z. B. `engine-execution-core#1`) verweisen auf Anhang B. Fundstellen sind repo-relativ als `pfad:zeile` angegeben.
+Befund-IDs (z. B. `engine-execution-core#1`) verweisen auf Anhang B (erledigte Befunde sind dort entfernt). Fundstellen sind repo-relativ als `pfad:zeile` angegeben.
 
 ---
 
@@ -92,7 +92,7 @@ Median dreier unabhängiger Bewertungen (7,4 · 7,5 · 7,6) aus den Perspektiven
 
 ## 3. Schwächen
 
-Dieser Abschnitt enthält alle 23 Medium-Befunde, jeweils von zwei unabhängigen Prüfern bestätigt. Low-Befunde stehen nach Thema in den Abschnitten 5 und 7, vollständig in Anhang B.
+Dieser Abschnitt enthält alle 23 Medium-Befunde, jeweils von zwei unabhängigen Prüfern bestätigt. Low-Befunde stehen nach Thema in den Abschnitten 5 und 7, die noch offenen vollständig in Anhang B.
 
 ### 3.1 Semantikfehler im Ausführungskern
 
@@ -773,108 +773,69 @@ Weitere Kennzahlen: 50 Dateien unter `src/NodePilot.Api/Controllers/` mit 206 HT
 
 Schwere = endgültige Einstufung nach Gegenprüfung (bei zwei Prüfern die niedrigere). Prüfung = Zahl der unabhängigen Prüfer, die den Befund bestätigt haben. „korr.“ = die Prüfer haben die ursprüngliche Behauptung präzisiert oder abgeschwächt; maßgeblich ist die korrigierte Fassung. Welche Themen bereits als bewusst zurückgestellte Schuld dokumentiert sind, steht in Abschnitt 7.5.
 
+**Stand 2026-11-17:** Dieser Anhang enthält nur noch die Befunde, die gegen `main` (`edbbfa7`) offen oder teilweise offen sind (142 von 209). 66 inzwischen behobene und ein per ADR bewusst entschiedener Befund (`ai-agents#4`) sind entfernt; ihre Zeilen stehen in der Git-Historie dieser Datei. „teilweise behoben“ = ein Teil des Befunds besteht fort. `→ #n` verweist auf das GitHub-Issue, das den Rest verfolgt. Die Zahlen in Abschnitt 1 und Anhang A beschreiben den Stand vom 2026-10-16.
+
 | ID | Schwere | Prüfung | Dimension | Befund | Fundstelle |
 |---|---|---|---|---|---|
-| build-ci-scripts#1 | Medium | zweifach | Testlücke | Switcher und Switcher.Tests liegen außerhalb von NodePilot.slnx und werden nie automatisch gebaut, getestet oder analysiert | `NodePilot.slnx:22` |
-| deploy-installers#1 | Medium | zweifach | Sicherheit | Backup- und Rollback-Verzeichnisse erben die Eltern-ACL und werden ungeprüft als Dienst-Binaries zurückgespielt | `deploy/Update-NodePilot.ps1:299` |
-| engine-activities-powershell-remote#1 | Medium | zweifach | Logik/Architektur | restApi-Timeout wird als Abbruch durchgereicht und von der Retry-Policy nie wiederholt | `src/NodePilot.Engine/Activities/RestApiActivity.cs:56` |
-| engine-execution-core#1 | Medium | zweifach | Logik/Architektur | Abbruch auf Execution-Ebene wird pro Step als Failed verbucht | `src/NodePilot.Engine/Execution/StepRunner.cs:359` |
-| engine-execution-core#3 | Medium | zweifach | Sicherheit | Trigger-Eingaben werden ein zweites Mal als Step-Template expandiert | `src/NodePilot.Engine/Execution/VariableResolver.cs:273` |
-| engine-execution-core#4 | Medium | zweifach | Testlücke | Junction-Semantik doppelt implementiert, Tests decken die ungenutzte Variante ab, keine Save-Validierung | `src/NodePilot.Engine/Execution/WorkflowScheduler.cs:348` |
-| gap-engine-remote-activities-guards#1 | Medium | zweifach | Sicherheit | Unbedingter UNC-Block lässt sich mit gemischten Trennern umgehen; der lokale Reparse-Walk fragt den UNC-Root dann direkt ab | `src/NodePilot.Engine/Security/PathGuard.cs:326` |
-| gap-engine-remote-activities-guards#2 | Medium | zweifach | Sicherheit | Ungültige Operator-Patterns für die Redaction werden stillschweigend verworfen | `src/NodePilot.Engine/Security/OutputRedactor.cs:133` |
-| gap-external-identity#1 | Medium | zweifach | Logik/Architektur | SCIM-Deprovisioning eines bereits deaktivierten Admins scheitert dauerhaft mit 409 | `src/NodePilot.Api/Security/Scim/ScimProvisioningService.cs:279` |
-| gap-external-identity#2 | Medium | zweifach | Sicherheit | OIDC-Pfad: JIT-Anlage ohne Audit-Eintrag, Reconciliation-Audit ohne SIEM-Weiterleitung | `src/NodePilot.Api/Security/Oidc/OidcIdentityMapper.cs:187` |
-| gap-llm-trust-boundary#2 | Medium | zweifach | Logik/Architektur | Array-Merge verwirft KI-Änderungen an Decision-Cases und Condition-Gruppen still | `src/NodePilot.Ai/WorkflowDefinitionMerge.cs:182` |
-| gap-ui-designer-subcomponents#2 | Medium | zweifach | Codequalität | Escape im Skripteditor verwirft ungespeicherte Änderungen, auch wenn es im eingebetteten KI-Dialog gedrückt wird | `src/nodepilot-ui/src/components/designer/ScriptEditorDialog.tsx:372` |
-| scheduler#1 | Medium | zweifach | Performance | FileWatcher persistiert bei jedem rohen Dateiereignis den vollständigen Verzeichnis-Snapshot | `src/NodePilot.Scheduler/Sources/FileWatcherTriggerSource.cs:386` |
-| scheduler#2 | Medium | zweifach | Codequalität | SystemAlertEvaluator verschluckt Quellen- und Rekonstruktionsfehler ohne Log oder Metrik | `src/NodePilot.Scheduler/SystemAlerts/SystemAlertEvaluator.cs:75` |
-| scheduler#4 | Medium | zweifach | Logik/Architektur | Alert-Retry erschöpft sich nach rund zwei Minuten ohne Backoff | `src/NodePilot.Scheduler/NotificationDispatcher.cs:44` |
-| scorch-import#1 | Medium | zweifach | Logik/Architektur | Automatische waitAll-Junction ändert bei bedingtem Fan-in die Semantik still (z. B. Fehler-Handler) (korr.) | `src/NodePilot.Engine/Scorch/ScorchImporter.cs:588` |
-| switcher-desktop#1 | Medium | zweifach | Sicherheit | Elevierter Switcher führt den cliPath aus einer nicht auf Besitzer und ACL geprüften Konfiguration aus (korr.) | `src/NodePilot.Switcher/app.manifest:7` |
-| switcher-desktop#3 | Medium | zweifach | Logik/Architektur | StopAsync bricht bei Diensten im Pending-Zustand ab, statt den Forced-Stop zu nutzen (korr.) | `src/NodePilot.Switcher/Services/WindowsServiceControlGateway.cs:103` |
-| ui-app-pages-components#1 | Medium | zweifach | Codequalität | Mutationen ohne Fehlerbehandlung scheitern still, darunter „Ausführen“ und „Workflow anlegen“ | `src/nodepilot-ui/src/pages/WorkflowsPage.tsx:245` |
-| ui-app-pages-components#3 | Medium | zweifach | Logik/Architektur | Spaltensortierung der Ausführungsliste wirkt nur innerhalb der aktuellen Serverseite | `src/nodepilot-ui/src/pages/ExecutionsPage.tsx:47` |
-| ui-designer#1 | Medium | zweifach | Logik/Architektur | useCriticalPath schreibt projizierte Knoten über den React-Flow-Store in den Rohgraphen zurück und markiert den Workflow dirty (korr.) | `src/nodepilot-ui/src/hooks/useCriticalPath.ts:23` |
-| x-duplication-reuse#3 | Medium | zweifach | Codequalität | Modal-Overlays: 25 Eigenbauten neben ModalShell, ModalShell selbst ohne Dialog-Semantik (korr.) | `src/nodepilot-ui/src/components/common/ModalShell.tsx:30` |
-| x-robustness#1 | Medium | zweifach | Codequalität | Mutationen ohne onError scheitern lautlos, auch die Edit-Lock-Steuerung | `src/nodepilot-ui/src/queryClient.ts:10` |
+| scorch-import#1 | Medium | zweifach | Logik/Architektur | Automatische waitAll-Junction ändert bei bedingtem Fan-in die Semantik still (z. B. Fehler-Handler) (korr.) *(teilweise behoben)* → #864 | `src/NodePilot.Engine/Scorch/ScorchImporter.cs:588` |
+| x-duplication-reuse#3 | Medium | zweifach | Codequalität | Modal-Overlays: 25 Eigenbauten neben ModalShell, ModalShell selbst ohne Dialog-Semantik (korr.) *(teilweise behoben)* → #585 | `src/nodepilot-ui/src/components/common/ModalShell.tsx:30` |
 | ai-agents#1 | Low | einfach | Wartbarkeit | AgentRuntime: 300-Zeilen-Methode mit ca. 27,6 KB fest eingebautem Prompt-Text am PromptCatalog vorbei (korr.) | `src/NodePilot.Ai/Agents/AgentRuntime.cs:34` |
 | ai-agents#2 | Low | einfach | Struktur | ConfigMgr/IIS-spezifisches Diagnosewissen fest in allgemeiner Runtime und Policy (korr.) | `src/NodePilot.Ai/Agents/AgentRuntime.cs:25` |
 | ai-agents#3 | Low | einfach | Codequalität | Sicherheitskritische Read-Policy in schwer prüfbaren Einzeilern (korr.) | `src/NodePilot.Engine/Agents/AgentPermissionPolicy.cs:230` |
-| ai-agents#4 | Low | einfach | Sicherheit | http_request ohne AllowedHosts ist ein Abflusskanal bei Prompt-Injection (korr.) | `src/NodePilot.Engine/Agents/AgentToolHost.cs:173` |
 | ai-agents#5 | Low | einfach | Codequalität | Kompatibilitäts-Fallback-Schleife in den LLM-Clients mehrfach kopiert | `src/NodePilot.Ai/OpenAiCompatibleLlmClient.cs:58` |
 | ai-agents#6 | Low | einfach | Struktur | Ai-Projektwurzel ohne Unterteilung: Transport, Assistenten und Drafting gemischt | `src/NodePilot.Ai/LlmServiceCollectionExtensions.cs:21` |
-| api-admin-ops-surface#1 | Low | einfach | Logik/Architektur | UsersController leitet Audit-Events vor dem Commit als committed weiter | `src/NodePilot.Api/Controllers/UsersController.cs:297` |
-| api-admin-ops-surface#2 | Low | einfach | Performance | Dashboard: etwa 30 sequentielle Roundtrips pro Aufruf, 7- und 14-Tage-Scans ungecacht (korr.) | `src/NodePilot.Api/Controllers/DashboardController.cs:245` |
-| api-admin-ops-surface#3 | Low | einfach | Codequalität | Audit nach einer Mutation mit dem Request-Token (DbAdmin-Write-Ergebnis, Secret-Rotation) | `src/NodePilot.Api/Controllers/DbAdminController.cs:656` |
+| api-admin-ops-surface#2 | Low | einfach | Performance | Dashboard: etwa 30 sequentielle Roundtrips pro Aufruf, 7- und 14-Tage-Scans ungecacht (korr.) *(teilweise behoben)* | `src/NodePilot.Api/Controllers/DashboardController.cs:245` |
 | api-admin-ops-surface#4 | Low | einfach | Codequalität | DbAdmin.GetTables: exakter COUNT über jede Tabelle, Fehler werden still zu 0 | `src/NodePilot.Api/Controllers/DbAdminController.cs:88` |
 | api-admin-ops-surface#5 | Low | einfach | Sicherheit | Secret-Spalten-Policy in DbAdmin ist opt-in; NotificationRoute.Secret wird ausgeliefert | `src/NodePilot.Api/Services/DbAdmin/DbAdminPolicy.cs:63` |
 | api-admin-ops-surface#6 | Low | einfach | Performance | Support-Log-Tail liest ganze Tagessegmente synchron ohne Byte-Budget | `src/NodePilot.Api/Controllers/DiagnosticsController.cs:55` |
-| api-alerting-ai-realtime#1 | Low | zweifach | Sicherheit | SSE-Fehlerpfad überspringt das Audit; Admin-SQL aus dem Wissens-Chat bleibt dann unprotokolliert | `src/NodePilot.Api/Controllers/AiKnowledgeController.cs:188` |
 | api-alerting-ai-realtime#2 | Low | einfach | Struktur | ExecutionHub als statische, prozessweite Registry: globale Kopplung und serialisierte Tests (korr.) | `src/NodePilot.Api/Hubs/ExecutionHub.cs:45` |
 | api-alerting-ai-realtime#3 | Low | einfach | Codequalität | CustomActivities.Create fängt jede InvalidOperationException ab und meldet sie als 409 mit Rohtext | `src/NodePilot.Api/Controllers/CustomActivitiesController.cs:82` |
-| api-alerting-ai-realtime#4 | Low | einfach | Logik/Architektur | Test-Fire speichert die Ledger-Zeilen nach der externen Zustellung mit dem Request-Token | `src/NodePilot.Api/Controllers/AlertingController.cs:241` |
 | api-alerting-ai-realtime#5 | Low | einfach | Wartbarkeit | AgentRecoveryService: ein gesperrtes Workspace-Verzeichnis blockiert das Aufräumen aller folgenden | `src/NodePilot.Api/Services/AgentRecoveryService.cs:62` |
 | api-alerting-ai-realtime#6 | Low | einfach | Codequalität | Custom-Activity-Import überspringt fehlerhafte Einträge stillschweigend und erlaubt leere Skripte | `src/NodePilot.Api/Controllers/CustomActivitiesController.cs:216` |
 | api-alerting-ai-realtime#7 | Low | einfach | Wartbarkeit | Doku-Drift: Roadmap führt erledigte Custom-Activity-Invarianten als offen; Hub-Kommentare nennen 12 h Token-Laufzeit | `docs/roadmap.md:285` |
 | api-alerting-ai-realtime#8 | Low | einfach | Codequalität | AgentRun-Status als Freitext-Strings in Abfragen und Logik | `src/NodePilot.Api/Controllers/AgentsController.cs:33` |
 | api-hosting-config-backup#1 | Low | einfach | Logik/Architektur | Backup-Controller mappt breite Framework-Exceptions pauschal auf 400 „Malformed backup content“ (korr.) | `src/NodePilot.Api/Controllers/BackupController.cs:169` |
-| api-hosting-config-backup#2 | Low | einfach | Sicherheit | Härtungs-Flag StartProgram:DisallowShellExecute wird an drei Stellen unterschiedlich interpretiert (korr.) | `src/NodePilot.Engine/Activities/StartProgramActivity.cs:86` |
 | api-hosting-config-backup#3 | Low | einfach | Performance | Backup-Preview/-Restore/-Export puffern das gesamte Artefakt mehrfach im Speicher | `src/NodePilot.Api/Controllers/BackupController.cs:86` |
 | api-hosting-config-backup#4 | Low | einfach | Struktur | Program.cs nur teilweise modularisiert; Konfigurationsflags werden ad hoc und uneinheitlich gelesen (korr.) | `src/NodePilot.Api/Program.cs:248` |
-| api-hosting-config-backup#5 | Low | zweifach | Codequalität | Ungültige Restore-Policy oder unbekannter Sektionsschlüssel fällt still auf Skip zurück | `src/NodePilot.Api/Controllers/BackupController.cs:182` |
-| api-security-identity#1 | Low | einfach | Wartbarkeit | Test-only Fallbacks im sicherheitskritischen Produktionscode, darunter ein offener LocalLoginMode-Default (korr.) | `src/NodePilot.Api/Controllers/AuthController.cs:105` |
+| api-security-identity#1 | Low | einfach | Wartbarkeit | Test-only Fallbacks im sicherheitskritischen Produktionscode, darunter ein offener LocalLoginMode-Default (korr.) → #578 | `src/NodePilot.Api/Controllers/AuthController.cs:105` |
 | api-security-identity#3 | Low | einfach | Logik/Architektur | Vertrag für Sitzungsinvalidierung verteilt; AuthSession.AuthorizationVersion-Prüfung wirkungslos (korr.) | `src/NodePilot.Api/Security/UserSessionInvalidation.cs:10` |
 | api-security-identity#4 | Low | einfach | Codequalität | Autorisierungs-Primitive mehrfach dupliziert (Ahnenkette, Staleness, Identitätssuche) (korr.) | `src/NodePilot.Api/Security/ResourceAuthorizationService.cs:243` |
 | api-security-identity#5 | Low | einfach | Logik/Architektur | AuditWriter lässt fehlgeschlagene Einträge im geteilten DbContext als Added zurück (korr.) | `src/NodePilot.Api/Audit/AuditWriter.cs:57` |
 | api-security-identity#6 | Low | einfach | Codequalität | ExternalUserMapper: irreführender Bootstrap-Kommentar, Legacy-Upgrade-Zweig und unbegrenzte statische Gate-Map (korr.) | `src/NodePilot.Api/Security/Ldap/ExternalUserMapper.cs:316` |
 | api-security-identity#7 | Low | einfach | Codequalität | Veraltete Lebensdauer-Kommentare, doppelte Konstanten und tote Prüfzweige | `src/NodePilot.Api/Security/AuthSessionIssuer.cs:345` |
-| api-workflow-surface#1 | Low | einfach | Logik/Architektur | Aktivierungs-Validatoren dreifach von Hand gepflegt, Enable lässt AgentPublishValidation aus | `src/NodePilot.Api/Controllers/WorkflowEditingController.cs:466` |
-| api-workflow-surface#2 | Low | einfach | Performance | Interaktive Executions-Liste ohne DatabaseCommandBudget trotz dokumentierter Retry-Verstärkung (korr.) | `src/NodePilot.Api/Controllers/WorkflowsController.cs:237` |
-| api-workflow-surface#3 | Low | einfach | Codequalität | Unique-Verletzungen werden in drei Pfaden unterschiedlich erkannt, Publish/Rollback per locale-abhängiger Textsuche | `src/NodePilot.Api/Controllers/WorkflowEditingController.cs:533` |
-| api-workflow-surface#4 | Low | einfach | Codequalität | Cancel/Cancel-all schreiben Lifecycle-Zustand mit dem Request-Token über zwei Statements | `src/NodePilot.Api/Controllers/ExecutionsController.cs:531` |
-| api-workflow-surface#5 | Low | einfach | Sicherheit | Retry prüft den Execution-Status vor dem RBAC-Gate | `src/NodePilot.Api/Controllers/ExecutionsController.cs:617` |
-| build-ci-scripts#2 | Low | zweifach | Sicherheit | ci.yml ohne Least-Privilege-Token-Rechte, und der Checkout persistiert das Token für npm-Install-Skripte (korr.) | `.github/workflows/ci.yml:354` |
-| build-ci-scripts#3 | Low | einfach | Testlücke | Vitest wiederholt fehlgeschlagene Tests in CI still, ohne Reliability-Erfassung | `src/nodepilot-ui/vitest.config.ts:34` |
 | build-ci-scripts#4 | Low | einfach | Codequalität | Electron-Desktop-Shell ohne Linter in CI (korr.) | `src/nodepilot-desktop/package.json:21` |
 | build-ci-scripts#5 | Low | einfach | Wartbarkeit | Veraltete Begründungskommentare und Zahlen in Paket- und Sample-Doku | `Directory.Packages.props:38` |
 | build-ci-scripts#6 | Low | einfach | Codequalität | Compiler-Warnungen sind kein Gate, und es gibt kein Analyzer-Niveau | `Directory.Build.props:17` |
-| clients-cli-mcp#1 | Low | zweifach | Logik/Architektur | MCP-Server übernimmt ein späteres `np auth login` erst nach einem Neustart (korr.) | `src/NodePilot.Mcp/Api/ApiClientFactory.cs:32` |
-| clients-cli-mcp#2 | Low | einfach | Codequalität | `np exec list` paginiert per Offset über eine laufende Liste, ohne Dedupe; der Hilfetext behauptet eine falsche Obergrenze (korr.) | `src/NodePilot.Cli/Api/NodePilotApiClient.cs:304` |
+| clients-cli-mcp#2 | Low | einfach | Codequalität | `np exec list` paginiert per Offset über eine laufende Liste, ohne Dedupe; der Hilfetext behauptet eine falsche Obergrenze (korr.) *(teilweise behoben)* | `src/NodePilot.Cli/Api/NodePilotApiClient.cs:304` |
 | clients-cli-mcp#3 | Low | einfach | Wartbarkeit | Doppelte Typed-Clients driften im Kleinen; der Coverage-Guard prüft nur die Pfadform (korr.) | `src/NodePilot.Mcp/Api/NodePilotApiClient.cs:13` |
 | clients-cli-mcp#4 | Low | einfach | Codequalität | CLI bildet Timeouts nicht auf einen eigenen Exit-Code ab | `src/NodePilot.Cli/Commands/BaseCommand.cs:74` |
 | clients-cli-mcp#5 | Low | einfach | Testlücke | get_safety_status pflegt die Liste destruktiver Tools von Hand, ohne exakten Parity-Test | `src/NodePilot.Mcp/Tools/DiscoveryTools.cs:110` |
 | core-data#1 | Low | einfach | Struktur | Core ist kein reiner Shared Kernel: Client-Infrastruktur und Api-only-Code liegen im Kernel (korr.) | `src/NodePilot.Core/NodePilot.Core.csproj:4` |
-| core-data#2 | Low | zweifach | Testlücke | SQL-Server-Zweig des HA-kritischen Outbox-Claims wird in CI nur textuell geprüft (korr.) | `src/NodePilot.Data/ExecutionDispatchOutboxClaimer.cs:63` |
-| core-data#3 | Low | einfach | Codequalität | Interfaces mit genau einer Implementierung und ohne Test-Naht | `src/NodePilot.Api/Program.cs:199` |
-| core-data#4 | Low | einfach | Codequalität | CredentialStore trägt einen synchronen Testpfad in der Produktionsklasse (korr.) | `src/NodePilot.Data/CredentialStore.cs:189` |
+| core-data#2 | Low | zweifach | Testlücke | SQL-Server-Zweig des HA-kritischen Outbox-Claims wird in CI nur textuell geprüft (korr.) → #577 | `src/NodePilot.Data/ExecutionDispatchOutboxClaimer.cs:63` |
+| core-data#3 | Low | einfach | Codequalität | Interfaces mit genau einer Implementierung und ohne Test-Naht *(teilweise behoben)* | `src/NodePilot.Api/Program.cs:199` |
+| core-data#4 | Low | einfach | Codequalität | CredentialStore trägt einen synchronen Testpfad in der Produktionsklasse (korr.) → #578 | `src/NodePilot.Data/CredentialStore.cs:189` |
 | core-data#5 | Low | einfach | Performance | NotificationRuleStore.DeleteAsync materialisiert ganze Ledger-Tabellen vor dem Löschen | `src/NodePilot.Data/NotificationRuleStore.cs:228` |
 | core-data#6 | Low | einfach | Wartbarkeit | Mechanisch zerbrochene Kommentare im heikelsten Concurrency-Code | `src/NodePilot.Data/Availability/DatabaseAvailabilityTracker.cs:117` |
-| deploy-installers#2 | Low | zweifach | Sicherheit | Setup-Transcript speichert den Legacy-Trigger-Key (und ggf. das Setup-Token) dauerhaft im Klartext (korr.) | `deploy/Invoke-NodePilotSetup.ps1:681` |
 | deploy-installers#3 | Low | einfach | Testlücke | Kerninvarianten des Installers werden überwiegend per Regex auf Quelltext getestet, was Kommentare festschreibt (korr.) | `deploy/Test-DeploymentTemplates.ps1:154` |
 | deploy-installers#4 | Low | einfach | Wartbarkeit | Install und Update duplizieren Kernhelfer, schon mit Drift, und Bibliotheken hängen an Logging-Funktionen der Aufrufer (korr.) | `deploy/Install-NodePilot.ps1:577` |
-| deploy-installers#5 | Low | einfach | Logik/Architektur | Update erlaubt stillen Downgrade auf ein älteres signiertes Artefakt | `deploy/Update-NodePilot.ps1:430` |
 | deploy-installers#6 | Low | einfach | Wartbarkeit | Desktop-Vollupdate: Rollback-Kopien wachsen unbegrenzt, Payload wird ungeprüft ausgeführt | `deploy/desktop/Update-Desktop.ps1:123` |
 | deploy-installers#7 | Low | einfach | Codequalität | Ausgelieferte Installer-Bibliothek enthält Nicht-ASCII-Text; der ASCII-Guard deckt nur die .iss ab | `deploy/ServiceControl.ps1:122` |
-| deploy-installers#8 | Low | einfach | Sicherheit | Klartext der Seed-Passphrase bleibt im nicht verwalteten Speicher | `deploy/Install-NodePilot.ps1:1385` |
 | docs-ui-website#1 | Low | einfach | Performance | Doku-Bundle lädt den kompletten zweisprachigen Markdown-Korpus eager (korr.) | `src/nodepilot-docs-ui/src/lib/content.ts:7` |
-| docs-ui-website#2 | Low | einfach | Wartbarkeit | Website-Controller und renderSiteContent sind monolithisch und nur per E2E prüfbar (korr.) | `src/nodepilot-docs-ui/src/site/seo.ts:29` |
+| docs-ui-website#2 | Low | einfach | Wartbarkeit | Website-Controller und renderSiteContent sind monolithisch und nur per E2E prüfbar (korr.) *(teilweise behoben)* | `src/nodepilot-docs-ui/src/site/seo.ts:29` |
 | docs-ui-website#3 | Low | einfach | Codequalität | Sprachtexte als Ternaries im Code umgehen Dictionaries und Paritäts-Guards | `src/nodepilot-docs-ui/src/site/seo.ts:109` |
 | docs-ui-website#4 | Low | einfach | Sicherheit | Site-CSP erlaubt 'unsafe-eval' und blob:-Skripte für die ganze Document-Root | `src/nodepilot-docs-ui/src/site/public/.htaccess:28` |
 | docs-ui-website#5 | Low | einfach | Wartbarkeit | Publish-Site: keine Bereinigung entfernter Dateien, Retry-Block dreifach kopiert, Abweichung vom Skriptkopf-Standard | `deploy/Publish-Site.ps1:324` |
 | docs-ui-website#6 | Low | einfach | Performance | Website rendert das komplette Prerendering im Client erneut und bündelt dafür alle Seiteninhalte | `src/nodepilot-docs-ui/src/site/main.ts:799` |
 | docs-ui-website#7 | Low | einfach | Logik/Architektur | Doku-Head-Vertrag doppelt implementiert (Prerender per Regex vs. Runtime per DOM) | `src/nodepilot-docs-ui/src/lib/docs-head.ts:5` |
 | docs-ui-website#8 | Low | einfach | Performance | Doku-Prerender wird beim Booten verworfen statt hydriert, mit abweichendem Layout | `src/nodepilot-docs-ui/src/main.tsx:9` |
-| engine-activities-powershell-remote#2 | Low | einfach | Performance | WinRM-Abbruch ruft ps.Stop() synchron im Token-Callback auf und hat keine Grace-Frist (korr.) | `src/NodePilot.Remote/WinRmSession.cs:98` |
-| engine-activities-powershell-remote#3 | Low | einfach | Logik/Architektur | Gepoolte WinRM-Runspaces geben Sitzungszustand an fremde Schritte und Workflows weiter | `src/NodePilot.Remote/WinRmSessionPool.cs:61` |
-| engine-activities-powershell-remote#4 | Low | einfach | Wartbarkeit | Ziel- und Credential-Auflösung samt Localhost-Bypass ist fünffach implementiert und driftet bereits (korr.) | `src/NodePilot.Engine/Activities/BaseActivity.cs:74` |
+| engine-activities-powershell-remote#2 | Low | einfach | Performance | WinRM-Abbruch ruft ps.Stop() synchron im Token-Callback auf und hat keine Grace-Frist (korr.) *(teilweise behoben)* | `src/NodePilot.Remote/WinRmSession.cs:98` |
+| engine-activities-powershell-remote#3 | Low | einfach | Logik/Architektur | Gepoolte WinRM-Runspaces geben Sitzungszustand an fremde Schritte und Workflows weiter *(teilweise behoben)* | `src/NodePilot.Remote/WinRmSessionPool.cs:61` |
 | engine-activities-powershell-remote#5 | Low | einfach | Performance | Synchrone DNS-Auflösung ohne Timeout in asynchronen Ausführungspfaden | `src/NodePilot.Engine/Activities/BaseActivity.cs:173` |
 | engine-activities-powershell-remote#6 | Low | einfach | Codequalität | Uneinheitliche Config-Verarbeitung: vier Timeout-Parser, stiller Engine-Fallback, doppelte Konstanten (korr.) | `src/NodePilot.Engine/Activities/ForEachActivity.cs:158` |
-| engine-execution-core#2 | Low | zweifach | Logik/Architektur | Kantenbedingungen sehen die ungefilterte Ergebnis-Map und hängen damit vom Timing ab (korr.) | `src/NodePilot.Engine/Execution/WorkflowScheduler.cs:430` |
+| engine-execution-core#2 | Low | zweifach | Logik/Architektur | Kantenbedingungen sehen die ungefilterte Ergebnis-Map und hängen damit vom Timing ab (korr.) → #863 | `src/NodePilot.Engine/Execution/WorkflowScheduler.cs:430` |
 | engine-execution-core#5 | Low | einfach | Codequalität | Vorphase von ExecuteAsync liegt außerhalb des einzigen Cleanup-Pfads | `src/NodePilot.Engine/WorkflowEngine.cs:499` |
-| engine-execution-core#6 | Low | einfach | Performance | Retry-Backoff ist bei maxDelayMs=0 ungedeckelt und hält währenddessen den globalen Step-Slot (korr.) | `src/NodePilot.Engine/Execution/RetryPolicy.cs:48` |
+| engine-execution-core#6 | Low | einfach | Performance | Retry-Backoff ist bei maxDelayMs=0 ungedeckelt und hält währenddessen den globalen Step-Slot (korr.) *(teilweise behoben)* | `src/NodePilot.Engine/Execution/RetryPolicy.cs:48` |
 | engine-execution-core#7 | Low | einfach | Wartbarkeit | StepRunner.ExecuteAsync wiederholt die Abschlusssequenz dreifach | `src/NodePilot.Engine/Execution/StepRunner.cs:345` |
-| gap-engine-remote-activities-guards#3 | Low | zweifach | Sicherheit | ServiceManagement übergibt den als nicht vertrauenswürdig eingestuften Dienstnamen als natives Argument an sc.exe (korr.) | `src/NodePilot.Engine/Activities/ServiceManagementActivity.cs:170` |
 | gap-engine-remote-activities-guards#4 | Low | einfach | Wartbarkeit | PowerShell-Guard-Logik liegt mehrfach dupliziert vor; gleichnamige Funktion wird im selben Skript zweimal definiert | `src/NodePilot.Engine/Activities/ZipOperationActivity.cs:25` |
 | gap-engine-remote-activities-guards#5 | Low | einfach | Performance | Ordnerkopie walkt pro Datei mehrfach den vollständigen Pfad ab Volume-Root | `src/NodePilot.Engine/Activities/FolderOperationActivity.cs:124` |
 | gap-engine-remote-activities-guards#6 | Low | einfach | Codequalität | ForEach lädt die Parent-Execution doppelt und überspringt bei leerer Liste die Prüfung des Child-Workflows | `src/NodePilot.Engine/Activities/ForEachActivity.cs:74` |
@@ -883,79 +844,56 @@ Schwere = endgültige Einstufung nach Gegenprüfung (bei zwei Prüfern die niedr
 | gap-external-identity#5 | Low | einfach | Struktur | ScimProvisioningService vermischt Protokoll-Parsing, Domänenregeln und Transaktionssteuerung (korr.) | `src/NodePilot.Api/Security/Scim/ScimProvisioningService.cs:30` |
 | gap-external-identity#6 | Low | einfach | Performance | SCIM-Gruppenliste: N+1-Abfragen mit vollständigen Mitgliederlisten | `src/NodePilot.Api/Security/Scim/ScimProvisioningService.cs:404` |
 | gap-external-identity#7 | Low | einfach | Codequalität | Login-Throttle nutzt die IdempotencyKeys-Tabelle mit Magic-Scope Guid.Empty (korr.) | `src/NodePilot.Api/Security/ExternalLoginThrottle.cs:21` |
-| gap-llm-trust-boundary#1 | Low | zweifach | Sicherheit | Globaler Profil-API-Key wird an per-Node überschriebene baseUrl gesendet (korr.) | `src/NodePilot.Ai/ILlmClientFactory.cs:63` |
 | gap-llm-trust-boundary#3 | Low | einfach | Performance | Uneinheitliche Eingabe-Obergrenzen der Generierungs-Endpoints | `src/NodePilot.Api/Controllers/AiController.cs:166` |
-| gap-llm-trust-boundary#4 | Low | einfach | Sicherheit | Secret-Keys mit Nicht-String-Werten werden nicht maskiert | `src/NodePilot.Core/WorkflowDefinitions/WorkflowSecretRedactor.cs:111` |
-| gap-llm-trust-boundary#5 | Low | einfach | Sicherheit | IPv6-Metadata-Endpunkte weder im Literal- noch im Connect-Guard abgedeckt | `src/NodePilot.Ai/LlmEndpointGuard.cs:133` |
 | gap-llm-trust-boundary#6 | Low | einfach | Codequalität | Duplizierte JSON-Retry- und Token-Akkumulationsschleife | `src/NodePilot.Ai/WorkflowGenerationService.cs:122` |
-| gap-ui-admin-ops-pages#1 | Low | zweifach | Codequalität | OIDC-Rollen-Mapping: Eingabefeld verliert bei jedem Tastendruck den Fokus | `src/nodepilot-ui/src/components/admin-settings/AuthenticationSection.tsx:709` |
-| gap-ui-admin-ops-pages#2 | Low | zweifach | Logik/Architektur | Aufgeklappte Step-Details auf der Executions-Seite werden nie aktualisiert (korr.) | `src/nodepilot-ui/src/pages/ExecutionsPage.tsx:516` |
-| gap-ui-admin-ops-pages#3 | Low | zweifach | Wartbarkeit | Alerting-Routen-Editor doppelt implementiert und auseinandergelaufen: Secret im System-Editor nicht löschbar (korr.) | `src/nodepilot-ui/src/components/alerting/AlertingRuleEditor.tsx:346` |
+| gap-ui-admin-ops-pages#2 | Low | zweifach | Logik/Architektur | Aufgeklappte Step-Details auf der Executions-Seite werden nie aktualisiert (korr.) → #865 | `src/nodepilot-ui/src/pages/ExecutionsPage.tsx:516` |
 | gap-ui-admin-ops-pages#4 | Low | einfach | Codequalität | Settings-Formular-Widgets mehrfach kopiert statt aus SectionFormHelpers importiert (korr.) | `src/nodepilot-ui/src/components/admin-settings/SectionFormHelpers.tsx:305` |
-| gap-ui-admin-ops-pages#5 | Low | einfach | Codequalität | Formular-Labels sind überwiegend nicht mit ihren Eingabefeldern verknüpft | `src/nodepilot-ui/src/components/admin-settings/SectionFormHelpers.tsx:294` |
-| gap-ui-admin-ops-pages#6 | Low | einfach | Wartbarkeit | Hartcodierte helle Tailwind-Farbliterale trotz Token-Regel | `src/nodepilot-ui/src/components/admin-settings/AuthenticationSection.tsx:519` |
-| gap-ui-admin-ops-pages#7 | Low | einfach | Codequalität | Uneinheitliche Mutationsmuster: Credential-Speichern ohne Pending-Sperre, Inline-api-Aufrufe in Dialogen (korr.) | `src/nodepilot-ui/src/pages/SettingsPage.tsx:318` |
+| gap-ui-admin-ops-pages#5 | Low | einfach | Codequalität | Formular-Labels sind überwiegend nicht mit ihren Eingabefeldern verknüpft → #868 | `src/nodepilot-ui/src/components/admin-settings/SectionFormHelpers.tsx:294` |
+| gap-ui-admin-ops-pages#6 | Low | einfach | Wartbarkeit | Hartcodierte helle Tailwind-Farbliterale trotz Token-Regel → #853 | `src/nodepilot-ui/src/components/admin-settings/AuthenticationSection.tsx:519` |
 | gap-ui-admin-ops-pages#8 | Low | einfach | Anti-Pattern | Zwei Chat-Implementierungen mit kopiertem Thread-Gerüst und unterschiedlicher Stream-Ownership | `src/nodepilot-ui/src/components/ai/AiWorkflowChatPanel.tsx:94` |
-| gap-ui-designer-subcomponents#1 | Low | zweifach | Logik/Architektur | ConditionBuilder bildet gültige Bedingungsformen nicht ab (not(group), source 'manual', Verweise auf nicht mehr vorgelagerte Steps) (korr.) | `src/nodepilot-ui/src/components/designer/ConditionBuilder.tsx:344` |
 | gap-ui-designer-subcomponents#3 | Low | einfach | Anti-Pattern | Konfigurationseditoren schreiben Defaults per useEffect in den Knoten, auch im Read-only-Modus (korr.) | `src/nodepilot-ui/src/components/designer/properties/activities/ScheduledTaskConfig.tsx:43` |
-| gap-ui-designer-subcomponents#4 | Low | einfach | Logik/Architektur | Verbindungstest zeigt nach Knoten- oder Maschinenwechsel das alte Ergebnis | `src/nodepilot-ui/src/components/designer/PropertiesPanel.tsx:660` |
-| gap-ui-designer-subcomponents#5 | Low | einfach | Codequalität | Fehler bei Cancel und Resume werden verschluckt bzw. nicht angezeigt (korr.) | `src/nodepilot-ui/src/components/designer/header/RunControls.tsx:32` |
 | gap-ui-designer-subcomponents#6 | Low | einfach | Wartbarkeit | Doppelte Endpunkt-Aufrufe ohne gemeinsame API-Funktion (Step-Test, Global-Variablen) (korr.) | `src/nodepilot-ui/src/components/designer/properties/StepTestPanel.tsx:135` |
-| gap-ui-designer-subcomponents#7 | Low | einfach | Codequalität | Formular- und Dialogsemantik: Labels nicht verknüpft, Designer-Modals ohne gemeinsame Hülle (korr.) | `src/nodepilot-ui/src/components/designer/properties/shared.tsx:187` |
+| gap-ui-designer-subcomponents#7 | Low | einfach | Codequalität | Formular- und Dialogsemantik: Labels nicht verknüpft, Designer-Modals ohne gemeinsame Hülle (korr.) → #868 | `src/nodepilot-ui/src/components/designer/properties/shared.tsx:187` |
 | gap-ui-designer-subcomponents#8 | Low | einfach | Wartbarkeit | activity-config-reference.json kennt die REST-Proxy-Schlüssel nicht, die Editor und Engine verwenden | `src/NodePilot.Core/Activities/Embedded/activity-config-reference.json:303` |
-| scheduler#3 | Low | zweifach | Anti-Pattern | Konfigurationslesen außerhalb der inneren try-Grenze kann den Host stoppen (korr.) | `src/NodePilot.Scheduler/WorkflowStatsRefresher.cs:89` |
 | scheduler#5 | Low | einfach | Performance | Execution-Collector verarbeitet höchstens 200 terminale Executions pro 30-s-Pass | `src/NodePilot.Scheduler/Notifications/ExecutionEventSupport.cs:27` |
-| scheduler#6 | Low | einfach | Codequalität | SIEM-Weiterleitung von TRIGGER_FIRE_SUPPRESSED vor dem Transaktions-Commit | `src/NodePilot.Scheduler/TriggerOrchestrator.cs:880` |
 | scheduler#7 | Low | einfach | Wartbarkeit | Test-Seams und Doppelpfad im produktiven Trigger-Vertrag | `src/NodePilot.Scheduler/ITriggerSource.cs:61` |
-| scorch-import#2 | Low | einfach | Codequalität | Abgelehnte generierte Definition: Runbook fällt weg, der Validierungsgrund wird verworfen (korr.) | `src/NodePilot.Api/Controllers/WorkflowImportExportController.cs:453` |
-| scorch-import#3 | Low | einfach | Testlücke | XML-Härtung (M-14), Encoding-Erkennung und Entity-Abwehr sind durch keinen Test abgesichert (korr.) | `src/NodePilot.Engine/Scorch/ScorchImporter.cs:91` |
+| scorch-import#2 | Low | einfach | Codequalität | Abgelehnte generierte Definition: Runbook fällt weg, der Validierungsgrund wird verworfen (korr.) *(teilweise behoben)* | `src/NodePilot.Api/Controllers/WorkflowImportExportController.cs:453` |
 | scorch-import#4 | Low | einfach | Performance | Item-Cap greift erst nach der kompletten Übersetzung, der Parse ist synchron und nicht abbrechbar | `src/NodePilot.Api/Controllers/WorkflowImportExportController.cs:358` |
 | scorch-import#5 | Low | einfach | Wartbarkeit | Warnungen sind ein flaches String-Protokoll ohne Schwere, Code und Ort (korr.) | `src/NodePilot.Engine/Scorch/ScorchImporter.cs:1591` |
 | scorch-import#6 | Low | einfach | Struktur | ScorchImporter bündelt fünf Verantwortlichkeiten und konvertiert jede Definition viermal | `src/NodePilot.Engine/Scorch/ScorchImporter.cs:498` |
-| switcher-desktop#2 | Low | zweifach | Sicherheit | Electron-Fuses werden beim Paketieren nicht gehärtet (korr.) | `src/nodepilot-desktop/scripts/package.mjs:25` |
-| switcher-desktop#4 | Low | einfach | Testlücke | Sicherheits- und Prozess-Runtime ohne Tests: P/Invoke-Gateway und main.ts (korr.) | `src/NodePilot.Switcher/Services/SwitchCoordinator.cs:22` |
-| switcher-desktop#5 | Low | einfach | Codequalität | "Restart backend" meldet einen fehlgeschlagenen Restart-Service nicht | `src/nodepilot-desktop/src/backendRestart.ts:14` |
+| switcher-desktop#4 | Low | einfach | Testlücke | Sicherheits- und Prozess-Runtime ohne Tests: P/Invoke-Gateway und main.ts (korr.) *(teilweise behoben)* | `src/NodePilot.Switcher/Services/SwitchCoordinator.cs:22` |
+| switcher-desktop#5 | Low | einfach | Codequalität | "Restart backend" meldet einen fehlgeschlagenen Restart-Service nicht *(teilweise behoben)* | `src/nodepilot-desktop/src/backendRestart.ts:14` |
 | switcher-desktop#6 | Low | einfach | Wartbarkeit | Switcher-Dateilog fällt still aus, obwohl er die einzige dauerhafte Spur des Umschaltens ist | `src/NodePilot.Switcher/Services/ActivityLogger.cs:37` |
-| tests-api-clients#1 | Low | zweifach | Testlücke | Admin-only-Rollengates der administrativen Controller sind durch keinen Test gepinnt | `tests/NodePilot.Api.Tests/Hosting/RoleMatrixSmokeTests.cs:73` |
-| tests-api-clients#2 | Low | zweifach | Testlücke | Audit-Guard übersieht still 8 von 111 mutierenden Aktionen (korr.) | `tests/NodePilot.Api.Tests/Architecture/MutatingActionAuditCoverageTests.cs:12` |
-| tests-api-clients#3 | Low | zweifach | Testlücke | Endpoint- und DTO-Paritäts-Guards sehen die gesamte Agents-API nicht (korr.) | `tests/NodePilot.Cli.Tests/Api/EndpointClientCoverageTests.cs:257` |
 | tests-api-clients#4 | Low | einfach | Testlücke | RBAC-IL-Guard hat eine veraltete Ausnahme und keine Selbstprüfung | `tests/NodePilot.Api.Tests/Rbac/RbacControllerCoverageGuardTests.cs:43` |
-| tests-api-clients#5 | Low | einfach | Anti-Pattern | Feste Task.Delay-Fenster für Negativ-Assertions und unserialisierte Env-Mutation (korr.) | `tests/NodePilot.Api.Tests/Hosting/ClusterFailoverRecoveryHostTests.cs:125` |
+| tests-api-clients#5 | Low | einfach | Anti-Pattern | Feste Task.Delay-Fenster für Negativ-Assertions und unserialisierte Env-Mutation (korr.) → #867 | `tests/NodePilot.Api.Tests/Hosting/ClusterFailoverRecoveryHostTests.cs:125` |
 | tests-api-clients#6 | Low | einfach | Wartbarkeit | Wiederholte Controller-Konstruktion in großen Testdateien | `tests/NodePilot.Api.Tests/Controllers/AuthControllerTests.cs:83` |
-| tests-engine-data-ai#1 | Low | einfach | Testlücke | waitAny-Engine-Test ist vakuös: ohne Trigger-Knoten läuft kein Step, die Stoppuhr besteht trivial | `tests/NodePilot.Engine.Tests/WorkflowEngineTests.cs:1072` |
 | tests-engine-data-ai#2 | Low | einfach | Testlücke | Engine-Harness teilt eine SQLite-Verbindung zwischen parallelen Step-Scopes und erzwingt Sleeps gegen Races (korr.) | `tests/NodePilot.Engine.Tests/Helpers/TestDbContext.cs:42` |
-| tests-engine-data-ai#3 | Low | einfach | Testlücke | Zeitbasierte Negativbeweise und lange feste Wartezeiten in Barrier- und Watcher-Tests (korr.) | `tests/NodePilot.Engine.Tests/WorkflowEngineUnpersistedFailureTests.cs:483` |
-| tests-engine-data-ai#4 | Low | einfach | Testlücke | CredentialStore-Test behauptet "SwallowsAuditFailure", prüft das Schlucken aber nicht | `tests/NodePilot.Data.Tests/CredentialStoreCoverageTests.cs:125` |
+| tests-engine-data-ai#3 | Low | einfach | Testlücke | Zeitbasierte Negativbeweise und lange feste Wartezeiten in Barrier- und Watcher-Tests (korr.) → #867 | `tests/NodePilot.Engine.Tests/WorkflowEngineUnpersistedFailureTests.cs:483` |
 | tests-engine-data-ai#5 | Low | einfach | Codequalität | Agent-Testcluster weicht von Namens- und Assertion-Konvention ab und konzentriert sich in einer Riesendatei | `tests/NodePilot.Ai.Tests/AgentRuntimeTests.cs:13` |
 | tests-engine-data-ai#6 | Low | einfach | Wartbarkeit | Zugehörigkeit zur SerialEngineTests-Collection ist reine Konvention ohne Guard | `tests/NodePilot.Engine.Tests/SerialEngineTestCollection.cs:12` |
-| tests-engine-data-ai#7 | Low | einfach | Testlücke | SQL-Server-Provider-Tests laufen in CI nie (dokumentiert) (korr.) | `.github/workflows/ci.yml:336` |
+| tests-engine-data-ai#7 | Low | einfach | Testlücke | SQL-Server-Provider-Tests laufen in CI nie (dokumentiert) (korr.) → #577 | `.github/workflows/ci.yml:336` |
 | tests-frontend-e2e#1 | Low | einfach | Testlücke | MSW lässt ungemockte Requests in fast allen Suites still durch, auch im zentralen Designer-Test (korr.) | `src/nodepilot-ui/src/__tests__/pages/WorkflowEditorPage.test.tsx:183` |
 | tests-frontend-e2e#2 | Low | einfach | Wartbarkeit | E2E-Mocks sind untypisiert und werden von keinem Typecheck erfasst (korr.) | `src/nodepilot-ui/e2e/fixtures/mockApi.ts:55` |
-| tests-frontend-e2e#3 | Low | einfach | Anti-Pattern | Feste Wartezeiten als Synchronisation, Flakes werden in CI durch Retries maskiert (korr.) | `src/nodepilot-ui/e2e/operations.spec.ts:320` |
+| tests-frontend-e2e#3 | Low | einfach | Anti-Pattern | Feste Wartezeiten als Synchronisation, Flakes werden in CI durch Retries maskiert (korr.) → #867 | `src/nodepilot-ui/e2e/operations.spec.ts:320` |
 | tests-frontend-e2e#4 | Low | einfach | Testlücke | Live-Ausführungspfad (SignalR) hat keine Browser-Abdeckung (korr.) | `src/nodepilot-ui/e2e/fixtures/mockApi.ts:207` |
 | tests-frontend-e2e#5 | Low | einfach | Codequalität | Testgerüst pro Datei kopiert statt geteilt | `src/nodepilot-ui/src/__tests__/pages/WorkflowsPage.test.tsx:16` |
 | tests-frontend-e2e#6 | Low | einfach | Testlücke | Assertion-freier Screenshot-Helfer läuft in jedem CI-E2E-Lauf mit | `src/nodepilot-ui/e2e/_all-screens.spec.ts:97` |
-| tests-frontend-e2e#7 | Low | einfach | Codequalität | Zentrale Save-/Publish-Tests prüfen nur, dass ein Request kam (korr.) | `src/nodepilot-ui/src/__tests__/pages/WorkflowEditorPage.test.tsx:604` |
+| tests-frontend-e2e#7 | Low | einfach | Codequalität | Zentrale Save-/Publish-Tests prüfen nur, dass ein Request kam (korr.) *(teilweise behoben)* | `src/nodepilot-ui/src/__tests__/pages/WorkflowEditorPage.test.tsx:604` |
 | tests-frontend-e2e#8 | Low | einfach | Testlücke | webPreferences des Desktop-Hauptfensters ohne Test | `src/nodepilot-desktop/src/main.ts:236` |
-| ui-app-pages-components#2 | Low | zweifach | Logik/Architektur | Render-Fehler in Routen umgehen die lokalisierte App-ErrorBoundary (korr.) | `src/nodepilot-ui/src/App.tsx:99` |
-| ui-app-pages-components#4 | Low | zweifach | Wartbarkeit | Gemeinsame Dialog-Primitive ohne Dialog-Semantik, viele handgebaute Overlays (korr.) | `src/nodepilot-ui/src/components/common/ModalShell.tsx:30` |
+| ui-app-pages-components#4 | Low | zweifach | Wartbarkeit | Gemeinsame Dialog-Primitive ohne Dialog-Semantik, viele handgebaute Overlays (korr.) *(teilweise behoben)* → #585 | `src/nodepilot-ui/src/components/common/ModalShell.tsx:30` |
 | ui-app-pages-components#5 | Low | einfach | Struktur | WorkflowsPage dupliziert das Zeilen-Rendering für Mobil und Desktop und bündelt zu viele Zuständigkeiten (korr.) | `src/nodepilot-ui/src/pages/WorkflowsPage.tsx:885` |
-| ui-app-pages-components#6 | Low | einfach | Anti-Pattern | Token-Regel breit verletzt, Validierungsbanner trotz vorhandenem Helper kopiert (korr.) | `src/nodepilot-ui/src/components/admin-settings/AuthenticationSection.tsx:519` |
-| ui-app-pages-components#7 | Low | einfach | Codequalität | Dashboard bleibt bei fehlgeschlagenem Erstaufruf im Ladezustand hängen | `src/nodepilot-ui/src/pages/DashboardPage.tsx:184` |
+| ui-app-pages-components#6 | Low | einfach | Anti-Pattern | Token-Regel breit verletzt, Validierungsbanner trotz vorhandenem Helper kopiert (korr.) → #853 | `src/nodepilot-ui/src/components/admin-settings/AuthenticationSection.tsx:519` |
 | ui-app-pages-components#8 | Low | einfach | Struktur | Tabellenkopf-Muster vielfach kopiert, Seiten importieren Primitive aus dem Designer-Baum (korr.) | `src/nodepilot-ui/src/pages/MachinesPage.tsx:433` |
-| ui-designer#2 | Low | zweifach | Anti-Pattern | Laufzeit-Annotationen werden als State im autoritativen Rohgraphen gespeichert (korr.) | `src/nodepilot-ui/src/hooks/useNodeAnnotations.ts:76` |
-| ui-designer#3 | Low | zweifach | Struktur | WorkflowEditorPage überschreitet den dokumentierten Wiederaufnahme-Trigger, Prop-Drilling in 90-Prop-Komponenten (korr.) | `docs/roadmap.md:365` |
 | ui-designer#4 | Low | zweifach | Wartbarkeit | ActivityNode: vier Render-Varianten mit mehrfach duplizierter Overlay-Logik in einer ~820-Zeilen-Funktion (korr.) | `src/nodepilot-ui/src/components/designer/nodes/ActivityNode.tsx:345` |
 | ui-designer#5 | Low | einfach | Codequalität | History-/Dirty-Protokoll wird an über 20 Stellen manuell wiederholt, ein Handler hat Seiteneffekte im State-Updater (korr.) | `src/nodepilot-ui/src/pages/WorkflowEditorPage.tsx:588` |
-| ui-designer#6 | Low | einfach | Codequalität | Fehlschläge werden still verschluckt: Cancel-Shortcut und PNG-Export | `src/nodepilot-ui/src/pages/WorkflowEditorPage.tsx:1211` |
-| ui-designer#7 | Low | einfach | Codequalität | Konventionsdrift: hartkodierter deutscher Hinweis und Tailwind-Farbliterale | `src/nodepilot-ui/src/pages/WorkflowEditorPage.tsx:513` |
+| ui-designer#7 | Low | einfach | Codequalität | Konventionsdrift: hartkodierter deutscher Hinweis und Tailwind-Farbliterale *(teilweise behoben)* → #853 | `src/nodepilot-ui/src/pages/WorkflowEditorPage.tsx:513` |
 | ui-designer#8 | Low | einfach | Codequalität | Sortier-Komparator mit nur einem Argument trägt die Invariante 'Gruppen vor Kindern' | `src/nodepilot-ui/src/pages/WorkflowEditorPage.tsx:369` |
 | ui-state-data-layer#1 | Low | einfach | Logik/Architektur | Operations-/Dashboard-Feed tritt nach DB-Ausfall bei stehendem WebSocket nicht erneut bei (korr.) | `src/nodepilot-ui/src/hooks/useLiveOpsFeed.ts:82` |
 | ui-state-data-layer#2 | Low | einfach | Codequalität | Globale Retry-Policy wiederholt deterministische 4xx-Fehler (korr.) | `src/nodepilot-ui/src/queryClient.ts:13` |
 | ui-state-data-layer#3 | Low | einfach | Performance | Keine AbortSignal-Weitergabe für Queries: React Query kann Requests nicht abbrechen (korr.) | `src/nodepilot-ui/src/api/client.ts:202` |
 | ui-state-data-layer#4 | Low | einfach | Wartbarkeit | Frontend-DTO-Synchronität nur für zwei Interfaces abgesichert; immer gelieferte Felder als optional mit Fail-open-Fallback typisiert (korr.) | `tests/NodePilot.Cli.Tests/Api/ApiDtoParityTests.cs:110` |
 | ui-state-data-layer#5 | Low | einfach | Codequalität | Parallel-Transport in adminSettings.ts dupliziert authedFetch mit abweichendem Verhalten (korr.) | `src/nodepilot-ui/src/api/adminSettings.ts:27` |
-| ui-state-data-layer#6 | Low | einfach | Wartbarkeit | Toter Refresh-Pfad im authStore mit veraltetem Lebensdauer-Hinweis | `src/nodepilot-ui/src/stores/authStore.ts:206` |
+| ui-state-data-layer#6 | Low | einfach | Wartbarkeit | Toter Refresh-Pfad im authStore mit veraltetem Lebensdauer-Hinweis *(teilweise behoben)* | `src/nodepilot-ui/src/stores/authStore.ts:206` |
 | ui-state-data-layer#7 | Low | zweifach | Anti-Pattern | Produktiver Transport trägt Kompatibilitätszweige für Testmocks und Casing (korr.) | `src/nodepilot-ui/src/api/paging.ts:16` |
 | x-architecture-dependencies#1 | Low | einfach | Wartbarkeit | Frontend-Datenzugriff: src/api ist nur HTTP-Fassade, Endpunkte und Query-Keys sind über 51 Dateien verstreut (korr.) | `src/nodepilot-ui/src/components/admin-settings/AgentsSection.tsx:116` |
 | x-architecture-dependencies#2 | Low | einfach | Anti-Pattern | Prozessweiter statischer Zustand über WorkflowEngine hinaus, mit dokumentierten Test-Flakes (korr.) | `src/NodePilot.Api/Hubs/ExecutionHub.cs:45` |
@@ -965,25 +903,22 @@ Schwere = endgültige Einstufung nach Gegenprüfung (bei zwei Prüfern die niedr
 | x-duplication-reuse#4 | Low | einfach | Codequalität | Sechs Dauer-Formatierer mit abweichender Ausgabe, exportiertes formatMs zweimal kopiert | `src/nodepilot-ui/src/components/designer/execution/ExecutionPanelParts.tsx:59` |
 | x-duplication-reuse#5 | Low | einfach | Sicherheit | pg_dump/pg_restore im Desktop-Update umgehen den sicheren psql-Helfer und setzen PGPASSWORD prozessweit | `deploy/desktop/Update-Desktop.ps1:82` |
 | x-duplication-reuse#6 | Low | einfach | Codequalität | Sechs Loopback-Prädikate im Backend, zwei davon identische Literal-Prüfungen | `src/NodePilot.Ai/LlmEndpointGuard.cs:94` |
-| x-duplication-reuse#7 | Low | einfach | Testlücke | Ungeschützter Spiegel: Operations-Fensterliste an vier Stellen, dazu ein veralteter Spiegel-Kommentar (korr.) | `src/NodePilot.Api/Controllers/OperationsController.cs:57` |
-| x-performance#1 | Low | zweifach | Logik/Architektur | Executions-Historie aktualisiert sich nicht live, obwohl der Kommentar SignalR-Invalidierung zusagt | `src/nodepilot-ui/src/pages/ExecutionsPage.tsx:111` |
+| x-duplication-reuse#7 | Low | einfach | Testlücke | Ungeschützter Spiegel: Operations-Fensterliste an vier Stellen, dazu ein veralteter Spiegel-Kommentar (korr.) *(teilweise behoben)* | `src/NodePilot.Api/Controllers/OperationsController.cs:57` |
 | x-performance#2 | Low | einfach | Performance | Fünf ungecachte 7/14-Tage-GROUP-BY-Scans pro Dashboard-Request trotz vorhandener Stunden-Rollups | `src/NodePilot.Api/Controllers/DashboardController.cs:244` |
 | x-performance#3 | Low | einfach | Performance | Executions-Suche: nicht sargierbares OR-Prädikat, doppelt ausgewertet (Count und Seite) | `src/NodePilot.Api/Controllers/ExecutionsController.cs:149` |
 | x-performance#5 | Low | einfach | Performance | Regex-Cache der Edge-Conditions füllt sich einmal und verdrängt nie | `src/NodePilot.Engine/Conditions/ConditionEvaluator.cs:309` |
-| x-readability-complexity#1 | Low | einfach | Wartbarkeit | WorkflowEditorPage: dokumentierter Wiederaufnahme-Auslöser überschritten, eine Komponente mit ca. 1890 Zeilen (korr.) | `src/nodepilot-ui/src/pages/WorkflowEditorPage.tsx:172` |
 | x-readability-complexity#2 | Low | einfach | Testlücke | Installer-Prüfung koppelt per Regex an Quelltext: Churn-Hotspot Nr. 1 und Hemmschuh für den geplanten Installer-Schnitt (korr.) | `deploy/Test-DeploymentTemplates.ps1:134` |
 | x-readability-complexity#3 | Low | einfach | Logik/Architektur | Transaktionale Orchestrierung in sehr langen Controller- und Middleware-Methoden (korr.) | `src/NodePilot.Api/Controllers/WorkflowImportExportController.cs:327` |
 | x-readability-complexity#4 | Low | einfach | Codequalität | Kommentarregel aus CLAUDE.md wird auch in neuem Code verletzt | `src/NodePilot.Engine/Execution/VariableResolver.cs:126` |
 | x-readability-complexity#5 | Low | einfach | Wartbarkeit | SettingsSections: dreifache Handabbildung je Sektion mit duplizierten Default-Literalen | `src/NodePilot.Api/Configuration/SettingsSections.cs:746` |
 | x-readability-complexity#6 | Low | einfach | Struktur | Dateiname verdeckt eigenständige Typen | `src/NodePilot.Api/Diagnostics/RedactedLogFileResult.cs:12` |
-| x-robustness#2 | Low | zweifach | Logik/Architektur | WinRM-Pool: scheinbares Fire-and-forget entsorgt synchron und schluckt Fehler ohne Log (korr.) | `src/NodePilot.Remote/WinRmSessionPool.cs:146` |
 | x-robustness#3 | Low | einfach | Sicherheit | Span-Redaction-Invariante nur punktuell durchgesetzt (korr.) | `src/NodePilot.Scheduler/TriggerOrchestrator.cs:242` |
 | x-robustness#4 | Low | einfach | Codequalität | Workflow-Export ersetzt bei jedem Fehler still die Definition | `src/NodePilot.Api/Controllers/WorkflowImportExportController.cs:859` |
-| x-robustness#5 | Low | einfach | Codequalität | Breite Exception-Typen werden als Fachfehler samt ex.Message an Clients durchgereicht (korr.) | `src/NodePilot.Api/Controllers/CustomActivitiesController.cs:82` |
+| x-robustness#5 | Low | einfach | Codequalität | Breite Exception-Typen werden als Fachfehler samt ex.Message an Clients durchgereicht (korr.) *(teilweise behoben)* | `src/NodePilot.Api/Controllers/CustomActivitiesController.cs:82` |
 | x-security#1 | Low | einfach | Performance | SSRF-Guard löst DNS synchron auf asynchronen Hot-Paths auf (korr.) | `src/NodePilot.Engine/Security/NetworkGuard.cs:53` |
 | api-workflow-surface#6 | ohne | einfach | Wartbarkeit | Geschäftslogik und Abfrage-Aggregation in sehr langen Controller-Methoden (korr.) | `src/NodePilot.Api/Controllers/WorkflowImportExportController.cs:327` |
 | x-architecture-dependencies#4 | ohne | einfach | Struktur | Core vermischt Server-Domänenkern mit Client-SDK-Infrastruktur (korr.) | `src/NodePilot.Core/Clients/TokenStore.cs:16` |
-| x-security#3 | ohne | einfach | Wartbarkeit | Provider-spezifische Dauer-Ausdrücke in Raw-SQL mehrfach dupliziert (korr.) | `src/NodePilot.Api/Services/WorkflowListOrdering.cs:39` |
+| x-security#3 | ohne | einfach | Wartbarkeit | Provider-spezifische Dauer-Ausdrücke in Raw-SQL mehrfach dupliziert (korr.) *(teilweise behoben)* | `src/NodePilot.Api/Services/WorkflowListOrdering.cs:39` |
 
 ## Anhang C — Verworfene Kandidaten
 
