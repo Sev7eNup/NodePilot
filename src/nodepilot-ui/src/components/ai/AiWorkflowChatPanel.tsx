@@ -1,7 +1,6 @@
 import { ChatPersistenceNotice } from './ChatPersistenceNotice';
 import {
   Add,
-  Checkbox,
   Checkmark,
   ChevronDown,
   CircleDash,
@@ -14,6 +13,7 @@ import {
   Renew,
   Reset,
   Send,
+  StopFilledAlt,
   Subtract,
   Tools,
   TrashCan,
@@ -498,7 +498,8 @@ export function AiWorkflowChatPanel({
             )}
           </div>
         )}
-        <div className="flex items-end gap-2 rounded-2xl border border-outline-variant/40 bg-surface-high px-3 py-2 transition-colors focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
+        {/* The container shows focus; `outline-none!` beats the skins' global focus outline. */}
+        <div className="flex items-end gap-2 rounded-2xl border border-outline-variant bg-surface-high py-1.5 pl-3.5 pr-1.5 transition-colors focus-within:border-primary">
           <textarea
             ref={textareaRef}
             value={input}
@@ -508,30 +509,30 @@ export function AiWorkflowChatPanel({
             rows={1}
             disabled={sending}
             aria-label={t('ai:chat.placeholder')}
-            className="max-h-[168px] min-h-[1.5rem] flex-1 resize-none border-0 bg-transparent text-sm leading-relaxed text-on-surface outline-none placeholder:text-on-surface-variant/60"
+            className="my-1 max-h-[168px] min-h-[1.5rem] flex-1 resize-none border-0 bg-transparent text-sm leading-relaxed text-on-surface outline-none! placeholder:text-on-surface-variant/80"
           />
           {sending ? (
             <button
               onClick={handleStop}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-error text-on-error shadow-sm transition-all hover:brightness-110 active:scale-95"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-surface-highest text-error transition-all hover:brightness-110 active:scale-95"
               title={t('ai:chat.stop')}
               aria-label={t('ai:chat.stop')}
             >
-              <Checkbox size={13} className="fill-current" />
+              <StopFilledAlt size={14} />
             </button>
           ) : (
             <button
               onClick={() => sendQuestion(input)}
               disabled={input.trim().length === 0}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary shadow-sm transition-all hover:brightness-110 hover:shadow active:scale-95 disabled:cursor-not-allowed disabled:bg-primary/40 disabled:shadow-none"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary shadow-sm transition-all hover:brightness-110 hover:shadow active:scale-95 disabled:cursor-not-allowed disabled:bg-transparent disabled:text-outline disabled:shadow-none"
               title={t('ai:chat.send')}
               aria-label={t('ai:chat.send')}
             >
-              <Send size={15} />
+              <Send size={16} />
             </button>
           )}
         </div>
-        <p className="mt-1.5 px-1 text-[10px] text-on-surface-variant/70">{t('ai:chat.enterHint')}</p>
+        <p className="mt-1.5 px-0.5 text-[11px] text-on-surface-variant/80">{t('ai:chat.enterHint')}</p>
       </div>
     </aside>
   );

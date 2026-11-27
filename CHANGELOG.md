@@ -41,6 +41,9 @@ Planned version: **1.5.5**.
 
 ### Changed
 
+- The AI chat input shows focus with a single accent-coloured frame. The Minimal and Ion skins no
+  longer draw a second frame around the text inside it. The send button is a plain icon until there
+  is text to send, and the stop button is neutral with a red square.
 - `startProgram` has no default timeout any more. Until now a step without `timeoutSeconds`
   ended the program after 300 seconds; now it waits until the program ends. Set
   `timeoutSeconds` on steps whose program must not run longer than a given time.
