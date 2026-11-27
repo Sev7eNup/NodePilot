@@ -9,7 +9,7 @@ and `docs/alerting.md`, the open GitHub issues, and the session memory. The stat
 was verified against `main` on 2026-08-22 — what is marked done below is in the code.
 On 2026-09-16 the remaining open items from the repository audit (August/September 2026) were added;
 until then it lived as `audit.md` in the repo root; every item was cross-checked against the code beforehand.
-On 2026-11-17 the non-security items of the local audit backlog were merged in; suspected vulnerabilities stay in the unpublished backlog (see `AGENTS.md`).
+On 2026-11-17 the non-security items of the local audit backlog were merged in; suspected vulnerabilities stay in the unpublished backlog.
 
 ## Ground rules
 
