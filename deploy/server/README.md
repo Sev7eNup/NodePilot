@@ -221,7 +221,7 @@ retrying. A worker exiting without a result is reported as a failure.
 Existing installations, including those installed from ZIP, default to an update.
 Configuration, database and identity are retained. A successful update leaves the
 service running. Rollback restores binaries only, so take a database backup before
-updating. Details: [deployment scripts](../README.md#update).
+updating. Details: [deployment scripts](../README.md#updates-and-removal).
 
 Uninstall is available through Apps & features or the setup's mode page. It removes
 the service, binaries, firewall rules, installation marker and service environment.

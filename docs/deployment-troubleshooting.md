@@ -136,7 +136,7 @@ reinstall with the correct parameters; update cannot reconstruct that configurat
 Uninstall waits up to 90 seconds by default before deleting the service. If processes
 remain, it leaves the service registered. Remaining files or binary backups produce
 exit code 1. The database is always retained; data-directory deletion requires explicit
-`-PurgeData` or `/PURGEDATA=1`. See [uninstall parameters](../deploy/README.md#uninstall).
+`-PurgeData` or `/PURGEDATA=1`. See [uninstall parameters](../deploy/README.md#updates-and-removal).
 
 Earlier update failures had a different cause: before 2026-08-03 the process wait
 was missing, so the updater could report the process it had just stopped. In one
